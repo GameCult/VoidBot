@@ -579,9 +579,11 @@ $($checkRows -join [Environment]::NewLine)
     }
 
     .hero, .panel, .card {
+      min-width: 0;
       border: 1px solid var(--surface-line);
       border-radius: 20px;
       box-shadow: var(--card-shadow);
+      overflow: hidden;
     }
 
     .hero {
@@ -678,6 +680,7 @@ $($checkRows -join [Environment]::NewLine)
     .facts, .checks {
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;
     }
 
     .facts th,
@@ -698,11 +701,18 @@ $($checkRows -join [Environment]::NewLine)
       font-weight: 400;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      width: 180px;
+      width: 140px;
     }
 
     .checks thead th {
       border-top: none;
+    }
+
+    .facts td,
+    .checks td {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .mono {
@@ -733,9 +743,14 @@ $($checkRows -join [Environment]::NewLine)
     .badge-neutral { background: var(--darkgray); }
 
     .file-link {
+      display: inline-block;
+      max-width: 100%;
       text-decoration: none;
       color: var(--tertiary);
       border-bottom: 1px dashed rgba(89, 183, 255, 0.45);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      vertical-align: top;
       transition: color 120ms ease, border-color 120ms ease;
     }
 
