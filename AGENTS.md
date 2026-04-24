@@ -1,5 +1,7 @@
 Use the `voidbot` MCP server whenever the task touches Discord history, archived GameCult discussion, indexed GameCult repositories, Aetheria lore, or owner notifications.
 
+Commit completed work at the end of each pass unless the user explicitly asks to leave changes uncommitted or the work is clearly mid-surgery. Prefer small, intentional commits over letting a pile of unrelated edits rot in the worktree.
+
 Prefer these tools over raw file inspection when they can answer the question:
 - `search_history` for semantic retrieval across archived Discord messages
 - `get_message_context` for the surrounding conversation window around a message

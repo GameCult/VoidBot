@@ -143,9 +143,25 @@ npm run rag:migrate-qdrant
 
 Use `-- --wipe` only when you intentionally want to replace the target collections.
 
-### 5. Start the bot and worker
+### 5. Start the stack
 
-Run these in separate terminals:
+The normal startup path is one command:
+
+```bash
+npm run stack:start
+```
+
+That script:
+
+- verifies Qdrant if `VECTOR_STORE_KIND=qdrant`
+- checks the Ollama endpoints and required models
+- rebuilds the workspace
+- stops stale VoidBot bot/worker processes for this repo
+- starts a fresh bot and worker pair
+- writes runtime status to `.voidbot/status/runtime-stack.json`
+- writes logs to `.voidbot/logs/bot.log` and `.voidbot/logs/worker.log`
+
+If you want the raw split-terminal path for debugging, those still exist:
 
 ```bash
 npm run dev:bot

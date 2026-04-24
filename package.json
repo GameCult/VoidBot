@@ -12,6 +12,7 @@
     "dev:bot": "tsx apps/bot/src/index.ts",
     "dev:mcp": "tsx apps/worker/src/mcp-server.ts",
     "dev:worker": "tsx apps/worker/src/index.ts",
+    "stack:start": "powershell -ExecutionPolicy Bypass -File scripts/start-voidbot-stack.ps1",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",
     "qdrant:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-docker-qdrant.ps1",
