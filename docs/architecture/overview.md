@@ -35,6 +35,7 @@ Discord Gateway
 - The owner Codex flow can perform repeated read-only history searches through a bounded tool loop instead of relying on a single retrieval snapshot.
 - Stock Discord replies are loaded from `config/system-messages.json` and rotated through shuffled variants to avoid repetitive canned responses.
 - Changing embedding models requires a full vector rebuild from the archived messages, which is handled by `npm run rag:rebuild`.
+- Local and offsite backups now have a verifier plus a recurring watchdog, so backup freshness and remote retention stop relying on operator vibes.
 - `owner_codex` has two lanes:
   - `local_exec_owner_only` tries a read-only `codex exec` pass for direct Discord replies
   - `manual_package` remains available when you want explicit approval-gated packaging
@@ -42,7 +43,7 @@ Discord Gateway
 
 ## Upgrade path
 
-1. Add restore drills and retention monitoring around the new local-plus-offsite backup path.
+1. Add a true restore drill path instead of stopping at backup verification plus freshness monitoring.
 2. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
 3. Expand worker-side run records and admin tooling around the interaction memory/event stores.
 4. Expand sandbox execution from dry-run policy checks to real constrained runners.

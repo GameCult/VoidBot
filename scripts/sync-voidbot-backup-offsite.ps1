@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
 $backupScript = Join-Path $PSScriptRoot "backup-voidbot-state.ps1"
+$verifyScript = Join-Path $PSScriptRoot "verify-voidbot-backup.ps1"
 
 function Read-DotEnv {
   param(
@@ -422,9 +423,19 @@ try {
   $backupName = $backupDir.Name
   $archivePath = Join-Path $backupRoot "$backupName.zip"
 
+  Write-Host "Verifying $backupName before offsite upload..."
+  $verificationJson = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BackupPath $backupDir.FullName -AsJson -Quiet
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Latest local backup failed verification and will not be uploaded."
+  }
+
+  $verificationReport = $verificationJson | ConvertFrom-Json
+
   $status.status = "compressing"
   $status.backupDirectory = $backupDir.FullName
   $status.archivePath = $archivePath
+  $status.backupVerification = $verificationReport
   Write-StatusFile -Path $statusPath -Status $status
 
   Write-Host "Compressing $backupName for offsite transfer..."
@@ -460,6 +471,7 @@ try {
 
   Remove-Item -LiteralPath $archivePath -Force
   $archivePath = $null
+  $status.archivePath = $null
 
   $status.status = "pruning"
   Write-StatusFile -Path $statusPath -Status $status

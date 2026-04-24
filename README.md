@@ -427,6 +427,7 @@ npm run state:sync-offsite
 That flow:
 
 - runs the normal local backup first
+- verifies the fresh backup before it is allowed anywhere near the wire
 - compresses the resulting backup directory into a zip archive
 - uploads it over `sftp`
 - keeps a bounded number of scheduled local backup directories
@@ -453,6 +454,40 @@ Defaults come from `.env` / `.env.example`:
 
 The scheduled task uses `Interactive` logon on Windows so it can see the current user's SSH key material. That means the backup job is intended for a workstation session that stays logged in; it is not pretending to be a hardened headless backup appliance.
 
+There is also a recurring watchdog now, so the stack can stop being quiet when it drifts:
+
+```bash
+npm run state:check
+```
+
+That check covers:
+
+- bot and worker process liveness from `.voidbot/status/runtime-stack.json`
+- Qdrant reachability and required collection presence
+- Postgres container health and required table presence
+- local and remote Ollama model availability
+- Discord bot token validity
+- latest local backup verification and freshness
+- offsite task presence, remote archive freshness, and retention count
+
+It writes status to `.voidbot/status/operations-health.json` and appends logs to `.voidbot/logs/operations-watchdog.log`.
+
+Install the recurring watchdog task:
+
+```bash
+npm run state:install-watchdog-task
+```
+
+Defaults come from `.env` / `.env.example`:
+
+- `VOIDBOT_BACKUP_MAX_AGE_HOURS`
+- `VOIDBOT_OFFSITE_BACKUP_MAX_AGE_HOURS`
+- `VOIDBOT_HEALTHCHECK_NOTIFY_REPEAT_HOURS`
+- `VOIDBOT_HEALTHCHECK_TASK_NAME`
+- `VOIDBOT_HEALTHCHECK_INTERVAL_MINUTES`
+
+The watchdog task also uses `Interactive` logon because the remote freshness check relies on the same local SSH key material as the offsite sync path.
+
 ## Commands
 
 Current slash commands:
@@ -478,6 +513,8 @@ Useful local state and docs:
 - `.voidbot/rag/source-documents.json`: archived source and lore documents
 - `.voidbot/rag/import-state.json`: log-backfill file state
 - `.voidbot/status/runtime-stack.json`: live stack status, service reachability, and bot/worker PIDs
+- `.voidbot/status/offsite-backup.json`: latest offsite backup sync result
+- `.voidbot/status/operations-health.json`: latest watchdog health report
 - `config/system-messages.json`: rotating stock system messages
 - `styles/void-default.md`: public default style pack
 - `docs/architecture/overview.md`: higher-level architecture notes
@@ -496,11 +533,10 @@ Useful local state and docs:
 
 Reasonable next steps from here:
 
-1. Add health checks, backups, and operational guidance around Postgres and Qdrant.
-2. Add periodic restore drills and remote retention monitoring so the offsite backup path stays real instead of ceremonial.
-3. Expand worker processing into richer provider run records and moderation hooks.
-4. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
-5. Add real constrained sandbox execution instead of policy-only dry runs.
+1. Add a real scheduled restore drill instead of stopping at backup verification and freshness checks.
+2. Expand worker processing into richer provider run records, moderation hooks, and admin inspection tools.
+3. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
+4. Add real constrained sandbox execution instead of policy-only dry runs.
 
 ## Related Docs
 
