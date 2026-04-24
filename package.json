@@ -1,0 +1,31 @@
+{
+  "name": "voidbot",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "dev:bot": "tsx apps/bot/src/index.ts",
+    "dev:mcp": "tsx apps/worker/src/mcp-server.ts",
+    "dev:worker": "tsx apps/worker/src/index.ts",
+    "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
+    "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",
+    "qdrant:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-docker-qdrant.ps1",
+    "qdrant:up": "powershell -ExecutionPolicy Bypass -File scripts/start-qdrant.ps1",
+    "rag:backfill": "tsx scripts/backfill-discord-logs.ts",
+    "rag:index-sources": "tsx scripts/index-source-repos.ts",
+    "rag:install-push-hooks": "tsx scripts/install-source-index-post-push-hooks.ts",
+    "rag:migrate-qdrant": "tsx scripts/migrate-local-vectors-to-qdrant.ts",
+    "rag:migrate-vector-layout": "tsx scripts/migrate-vector-store-layout.ts",
+    "rag:rebuild": "tsx scripts/rebuild-rag-index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

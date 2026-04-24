@@ -1,0 +1,11 @@
+{
+  "name": "@voidbot/rag",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.17.0",
+    "@voidbot/shared": "0.1.0"
+  }
+}

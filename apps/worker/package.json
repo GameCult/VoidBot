@@ -1,0 +1,17 @@
+{
+  "name": "@voidbot/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@voidbot/config": "0.1.0",
+    "@voidbot/core": "0.1.0",
+    "@voidbot/providers": "0.1.0",
+    "@voidbot/rag": "0.1.0",
+    "@voidbot/shared": "0.1.0",
+    "dotenv": "^16.4.0",
+    "zod": "^3.25.0"
+  }
+}

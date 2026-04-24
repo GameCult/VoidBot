@@ -1,0 +1,7 @@
+[mcp_servers.voidbot]
+command = "node"
+args = ["apps/worker/dist/mcp-server.js"]
+cwd = "."
+
+[mcp_servers.voidbot.env]
+VOIDBOT_WORKSPACE_ROOT = "."

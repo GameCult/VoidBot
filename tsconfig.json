@@ -1,0 +1,30 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/shared"
+    },
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/providers"
+    },
+    {
+      "path": "./packages/rag"
+    },
+    {
+      "path": "./packages/sandbox"
+    },
+    {
+      "path": "./apps/bot"
+    },
+    {
+      "path": "./apps/worker"
+    }
+  ]
+}
+

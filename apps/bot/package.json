@@ -1,0 +1,16 @@
+{
+  "name": "@voidbot/bot",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@voidbot/config": "0.1.0",
+    "@voidbot/core": "0.1.0",
+    "@voidbot/providers": "0.1.0",
+    "@voidbot/rag": "0.1.0",
+    "@voidbot/shared": "0.1.0",
+    "discord.js": "^14.19.0",
+    "dotenv": "^16.4.0"
+  }
+}
