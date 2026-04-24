@@ -180,10 +180,57 @@ function Get-Json {
   return $response | ConvertFrom-Json
 }
 
+function Invoke-CommandWithTimeout {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $FilePath,
+    [Parameter(Mandatory = $false)]
+    [string[]] $ArgumentList = @(),
+    [Parameter(Mandatory = $false)]
+    [int] $TimeoutSeconds = 15
+  )
+
+  $stdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+  $stderrPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+
+  try {
+    $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
+
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      try {
+        $process.Kill()
+      } catch {
+      }
+
+      throw "Command timed out after $TimeoutSeconds second(s): $FilePath $($ArgumentList -join ' ')"
+    }
+
+    $stdout = if (Test-Path -LiteralPath $stdoutPath) {
+      Get-Content -LiteralPath $stdoutPath -Raw
+    } else {
+      ""
+    }
+
+    $stderr = if (Test-Path -LiteralPath $stderrPath) {
+      Get-Content -LiteralPath $stderrPath -Raw
+    } else {
+      ""
+    }
+
+    return [PSCustomObject]@{
+      ExitCode = $process.ExitCode
+      StdOut = $stdout
+      StdErr = $stderr
+    }
+  } finally {
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Test-DockerAvailable {
   try {
-    & docker version *> $null
-    return $LASTEXITCODE -eq 0
+    $result = Invoke-CommandWithTimeout -FilePath "docker.exe" -ArgumentList @("version") -TimeoutSeconds 15
+    return $result.ExitCode -eq 0
   } catch {
     return $false
   }
@@ -196,13 +243,13 @@ function Get-DockerContainerHealth {
   )
 
   try {
-    $status = & docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" $ContainerName 2>$null
+    $result = Invoke-CommandWithTimeout -FilePath "docker.exe" -ArgumentList @("inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", $ContainerName) -TimeoutSeconds 20
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($result.ExitCode -ne 0) {
       return $null
     }
 
-    return $status.Trim()
+    return $result.StdOut.Trim()
   } catch {
     return $null
   }
@@ -480,13 +527,18 @@ try {
         }
 
         try {
-          $tableList = & docker exec voidbot-postgres psql -U $dsn.username -d $dsn.database -tAc "select table_name from information_schema.tables where table_schema = 'public';"
+          $tableResult = Invoke-CommandWithTimeout -FilePath "docker.exe" -ArgumentList @("exec", "voidbot-postgres", "psql", "-U", $dsn.username, "-d", $dsn.database, "-tAc", "select table_name from information_schema.tables where table_schema = 'public';") -TimeoutSeconds 20
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "psql table listing failed."
+          if ($tableResult.ExitCode -ne 0) {
+            $stderr = $tableResult.StdErr.Trim()
+            if ([string]::IsNullOrWhiteSpace($stderr)) {
+              throw "psql table listing failed."
+            }
+
+            throw "psql table listing failed: $stderr"
           }
 
-          $tables = @($tableList -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          $tables = @($tableResult.StdOut -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
           foreach ($requiredTable in @("jobs", "audit_events", "interaction_memory_events")) {
             if ($tables -contains $requiredTable) {
               Add-Check -Name "postgres.table.$requiredTable" -Status "passed" -Detail "Postgres table $requiredTable exists."

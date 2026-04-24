@@ -67,9 +67,9 @@ if (-not ($config.ContainsKey("OFFSITE_BACKUP_SSH_TARGET")) -or [string]::IsNull
 }
 
 $runAt = [DateTime]::ParseExact($taskTimeValue, "HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$syncScript`""
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$syncScript`""
 $trigger = New-ScheduledTaskTrigger -Daily -At $runAt
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 6)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 $description = "Runs VoidBot offsite backup sync to the Qwen box. Interactive logon required so the SSH key material is available."
 
@@ -79,6 +79,8 @@ Write-Host "Installed scheduled task: $taskNameValue"
 Write-Host "Schedule: daily at $taskTimeValue"
 Write-Host "Task runs as: $($env:USERDOMAIN)\$($env:USERNAME)"
 Write-Host "Logon mode: Interactive"
+Write-Host "Window mode: Hidden"
+Write-Host "Execution time limit: 6 hours"
 
 if ($RunNow) {
   Start-ScheduledTask -TaskName $taskNameValue

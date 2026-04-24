@@ -76,9 +76,9 @@ if (-not ($config.ContainsKey("DISCORD_OWNER_ID")) -or [string]::IsNullOrWhiteSp
 }
 
 $startAt = (Get-Date).AddMinutes(5)
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$checkScript`" -NotifyOwner -FailOnIssues"
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$checkScript`" -NotifyOwner -FailOnIssues"
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutesValue) -RepetitionDuration (New-TimeSpan -Days 3650)
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 $description = "Runs the VoidBot operations watchdog on a repeating interval and DMs the owner when the stack or backup path drifts into the swamp."
 
@@ -88,6 +88,8 @@ Write-Host "Installed scheduled task: $taskNameValue"
 Write-Host "Schedule: every $intervalMinutesValue minute(s), starting at $($startAt.ToString('yyyy-MM-dd HH:mm'))"
 Write-Host "Task runs as: $($env:USERDOMAIN)\$($env:USERNAME)"
 Write-Host "Logon mode: Interactive"
+Write-Host "Window mode: Hidden"
+Write-Host "Execution time limit: 15 minutes"
 
 if ($RunNow) {
   Start-ScheduledTask -TaskName $taskNameValue
