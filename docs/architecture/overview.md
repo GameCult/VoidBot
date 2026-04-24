@@ -31,6 +31,7 @@ Discord Gateway
 - `VECTOR_STORE_KIND=local_json` keeps the zero-service path available for local development, but `VECTOR_STORE_KIND=qdrant` is now supported for a proper vector database.
 - Discord history vectors and source-tree/lore vectors stay in separate physical partitions so source indexing no longer rewrites the entire history corpus.
 - The bot live-ingests every message that matches the configured indexing rule and can also backfill from exported log files.
+- Source and lore indexing can also be kicked off by local repo `pre-push` hooks, which launch a detached incremental resync of the pushed repo into the source archive and source-side vector store.
 - The owner Codex flow can perform repeated read-only history searches through a bounded tool loop instead of relying on a single retrieval snapshot.
 - Stock Discord replies are loaded from `config/system-messages.json` and rotated through shuffled variants to avoid repetitive canned responses.
 - Changing embedding models requires a full vector rebuild from the archived messages, which is handled by `npm run rag:rebuild`.

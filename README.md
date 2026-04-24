@@ -317,6 +317,15 @@ npm run rag:install-push-hooks
 
 Git does not provide a client-side `post-push` hook, so VoidBot installs a chained `pre-push` hook instead. That hook returns quickly, launches a detached incremental reindex for the pushed repo, and preserves any existing `pre-push` hook by backing it up to `pre-push.voidbot.prev` and running it first.
 
+What that actually means:
+
+- the resync starts on your local machine during `git push`, from the hooked repo's `pre-push` hook
+- it updates the local source archive plus the source-side vector store (`Qdrant` if enabled, otherwise the local JSON shard backend)
+- it only reindexes the repo being pushed, not every repo in `SOURCE_REPO_ROOT`
+- it does not wait for the remote push to succeed, because Git does not give us a real client-side `post-push`
+- pushes from some other machine do nothing here unless that machine also has the hook installed
+- if a resync for that repo is already running, the hook records `already_running` in the status file and does not start a second one
+
 Progress for those detached runs lives here:
 
 - status: `.voidbot/status/source-hooks/<repo>.json`
