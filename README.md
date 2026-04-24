@@ -223,6 +223,8 @@ The `local_llm` provider uses Ollama chat completion plus a bounded host-managed
 
 Unlike the owner Codex lane, this is not MCP. It is a tighter host-controlled loop and deliberately excludes side-effecting tools.
 
+Project, repo, and lore questions are now source-grounded by policy: if the prompt matches indexed repo/project cues, Void must touch the source-side lookup tools before answering confidently.
+
 ## Discord, Repo, And Lore Indexing
 
 ### Discord history

@@ -166,6 +166,12 @@ export interface InteractionMemoryProfile {
   recentEvents: InteractionMemoryEvent[];
 }
 
+export interface SourceGroundingHint {
+  required: boolean;
+  reasons: string[];
+  matchedRepoNames: string[];
+}
+
 export interface ContextBundle {
   prompt: string;
   actor: Actor;
@@ -173,6 +179,7 @@ export interface ContextBundle {
   recentMessages: SourceMessage[];
   retrieval: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
+  sourceGrounding?: SourceGroundingHint;
   stylePack?: StylePack;
   createdAt: string;
 }

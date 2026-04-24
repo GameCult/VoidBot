@@ -52,6 +52,7 @@ import {
   type GuildContext,
   type JobRecord,
   type ProviderName,
+  type SourceGroundingHint,
   type SourceMessage,
   type StylePack,
   isProviderName,
@@ -340,6 +341,7 @@ export async function startBot(): Promise<void> {
         permissionEngine,
         contextBuilder,
         retrievalService,
+        sourceArchiveRepository,
         jobQueue,
         auditLog,
         interactionMemory,
@@ -417,6 +419,7 @@ export async function startBot(): Promise<void> {
             permissionEngine,
             contextBuilder,
             retrievalService,
+            sourceArchiveRepository,
             jobQueue,
             auditLog,
             interactionMemory,
@@ -442,6 +445,7 @@ export async function startBot(): Promise<void> {
             permissionEngine,
             contextBuilder,
             retrievalService,
+            sourceArchiveRepository,
             jobQueue,
             auditLog,
             interactionMemory,
@@ -558,6 +562,7 @@ interface PromptHandlerOptions {
   permissionEngine: PermissionEngine;
   contextBuilder: ContextBuilder;
   retrievalService: RetrievalService;
+  sourceArchiveRepository: FileSourceDocumentArchiveRepository;
   jobQueue: FileBackedJobQueue;
   auditLog: FileAuditLog;
   interactionMemory: FileInteractionMemoryBank;
@@ -613,6 +618,10 @@ async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
   }
 
   const recentMessages = await getRecentMessages(options.channel, 10);
+  const sourceGrounding = inferSourceGroundingHint(
+    options.prompt,
+    await options.sourceArchiveRepository.listRepoSummaries(),
+  );
   const shouldAttachInitialRetrieval =
     !provider.getCapabilities().includes("tool_driven_retrieval") &&
     (shouldIndexChannel(options.config.channelIndexing, buildChannelIndexingTarget(options.channel)) ||
@@ -630,6 +639,7 @@ async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
     recentMessages,
     retrieval,
     interactionMemory,
+    sourceGrounding,
     stylePack: options.stylePack,
   });
 
@@ -1169,6 +1179,95 @@ async function replyEphemeral(
 
 function stripBotMention(content: string): string {
   return content.replace(/<@!?(\d+)>/g, "").trim();
+}
+
+function inferSourceGroundingHint(
+  prompt: string,
+  repoSummaries: Array<{ repoName: string }>,
+): SourceGroundingHint {
+  const normalized = ` ${normalizeForMatching(prompt)} `;
+  const reasons = new Set<string>();
+  const matchedRepoNames = new Set<string>();
+
+  for (const repo of repoSummaries) {
+    for (const alias of buildRepoAliases(repo.repoName)) {
+      if (alias.length < 4) {
+        continue;
+      }
+
+      if (normalized.includes(` ${alias} `)) {
+        matchedRepoNames.add(repo.repoName);
+      }
+    }
+  }
+
+  if (matchedRepoNames.size > 0) {
+    reasons.add("matched indexed repo/project name");
+  }
+
+  const genericSourceCues = [
+    " repo ",
+    " repository ",
+    " repositories ",
+    " codebase ",
+    " source ",
+    " sources ",
+    " lore ",
+    " vault ",
+    " canon ",
+    " file ",
+    " files ",
+    " docs ",
+    " documentation ",
+    " module ",
+    " implementation ",
+    " project ",
+    " projects ",
+  ];
+
+  if (genericSourceCues.some((cue) => normalized.includes(cue))) {
+    reasons.add("contains source/lore cue");
+  }
+
+  return {
+    required: reasons.size > 0,
+    reasons: [...reasons],
+    matchedRepoNames: [...matchedRepoNames].sort(),
+  };
+}
+
+function buildRepoAliases(repoName: string): string[] {
+  const normalizedRepo = repoName.replace(/[_-]+/g, " ").trim();
+  const lower = normalizeForMatching(normalizedRepo);
+  const compact = normalizeForMatching(repoName);
+  const words = splitPascalCase(normalizedRepo)
+    .flatMap((part) => part.split(/\s+/))
+    .map((part) => normalizeForMatching(part))
+    .filter((part) => part.length > 0);
+  const aliases = new Set<string>([lower, compact, words.join(" ")]);
+
+  for (const word of words) {
+    if (word.length >= 4) {
+      aliases.add(word);
+    }
+  }
+
+  return [...aliases].filter((alias) => alias.length > 0);
+}
+
+function splitPascalCase(value: string): string[] {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
+}
+
+function normalizeForMatching(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isAmbientVoidReference(

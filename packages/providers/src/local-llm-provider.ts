@@ -13,6 +13,7 @@ import {
 
 type OllamaThinkMode = boolean | "low" | "medium" | "high";
 const MAX_TOOL_TURNS = 4;
+const MAX_SOURCE_GROUNDING_RETRIES = 1;
 const MAX_TOOL_RESULTS = MAX_RETRIEVAL_RESULT_LIMIT;
 const MAX_CONTEXT_WINDOW = 20;
 
@@ -183,6 +184,8 @@ export class LocalLlmProvider implements ProviderAdapter {
     const tools = this.options.toolbox ? buildToolDefinitions() : undefined;
     const toolTrace: ToolTraceRecord[] = [];
     const thinkingTrace: string[] = [];
+    const sourceGroundingRequired = Boolean(request.contextBundle.sourceGrounding?.required);
+    let sourceGroundingReminderCount = 0;
 
     try {
       let finalPayload: OllamaChatResponse | undefined;
@@ -230,7 +233,28 @@ export class LocalLlmProvider implements ProviderAdapter {
         messages.push(assistantMessage);
 
         if (toolCalls.length === 0) {
-          finalOutputText = normalizeModelText(assistantMessage.content);
+          const candidateOutput = normalizeModelText(assistantMessage.content);
+
+          if (
+            sourceGroundingRequired &&
+            !didUseSourceGrounding(toolTrace) &&
+            this.options.toolbox
+          ) {
+            if (sourceGroundingReminderCount < MAX_SOURCE_GROUNDING_RETRIES) {
+              sourceGroundingReminderCount += 1;
+              messages.push({
+                role: "user",
+                content: buildSourceGroundingReminder(request.contextBundle),
+              });
+              continue;
+            }
+
+            finalOutputText =
+              "Void: This one needs actual source grounding before I answer it cleanly. Ask again after I pull from the indexed repos, or use the deeper Codex lane.";
+            break;
+          }
+
+          finalOutputText = candidateOutput;
           break;
         }
 
@@ -339,6 +363,7 @@ function buildSystemPrompt(context: ContextBundle): string {
     "If explicit interaction memory for the current speaker is attached, you may let it gently color the tone and reference it when relevant, but do not invent history beyond what was provided.",
     "When the answer depends on archived Discord history or indexed repo/lore context, use the available read-only tools instead of guessing.",
     "If you need to target a specific indexed repo and do not know the valid repo names yet, call list_indexed_repos before search_sources.",
+    renderSourceGroundingInstructions(context, false),
     "Do not claim to have performed searches or tool calls beyond the material actually executed in this run.",
     "If the supplied context looks incomplete, say so plainly instead of bluffing.",
     "Keep the final answer concise and readable in Discord.",
@@ -414,6 +439,42 @@ function renderInteractionMemory(context: ContextBundle): string {
     "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");
+}
+
+function renderSourceGroundingInstructions(
+  context: ContextBundle,
+  reminder: boolean,
+): string {
+  if (!context.sourceGrounding?.required) {
+    return "Source-side grounding is optional here; use it when it clearly helps.";
+  }
+
+  const matchedRepos =
+    context.sourceGrounding.matchedRepoNames.length > 0
+      ? ` Matched repos/projects: ${context.sourceGrounding.matchedRepoNames.join(", ")}.`
+      : "";
+  const reasons =
+    context.sourceGrounding.reasons.length > 0
+      ? ` Reasons: ${context.sourceGrounding.reasons.join(", ")}.`
+      : "";
+  const retry =
+    reminder
+      ? " The previous answer attempt was discarded because it did not touch the source-side tools."
+      : "";
+
+  return `This prompt requires source-grounded evidence before you answer. Use list_indexed_repos, search_sources, or get_source_context first.${matchedRepos}${reasons}${retry}`;
+}
+
+function buildSourceGroundingReminder(context: ContextBundle): string {
+  return `${renderSourceGroundingInstructions(context, true)} Answer again only after using the source-side tools.`;
+}
+
+function didUseSourceGrounding(toolTrace: ToolTraceRecord[]): boolean {
+  return toolTrace.some((trace) =>
+    trace.tool === "list_indexed_repos" ||
+    trace.tool === "search_sources" ||
+    trace.tool === "get_source_context",
+  );
 }
 
 function buildArtifacts(

@@ -22,6 +22,7 @@ const HANDOFF_SENTINEL = "VOIDBOT_HANDOFF_REQUIRED:";
 const OWNER_NOTIFY_SENTINEL = "VOIDBOT_OWNER_NOTIFY:";
 const TOOL_REQUEST_SENTINEL = "VOIDBOT_TOOL_REQUEST:";
 const MAX_HISTORY_TOOL_CALLS = 4;
+const MAX_SOURCE_GROUNDING_RETRIES = 1;
 const DEFAULT_HISTORY_LIMIT = DEFAULT_RETRIEVAL_RESULT_LIMIT;
 const MAX_HISTORY_LIMIT = MAX_RETRIEVAL_RESULT_LIMIT;
 const MAX_NOTIFICATION_MESSAGE_LENGTH = 400;
@@ -245,9 +246,15 @@ export class OwnerCodexProvider implements ProviderAdapter {
     const artifacts: ProviderArtifact[] = [...baseArtifacts];
     const turnResults: CodexRunResult[] = [];
     let result: CodexRunResult | undefined;
+    let sourceGroundingReminderCount = 0;
+    const sourceGroundingRequired = Boolean(request.contextBundle.sourceGrounding?.required);
 
-    for (let turn = 0; turn <= MAX_HISTORY_TOOL_CALLS; turn += 1) {
-      const codexPrompt = buildDiscordReplyPrompt(request.contextBundle, toolCalls);
+    for (let turn = 0; turn <= MAX_HISTORY_TOOL_CALLS + MAX_SOURCE_GROUNDING_RETRIES; turn += 1) {
+      const codexPrompt = buildDiscordReplyPrompt(
+        request.contextBundle,
+        toolCalls,
+        sourceGroundingReminderCount > 0,
+      );
 
       result = await runCodexExec({
         executable: this.options.executable,
@@ -303,6 +310,19 @@ export class OwnerCodexProvider implements ProviderAdapter {
       }
 
       if (!result.toolRequest) {
+        if (
+          sourceGroundingRequired &&
+          !didUseSourceGrounding(result.traceEvents)
+        ) {
+          if (sourceGroundingReminderCount < MAX_SOURCE_GROUNDING_RETRIES) {
+            sourceGroundingReminderCount += 1;
+            continue;
+          }
+
+          result.handoffReason =
+            "This question needed source-grounded evidence, but the reply lane never used the source tools.";
+        }
+
         break;
       }
 
@@ -947,6 +967,7 @@ function normalizeDiscordReply(stdout: string): NormalizedDiscordReply {
 function buildDiscordReplyPrompt(
   context: ContextBundle,
   toolCalls: ToolCallRecord[],
+  sourceGroundingReminder: boolean,
 ): string {
   const recentMessages = context.recentMessages.length
     ? context.recentMessages
@@ -966,6 +987,10 @@ function buildDiscordReplyPrompt(
     context.stylePack && context.stylePack.enabled
       ? context.stylePack.instructions
       : "No style pack is active.";
+  const sourceGroundingInstructions = renderSourceGroundingInstructions(
+    context,
+    sourceGroundingReminder,
+  );
 
   return [
     "# VoidBot Owner Discord Reply",
@@ -987,6 +1012,7 @@ function buildDiscordReplyPrompt(
     "- For questions about Discord history, prior discussion, or user preferences, use search_history and get_message_context instead of filesystem inspection.",
     "- For questions about GameCult repos, source trees, repo-local docs, or AetheriaLore, use search_sources and get_source_context before broad workspace scans.",
     "- If you want to narrow source search to a specific repo but do not know the valid repo names yet, call list_indexed_repos first.",
+    sourceGroundingInstructions,
     "- Do not inspect .voidbot/rag/messages.json, .voidbot/rag/source-documents.json, .voidbot/history-vector-store.json, or .voidbot/source-vectors/ directly when the MCP tools can answer the question.",
     "- Avoid broad workspace scans for archived Discord history or indexed source repos unless the MCP tools are clearly insufficient.",
     "- Do not modify files, install packages, or require network access.",
@@ -1028,6 +1054,7 @@ function buildRequestPayload(request: ProviderRequest): Record<string, unknown> 
     actor: request.contextBundle.actor,
     guildContext: request.contextBundle.guildContext,
     interactionMemory: request.contextBundle.interactionMemory,
+    sourceGrounding: request.contextBundle.sourceGrounding,
     stylePack: request.contextBundle.stylePack,
     recentMessages: request.contextBundle.recentMessages,
     retrieval: request.contextBundle.retrieval,
@@ -1131,6 +1158,40 @@ function renderInteractionMemory(context: ContextBundle): string {
     "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");
+}
+
+function renderSourceGroundingInstructions(
+  context: ContextBundle,
+  reminder: boolean,
+): string {
+  if (!context.sourceGrounding?.required) {
+    return "- Source-side grounding is optional here; use it when it clearly helps.";
+  }
+
+  const matchedRepos =
+    context.sourceGrounding.matchedRepoNames.length > 0
+      ? ` Matched repos/projects: ${context.sourceGrounding.matchedRepoNames.join(", ")}.`
+      : "";
+  const reasons =
+    context.sourceGrounding.reasons.length > 0
+      ? ` Reasons: ${context.sourceGrounding.reasons.join(", ")}.`
+      : "";
+  const retry =
+    reminder
+      ? " The previous answer attempt was discarded because it did not touch the source-side tools."
+      : "";
+
+  return `- This prompt requires source-grounded evidence before you answer. Use list_indexed_repos, search_sources, or get_source_context first.${matchedRepos}${reasons}${retry}`;
+}
+
+function didUseSourceGrounding(events: CodexTraceEvent[]): boolean {
+  return events.some(
+    (event) =>
+      event.kind === "mcp_tool_completed" &&
+      (event.tool === "list_indexed_repos" ||
+        event.tool === "search_sources" ||
+        event.tool === "get_source_context"),
+  );
 }
 
 function renderToolTranscript(toolCalls: ToolCallRecord[], turnResults: CodexRunResult[]): string {

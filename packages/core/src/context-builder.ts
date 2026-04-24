@@ -4,6 +4,7 @@ import {
   type GuildContext,
   type InteractionMemoryProfile,
   type RetrievalResult,
+  type SourceGroundingHint,
   type SourceMessage,
   type StylePack,
 } from "@voidbot/shared";
@@ -15,6 +16,7 @@ export interface BuildContextInput {
   recentMessages?: SourceMessage[];
   retrieval?: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
+  sourceGrounding?: SourceGroundingHint;
   stylePack?: StylePack;
 }
 
@@ -27,6 +29,7 @@ export class ContextBuilder {
       recentMessages: input.recentMessages ?? [],
       retrieval: input.retrieval ?? [],
       interactionMemory: input.interactionMemory,
+      sourceGrounding: input.sourceGrounding,
       stylePack: input.stylePack,
       createdAt: new Date().toISOString(),
     };
