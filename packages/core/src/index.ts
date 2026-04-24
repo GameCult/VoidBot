@@ -1,6 +1,7 @@
 export * from "./audit-log";
 export * from "./codex-mcp";
 export * from "./context-builder";
+export * from "./interaction-memory";
 export * from "./job-queue";
 export * from "./permission-engine";
 export * from "./style-pack-loader";

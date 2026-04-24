@@ -2,6 +2,7 @@ import {
   type Actor,
   type ContextBundle,
   type GuildContext,
+  type InteractionMemoryProfile,
   type RetrievalResult,
   type SourceMessage,
   type StylePack,
@@ -13,6 +14,7 @@ export interface BuildContextInput {
   guildContext: GuildContext;
   recentMessages?: SourceMessage[];
   retrieval?: RetrievalResult[];
+  interactionMemory?: InteractionMemoryProfile;
   stylePack?: StylePack;
 }
 
@@ -24,9 +26,9 @@ export class ContextBuilder {
       guildContext: input.guildContext,
       recentMessages: input.recentMessages ?? [],
       retrieval: input.retrieval ?? [],
+      interactionMemory: input.interactionMemory,
       stylePack: input.stylePack,
       createdAt: new Date().toISOString(),
     };
   }
 }
-

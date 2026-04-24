@@ -20,6 +20,7 @@ import {
   ContextBuilder,
   FileAuditLog,
   FileBackedJobQueue,
+  FileInteractionMemoryBank,
   PermissionEngine,
   loadStylePack,
   loadSystemMessageCatalog,
@@ -142,6 +143,7 @@ export async function startBot(): Promise<void> {
   });
   const jobQueue = new FileBackedJobQueue(config.jobsFile);
   const auditLog = new FileAuditLog(config.auditLogFile);
+  const interactionMemory = new FileInteractionMemoryBank(config.interactionMemoryFile);
   const contextBuilder = new ContextBuilder();
   let activeStylePack = await loadStylePack(config.stylePackPath);
   let activeSystemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
@@ -339,6 +341,7 @@ export async function startBot(): Promise<void> {
         retrievalService,
         jobQueue,
         auditLog,
+        interactionMemory,
         providerRegistry,
         stylePack: activeStylePack,
         systemMessages: activeSystemMessages,
@@ -399,6 +402,7 @@ export async function startBot(): Promise<void> {
             actor,
             guildContext,
             outputChannelId: interaction.channelId,
+            requestMessageId: interaction.id,
             channel: interaction.channel?.isTextBased() ? interaction.channel : null,
             respond: async (content) => {
               await replyEphemeral(interaction, content);
@@ -409,6 +413,7 @@ export async function startBot(): Promise<void> {
             retrievalService,
             jobQueue,
             auditLog,
+            interactionMemory,
             providerRegistry,
             stylePack: activeStylePack,
             systemMessages: activeSystemMessages,
@@ -422,6 +427,7 @@ export async function startBot(): Promise<void> {
             actor,
             guildContext,
             outputChannelId: interaction.channelId,
+            requestMessageId: interaction.id,
             channel: interaction.channel?.isTextBased() ? interaction.channel : null,
             respond: async (content) => {
               await replyEphemeral(interaction, content);
@@ -432,6 +438,7 @@ export async function startBot(): Promise<void> {
             retrievalService,
             jobQueue,
             auditLog,
+            interactionMemory,
             providerRegistry,
             stylePack: activeStylePack,
             systemMessages: activeSystemMessages,
@@ -547,6 +554,7 @@ interface PromptHandlerOptions {
   retrievalService: RetrievalService;
   jobQueue: FileBackedJobQueue;
   auditLog: FileAuditLog;
+  interactionMemory: FileInteractionMemoryBank;
   providerRegistry: ProviderRegistry;
   stylePack?: StylePack;
   systemMessages: SystemMessageCatalog;
@@ -555,6 +563,16 @@ interface PromptHandlerOptions {
 }
 
 async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
+  const interactionMemory = await options.interactionMemory.recordInteraction({
+    actorId: options.actor.id,
+    actorName: options.actor.displayName,
+    guildId: options.guildContext.guildId,
+    channelId: options.guildContext.channelId,
+    channelName: options.guildContext.channelName,
+    command: options.command,
+    prompt: options.prompt,
+    eventId: options.requestMessageId,
+  });
   const providerName =
     options.forceProvider ?? pickProvider(options.actor, options.guildContext, options.providerRegistry);
 
@@ -604,6 +622,7 @@ async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
     guildContext: options.guildContext,
     recentMessages,
     retrieval,
+    interactionMemory,
     stylePack: options.stylePack,
   });
 

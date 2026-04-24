@@ -101,12 +101,67 @@ export interface StylePack {
   enabled: boolean;
 }
 
+export const interactionMemorySentiments = [
+  "warm",
+  "positive",
+  "neutral",
+  "negative",
+  "hostile",
+] as const;
+
+export type InteractionMemorySentiment =
+  (typeof interactionMemorySentiments)[number];
+
+export const interactionMemoryDispositions = [
+  "warm",
+  "friendly",
+  "neutral",
+  "mixed",
+  "wary",
+  "hostile",
+] as const;
+
+export type InteractionMemoryDisposition =
+  (typeof interactionMemoryDispositions)[number];
+
+export interface InteractionMemoryEvent {
+  id: string;
+  actorId: string;
+  actorName: string;
+  guildId?: string;
+  channelId: string;
+  channelName?: string;
+  command: CommandName;
+  prompt: string;
+  excerpt: string;
+  summary: string;
+  sentiment: InteractionMemorySentiment;
+  score: number;
+  tags: string[];
+  timestamp: string;
+}
+
+export interface InteractionMemoryProfile {
+  actorId: string;
+  actorName: string;
+  disposition: InteractionMemoryDisposition;
+  affinityScore: number;
+  totalInteractions: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  summary: string;
+  lastInteractionAt?: string;
+  recentEvents: InteractionMemoryEvent[];
+}
+
 export interface ContextBundle {
   prompt: string;
   actor: Actor;
   guildContext: GuildContext;
   recentMessages: SourceMessage[];
   retrieval: RetrievalResult[];
+  interactionMemory?: InteractionMemoryProfile;
   stylePack?: StylePack;
   createdAt: string;
 }

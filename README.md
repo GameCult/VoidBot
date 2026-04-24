@@ -10,6 +10,7 @@ It can answer from archived Discord history, indexed GameCult repos, and Aetheri
 
 - answer owner questions through a Discord-safe `codex exec` lane
 - use real MCP tools for archived Discord history, repo search, lore lookup, and owner notifications
+- keep an explicit per-speaker interaction memory for direct conversations with Void
 - index live Discord traffic for selected channels
 - backfill old Discord exports into the archive
 - index source trees and lore repos with local Ollama embeddings
@@ -46,7 +47,7 @@ The repo is split into a bot, a worker, and a handful of focused packages:
 - `packages/shared`: shared contracts and types
 - `packages/sandbox`: policy-first sandbox scaffolding
 
-The durable local state lives under `.voidbot/`. That includes jobs, audit logs, artifacts, archives, and detached indexing logs.
+The durable local state lives under `.voidbot/`. That includes jobs, audit logs, artifacts, archives, interaction memory, and detached indexing logs.
 
 ## Quick Start
 

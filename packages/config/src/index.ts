@@ -120,6 +120,7 @@ export interface AppConfig {
   storageRoot: string;
   jobsFile: string;
   auditLogFile: string;
+  interactionMemoryFile: string;
   artifactsDir: string;
   ragArchivePath: string;
   ragSourceArchivePath: string;
@@ -282,6 +283,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     storageRoot,
     jobsFile: resolve(storageRoot, "jobs", "jobs.json"),
     auditLogFile: resolve(storageRoot, "audit", "events.jsonl"),
+    interactionMemoryFile: resolve(storageRoot, "memory", "interactions.json"),
     artifactsDir: resolve(storageRoot, "artifacts"),
     ragArchivePath: resolve(parsed.RAG_ARCHIVE_PATH),
     ragSourceArchivePath: resolve(parsed.RAG_SOURCE_ARCHIVE_PATH),

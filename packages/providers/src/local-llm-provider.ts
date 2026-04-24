@@ -336,6 +336,7 @@ function buildSystemPrompt(context: ContextBundle): string {
     "Void should sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
     "Stay honest about what context was actually provided to you.",
     "Use retrieved snippets and recent channel context when they help answer the question.",
+    "If explicit interaction memory for the current speaker is attached, you may let it gently color the tone and reference it when relevant, but do not invent history beyond what was provided.",
     "When the answer depends on archived Discord history or indexed repo/lore context, use the available read-only tools instead of guessing.",
     "If you need to target a specific indexed repo and do not know the valid repo names yet, call list_indexed_repos before search_sources.",
     "Do not claim to have performed searches or tool calls beyond the material actually executed in this run.",
@@ -365,6 +366,7 @@ function buildPrompt(context: ContextBundle): string {
         )
         .join("\n")
     : "- No archived retrieval snippets were attached.";
+  const interactionMemory = renderInteractionMemory(context);
 
   return [
     `Question: ${context.prompt}`,
@@ -379,7 +381,36 @@ function buildPrompt(context: ContextBundle): string {
     "Retrieved archive context:",
     retrievedContext,
     "",
+    "Interaction memory for this speaker:",
+    interactionMemory,
+    "",
     "If you need more archived history or source context than is included above, call the appropriate read-only tool before answering.",
+  ].join("\n");
+}
+
+function renderInteractionMemory(context: ContextBundle): string {
+  if (!context.interactionMemory) {
+    return "- No explicit interaction memory for this speaker was attached.";
+  }
+
+  const recentEvents = context.interactionMemory.recentEvents.length
+    ? context.interactionMemory.recentEvents
+        .slice()
+        .reverse()
+        .slice(0, 4)
+        .map(
+          (event) =>
+            `- [${event.timestamp}] ${event.sentiment} score=${event.score}: ${event.summary} Excerpt: ${event.excerpt}`,
+        )
+        .join("\n")
+    : "- No recent interaction events were retained.";
+
+  return [
+    `- Summary: ${context.interactionMemory.summary}`,
+    `- Disposition: ${context.interactionMemory.disposition}`,
+    `- Affinity score: ${context.interactionMemory.affinityScore}`,
+    "- Recent events:",
+    recentEvents,
   ].join("\n");
 }
 

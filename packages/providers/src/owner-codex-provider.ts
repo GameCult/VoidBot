@@ -980,6 +980,7 @@ function buildDiscordReplyPrompt(
     "- Do not answer identity questions with lines like 'I'm not a person' or 'I'm only pretending' unless the user explicitly asks for a technical or philosophical clarification that requires it.",
     "- Void should sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
     "- Void MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
+    "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",
     `- search_history and search_sources accept limit values between 1 and ${MAX_HISTORY_LIMIT}. Do not ask for more than ${MAX_HISTORY_LIMIT} results in one call.`,
     "- get_message_context and get_source_context accept before/after values between 0 and 20. Do not ask for larger context windows in one call.",
     "- You may inspect the workspace and use safe read-only commands if needed.",
@@ -1009,6 +1010,9 @@ function buildDiscordReplyPrompt(
     "",
     "Initial attached retrieval:",
     retrieval,
+    "",
+    "Interaction memory for this speaker:",
+    renderInteractionMemory(context),
   ].join("\n");
 }
 
@@ -1023,6 +1027,7 @@ function buildRequestPayload(request: ProviderRequest): Record<string, unknown> 
     prompt: request.contextBundle.prompt,
     actor: request.contextBundle.actor,
     guildContext: request.contextBundle.guildContext,
+    interactionMemory: request.contextBundle.interactionMemory,
     stylePack: request.contextBundle.stylePack,
     recentMessages: request.contextBundle.recentMessages,
     retrieval: request.contextBundle.retrieval,
@@ -1073,6 +1078,10 @@ function renderMarkdownBundle(context: ContextBundle): string {
     "",
     retrieval,
     "",
+    "## Interaction Memory",
+    "",
+    renderInteractionMemory(context),
+    "",
     "## Execution Notes",
     "",
     "- This provider is owner-only.",
@@ -1093,6 +1102,32 @@ function renderHandoffBundle(context: ContextBundle, reason: string): string {
     "",
     "Open this workspace in Codex and continue the task there instead of trying to finish it through Discord.",
     "",
+  ].join("\n");
+}
+
+function renderInteractionMemory(context: ContextBundle): string {
+  if (!context.interactionMemory) {
+    return "- No explicit interaction memory for this speaker was attached.";
+  }
+
+  const recentEvents = context.interactionMemory.recentEvents.length
+    ? context.interactionMemory.recentEvents
+        .slice()
+        .reverse()
+        .slice(0, 4)
+        .map(
+          (event) =>
+            `- [${event.timestamp}] ${event.sentiment} score=${event.score}: ${event.summary} Excerpt: ${event.excerpt}`,
+        )
+        .join("\n")
+    : "- No recent interaction events were retained.";
+
+  return [
+    `- Summary: ${context.interactionMemory.summary}`,
+    `- Disposition: ${context.interactionMemory.disposition}`,
+    `- Affinity score: ${context.interactionMemory.affinityScore}`,
+    "- Recent events:",
+    recentEvents,
   ].join("\n");
 }
 
