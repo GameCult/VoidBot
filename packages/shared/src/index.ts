@@ -112,6 +112,14 @@ export const interactionMemorySentiments = [
 export type InteractionMemorySentiment =
   (typeof interactionMemorySentiments)[number];
 
+export const interactionMemorySourceKinds = [
+  "direct_prompt",
+  "ambient_mention",
+] as const;
+
+export type InteractionMemorySourceKind =
+  (typeof interactionMemorySourceKinds)[number];
+
 export const interactionMemoryDispositions = [
   "warm",
   "friendly",
@@ -128,10 +136,11 @@ export interface InteractionMemoryEvent {
   id: string;
   actorId: string;
   actorName: string;
+  sourceKind: InteractionMemorySourceKind;
   guildId?: string;
   channelId: string;
   channelName?: string;
-  command: CommandName;
+  command?: CommandName;
   prompt: string;
   excerpt: string;
   summary: string;
@@ -147,6 +156,8 @@ export interface InteractionMemoryProfile {
   disposition: InteractionMemoryDisposition;
   affinityScore: number;
   totalInteractions: number;
+  directInteractionCount: number;
+  ambientMentionCount: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;

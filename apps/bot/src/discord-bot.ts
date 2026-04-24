@@ -311,6 +311,7 @@ export async function startBot(): Promise<void> {
     }
 
     await ingestIfIndexed(message, config.channelIndexing, ragPipeline);
+    await rememberAmbientVoidReference(message, client.user?.id, interactionMemory);
 
     if (!client.user || !message.mentions.has(client.user)) {
       return;
@@ -372,6 +373,11 @@ export async function startBot(): Promise<void> {
     }
 
     await ingestIfIndexed(materializedMessage, config.channelIndexing, ragPipeline);
+    await rememberAmbientVoidReference(
+      materializedMessage,
+      client.user?.id,
+      interactionMemory,
+    );
   });
 
   client.on(Events.MessageDelete, async (message) => {
@@ -563,13 +569,14 @@ interface PromptHandlerOptions {
 }
 
 async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
-  const interactionMemory = await options.interactionMemory.recordInteraction({
-    actorId: options.actor.id,
-    actorName: options.actor.displayName,
-    guildId: options.guildContext.guildId,
-    channelId: options.guildContext.channelId,
-    channelName: options.guildContext.channelName,
-    command: options.command,
+      const interactionMemory = await options.interactionMemory.recordInteraction({
+        actorId: options.actor.id,
+        actorName: options.actor.displayName,
+        sourceKind: "direct_prompt",
+        guildId: options.guildContext.guildId,
+        channelId: options.guildContext.channelId,
+        channelName: options.guildContext.channelName,
+        command: options.command,
     prompt: options.prompt,
     eventId: options.requestMessageId,
   });
@@ -974,6 +981,28 @@ async function ingestIfIndexed(
   await ragPipeline.upsertMessages([convertDiscordMessageToArchive(message)]);
 }
 
+async function rememberAmbientVoidReference(
+  message: Message,
+  botUserId: string | undefined,
+  interactionMemory: FileInteractionMemoryBank,
+): Promise<void> {
+  if (!isAmbientVoidReference(message, botUserId)) {
+    return;
+  }
+
+  await interactionMemory.recordInteraction({
+    actorId: message.author.id,
+    actorName: message.author.displayName ?? message.author.username,
+    sourceKind: "ambient_mention",
+    guildId: message.guildId ?? undefined,
+    channelId: message.channelId,
+    channelName: "name" in message.channel ? message.channel.name ?? undefined : undefined,
+    prompt: message.content,
+    eventId: message.id,
+    timestamp: (message.editedAt ?? message.createdAt).toISOString(),
+  });
+}
+
 function buildChannelIndexingTarget(
   channel: TextBasedChannel | null | undefined,
 ): ChannelIndexingTarget {
@@ -1140,6 +1169,48 @@ async function replyEphemeral(
 
 function stripBotMention(content: string): string {
   return content.replace(/<@!?(\d+)>/g, "").trim();
+}
+
+function isAmbientVoidReference(
+  message: Message,
+  botUserId: string | undefined,
+): boolean {
+  const content = message.content.trim();
+
+  if (content.length === 0) {
+    return false;
+  }
+
+  if (botUserId && message.mentions.users.has(botUserId)) {
+    return false;
+  }
+
+  if (/\bvoidbot\b/i.test(content)) {
+    return true;
+  }
+
+  if (!/\bvoid\b/i.test(content)) {
+    return false;
+  }
+
+  const normalized = ` ${content
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()} `;
+
+  if (
+    normalized.includes(" the void ") ||
+    normalized.includes(" into the void ") ||
+    normalized.includes(" return void ") ||
+    normalized.includes(" void function ") ||
+    normalized.includes(" void pointer ") ||
+    normalized.includes(" non void ")
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function formatProviderStatuses(

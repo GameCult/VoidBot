@@ -1114,10 +1114,10 @@ function renderInteractionMemory(context: ContextBundle): string {
     ? context.interactionMemory.recentEvents
         .slice()
         .reverse()
-        .slice(0, 4)
+        .slice(0, 6)
         .map(
           (event) =>
-            `- [${event.timestamp}] ${event.sentiment} score=${event.score}: ${event.summary} Excerpt: ${event.excerpt}`,
+            `- [${event.timestamp}] ${event.sourceKind === "ambient_mention" ? "ambient" : "direct"} ${event.sentiment} score=${event.score}: ${event.summary} Quote: "${event.excerpt}"`,
         )
         .join("\n")
     : "- No recent interaction events were retained.";
@@ -1126,7 +1126,9 @@ function renderInteractionMemory(context: ContextBundle): string {
     `- Summary: ${context.interactionMemory.summary}`,
     `- Disposition: ${context.interactionMemory.disposition}`,
     `- Affinity score: ${context.interactionMemory.affinityScore}`,
-    "- Recent events:",
+    `- Direct remembered interactions: ${context.interactionMemory.directInteractionCount}`,
+    `- Ambient remembered mentions: ${context.interactionMemory.ambientMentionCount}`,
+    "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");
 }

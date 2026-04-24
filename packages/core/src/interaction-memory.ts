@@ -8,6 +8,7 @@ import {
   type InteractionMemoryEvent,
   type InteractionMemoryProfile,
   type InteractionMemorySentiment,
+  type InteractionMemorySourceKind,
 } from "@voidbot/shared";
 
 interface InteractionMemoryStore {
@@ -18,10 +19,11 @@ interface InteractionMemoryStore {
 export interface RecordInteractionInput {
   actorId: string;
   actorName: string;
+  sourceKind: InteractionMemorySourceKind;
   guildId?: string;
   channelId: string;
   channelName?: string;
-  command: CommandName;
+  command?: CommandName;
   prompt: string;
   timestamp?: string;
   eventId?: string;
@@ -67,54 +69,34 @@ export class FileInteractionMemoryBank {
       const existingEvent = profile.recentEvents.find(
         (event) => event.id === eventId,
       );
+      const nextEvent: InteractionMemoryEvent = {
+        id: eventId,
+        actorId: input.actorId,
+        actorName: input.actorName,
+        sourceKind: input.sourceKind,
+        guildId: input.guildId,
+        channelId: input.channelId,
+        channelName: input.channelName,
+        command: input.command,
+        prompt,
+        excerpt: buildExcerpt(prompt),
+        summary: buildEventSummary(input.sourceKind, analysis.sentiment, new Set(analysis.tags)),
+        sentiment: analysis.sentiment,
+        score: analysis.score,
+        tags: analysis.tags,
+        timestamp,
+      };
 
       if (!existingEvent) {
-        const event: InteractionMemoryEvent = {
-          id: eventId,
-          actorId: input.actorId,
-          actorName: input.actorName,
-          guildId: input.guildId,
-          channelId: input.channelId,
-          channelName: input.channelName,
-          command: input.command,
-          prompt,
-          excerpt: buildExcerpt(prompt),
-          summary: analysis.summary,
-          sentiment: analysis.sentiment,
-          score: analysis.score,
-          tags: analysis.tags,
-          timestamp,
-        };
-
-        profile.totalInteractions += 1;
-
-        if (analysis.score > 0) {
-          profile.positiveCount += 1;
-        } else if (analysis.score < 0) {
-          profile.negativeCount += 1;
-        } else {
-          profile.neutralCount += 1;
-        }
-
-        profile.affinityScore = clamp(
-          profile.affinityScore + analysis.score,
-          -MAX_AFFINITY_SCORE,
-          MAX_AFFINITY_SCORE,
-        );
-        profile.lastInteractionAt = timestamp;
-        profile.recentEvents.push(event);
-        profile.recentEvents = profile.recentEvents
-          .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
-          .slice(-MAX_RECENT_EVENTS);
-      } else if (
-        existingEvent.actorName !== input.actorName ||
-        existingEvent.prompt !== prompt
-      ) {
-        existingEvent.actorName = input.actorName;
-        existingEvent.prompt = prompt;
-        existingEvent.excerpt = buildExcerpt(prompt);
+        profile.recentEvents.push(nextEvent);
+      } else {
+        Object.assign(existingEvent, nextEvent);
       }
 
+      profile.recentEvents = profile.recentEvents
+        .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+        .slice(-MAX_RECENT_EVENTS);
+      recalculateProfile(profile);
       profile.disposition = determineDisposition(profile);
       profile.summary = buildProfileSummary(profile);
 
@@ -135,7 +117,9 @@ export class FileInteractionMemoryBank {
   private async readUnlocked(): Promise<InteractionMemoryStore> {
     try {
       const raw = await readFile(this.filePath, "utf8");
-      return JSON.parse(stripLeadingBom(raw)) as InteractionMemoryStore;
+      return normalizeStore(
+        JSON.parse(stripLeadingBom(raw)) as InteractionMemoryStore,
+      );
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
 
@@ -170,6 +154,8 @@ function ensureProfile(
       disposition: "neutral",
       affinityScore: 0,
       totalInteractions: 0,
+      directInteractionCount: 0,
+      ambientMentionCount: 0,
       positiveCount: 0,
       negativeCount: 0,
       neutralCount: 0,
@@ -180,6 +166,45 @@ function ensureProfile(
   }
 
   return profile;
+}
+
+function normalizeStore(store: InteractionMemoryStore): InteractionMemoryStore {
+  return {
+    version: 1,
+    profiles: (store.profiles ?? []).map((profile) => normalizeProfile(profile)),
+  };
+}
+
+function normalizeProfile(
+  profile: InteractionMemoryProfile,
+): InteractionMemoryProfile {
+  const normalizedEvents = (profile.recentEvents ?? []).map((event) => ({
+    ...event,
+    sourceKind: event.sourceKind ?? "direct_prompt",
+  }));
+
+  const normalizedProfile: InteractionMemoryProfile = {
+    actorId: profile.actorId,
+    actorName: profile.actorName,
+    disposition: profile.disposition ?? "neutral",
+    affinityScore: profile.affinityScore ?? 0,
+    totalInteractions: profile.totalInteractions ?? 0,
+    directInteractionCount: profile.directInteractionCount ?? 0,
+    ambientMentionCount: profile.ambientMentionCount ?? 0,
+    positiveCount: profile.positiveCount ?? 0,
+    negativeCount: profile.negativeCount ?? 0,
+    neutralCount: profile.neutralCount ?? 0,
+    summary:
+      profile.summary ??
+      "No explicit interaction memory has been recorded for this speaker yet.",
+    lastInteractionAt: profile.lastInteractionAt,
+    recentEvents: normalizedEvents,
+  };
+
+  recalculateProfile(normalizedProfile);
+  normalizedProfile.disposition = determineDisposition(normalizedProfile);
+  normalizedProfile.summary = buildProfileSummary(normalizedProfile);
+  return normalizedProfile;
 }
 
 function analyzeInteractionTone(prompt: string): ToneAnalysis {
@@ -258,7 +283,7 @@ function analyzeInteractionTone(prompt: string): ToneAnalysis {
     sentiment,
     score: clamp(score, -4, 4),
     tags: [...tags],
-    summary: buildEventSummary(sentiment, tags),
+    summary: buildEventSummary("direct_prompt", sentiment, tags),
   };
 }
 
@@ -280,48 +305,78 @@ function matchWeightedPhrases(
 }
 
 function buildEventSummary(
+  sourceKind: InteractionMemorySourceKind,
   sentiment: InteractionMemorySentiment,
   tags: Set<string>,
 ): string {
+  const ambient = sourceKind === "ambient_mention";
+
   if (tags.has("hostility")) {
-    return "Was openly hostile to you.";
+    return ambient ? "Spoke about you with open hostility." : "Was openly hostile to you.";
   }
 
   if (tags.has("insult")) {
-    return "Insulted or diminished you.";
+    return ambient ? "Spoke about you dismissively or with contempt." : "Insulted or diminished you.";
   }
 
   if (tags.has("gratitude") && tags.has("praise")) {
-    return "Thanked you and praised you.";
+    return ambient ? "Spoke very well of you." : "Thanked you and praised you.";
   }
 
   if (tags.has("gratitude")) {
-    return "Thanked you.";
+    return ambient ? "Spoke appreciatively about you." : "Thanked you.";
   }
 
   if (tags.has("praise")) {
-    return "Praised you.";
+    return ambient ? "Praised you while talking about you." : "Praised you.";
   }
 
   if (tags.has("apology")) {
-    return "Apologized to you.";
+    return ambient ? "Sounded apologetic while talking about you." : "Apologized to you.";
   }
 
   if (tags.has("courtesy")) {
-    return "Was notably polite.";
+    return ambient ? "Spoke politely about you." : "Was notably polite.";
   }
 
   switch (sentiment) {
     case "warm":
-      return "Was openly warm toward you.";
+      return ambient ? "Spoke warmly about you." : "Was openly warm toward you.";
     case "positive":
-      return "Was positive toward you.";
+      return ambient ? "Spoke positively about you." : "Was positive toward you.";
     case "negative":
-      return "Was curt or dismissive toward you.";
+      return ambient ? "Spoke curtly or dismissively about you." : "Was curt or dismissive toward you.";
     case "hostile":
-      return "Was hostile toward you.";
+      return ambient ? "Spoke hostilely about you." : "Was hostile toward you.";
     default:
-      return "Had a neutral interaction with you.";
+      return ambient ? "Mentioned you without revealing strong feelings." : "Had a neutral interaction with you.";
+  }
+}
+
+function recalculateProfile(profile: InteractionMemoryProfile): void {
+  profile.totalInteractions = profile.recentEvents.length;
+  profile.directInteractionCount = profile.recentEvents.filter(
+    (event) => event.sourceKind === "direct_prompt",
+  ).length;
+  profile.ambientMentionCount = profile.recentEvents.filter(
+    (event) => event.sourceKind === "ambient_mention",
+  ).length;
+  profile.positiveCount = profile.recentEvents.filter((event) => event.score > 0).length;
+  profile.negativeCount = profile.recentEvents.filter((event) => event.score < 0).length;
+  profile.neutralCount = profile.recentEvents.filter((event) => event.score === 0).length;
+  profile.affinityScore = clamp(
+    profile.recentEvents.reduce((sum, event) => sum + event.score, 0),
+    -MAX_AFFINITY_SCORE,
+    MAX_AFFINITY_SCORE,
+  );
+  profile.lastInteractionAt =
+    profile.recentEvents[profile.recentEvents.length - 1]?.timestamp;
+  for (const event of profile.recentEvents) {
+    event.summary = buildEventSummary(
+      event.sourceKind,
+      event.sentiment,
+      new Set(event.tags),
+    );
   }
 }
 
@@ -361,13 +416,16 @@ function determineDisposition(
 
 function buildProfileSummary(profile: InteractionMemoryProfile): string {
   const leading = describeDisposition(profile.disposition);
-  const counts = `${profile.totalInteractions} direct interaction${profile.totalInteractions === 1 ? "" : "s"} logged: ${profile.positiveCount} positive, ${profile.neutralCount} neutral, ${profile.negativeCount} negative.`;
+  const counts = `${profile.totalInteractions} remembered interaction${profile.totalInteractions === 1 ? "" : "s"}: ${profile.directInteractionCount} direct, ${profile.ambientMentionCount} ambient, ${profile.positiveCount} positive, ${profile.neutralCount} neutral, ${profile.negativeCount} negative.`;
   const recentNotable = profile.recentEvents
     .slice()
     .reverse()
     .filter((event) => event.score !== 0)
     .slice(0, SUMMARY_EVENT_LIMIT)
-    .map((event) => `${formatShortDate(event.timestamp)}: ${event.summary}`)
+    .map(
+      (event) =>
+        `${formatShortDate(event.timestamp)}: ${event.summary} ("${event.excerpt}")`,
+    )
     .join(" ");
 
   return recentNotable.length > 0

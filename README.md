@@ -10,7 +10,7 @@ It can answer from archived Discord history, indexed GameCult repos, and Aetheri
 
 - answer owner questions through a Discord-safe `codex exec` lane
 - use real MCP tools for archived Discord history, repo search, lore lookup, and owner notifications
-- keep an explicit per-speaker interaction memory for direct conversations with Void
+- keep an explicit per-speaker interaction memory for direct conversations and ambient mentions of Void
 - index live Discord traffic for selected channels
 - backfill old Discord exports into the archive
 - index source trees and lore repos with local Ollama embeddings
