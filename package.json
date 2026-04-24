@@ -13,6 +13,8 @@
     "dev:mcp": "tsx apps/worker/src/mcp-server.ts",
     "dev:worker": "tsx apps/worker/src/index.ts",
     "stack:start": "powershell -ExecutionPolicy Bypass -File scripts/start-voidbot-stack.ps1",
+    "state:backup": "powershell -ExecutionPolicy Bypass -File scripts/backup-voidbot-state.ps1",
+    "state:restore": "powershell -ExecutionPolicy Bypass -File scripts/restore-voidbot-state.ps1",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",

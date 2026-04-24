@@ -384,6 +384,40 @@ If you still have an old mixed local JSON vector store from earlier builds, migr
 npm run rag:migrate-vector-layout
 ```
 
+Manual local state backups now have a real path instead of vibes:
+
+```bash
+npm run state:backup
+```
+
+Optional label:
+
+```bash
+npm run state:backup -- -Label before-big-reindex
+```
+
+That backup contains:
+
+- a `pg_dump` custom-format dump for Postgres jobs, audit events, and interaction memory
+- Qdrant snapshots for every collection currently on the local node
+- copies of `.voidbot/rag/*` so archive-backed rebuild provenance does not evaporate
+
+Backups are written under `.voidbot/backups/<timestamp>[-label]/` with a `manifest.json`.
+
+Restore the newest backup:
+
+```bash
+npm run state:restore
+```
+
+Restore a specific backup directory:
+
+```bash
+npm run state:restore -- -BackupPath E:\Projects\VoidBot\.voidbot\backups\<timestamp>
+```
+
+The backup and restore scripts stop the local bot/worker first and restart them afterward if they were already running. Because the local Qdrant node is shared, the backup path snapshots every collection on that node, not just the two VoidBot ones.
+
 ## Commands
 
 Current slash commands:
@@ -428,9 +462,10 @@ Useful local state and docs:
 Reasonable next steps from here:
 
 1. Add health checks, backups, and operational guidance around Postgres and Qdrant.
-2. Expand worker processing into richer provider run records and moderation hooks.
-3. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
-4. Add real constrained sandbox execution instead of policy-only dry runs.
+2. Automate recurring and off-box retention for Postgres, Qdrant, and archive backups instead of relying on manual local runs.
+3. Expand worker processing into richer provider run records and moderation hooks.
+4. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
+5. Add real constrained sandbox execution instead of policy-only dry runs.
 
 ## Related Docs
 
