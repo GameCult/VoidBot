@@ -84,7 +84,7 @@ function Invoke-CurlJson {
     [string[]] $Arguments
   )
 
-  $response = & curl.exe @Arguments
+  $response = & curl.exe --connect-timeout 5 --max-time 30 @Arguments
 
   if ($LASTEXITCODE -ne 0) {
     throw "curl.exe failed: $($Arguments -join ' ')"

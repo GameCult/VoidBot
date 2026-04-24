@@ -42,7 +42,7 @@ Discord Gateway
 
 ## Upgrade path
 
-1. Automate recurring and off-box retention for the new Postgres/Qdrant/manual-archive backup path.
+1. Add restore drills and retention monitoring around the new local-plus-offsite backup path.
 2. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
 3. Expand worker-side run records and admin tooling around the interaction memory/event stores.
 4. Expand sandbox execution from dry-run policy checks to real constrained runners.

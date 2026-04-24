@@ -418,6 +418,41 @@ npm run state:restore -- -BackupPath E:\Projects\VoidBot\.voidbot\backups\<times
 
 The backup and restore scripts stop the local bot/worker first and restart them afterward if they were already running. Because the local Qdrant node is shared, the backup path snapshots every collection on that node, not just the two VoidBot ones.
 
+For the next rung up from "local recovery only", VoidBot can also push nightly backup archives to an SSH-reachable offsite box:
+
+```bash
+npm run state:sync-offsite
+```
+
+That flow:
+
+- runs the normal local backup first
+- compresses the resulting backup directory into a zip archive
+- uploads it over `sftp`
+- keeps a bounded number of scheduled local backup directories
+- prunes older remote zip archives after upload
+- writes status to `.voidbot/status/offsite-backup.json`
+- appends logs to `.voidbot/logs/offsite-backup.log`
+
+Install the daily scheduled task:
+
+```bash
+npm run state:install-offsite-task
+```
+
+Defaults come from `.env` / `.env.example`:
+
+- `OFFSITE_BACKUP_SSH_TARGET`
+- `OFFSITE_BACKUP_REMOTE_WINDOWS_DIR`
+- `OFFSITE_BACKUP_REMOTE_SFTP_DIR`
+- `OFFSITE_BACKUP_LOCAL_KEEP_LATEST`
+- `OFFSITE_BACKUP_REMOTE_KEEP_LATEST`
+- `OFFSITE_BACKUP_LABEL`
+- `OFFSITE_BACKUP_TASK_NAME`
+- `OFFSITE_BACKUP_TASK_TIME`
+
+The scheduled task uses `Interactive` logon on Windows so it can see the current user's SSH key material. That means the backup job is intended for a workstation session that stays logged in; it is not pretending to be a hardened headless backup appliance.
+
 ## Commands
 
 Current slash commands:
@@ -462,7 +497,7 @@ Useful local state and docs:
 Reasonable next steps from here:
 
 1. Add health checks, backups, and operational guidance around Postgres and Qdrant.
-2. Automate recurring and off-box retention for Postgres, Qdrant, and archive backups instead of relying on manual local runs.
+2. Add periodic restore drills and remote retention monitoring so the offsite backup path stays real instead of ceremonial.
 3. Expand worker processing into richer provider run records and moderation hooks.
 4. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
 5. Add real constrained sandbox execution instead of policy-only dry runs.
