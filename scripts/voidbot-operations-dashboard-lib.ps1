@@ -520,79 +520,124 @@ $($checkRows -join [Environment]::NewLine)
   <meta charset='utf-8'>
   <meta http-equiv='refresh' content='10'>
   <title>VoidBot Operations Dashboard</title>
+  <link rel='preconnect' href='https://fonts.googleapis.com'>
+  <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
+  <link href='https://fonts.googleapis.com/css2?family=Montserrat:wght@100;200;300;400;600&family=Ubuntu:wght@300;400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap' rel='stylesheet'>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f4efe7;
-      --paper: rgba(255,255,255,0.88);
-      --ink: #1f2430;
-      --muted: #5b6472;
-      --line: rgba(31,36,48,0.12);
-      --good: #1f7a4a;
-      --warn: #8f6200;
-      --bad: #a6342b;
-      --info: #1d5e8a;
-      --neutral: #596574;
-      --shadow: 0 18px 50px rgba(31,36,48,0.12);
+      color-scheme: dark;
+      --light: #07111a;
+      --lightgray: #16212c;
+      --gray: #63758a;
+      --darkgray: #b7c7d9;
+      --dark: #eef5ff;
+      --secondary: #ff8a2a;
+      --tertiary: #59b7ff;
+      --highlight: rgba(89, 183, 255, 0.14);
+      --textHighlight: #ff8a2a55;
+      --panel: linear-gradient(180deg, rgba(13, 20, 31, 0.96), rgba(8, 13, 21, 0.92));
+      --panel-strong: linear-gradient(135deg, rgba(7, 12, 19, 0.98), rgba(12, 20, 31, 0.95));
+      --panel-soft: linear-gradient(135deg, rgba(10, 16, 24, 0.9), rgba(17, 24, 35, 0.82));
+      --surface-line: rgba(89, 183, 255, 0.12);
+      --surface-line-strong: rgba(89, 183, 255, 0.18);
+      --surface-shadow:
+        0 20px 44px rgba(0, 0, 0, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      --card-shadow:
+        0 18px 36px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
+      --good: #4dd39a;
+      --warn: #ffb347;
+      --bad: #ff6b6b;
+      --info: var(--tertiary);
+      --neutral: var(--gray);
+      --titleFont: "Montserrat", "Segoe UI Variable", sans-serif;
+      --headerFont: "Montserrat", "Segoe UI Variable", sans-serif;
+      --bodyFont: "Ubuntu", "Segoe UI", sans-serif;
+      --codeFont: "IBM Plex Mono", "Cascadia Mono", monospace;
     }
 
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 32px;
+      padding: 36px;
       background:
-        radial-gradient(circle at top left, rgba(237, 190, 123, 0.28), transparent 34%),
-        radial-gradient(circle at top right, rgba(130, 176, 210, 0.22), transparent 28%),
-        linear-gradient(180deg, #f8f4ee 0%, #efe7dc 100%);
-      color: var(--ink);
-      font: 15px/1.5 "Aptos", "Segoe UI Variable", "Trebuchet MS", sans-serif;
+        radial-gradient(circle at 14% 12%, rgba(255, 138, 42, 0.18), transparent 24%),
+        radial-gradient(circle at 84% 10%, rgba(89, 183, 255, 0.18), transparent 22%),
+        linear-gradient(180deg, rgba(6, 10, 16, 1) 0%, rgba(7, 12, 19, 1) 38%, rgba(8, 13, 21, 1) 100%);
+      color: var(--dark);
+      font: 15px/1.6 var(--bodyFont);
     }
 
     h1, h2, h3, p { margin: 0; }
     a { color: inherit; }
     .shell {
-      max-width: 1400px;
+      max-width: 1460px;
       margin: 0 auto;
       display: grid;
-      gap: 20px;
+      gap: 22px;
     }
 
     .hero, .panel, .card {
-      background: var(--paper);
-      border: 1px solid var(--line);
+      border: 1px solid var(--surface-line);
       border-radius: 20px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(8px);
+      box-shadow: var(--card-shadow);
     }
 
     .hero {
-      padding: 28px;
+      padding: 1.35rem 1.45rem 1.5rem;
       display: grid;
-      gap: 10px;
+      gap: 0.85rem;
+      background:
+        radial-gradient(circle at 82% 28%, rgba(255, 138, 42, 0.14), transparent 20%),
+        radial-gradient(circle at 14% 10%, rgba(89, 183, 255, 0.1), transparent 18%),
+        var(--panel-strong);
+      overflow: hidden;
     }
 
     .eyebrow {
-      font-size: 12px;
+      color: var(--secondary);
+      font-family: var(--titleFont);
+      font-size: 0.78rem;
+      font-weight: 300;
       letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: var(--muted);
+    }
+
+    .hero h1,
+    .card-head h2,
+    .panel h2 {
+      color: var(--dark);
+      font-family: var(--headerFont);
+      font-weight: 300;
+      letter-spacing: 0.04em;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 3.4vw, 3.15rem);
+      line-height: 1.02;
+      text-transform: uppercase;
     }
 
     .hero p {
-      color: var(--muted);
+      color: rgba(183, 199, 217, 0.88);
       max-width: 80ch;
+      font-size: 0.98rem;
     }
 
     .cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
+      gap: 1rem;
     }
 
     .card {
-      padding: 18px;
+      padding: 1rem 1.05rem;
       display: grid;
-      gap: 12px;
+      gap: 0.75rem;
+      background:
+        radial-gradient(circle at 84% 18%, rgba(255, 138, 42, 0.09), transparent 24%),
+        var(--panel);
     }
 
     .card-head {
@@ -603,27 +648,31 @@ $($checkRows -join [Environment]::NewLine)
     }
 
     .card-head h2 {
-      font-size: 16px;
+      font-size: 0.98rem;
+      text-transform: uppercase;
     }
 
     .card-subtitle, .card-meta, .muted {
-      color: var(--muted);
+      color: rgba(183, 199, 217, 0.78);
     }
 
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 16px;
+      gap: 1rem;
     }
 
     .panel {
-      padding: 20px;
+      padding: 1.1rem 1.15rem;
       display: grid;
-      gap: 14px;
+      gap: 0.9rem;
+      background: var(--panel-soft);
+      border-color: rgba(89, 183, 255, 0.1);
     }
 
     .panel h2 {
-      font-size: 18px;
+      font-size: 1.02rem;
+      text-transform: uppercase;
     }
 
     .facts, .checks {
@@ -636,15 +685,19 @@ $($checkRows -join [Environment]::NewLine)
     .checks th,
     .checks td {
       padding: 10px 12px;
-      border-top: 1px solid var(--line);
+      border-top: 1px solid rgba(89, 183, 255, 0.1);
       text-align: left;
       vertical-align: top;
     }
 
     .facts th,
     .checks th {
-      color: var(--muted);
-      font-weight: 600;
+      color: var(--darkgray);
+      font-family: var(--headerFont);
+      font-size: 0.74rem;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       width: 180px;
     }
 
@@ -653,7 +706,7 @@ $($checkRows -join [Environment]::NewLine)
     }
 
     .mono {
-      font-family: "Consolas", "Cascadia Mono", monospace;
+      font-family: var(--codeFont);
       font-size: 13px;
       word-break: break-word;
     }
@@ -668,19 +721,38 @@ $($checkRows -join [Environment]::NewLine)
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
-      color: white;
+      color: #04101b;
       white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.24);
     }
 
     .badge-good { background: var(--good); }
     .badge-warn { background: var(--warn); }
     .badge-bad { background: var(--bad); }
     .badge-info { background: var(--info); }
-    .badge-neutral { background: var(--neutral); }
+    .badge-neutral { background: var(--darkgray); }
 
     .file-link {
       text-decoration: none;
-      border-bottom: 1px dashed rgba(29, 94, 138, 0.4);
+      color: var(--tertiary);
+      border-bottom: 1px dashed rgba(89, 183, 255, 0.45);
+      transition: color 120ms ease, border-color 120ms ease;
+    }
+
+    .file-link:hover {
+      color: var(--secondary);
+      border-color: rgba(255, 138, 42, 0.45);
+    }
+
+    .checks tbody tr:hover td,
+    .facts tbody tr:hover td,
+    .facts tbody tr:hover th {
+      background: rgba(89, 183, 255, 0.05);
+    }
+
+    .checks td:last-child,
+    .facts td:last-child {
+      color: rgba(238, 245, 255, 0.9);
     }
 
     @media (max-width: 720px) {
