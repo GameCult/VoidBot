@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: voidbot-postgres
+    ports:
+      - "${VOIDBOT_POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: "${VOIDBOT_POSTGRES_DB:-voidbot}"
+      POSTGRES_USER: "${VOIDBOT_POSTGRES_USER:-voidbot}"
+      POSTGRES_PASSWORD: "${VOIDBOT_POSTGRES_PASSWORD:-voidbot}"
+    volumes:
+      - voidbot-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  voidbot-postgres-data:

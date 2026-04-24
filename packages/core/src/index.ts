@@ -4,5 +4,6 @@ export * from "./context-builder";
 export * from "./interaction-memory";
 export * from "./job-queue";
 export * from "./permission-engine";
+export * from "./state-storage";
 export * from "./style-pack-loader";
 export * from "./system-message-catalog";

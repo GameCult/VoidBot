@@ -47,7 +47,7 @@ The repo is split into a bot, a worker, and a handful of focused packages:
 - `packages/shared`: shared contracts and types
 - `packages/sandbox`: policy-first sandbox scaffolding
 
-The durable local state lives under `.voidbot/`. That includes jobs, audit logs, artifacts, archives, interaction memory, and detached indexing logs.
+The durable local state is split on purpose: Postgres holds jobs, audit events, and interaction memory, while `.voidbot/` keeps artifacts, archives, logs, and detached indexing status.
 
 ## Quick Start
 
@@ -103,7 +103,22 @@ ollama pull qwen3-embedding:0.6b
 
 `RAG_EMBEDDING_DIMENSIONS` only matters for the hash fallback backend. Ollama-backed embeddings report their own dimensions.
 
-### 4. Start Qdrant
+### 4. Start Postgres
+
+VoidBot now keeps queue state, audit events, and interaction memory in Postgres. `npm run stack:start` will launch the local Docker Postgres container automatically for the default local DSN, but you can start it yourself if you want the database up first:
+
+```bash
+docker compose -f infra/postgres/docker-compose.yml up -d
+```
+
+The default local state-store config is:
+
+```dotenv
+STATE_STORAGE_BACKEND=postgres
+DATABASE_DSN=postgres://voidbot:voidbot@localhost:5432/voidbot
+```
+
+### 5. Start Qdrant
 
 Qdrant is the recommended vector backend now. It avoids the pain that comes from stuffing everything into local JSON and then acting surprised when the file turns into a small moon.
 
@@ -144,7 +159,7 @@ npm run rag:migrate-qdrant
 
 Use `-- --wipe` only when you intentionally want to replace the target collections.
 
-### 5. Start the stack
+### 6. Start the stack
 
 The normal startup path is one command:
 
@@ -154,6 +169,7 @@ npm run stack:start
 
 That script:
 
+- verifies or starts local Postgres if `STATE_STORAGE_BACKEND=postgres`
 - verifies Qdrant if `VECTOR_STORE_KIND=qdrant`
 - checks the Ollama endpoints and required models
 - rebuilds the workspace
@@ -373,16 +389,15 @@ Some commands are full working paths. Some are still thin MVPs. They exist becau
 
 Useful local state and docs:
 
-- `.voidbot/jobs/jobs.json`: local job queue
-- `.voidbot/audit/events.jsonl`: audit trail
 - `.voidbot/artifacts/<job-id>/`: handoff bundles, stdout, stderr, traces
 - `.voidbot/rag/messages.json`: archived Discord messages
 - `.voidbot/rag/source-documents.json`: archived source and lore documents
 - `.voidbot/rag/import-state.json`: log-backfill file state
+- `.voidbot/status/runtime-stack.json`: live stack status, service reachability, and bot/worker PIDs
 - `config/system-messages.json`: rotating stock system messages
 - `styles/void-default.md`: public default style pack
 - `docs/architecture/overview.md`: higher-level architecture notes
-- `packages/core/sql/bootstrap.sql`: draft PostgreSQL schema
+- `packages/core/sql/bootstrap.sql`: PostgreSQL schema for jobs, audit events, and interaction memory
 
 ## Safety Boundaries
 
@@ -397,11 +412,10 @@ Useful local state and docs:
 
 Reasonable next steps from here:
 
-1. Move queue and audit storage into PostgreSQL.
-2. Add health checks, backups, and operational guidance around Qdrant.
-3. Expand worker processing into richer provider run records and moderation hooks.
-4. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
-5. Add real constrained sandbox execution instead of policy-only dry runs.
+1. Add health checks, backups, and operational guidance around Postgres and Qdrant.
+2. Expand worker processing into richer provider run records and moderation hooks.
+3. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
+4. Add real constrained sandbox execution instead of policy-only dry runs.
 
 ## Related Docs
 

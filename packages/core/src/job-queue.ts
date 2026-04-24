@@ -16,6 +16,25 @@ interface JobStore {
   jobs: JobRecord[];
 }
 
+export interface JobQueue {
+  createJob(input: CreateJobInput): Promise<CreateJobResult>;
+  getJob(jobId: string): Promise<JobRecord | undefined>;
+  listByStates(states: JobState[]): Promise<JobRecord[]>;
+  listRunnableJobs(): Promise<JobRecord[]>;
+  claimRunnableJobs(limit?: number): Promise<JobRecord[]>;
+  approveRun(jobId: string, actorId: string): Promise<JobRecord>;
+  rejectJob(jobId: string, actorId: string, reason?: string): Promise<JobRecord>;
+  markRunning(jobId: string): Promise<JobRecord>;
+  markAwaitingPostApproval(
+    jobId: string,
+    artifactPaths: Record<string, string>,
+    summary: string,
+  ): Promise<JobRecord>;
+  markFailed(jobId: string, error: string): Promise<JobRecord>;
+  completeJob(jobId: string, actorId: string, finalResponse: string): Promise<JobRecord>;
+  completeJobDirect(jobId: string, finalResponse: string): Promise<JobRecord>;
+}
+
 export interface CreateJobResult {
   job: JobRecord;
   created: boolean;
@@ -35,7 +54,7 @@ export interface CreateJobInput {
   initialState?: JobState;
 }
 
-export class FileBackedJobQueue {
+export class FileBackedJobQueue implements JobQueue {
   public constructor(private readonly jobsFile: string) {}
 
   public async createJob(input: CreateJobInput): Promise<CreateJobResult> {
@@ -226,6 +245,11 @@ export class FileBackedJobQueue {
       job.finalResponse = finalResponse;
       job.updatedAt = new Date().toISOString();
     });
+  }
+
+  public async exportJobs(): Promise<JobRecord[]> {
+    const store = await this.readStore();
+    return store.jobs.map((job) => cloneJob(job));
   }
 
   private async updateJob(

@@ -10,24 +10,23 @@ Discord Gateway
   -> Job Queue
   -> Provider Adapter
   -> Storage Layer
-      - file-backed queue and audit log for local development
-      - PostgreSQL schema draft in packages/core/sql/bootstrap.sql
-      - persistent local archive and vector index for RAG
+      - PostgreSQL-backed jobs, audit events, and interaction memory
+      - persistent local archives for RAG
+      - Qdrant or local JSON vector stores for retrieval
 ```
 
 ## Current state
 
 - `apps/bot` owns Discord connectivity, routing, and command handling.
 - `apps/worker` polls owner jobs, runs the local Discord-safe Codex lane, serves bounded history-search tool requests from the RAG index, and prepares handoff bundles when needed.
-- `packages/core` contains permissions, context assembly, job storage, audit logging, style loading, and the rotating system message catalog.
+- `packages/core` contains permissions, context assembly, Postgres-backed state storage, style loading, and the rotating system message catalog.
 - `packages/providers` isolates provider contracts from Discord code.
 - `packages/rag` contains the message archive, chunking pipeline, local embedding backends, pluggable vector-store backends, and log import state.
 - `packages/sandbox` defines policy profiles and a dry-run policy runner.
 
-## Deliberate shortcuts in this first pass
+## Current shortcuts and tradeoffs
 
-- Job storage and audit events are file-backed under `.voidbot/` so the bot and worker can function immediately.
-- The relational schema is drafted but not yet wired into a real repository implementation.
+- Postgres now owns jobs, audit events, and interaction memory, but the archive side of RAG is still file-backed under `.voidbot/`.
 - Retrieval now uses a persistent vector backend with a local embedding backend by default (`qwen3-embedding:0.6b` through Ollama).
 - `VECTOR_STORE_KIND=local_json` keeps the zero-service path available for local development, but `VECTOR_STORE_KIND=qdrant` is now supported for a proper vector database.
 - Discord history vectors and source-tree/lore vectors stay in separate physical partitions so source indexing no longer rewrites the entire history corpus.
@@ -42,7 +41,7 @@ Discord Gateway
 
 ## Upgrade path
 
-1. Replace the file-backed queue and audit log with PostgreSQL-backed repositories.
-2. Cut production deployments over to Qdrant while keeping separate collections for Discord history and source/lore corpora.
-3. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
+1. Add health checks, backup/restore guidance, and operational runbooks for Postgres and Qdrant.
+2. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
+3. Expand worker-side run records and admin tooling around the interaction memory/event stores.
 4. Expand sandbox execution from dry-run policy checks to real constrained runners.

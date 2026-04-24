@@ -5,9 +5,10 @@ import { join } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
+  type AuditLog,
   buildVoidMcpServerConfig,
-  FileAuditLog,
-  FileBackedJobQueue,
+  createStateStorage,
+  type JobQueue,
   loadSystemMessageCatalog,
   type SystemMessageCatalog,
 } from "@voidbot/core";
@@ -33,8 +34,6 @@ import {
 } from "@voidbot/shared";
 
 const config = loadConfig();
-const jobQueue = new FileBackedJobQueue(config.jobsFile);
-const auditLog = new FileAuditLog(config.auditLogFile);
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
   hashDimensions: config.ragEmbeddingDimensions,
@@ -72,6 +71,8 @@ const retrievalService = new RetrievalService(
 let isProcessing = false;
 let providerRegistry: ProviderRegistry;
 let systemMessages: SystemMessageCatalog;
+let jobQueue: JobQueue;
+let auditLog: AuditLog;
 
 void main().catch((error) => {
   console.error(error);
@@ -79,6 +80,18 @@ void main().catch((error) => {
 });
 
 async function main(): Promise<void> {
+  const {
+    jobQueue: stateJobQueue,
+    auditLog: stateAuditLog,
+  } = await createStateStorage({
+    backend: config.stateStorageBackend,
+    databaseDsn: config.databaseDsn,
+    jobsFile: config.jobsFile,
+    auditLogFile: config.auditLogFile,
+    interactionMemoryFile: config.interactionMemoryFile,
+  });
+  jobQueue = stateJobQueue;
+  auditLog = stateAuditLog;
   systemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
   providerRegistry = await buildProviderRegistry(systemMessages);
   console.log(`VoidBot worker polling every ${config.workerPollIntervalMs}ms.`);

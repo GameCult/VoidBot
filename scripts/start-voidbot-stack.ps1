@@ -117,6 +117,31 @@ function Wait-Until {
   throw $FailureMessage
 }
 
+function Test-TcpEndpoint {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $HostName,
+    [Parameter(Mandatory = $true)]
+    [int] $Port
+  )
+
+  $client = [System.Net.Sockets.TcpClient]::new()
+
+  try {
+    $connectTask = $client.ConnectAsync($HostName, $Port)
+
+    if (-not $connectTask.Wait(1500)) {
+      return $false
+    }
+
+    return $client.Connected
+  } catch {
+    return $false
+  } finally {
+    $client.Dispose()
+  }
+}
+
 function Test-IsLocalUrl {
   param(
     [Parameter(Mandatory = $true)]
@@ -125,6 +150,52 @@ function Test-IsLocalUrl {
 
   $uri = [Uri]$Url
   return $uri.Host -in @("127.0.0.1", "localhost", "::1")
+}
+
+function Test-IsLocalHostName {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $HostName
+  )
+
+  return $HostName -in @("127.0.0.1", "localhost", "::1")
+}
+
+function Parse-DatabaseDsn {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Dsn
+  )
+
+  $uri = [Uri]$Dsn
+  $userInfo = if ([string]::IsNullOrWhiteSpace($uri.UserInfo)) { @() } else { $uri.UserInfo.Split(":", 2) }
+
+  return @{
+    host = $uri.Host
+    port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+    database = $uri.AbsolutePath.TrimStart("/")
+    username = if ($userInfo.Length -ge 1) { [Uri]::UnescapeDataString($userInfo[0]) } else { "voidbot" }
+    password = if ($userInfo.Length -ge 2) { [Uri]::UnescapeDataString($userInfo[1]) } else { "voidbot" }
+  }
+}
+
+function Get-DockerContainerHealth {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $ContainerName
+  )
+
+  try {
+    $status = & docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" $ContainerName 2>$null
+
+    if ($LASTEXITCODE -ne 0) {
+      return $null
+    }
+
+    return $status.Trim()
+  } catch {
+    return $null
+  }
 }
 
 function Ensure-DockerOnPath {
@@ -176,6 +247,65 @@ function Ensure-Qdrant {
 
   return @{
     url = $QdrantUrl
+    startedByScript = $true
+    healthy = $true
+  }
+}
+
+function Ensure-Postgres {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $RepoRoot,
+    [Parameter(Mandatory = $true)]
+    [string] $DatabaseDsn
+  )
+
+  $database = Parse-DatabaseDsn -Dsn $DatabaseDsn
+
+  if (Test-TcpEndpoint -HostName $database.host -Port $database.port) {
+    return @{
+      dsn = $DatabaseDsn
+      host = $database.host
+      port = $database.port
+      database = $database.database
+      startedByScript = $false
+      healthy = $true
+    }
+  }
+
+  if (-not (Test-IsLocalHostName -HostName $database.host)) {
+    throw "Postgres is not reachable at $($database.host):$($database.port), and the host is not local enough for Docker auto-start."
+  }
+
+  Ensure-DockerOnPath
+
+  $composeFile = Join-Path $RepoRoot "infra\postgres\docker-compose.yml"
+  $env:VOIDBOT_POSTGRES_PORT = [string]$database.port
+  $env:VOIDBOT_POSTGRES_DB = $database.database
+  $env:VOIDBOT_POSTGRES_USER = $database.username
+  $env:VOIDBOT_POSTGRES_PASSWORD = $database.password
+
+  & docker compose -f $composeFile up -d
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Docker Compose failed to start Postgres."
+  }
+
+  Wait-Until -Condition {
+    $health = Get-DockerContainerHealth -ContainerName "voidbot-postgres"
+
+    if ([string]::IsNullOrWhiteSpace($health) -or $health -eq "none") {
+      return Test-TcpEndpoint -HostName $database.host -Port $database.port
+    }
+
+    return $health -eq "healthy"
+  } -FailureMessage "Postgres did not become reachable at $($database.host):$($database.port) in time."
+
+  return @{
+    dsn = $DatabaseDsn
+    host = $database.host
+    port = $database.port
+    database = $database.database
     startedByScript = $true
     healthy = $true
   }
@@ -332,6 +462,8 @@ $status = @{
 Write-StatusFile -Path $statusPath -Status $status
 
 $vectorStoreKind = if ($config.ContainsKey("VECTOR_STORE_KIND")) { $config["VECTOR_STORE_KIND"] } else { "local_json" }
+$stateStorageBackend = if ($config.ContainsKey("STATE_STORAGE_BACKEND")) { $config["STATE_STORAGE_BACKEND"] } else { "postgres" }
+$databaseDsn = if ($config.ContainsKey("DATABASE_DSN")) { $config["DATABASE_DSN"] } else { "postgres://voidbot:voidbot@localhost:5432/voidbot" }
 $qdrantUrl = if ($config.ContainsKey("QDRANT_URL")) { $config["QDRANT_URL"] } else { "http://127.0.0.1:6333" }
 $ragBackend = if ($config.ContainsKey("RAG_EMBEDDING_BACKEND")) { $config["RAG_EMBEDDING_BACKEND"] } else { "ollama" }
 $ragOllamaBaseUrl = if ($config.ContainsKey("RAG_OLLAMA_BASE_URL")) { $config["RAG_OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
@@ -339,6 +471,16 @@ $ragOllamaModel = if ($config.ContainsKey("RAG_OLLAMA_MODEL")) { $config["RAG_OL
 $localLlmEnabled = if ($config.ContainsKey("ENABLED_PROVIDERS")) { $config["ENABLED_PROVIDERS"] -like "*local_llm*" } else { $false }
 $localLlmBaseUrl = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_BASE_URL")) { $config["LOCAL_LLM_OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
 $localLlmModel = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_MODEL")) { $config["LOCAL_LLM_OLLAMA_MODEL"] } else { "qwen3.5:9b" }
+
+if ($stateStorageBackend -eq "postgres") {
+  $status.postgres = Ensure-Postgres -RepoRoot $repoRoot -DatabaseDsn $databaseDsn
+  Write-StatusFile -Path $statusPath -Status $status
+} else {
+  $status.postgres = @{
+    skipped = $true
+    reason = "STATE_STORAGE_BACKEND is not postgres."
+  }
+}
 
 if ($vectorStoreKind -eq "qdrant") {
   $status.qdrant = Ensure-Qdrant -RepoRoot $repoRoot -QdrantUrl $qdrantUrl

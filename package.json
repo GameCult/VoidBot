@@ -13,6 +13,7 @@
     "dev:mcp": "tsx apps/worker/src/mcp-server.ts",
     "dev:worker": "tsx apps/worker/src/index.ts",
     "stack:start": "powershell -ExecutionPolicy Bypass -File scripts/start-voidbot-stack.ps1",
+    "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",
     "qdrant:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-docker-qdrant.ps1",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

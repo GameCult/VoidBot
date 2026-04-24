@@ -16,12 +16,13 @@ import {
 
 import { loadConfig } from "@voidbot/config";
 import {
+  type AuditLog,
   buildVoidMcpServerConfig,
   ContextBuilder,
-  FileAuditLog,
-  FileBackedJobQueue,
-  FileInteractionMemoryBank,
   PermissionEngine,
+  createStateStorage,
+  type InteractionMemoryBank,
+  type JobQueue,
   loadStylePack,
   loadSystemMessageCatalog,
   type SystemMessageCatalog,
@@ -142,9 +143,17 @@ export async function startBot(): Promise<void> {
   const permissionEngine = new PermissionEngine(config.ownerDiscordId, {
     localLlmAllowPublic: config.localLlm.allowPublic,
   });
-  const jobQueue = new FileBackedJobQueue(config.jobsFile);
-  const auditLog = new FileAuditLog(config.auditLogFile);
-  const interactionMemory = new FileInteractionMemoryBank(config.interactionMemoryFile);
+  const {
+    jobQueue,
+    auditLog,
+    interactionMemory,
+  } = await createStateStorage({
+    backend: config.stateStorageBackend,
+    databaseDsn: config.databaseDsn,
+    jobsFile: config.jobsFile,
+    auditLogFile: config.auditLogFile,
+    interactionMemoryFile: config.interactionMemoryFile,
+  });
   const contextBuilder = new ContextBuilder();
   let activeStylePack = await loadStylePack(config.stylePackPath);
   let activeSystemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
@@ -563,9 +572,9 @@ interface PromptHandlerOptions {
   contextBuilder: ContextBuilder;
   retrievalService: RetrievalService;
   sourceArchiveRepository: FileSourceDocumentArchiveRepository;
-  jobQueue: FileBackedJobQueue;
-  auditLog: FileAuditLog;
-  interactionMemory: FileInteractionMemoryBank;
+  jobQueue: JobQueue;
+  auditLog: AuditLog;
+  interactionMemory: InteractionMemoryBank;
   providerRegistry: ProviderRegistry;
   stylePack?: StylePack;
   systemMessages: SystemMessageCatalog;
@@ -715,8 +724,8 @@ async function handleApproveJob(options: {
   interaction: ChatInputCommandInteraction<CacheType>;
   client: Client;
   actor: Actor;
-  jobQueue: FileBackedJobQueue;
-  auditLog: FileAuditLog;
+  jobQueue: JobQueue;
+  auditLog: AuditLog;
   permissionEngine: PermissionEngine;
   systemMessages: SystemMessageCatalog;
 }): Promise<void> {
@@ -795,8 +804,8 @@ async function handleApproveJob(options: {
 async function handleRejectJob(options: {
   interaction: ChatInputCommandInteraction<CacheType>;
   actor: Actor;
-  jobQueue: FileBackedJobQueue;
-  auditLog: FileAuditLog;
+  jobQueue: JobQueue;
+  auditLog: AuditLog;
   permissionEngine: PermissionEngine;
   systemMessages: SystemMessageCatalog;
 }): Promise<void> {
@@ -994,7 +1003,7 @@ async function ingestIfIndexed(
 async function rememberAmbientVoidReference(
   message: Message,
   botUserId: string | undefined,
-  interactionMemory: FileInteractionMemoryBank,
+  interactionMemory: InteractionMemoryBank,
 ): Promise<void> {
   if (!isAmbientVoidReference(message, botUserId)) {
     return;
