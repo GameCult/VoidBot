@@ -10,6 +10,7 @@ $ProgressPreference = "SilentlyContinue"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
 $verifyScript = Join-Path $PSScriptRoot "verify-voidbot-backup.ps1"
+. (Join-Path $PSScriptRoot "voidbot-operations-dashboard-lib.ps1")
 
 function Read-DotEnv {
   param(
@@ -72,6 +73,10 @@ function Write-StatusFile {
   $directory = Split-Path -Parent $Path
   New-Item -ItemType Directory -Force -Path $directory | Out-Null
   $Status | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding utf8
+
+  if ($script:storageRoot) {
+    [void](Update-VoidBotOperationsDashboard -RepoRoot $repoRoot -StorageRoot $script:storageRoot)
+  }
 }
 
 function Start-LogCapture {
@@ -417,6 +422,20 @@ function Build-OwnerNotificationMessage {
   return ($lines -join [Environment]::NewLine).Trim()
 }
 
+function Set-WatchdogStep {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $CurrentStep,
+    [Parameter(Mandatory = $false)]
+    [string] $Detail = ""
+  )
+
+  $script:watchdogState.currentStep = $CurrentStep
+  $script:watchdogState.currentDetail = $Detail
+  $script:watchdogState.stepUpdatedAt = (Get-Date).ToString("o")
+  Write-StatusFile -Path $script:watchdogStatePath -Status $script:watchdogState
+}
+
 $checks = @()
 $config = Read-DotEnv -Path $envFile
 $storageRoot = Resolve-ConfigPath -RepoRoot $repoRoot -Value $config["STORAGE_ROOT"] -Fallback ".voidbot"
@@ -436,7 +455,7 @@ $offsiteTarget = if ($config.ContainsKey("OFFSITE_BACKUP_SSH_TARGET")) { $config
 $offsiteKeepLatest = if ($config.ContainsKey("OFFSITE_BACKUP_REMOTE_KEEP_LATEST")) { [int]$config["OFFSITE_BACKUP_REMOTE_KEEP_LATEST"] } else { 14 }
 $offsiteLabel = if ($config.ContainsKey("OFFSITE_BACKUP_LABEL") -and -not [string]::IsNullOrWhiteSpace($config["OFFSITE_BACKUP_LABEL"])) { $config["OFFSITE_BACKUP_LABEL"] } else { "offsite-auto" }
 $logCaptureStarted = Start-LogCapture -LogPath $logPath
-$watchdogState = if (Test-Path -LiteralPath $watchdogStatePath) {
+$previousWatchdogState = if (Test-Path -LiteralPath $watchdogStatePath) {
   try {
     Get-Content -LiteralPath $watchdogStatePath -Raw | ConvertFrom-Json
   } catch {
@@ -446,7 +465,32 @@ $watchdogState = if (Test-Path -LiteralPath $watchdogStatePath) {
   $null
 }
 
+$script:watchdogStatePath = $watchdogStatePath
+$watchdogStartedAt = (Get-Date).ToString("o")
+$watchdogState = @{
+  taskName = $watchdogTaskName
+  logPath = $logPath
+  reportPath = $statusPath
+  startedAt = $watchdogStartedAt
+  completedAt = $null
+  runStatus = "running"
+  reportStatus = $null
+  currentStep = "initializing"
+  currentDetail = "Starting watchdog checks."
+  stepUpdatedAt = $watchdogStartedAt
+  executionTimeLimitMinutes = 15
+  lastStatus = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastStatus")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastStatus") } else { $null }
+  lastFingerprint = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastFingerprint")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastFingerprint") } else { $null }
+  lastNotifiedAt = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt") } else { $null }
+  lastNotificationReason = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotificationReason")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotificationReason") } else { $null }
+  lastCompletedAt = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastCompletedAt")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastCompletedAt") } elseif ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "checkedAt")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "checkedAt") } else { $null }
+  lastCompletedRunStatus = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastCompletedRunStatus")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastCompletedRunStatus") } else { $null }
+  lastRunError = $null
+}
+Write-StatusFile -Path $watchdogStatePath -Status $watchdogState
+
 try {
+  Set-WatchdogStep -CurrentStep "runtime_checks" -Detail "Inspecting runtime stack status and bot/worker liveness."
   if (-not (Test-Path -LiteralPath $runtimeStatusPath)) {
     Add-Check -Name "runtime.status_file" -Status "failed" -Detail "runtime-stack.json is missing at $runtimeStatusPath."
   } else {
@@ -479,6 +523,7 @@ try {
   $historyCollection = if ($config.ContainsKey("QDRANT_HISTORY_COLLECTION")) { $config["QDRANT_HISTORY_COLLECTION"] } else { "voidbot_discord_history_chunks" }
   $sourceCollection = if ($config.ContainsKey("QDRANT_SOURCE_COLLECTION")) { $config["QDRANT_SOURCE_COLLECTION"] } else { "voidbot_repository_source_chunks" }
 
+  Set-WatchdogStep -CurrentStep "qdrant_checks" -Detail "Verifying Qdrant reachability and required collections."
   if ($vectorStoreKind -eq "qdrant") {
     $qdrantUrl = if ($config.ContainsKey("QDRANT_URL")) { $config["QDRANT_URL"] } else { "http://127.0.0.1:6333" }
     try {
@@ -509,6 +554,7 @@ try {
 
   $stateStorageBackend = if ($config.ContainsKey("STATE_STORAGE_BACKEND")) { $config["STATE_STORAGE_BACKEND"] } else { "postgres" }
 
+  Set-WatchdogStep -CurrentStep "postgres_checks" -Detail "Checking Postgres container health and required tables."
   if ($stateStorageBackend -eq "postgres") {
     $databaseDsn = if ($config.ContainsKey("DATABASE_DSN")) { $config["DATABASE_DSN"] } else { "" }
     $dsn = Parse-DatabaseDsn -Dsn $databaseDsn
@@ -566,6 +612,7 @@ try {
   $ragOllamaUrl = if ($config.ContainsKey("RAG_OLLAMA_BASE_URL")) { $config["RAG_OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
   $ragOllamaModel = if ($config.ContainsKey("RAG_OLLAMA_MODEL")) { $config["RAG_OLLAMA_MODEL"] } else { "qwen3-embedding:0.6b" }
 
+  Set-WatchdogStep -CurrentStep "ollama_checks" -Detail "Checking embedding and local LLM Ollama endpoints."
   try {
     $ragTags = Get-Json -Url "$($ragOllamaUrl.TrimEnd('/'))/api/tags"
     $ragModels = @($ragTags.models | ForEach-Object { [string]$_.name })
@@ -628,6 +675,7 @@ try {
   }
 
   if ($config.ContainsKey("DISCORD_BOT_TOKEN") -and -not [string]::IsNullOrWhiteSpace($config["DISCORD_BOT_TOKEN"])) {
+    Set-WatchdogStep -CurrentStep "discord_checks" -Detail "Validating Discord bot credentials."
     try {
       $botIdentity = Get-Json -Url "https://discord.com/api/v10/users/@me" -Headers @("Authorization: Bot $($config["DISCORD_BOT_TOKEN"])")
       Add-Check -Name "discord.bot_token" -Status "passed" -Detail "Discord bot token is valid for $([string]$botIdentity.username)." -Data @{
@@ -645,6 +693,7 @@ try {
     Sort-Object Name -Descending |
     Select-Object -First 1
 
+  Set-WatchdogStep -CurrentStep "backup_checks" -Detail "Verifying the latest local backup and freshness thresholds."
   if ($null -eq $latestBackup) {
     Add-Check -Name "backup.latest" -Status "failed" -Detail "No local backup directory exists under $backupRoot."
   } else {
@@ -685,6 +734,7 @@ try {
     }
   }
 
+  Set-WatchdogStep -CurrentStep "scheduled_task_checks" -Detail "Inspecting scheduled task installation and status files."
   try {
     $offsiteTask = Get-ScheduledTask -TaskName $offsiteTaskName -ErrorAction Stop
     $offsiteEnabled = [bool]$offsiteTask.Settings.Enabled
@@ -732,6 +782,7 @@ try {
     Add-Check -Name "offsite.status_file" -Status "failed" -Detail "offsite-backup.json is missing at $offsiteStatusPath."
   }
 
+  Set-WatchdogStep -CurrentStep "offsite_remote_checks" -Detail "Checking remote offsite backup freshness and retention."
   if ([string]::IsNullOrWhiteSpace($offsiteTarget)) {
     Add-Check -Name "offsite.remote" -Status "warning" -Detail "Remote offsite backup check skipped because OFFSITE_BACKUP_SSH_TARGET is blank."
   } else {
@@ -807,6 +858,7 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
     }
   }
 
+  Set-WatchdogStep -CurrentStep "notification_decision" -Detail "Computing report fingerprint and notification rules."
   $preNotificationReport = Finalize-Report
   $issueLines = @($preNotificationReport.checks | Where-Object { $_.status -ne "passed" } | ForEach-Object { "$($_.name): $($_.detail)" })
   $fingerprintSource = if ($issueLines.Count -eq 0) { "healthy" } else { $issueLines -join "`n" }
@@ -819,9 +871,9 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
   }
 
   if ($NotifyOwner -and $config.ContainsKey("DISCORD_BOT_TOKEN") -and -not [string]::IsNullOrWhiteSpace($config["DISCORD_BOT_TOKEN"])) {
-    $lastFingerprint = if ($watchdogState -and $watchdogState.lastFingerprint) { [string]$watchdogState.lastFingerprint } else { "" }
-    $lastNotifiedAt = if ($watchdogState -and $watchdogState.lastNotifiedAt) { [DateTimeOffset]::Parse([string]$watchdogState.lastNotifiedAt) } else { $null }
-    $lastStatus = if ($watchdogState -and $watchdogState.lastStatus) { [string]$watchdogState.lastStatus } else { "" }
+    $lastFingerprint = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastFingerprint")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastFingerprint") } else { "" }
+    $lastNotifiedAt = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt")) { [DateTimeOffset]::Parse([string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt")) } else { $null }
+    $lastStatus = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastStatus")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastStatus") } else { "" }
     $shouldNotify = $false
     $notificationReason = $null
 
@@ -842,7 +894,8 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
     }
 
     if ($shouldNotify) {
-        $notification.attempted = $true
+      Set-WatchdogStep -CurrentStep "notification_send" -Detail "Sending owner notification."
+      $notification.attempted = $true
       try {
         $message = Build-OwnerNotificationMessage -Status $preNotificationReport.status -IssueLines $issueLines -HealthStatusPath $statusPath
         Send-OwnerDm -BotToken $config["DISCORD_BOT_TOKEN"] -OwnerDiscordId $config["DISCORD_OWNER_ID"] -Content $message
@@ -857,16 +910,31 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
     }
   }
 
+  Set-WatchdogStep -CurrentStep "finalizing" -Detail "Writing final health report."
   $report = Finalize-Report
   $report.notification = $notification
   Write-StatusFile -Path $statusPath -Status $report
 
   $watchdogStatePayload = @{
+    taskName = $watchdogTaskName
+    logPath = $logPath
+    reportPath = $statusPath
+    startedAt = $watchdogStartedAt
+    completedAt = (Get-Date).ToString("o")
     checkedAt = $report.checkedAt
+    runStatus = "completed"
+    reportStatus = $report.status
+    currentStep = "finished"
+    currentDetail = "Watchdog run completed."
+    stepUpdatedAt = (Get-Date).ToString("o")
+    executionTimeLimitMinutes = 15
     lastStatus = $report.status
     lastFingerprint = $fingerprint
-    lastNotifiedAt = if ($notification.sent) { (Get-Date).ToString("o") } elseif ($watchdogState -and $watchdogState.lastNotifiedAt) { [string]$watchdogState.lastNotifiedAt } else { $null }
+    lastNotifiedAt = if ($notification.sent) { (Get-Date).ToString("o") } elseif ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt") } else { $null }
     lastNotificationReason = $notification.reason
+    lastCompletedAt = (Get-Date).ToString("o")
+    lastCompletedRunStatus = "completed"
+    lastRunError = $null
   }
   Write-StatusFile -Path $watchdogStatePath -Status $watchdogStatePayload
 
@@ -890,6 +958,28 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
     error = $_.Exception.Message
   }
   Write-StatusFile -Path $statusPath -Status $report
+  $watchdogFailureState = @{
+    taskName = $watchdogTaskName
+    logPath = $logPath
+    reportPath = $statusPath
+    startedAt = $watchdogStartedAt
+    completedAt = (Get-Date).ToString("o")
+    checkedAt = $report.checkedAt
+    runStatus = "failed"
+    reportStatus = $report.status
+    currentStep = "crashed"
+    currentDetail = "Watchdog crashed before finishing."
+    stepUpdatedAt = (Get-Date).ToString("o")
+    executionTimeLimitMinutes = 15
+    lastStatus = $report.status
+    lastFingerprint = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastFingerprint")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastFingerprint") } else { $null }
+    lastNotifiedAt = if ($previousWatchdogState -and (Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt")) { [string](Get-OptionalPropertyValue -InputObject $previousWatchdogState -PropertyName "lastNotifiedAt") } else { $null }
+    lastNotificationReason = "internal_error"
+    lastCompletedAt = (Get-Date).ToString("o")
+    lastCompletedRunStatus = "failed"
+    lastRunError = $_.Exception.Message
+  }
+  Write-StatusFile -Path $watchdogStatePath -Status $watchdogFailureState
   Write-Host "VoidBot operations status: failed"
   Write-Host "[FAILED] watchdog.internal: Operations watchdog crashed: $($_.Exception.Message)"
   exit 1

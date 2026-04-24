@@ -472,6 +472,14 @@ That check covers:
 
 It writes status to `.voidbot/status/operations-health.json` and appends logs to `.voidbot/logs/operations-watchdog.log`.
 
+If you want an actual local dashboard instead of spelunking JSON by candlelight:
+
+```bash
+npm run state:dashboard
+```
+
+That renders `.voidbot/status/operations-dashboard.html`, opens it in your default browser, and auto-refreshes every 10 seconds. The watchdog now also writes a live run-state file while it is executing, so a hidden task that wedges should stay visibly stuck on its last known step instead of failing in perfect silence.
+
 Install the recurring watchdog task:
 
 ```bash
@@ -515,6 +523,8 @@ Useful local state and docs:
 - `.voidbot/status/runtime-stack.json`: live stack status, service reachability, and bot/worker PIDs
 - `.voidbot/status/offsite-backup.json`: latest offsite backup sync result
 - `.voidbot/status/operations-health.json`: latest watchdog health report
+- `.voidbot/status/operations-watchdog.json`: live watchdog run-state plus last notification metadata
+- `.voidbot/status/operations-dashboard.html`: auto-refreshing local operations dashboard
 - `config/system-messages.json`: rotating stock system messages
 - `styles/void-default.md`: public default style pack
 - `docs/architecture/overview.md`: higher-level architecture notes

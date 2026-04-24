@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
+. (Join-Path $PSScriptRoot "voidbot-operations-dashboard-lib.ps1")
 
 function Read-DotEnv {
   param(
@@ -65,6 +66,10 @@ function Write-StatusFile {
   $directory = Split-Path -Parent $Path
   New-Item -ItemType Directory -Force -Path $directory | Out-Null
   $Status | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding utf8
+
+  if ($script:storageRoot) {
+    [void](Update-VoidBotOperationsDashboard -RepoRoot $repoRoot -StorageRoot $script:storageRoot)
+  }
 }
 
 function Invoke-JsonGet {
@@ -457,6 +462,7 @@ $status = @{
   startedAt = (Get-Date).ToString("o")
   repoRoot = $repoRoot
   statusPath = $statusPath
+  stage = "bootstrapping"
 }
 
 Write-StatusFile -Path $statusPath -Status $status
@@ -473,6 +479,8 @@ $localLlmBaseUrl = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_BASE_URL")) { $conf
 $localLlmModel = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_MODEL")) { $config["LOCAL_LLM_OLLAMA_MODEL"] } else { "qwen3.5:9b" }
 
 if ($stateStorageBackend -eq "postgres") {
+  $status.stage = "postgres"
+  Write-StatusFile -Path $statusPath -Status $status
   $status.postgres = Ensure-Postgres -RepoRoot $repoRoot -DatabaseDsn $databaseDsn
   Write-StatusFile -Path $statusPath -Status $status
 } else {
@@ -483,6 +491,8 @@ if ($stateStorageBackend -eq "postgres") {
 }
 
 if ($vectorStoreKind -eq "qdrant") {
+  $status.stage = "qdrant"
+  Write-StatusFile -Path $statusPath -Status $status
   $status.qdrant = Ensure-Qdrant -RepoRoot $repoRoot -QdrantUrl $qdrantUrl
   Write-StatusFile -Path $statusPath -Status $status
 } else {
@@ -493,17 +503,24 @@ if ($vectorStoreKind -eq "qdrant") {
 }
 
 if ($ragBackend -eq "ollama") {
+  $status.stage = "rag_ollama"
+  Write-StatusFile -Path $statusPath -Status $status
   $status.ragOllama = Ensure-OllamaEndpoint -BaseUrl $ragOllamaBaseUrl -Model $ragOllamaModel -Label "Local embedding Ollama" -LogDir $logDir
   Write-StatusFile -Path $statusPath -Status $status
 }
 
 if ($localLlmEnabled) {
+  $status.stage = "local_llm"
+  Write-StatusFile -Path $statusPath -Status $status
   $status.localLlmOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmModel -Label "Local LLM Ollama" -LogDir $logDir
   Write-StatusFile -Path $statusPath -Status $status
 }
 
 $npmCommand = Get-Command npm.cmd -ErrorAction Stop
 $nodeCommand = Get-Command node.exe -ErrorAction Stop
+
+$status.stage = "build"
+Write-StatusFile -Path $statusPath -Status $status
 
 Write-Host "Building VoidBot..."
 & $npmCommand.Source run build
@@ -519,10 +536,18 @@ $botErr = Join-Path $logDir "bot.err.log"
 $workerOut = Join-Path $logDir "worker.log"
 $workerErr = Join-Path $logDir "worker.err.log"
 
+$status.stage = "bot_start"
+Write-StatusFile -Path $statusPath -Status $status
+
 $botProcess = Start-Process -FilePath $nodeCommand.Source -ArgumentList (Join-Path $repoRoot "apps\bot\dist\index.js") -WorkingDirectory $repoRoot -RedirectStandardOutput $botOut -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
-$workerProcess = Start-Process -FilePath $nodeCommand.Source -ArgumentList (Join-Path $repoRoot "apps\worker\dist\index.js") -WorkingDirectory $repoRoot -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -WindowStyle Hidden -PassThru
 
 Wait-ForProcessReady -Process $botProcess -Name "VoidBot bot" -LogPath $botOut -ErrPath $botErr -ReadyText "VoidBot connected as"
+
+$status.stage = "worker_start"
+Write-StatusFile -Path $statusPath -Status $status
+
+$workerProcess = Start-Process -FilePath $nodeCommand.Source -ArgumentList (Join-Path $repoRoot "apps\worker\dist\index.js") -WorkingDirectory $repoRoot -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -WindowStyle Hidden -PassThru
+
 Wait-ForProcessReady -Process $workerProcess -Name "VoidBot worker" -LogPath $workerOut -ErrPath $workerErr -ReadyText "VoidBot worker polling"
 
 $status.bot = @{
@@ -537,6 +562,7 @@ $status.worker = @{
   errLog = $workerErr
 }
 
+$status.stage = "ready"
 $status.completedAt = (Get-Date).ToString("o")
 $status.ready = $true
 Write-StatusFile -Path $statusPath -Status $status

@@ -15,6 +15,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
 $backupScript = Join-Path $PSScriptRoot "backup-voidbot-state.ps1"
 $verifyScript = Join-Path $PSScriptRoot "verify-voidbot-backup.ps1"
+. (Join-Path $PSScriptRoot "voidbot-operations-dashboard-lib.ps1")
 
 function Read-DotEnv {
   param(
@@ -77,6 +78,10 @@ function Write-StatusFile {
   $directory = Split-Path -Parent $Path
   New-Item -ItemType Directory -Force -Path $directory | Out-Null
   $Status | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding utf8
+
+  if ($script:storageRoot) {
+    [void](Update-VoidBotOperationsDashboard -RepoRoot $repoRoot -StorageRoot $script:storageRoot)
+  }
 }
 
 function Start-LogCapture {
@@ -385,6 +390,8 @@ $status = @{
   startedAt = (Get-Date).ToString("o")
   repoRoot = $repoRoot
   status = "starting"
+  statusPath = $statusPath
+  logPath = $logPath
   sshTarget = $sshTargetValue
   remoteWindowsDir = $remoteWindowsDirValue
   remoteSftpDir = $remoteSftpDirValue

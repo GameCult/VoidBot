@@ -17,6 +17,8 @@
     "state:restore": "powershell -ExecutionPolicy Bypass -File scripts/restore-voidbot-state.ps1",
     "state:verify-backup": "powershell -ExecutionPolicy Bypass -File scripts/verify-voidbot-backup.ps1",
     "state:check": "powershell -ExecutionPolicy Bypass -File scripts/check-voidbot-operations.ps1",
+    "state:dashboard": "powershell -ExecutionPolicy Bypass -File scripts/render-voidbot-operations-dashboard.ps1 -Open",
+    "state:render-dashboard": "powershell -ExecutionPolicy Bypass -File scripts/render-voidbot-operations-dashboard.ps1",
     "state:sync-offsite": "powershell -ExecutionPolicy Bypass -File scripts/sync-voidbot-backup-offsite.ps1",
     "state:install-offsite-task": "powershell -ExecutionPolicy Bypass -File scripts/install-offsite-backup-task.ps1",
     "state:install-watchdog-task": "powershell -ExecutionPolicy Bypass -File scripts/install-operations-watchdog-task.ps1",
