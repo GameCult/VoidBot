@@ -334,6 +334,12 @@ If you want the same MCP server available from Codex outside this repo:
 npm run codex:mcp:install
 ```
 
+That registration is global, not workspace-local. You can verify it from anywhere with:
+
+```bash
+codex mcp get voidbot
+```
+
 Current MCP tools:
 
 - `search_history`
