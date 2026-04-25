@@ -766,6 +766,156 @@ function Get-VoidBotDashboardMcpUsageDiagnostics {
   return [PSCustomObject]$result
 }
 
+function Get-VoidBotDashboardJobDiagnostics {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $DatabaseDsn,
+    [Parameter(Mandatory = $false)]
+    [AllowNull()]
+    $Runtime,
+    [Parameter(Mandatory = $true)]
+    [string] $ArtifactsRoot
+  )
+
+  $result = [ordered]@{
+    state = "missing"
+    detail = "No job diagnostics yet."
+    current = @()
+    recent = @()
+    counts = [ordered]@{}
+  }
+
+  $runtimePostgres = if ($null -ne $Runtime) { Get-VoidBotDashboardProperty -InputObject $Runtime -PropertyName "postgres" } else { $null }
+
+  if ($null -eq $runtimePostgres) {
+    return [PSCustomObject]$result
+  }
+
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    $result.state = "warning"
+    $result.detail = "Docker is unavailable, so live job details are hidden."
+    return [PSCustomObject]$result
+  }
+
+  $sql = @'
+select json_build_object(
+  'current', coalesce((select json_agg(row_to_json(t)) from (
+    select
+      id::text,
+      state,
+      provider_name,
+      command_name,
+      requester_discord_id,
+      created_at::text,
+      updated_at::text,
+      request_message_id,
+      coalesce(job_json->>'summary', '') as summary,
+      coalesce(job_json->>'error', '') as error
+    from jobs
+    where state in ('queued','approved','running','awaiting_approval','awaiting_post_approval')
+    order by updated_at desc
+    limit 10
+  ) t), '[]'::json),
+  'recent', coalesce((select json_agg(row_to_json(t)) from (
+    select
+      id::text,
+      state,
+      provider_name,
+      command_name,
+      requester_discord_id,
+      created_at::text,
+      updated_at::text,
+      request_message_id,
+      coalesce(job_json->>'summary', '') as summary,
+      coalesce(job_json->>'error', '') as error
+    from jobs
+    order by updated_at desc
+    limit 12
+  ) t), '[]'::json),
+  'counts', coalesce((select json_object_agg(state, job_count) from (
+    select state, count(*) as job_count
+    from jobs
+    group by state
+  ) s), '{}'::json)
+);
+'@
+
+  try {
+    $json = & docker exec voidbot-postgres psql -U voidbot -d voidbot -t -A -c $sql 2>$null
+
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+      throw "psql returned no data."
+    }
+
+    $parsed = $json.Trim() | ConvertFrom-Json
+
+    function Expand-JobRow {
+      param(
+        [Parameter(Mandatory = $true)]
+        $Job
+      )
+
+      $jobId = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "id")
+      $artifactDir = Join-Path $ArtifactsRoot $jobId
+      $traceFile = $null
+      $stdoutFile = $null
+      $stderrFile = $null
+      $debugFile = $null
+      $handoffFile = $null
+      $requestFile = $null
+      $ragTranscriptFile = $null
+
+      if (Test-Path -LiteralPath $artifactDir) {
+        $traceFile = @(Get-ChildItem -LiteralPath $artifactDir -File -Filter "codex-turn-*-trace.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { $_.FullName }) | Select-Object -First 1
+        $stdoutFile = @(Get-ChildItem -LiteralPath $artifactDir -File -Filter "codex-turn-*-stdout.txt" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { $_.FullName }) | Select-Object -First 1
+        $stderrFile = @(Get-ChildItem -LiteralPath $artifactDir -File -Filter "codex-turn-*-stderr.txt" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { $_.FullName }) | Select-Object -First 1
+        $debugFile = @(Get-ChildItem -LiteralPath $artifactDir -File -Filter "codex-turn-*-debug.md" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { $_.FullName }) | Select-Object -First 1
+        $handoffFile = if (Test-Path -LiteralPath (Join-Path $artifactDir "handoff.md")) { Join-Path $artifactDir "handoff.md" } else { $null }
+        $requestFile = if (Test-Path -LiteralPath (Join-Path $artifactDir "request.json")) { Join-Path $artifactDir "request.json" } else { $null }
+        $ragTranscriptFile = if (Test-Path -LiteralPath (Join-Path $artifactDir "rag-tool-transcript.md")) { Join-Path $artifactDir "rag-tool-transcript.md" } else { $null }
+      }
+
+      return [PSCustomObject]@{
+        id = $jobId
+        state = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "state")
+        providerName = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "provider_name")
+        commandName = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "command_name")
+        requesterDiscordId = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "requester_discord_id")
+        createdAt = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "created_at")
+        updatedAt = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "updated_at")
+        requestMessageId = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "request_message_id")
+        summary = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "summary")
+        error = [string](Get-VoidBotDashboardProperty -InputObject $Job -PropertyName "error")
+        artifactDir = $(if (Test-Path -LiteralPath $artifactDir) { $artifactDir } else { $null })
+        traceFile = $traceFile
+        stdoutFile = $stdoutFile
+        stderrFile = $stderrFile
+        debugFile = $debugFile
+        handoffFile = $handoffFile
+        requestFile = $requestFile
+        ragTranscriptFile = $ragTranscriptFile
+      }
+    }
+
+    $result.state = "healthy"
+    $result.detail = "Live job history loaded."
+    $result.current = @((Get-VoidBotDashboardProperty -InputObject $parsed -PropertyName "current") | ForEach-Object { Expand-JobRow -Job $_ })
+    $result.recent = @((Get-VoidBotDashboardProperty -InputObject $parsed -PropertyName "recent") | ForEach-Object { Expand-JobRow -Job $_ })
+    $result.counts = [ordered]@{}
+
+    if ($null -ne $parsed.counts) {
+      foreach ($property in $parsed.counts.PSObject.Properties) {
+        $result.counts[$property.Name] = $property.Value
+      }
+    }
+  } catch {
+    $result.state = "warning"
+    $result.detail = "Live job query failed: $($_.Exception.Message)"
+  }
+
+  return [PSCustomObject]$result
+}
+
 function Update-VoidBotOperationsDashboard {
   param(
     [Parameter(Mandatory = $true)]
@@ -882,6 +1032,17 @@ function Update-VoidBotOperationsDashboard {
   }
   $sourceHookDiagnostics = Get-VoidBotDashboardSourceHookDiagnostics -SourceHookStatusDir $sourceHookStatusDir
   $mcpDiagnostics = Get-VoidBotDashboardMcpUsageDiagnostics -ArtifactsRoot $artifactsRoot
+  $jobDiagnostics = if ($stateStorageBackend -eq "postgres") {
+    Get-VoidBotDashboardJobDiagnostics -DatabaseDsn $databaseDsn -Runtime $runtime -ArtifactsRoot $artifactsRoot
+  } else {
+    [PSCustomObject]@{
+      state = "neutral"
+      detail = "State storage backend is $stateStorageBackend."
+      current = @()
+      recent = @()
+      counts = [ordered]@{}
+    }
+  }
 
   $ingestState = if ($sourceHookDiagnostics.failed -gt 0) {
     "warning"
@@ -948,6 +1109,18 @@ function Update-VoidBotOperationsDashboard {
     [string](Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "detail")
   }
 
+  $jobCounts = Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "counts"
+  $currentJobs = @((Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "current"))
+  $recentJobs = @((Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "recent"))
+  $jobSubtitle = if ($recentJobs.Count -gt 0) {
+    "{0} active, {1} completed, {2} failed" -f `
+      $currentJobs.Count, `
+      $(if ($jobCounts.Contains("completed")) { $jobCounts["completed"] } else { 0 }), `
+      $(if ($jobCounts.Contains("failed")) { $jobCounts["failed"] } else { 0 })
+  } else {
+    [string](Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "detail")
+  }
+
   $offsiteSubtitle = if ($offsiteState -eq "completed") {
     "Latest offsite sync finished."
   } elseif ($offsiteState -eq "missing") {
@@ -1008,6 +1181,78 @@ function Update-VoidBotOperationsDashboard {
     }
     $traceLink + " <span class='muted-inline'>$([System.Net.WebUtility]::HtmlEncode((Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'startedAt'))))) / $([System.Net.WebUtility]::HtmlEncode($durationText)) / $([System.Net.WebUtility]::HtmlEncode([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'mcpCalls'))) calls</span>" + $toolHtml
   })
+  $currentJobItems = @($currentJobs | ForEach-Object {
+    $jobId = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "id")
+    $artifactDir = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "artifactDir")
+    $jobLink = if ([string]::IsNullOrWhiteSpace($artifactDir)) {
+      "<span class='mono'>$([System.Net.WebUtility]::HtmlEncode($jobId))</span>"
+    } else {
+      New-VoidBotDashboardFileLink -Path $artifactDir -Label $jobId
+    }
+    $links = @()
+
+    foreach ($entry in @(
+      @{ name = "request"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "requestFile") }
+      @{ name = "trace"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "traceFile") }
+      @{ name = "stdout"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "stdoutFile") }
+      @{ name = "stderr"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "stderrFile") }
+      @{ name = "debug"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "debugFile") }
+      @{ name = "handoff"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "handoffFile") }
+    )) {
+      if (-not [string]::IsNullOrWhiteSpace($entry.path)) {
+        $links += New-VoidBotDashboardFileLink -Path $entry.path -Label $entry.name
+      }
+    }
+
+    $linksHtml = if ($links.Count -gt 0) {
+      "<div class='muted-inline'>" + ($links -join " · ") + "</div>"
+    } else {
+      ""
+    }
+
+    $summary = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "summary")
+    $error = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "error")
+    $note = if (-not [string]::IsNullOrWhiteSpace($error)) { $error } elseif (-not [string]::IsNullOrWhiteSpace($summary)) { $summary } else { "" }
+    $noteHtml = if ([string]::IsNullOrWhiteSpace($note)) { "" } else { "<div class='muted-inline'>$([System.Net.WebUtility]::HtmlEncode($note))</div>" }
+
+    $jobLink + " " + (New-VoidBotDashboardBadge -State ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "state")) -Label ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "state"))) + " <span class='muted-inline'>$([System.Net.WebUtility]::HtmlEncode([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'providerName'))) / $([System.Net.WebUtility]::HtmlEncode([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'commandName'))) / $([System.Net.WebUtility]::HtmlEncode((Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'updatedAt')))))</span>" + $linksHtml + $noteHtml
+  })
+  $recentJobItems = @($recentJobs | ForEach-Object {
+    $jobId = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "id")
+    $artifactDir = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "artifactDir")
+    $jobLink = if ([string]::IsNullOrWhiteSpace($artifactDir)) {
+      "<span class='mono'>$([System.Net.WebUtility]::HtmlEncode($jobId))</span>"
+    } else {
+      New-VoidBotDashboardFileLink -Path $artifactDir -Label $jobId
+    }
+    $links = @()
+
+    foreach ($entry in @(
+      @{ name = "trace"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "traceFile") }
+      @{ name = "stdout"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "stdoutFile") }
+      @{ name = "stderr"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "stderrFile") }
+      @{ name = "debug"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "debugFile") }
+      @{ name = "handoff"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "handoffFile") }
+      @{ name = "request"; path = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "requestFile") }
+    )) {
+      if (-not [string]::IsNullOrWhiteSpace($entry.path)) {
+        $links += New-VoidBotDashboardFileLink -Path $entry.path -Label $entry.name
+      }
+    }
+
+    $linksHtml = if ($links.Count -gt 0) {
+      "<div class='muted-inline'>" + ($links -join " · ") + "</div>"
+    } else {
+      ""
+    }
+
+    $summary = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "summary")
+    $error = [string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "error")
+    $note = if (-not [string]::IsNullOrWhiteSpace($error)) { $error } elseif (-not [string]::IsNullOrWhiteSpace($summary)) { $summary } else { "" }
+    $noteHtml = if ([string]::IsNullOrWhiteSpace($note)) { "" } else { "<div class='muted-inline'>$([System.Net.WebUtility]::HtmlEncode($note))</div>" }
+
+    $jobLink + " " + (New-VoidBotDashboardBadge -State ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "state")) -Label ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName "state"))) + " <span class='muted-inline'>$([System.Net.WebUtility]::HtmlEncode([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'providerName'))) / $([System.Net.WebUtility]::HtmlEncode((Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $_ -PropertyName 'updatedAt')))))</span>" + $linksHtml + $noteHtml
+  })
 
   $cardsHtml = @(
     New-VoidBotDashboardCard -Title "Operations Health" -State $operationsState -Subtitle $operationsSubtitle -Meta ("Checked " + (Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $operations -PropertyName "checkedAt"))))
@@ -1016,6 +1261,7 @@ function Update-VoidBotOperationsDashboard {
     New-VoidBotDashboardCard -Title "Vector Store" -State ([string](Get-VoidBotDashboardProperty -InputObject $qdrantDiagnostics -PropertyName "state")) -Subtitle $vectorSubtitle -Meta $qdrantUrl
     New-VoidBotDashboardCard -Title "Ingest & Sync" -State $ingestState -Subtitle $ingestSubtitle -Meta ("Source hooks: " + (Escape-VoidBotDashboardHtml (Get-VoidBotDashboardProperty -InputObject $sourceHookDiagnostics -PropertyName "total")))
     New-VoidBotDashboardCard -Title "MCP Usage" -State ([string](Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "state")) -Subtitle $mcpSubtitle -Meta ("Latest trace " + (Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "latestTraceAt"))))
+    New-VoidBotDashboardCard -Title "Jobs" -State ([string](Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "state")) -Subtitle $jobSubtitle -Meta ("Latest job " + (Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $postgresDiagnostics -PropertyName "latestJobAt"))))
     New-VoidBotDashboardCard -Title "Offsite Backup" -State $offsiteState -Subtitle $offsiteSubtitle -Meta ("Updated " + (Get-VoidBotDashboardRelativeTime -Timestamp ([string](Get-VoidBotDashboardProperty -InputObject $offsite -PropertyName "completedAt"))))
   ) -join [Environment]::NewLine
 
@@ -1076,6 +1322,13 @@ function Update-VoidBotOperationsDashboard {
     New-VoidBotDashboardFactRow -Label "Latest trace" -ValueHtml (Escape-VoidBotDashboardHtml (Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "latestTraceAt"))
     New-VoidBotDashboardFactRow -Label "Top tools" -ValueHtml (New-VoidBotDashboardListHtml -Items $topToolItems -EmptyText "No MCP tool calls yet.")
     New-VoidBotDashboardFactRow -Label "Recent traces" -ValueHtml (New-VoidBotDashboardListHtml -Items $recentTraceItems -EmptyText "No recent trace files yet.")
+  )
+
+  $jobRows = @(
+    New-VoidBotDashboardFactRow -Label "State" -ValueHtml (New-VoidBotDashboardBadge -State ([string](Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "state")) -Label ([string](Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "state")))
+    New-VoidBotDashboardFactRow -Label "Active jobs" -ValueHtml ("<span class='mono'>" + (Escape-VoidBotDashboardHtml ([string]$currentJobs.Count)) + "</span>")
+    New-VoidBotDashboardFactRow -Label "Current jobs" -ValueHtml (New-VoidBotDashboardListHtml -Items $currentJobItems -EmptyText "No queued or running jobs.")
+    New-VoidBotDashboardFactRow -Label "Recent history" -ValueHtml (New-VoidBotDashboardListHtml -Items $recentJobItems -EmptyText "No recent jobs recorded.")
   )
 
   $watchdogRows = @(
@@ -1152,6 +1405,7 @@ $($checkRows -join [Environment]::NewLine)
       qdrant = [string](Get-VoidBotDashboardProperty -InputObject $qdrantDiagnostics -PropertyName "state")
       ingest = $ingestState
       mcp = [string](Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "state")
+      jobs = [string](Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "state")
       watchdog = $watchdogState
       offsite = $offsiteState
     }
@@ -1179,6 +1433,11 @@ $($checkRows -join [Environment]::NewLine)
         scannedTraceCount = Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "scannedTraceCount"
         totalMcpCalls = Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "totalMcpCalls"
         topTools = Get-VoidBotDashboardProperty -InputObject $mcpDiagnostics -PropertyName "topTools"
+      }
+      jobs = [ordered]@{
+        currentCount = $currentJobs.Count
+        recentCount = $recentJobs.Count
+        counts = Get-VoidBotDashboardProperty -InputObject $jobDiagnostics -PropertyName "counts"
       }
     }
     files = [ordered]@{
@@ -1498,6 +1757,7 @@ $(New-VoidBotDashboardFactSection -Title "State Storage" -Rows $stateStorageRows
 $(New-VoidBotDashboardFactSection -Title "Vector Store" -Rows $vectorRows)
 $(New-VoidBotDashboardFactSection -Title "Ingest & Sync" -Rows $ingestRows)
 $(New-VoidBotDashboardFactSection -Title "MCP Usage" -Rows $mcpRows)
+$(New-VoidBotDashboardFactSection -Title "Jobs" -Rows $jobRows)
 $(New-VoidBotDashboardFactSection -Title "Watchdog Run" -Rows $watchdogRows)
 $(New-VoidBotDashboardFactSection -Title "Offsite Backup" -Rows $offsiteRows)
 $(New-VoidBotDashboardFactSection -Title "Useful Files" -Rows $fileRows)
