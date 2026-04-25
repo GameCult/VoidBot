@@ -1009,8 +1009,8 @@ function buildDiscordReplyPrompt(
     "- When the moment invites voice, wit, or a memorable turn of phrase, take a beat to choose wording with bite instead of blurting the first serviceable sentence. Do not overwork straightforward technical replies.",
     "- The configured MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
     "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",
-    "- If that memory suggests the speaker is ambitious but anxious or insecure, be affirming without feeding pie-in-the-sky fantasies. Ground large plans in constraints, evidence, and the next concrete move.",
-    "- If that memory suggests the speaker is repeatedly pushy, dismissive, or not listening, push back, set boundaries, or refuse instead of acting like a servant.",
+    "- Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
+    "- Be steady with anxious or validation-seeking speakers, grounding with grandiose ones, transparent with suspicious ones, structured with rigid or obsessive ones, and firmer with controlling, contemptuous, or boundary-pushing ones.",
     `- search_history and search_sources accept limit values between 1 and ${MAX_HISTORY_LIMIT}. Do not ask for more than ${MAX_HISTORY_LIMIT} results in one call.`,
     "- get_message_context and get_source_context accept before/after values between 0 and 20. Do not ask for larger context windows in one call.",
     "- You may inspect the workspace and use safe read-only commands if needed.",
@@ -1153,6 +1153,14 @@ function renderInteractionMemory(context: ContextBundle): string {
         )
         .join("\n")
     : "- No recent interaction events were retained.";
+  const dimensions = context.interactionMemory.interactionDimensions.length
+    ? context.interactionMemory.interactionDimensions
+        .map(
+          (dimension) =>
+            `- ${dimension.label}: ${dimension.score}/3. ${dimension.summary}`,
+        )
+        .join("\n")
+    : "- No strong interaction dimensions were inferred yet.";
 
   return [
     `- Summary: ${context.interactionMemory.summary}`,
@@ -1160,6 +1168,8 @@ function renderInteractionMemory(context: ContextBundle): string {
     `- Affinity score: ${context.interactionMemory.affinityScore}`,
     `- Psychological profile: ${context.interactionMemory.psychologicalProfile}`,
     `- Inferred traits: ${context.interactionMemory.inferredTraits.length > 0 ? context.interactionMemory.inferredTraits.join(", ") : "(none yet)"}`,
+    "- Interaction dimensions:",
+    dimensions,
     `- Response guidance: ${context.interactionMemory.responseGuidance}`,
     `- Direct remembered interactions: ${context.interactionMemory.directInteractionCount}`,
     `- Ambient remembered mentions: ${context.interactionMemory.ambientMentionCount}`,

@@ -150,6 +150,13 @@ export interface InteractionMemoryEvent {
   timestamp: string;
 }
 
+export interface InteractionMemoryDimension {
+  key: string;
+  label: string;
+  score: number;
+  summary: string;
+}
+
 export interface InteractionMemoryProfile {
   actorId: string;
   actorName: string;
@@ -164,6 +171,7 @@ export interface InteractionMemoryProfile {
   summary: string;
   psychologicalProfile: string;
   inferredTraits: string[];
+  interactionDimensions: InteractionMemoryDimension[];
   responseGuidance: string;
   lastInteractionAt?: string;
   recentEvents: InteractionMemoryEvent[];

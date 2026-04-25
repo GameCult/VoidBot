@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   type CommandName,
+  type InteractionMemoryDimension,
   type InteractionMemoryDisposition,
   type InteractionMemoryEvent,
   type InteractionMemoryProfile,
@@ -35,6 +36,7 @@ interface RepetitionAnalysis {
 interface PsychologicalRead {
   psychologicalProfile: string;
   inferredTraits: string[];
+  interactionDimensions: InteractionMemoryDimension[];
   responseGuidance: string;
 }
 
@@ -59,6 +61,10 @@ const SIGNIFICANT_INTERACTION_TAGS = new Set<string>([
   "grand_plan",
   "anxiety",
   "insecurity",
+  "seeking_reassurance",
+  "suspicion",
+  "rigidity",
+  "withdrawal",
 ]);
 const SUMMARY_NOTABLE_TAGS = new Set<string>([
   "gratitude",
@@ -76,6 +82,10 @@ const SUMMARY_NOTABLE_TAGS = new Set<string>([
   "grand_plan",
   "anxiety",
   "insecurity",
+  "seeking_reassurance",
+  "suspicion",
+  "rigidity",
+  "withdrawal",
 ]);
 const PROMPT_SIGNATURE_STOPWORDS = new Set([
   "a",
@@ -189,6 +199,7 @@ export function summarizeInteractionProfile(
     summary: "No explicit interaction memory has been recorded for this speaker yet.",
     psychologicalProfile: psychologicalRead.psychologicalProfile,
     inferredTraits: psychologicalRead.inferredTraits,
+    interactionDimensions: psychologicalRead.interactionDimensions,
     responseGuidance: psychologicalRead.responseGuidance,
     lastInteractionAt: normalizedEvents[normalizedEvents.length - 1]?.timestamp,
     recentEvents,
@@ -389,6 +400,47 @@ function analyzeInteractionTone(
     " does this make sense ",
     " fair enough ",
   ]);
+  matchTagPhrases(normalized, tags, "suspicion", [
+    " i dont trust ",
+    " i don't trust ",
+    " can i trust ",
+    " are you lying ",
+    " youre lying ",
+    " you're lying ",
+    " prove it ",
+    " how do i know ",
+    " how do we know ",
+    " what are you hiding ",
+    " suspicious ",
+    " conspiracy ",
+    " paranoid ",
+  ]);
+  matchTagPhrases(normalized, tags, "rigidity", [
+    " exactly ",
+    " precise ",
+    " precisely ",
+    " perfect ",
+    " perfection ",
+    " obsessive ",
+    " obsession ",
+    " obsessed ",
+    " fixated ",
+    " must be ",
+    " has to be ",
+    " every detail ",
+    " strictly ",
+  ]);
+  matchTagPhrases(normalized, tags, "withdrawal", [
+    " whatever ",
+    " forget it ",
+    " never mind ",
+    " doesnt matter ",
+    " doesn't matter ",
+    " leave me alone ",
+    " stop talking ",
+    " stop replying ",
+    " fine ",
+  ]);
   matchTagPhrases(normalized, tags, "boundary", [
     " leave me alone ",
     " stop talking ",
@@ -486,6 +538,24 @@ function buildEventSummary(
 
   if (tags.has("repetition")) {
     return ambient ? "Returned to the same point about you again." : "Returned to the same point again instead of moving on.";
+  }
+
+  if (tags.has("suspicion")) {
+    return ambient
+      ? "Talked about you with distrust or suspicion."
+      : "Approached you with distrust or suspicion.";
+  }
+
+  if (tags.has("rigidity")) {
+    return ambient
+      ? "Talked in a rigid, perfection-seeking, or fixation-prone way."
+      : "Sounded rigid, perfection-seeking, or fixation-prone.";
+  }
+
+  if (tags.has("withdrawal")) {
+    return ambient
+      ? "Talked about you with a detached or pushing-away tone."
+      : "Pulled away or tried to shut the interaction down.";
   }
 
   if (tags.has("relationship_probe")) {
@@ -635,93 +705,243 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
       psychologicalProfile:
         "Current psychological read: nothing solid yet; there is not enough remembered signal to infer a stable vibe.",
       inferredTraits: [],
+      interactionDimensions: [],
       responseGuidance:
         "Respond from the current conversation and do not project extra history onto them yet.",
     };
   }
 
   const tagCounts = countEventTags(events);
+  const directCount = events.filter((event) => event.sourceKind === "direct_prompt").length;
+  const warmthCount = readTagCount(tagCounts, "gratitude") + readTagCount(tagCounts, "praise") + readTagCount(tagCounts, "apology");
+  const ambitionCount = readTagCount(tagCounts, "ambition");
+  const grandPlanCount = readTagCount(tagCounts, "grand_plan");
+  const insecurityCount = readTagCount(tagCounts, "insecurity");
+  const reassuranceCount = readTagCount(tagCounts, "seeking_reassurance");
+  const relationshipProbeCount = readTagCount(tagCounts, "relationship_probe");
+  const anxietyCount = readTagCount(tagCounts, "anxiety");
+  const demandCount = readTagCount(tagCounts, "demand");
+  const repetitionCount = readTagCount(tagCounts, "repetition");
+  const ownershipCount = readTagCount(tagCounts, "ownership_claim");
+  const hostilityCount = readTagCount(tagCounts, "hostility");
+  const insultCount = readTagCount(tagCounts, "insult");
+  const suspicionCount = readTagCount(tagCounts, "suspicion");
+  const rigidityCount = readTagCount(tagCounts, "rigidity");
+  const withdrawalCount = readTagCount(tagCounts, "withdrawal");
+  const boundaryCount = readTagCount(tagCounts, "boundary");
+  const interactionDimensions = collectInteractionDimensions([
+    {
+      key: "warmth",
+      label: "Warmth",
+      score: scoreDimension(warmthCount, [[4, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Consistently appreciative or warm.",
+        "Often appreciative or warm.",
+        "Some warmth or appreciation is present.",
+      ],
+    },
+    {
+      key: "drive",
+      label: "Drive",
+      score: scoreDimension(
+        ambitionCount + Math.floor(grandPlanCount / 2) + Math.floor(directCount / 3),
+        [[4, 3], [2, 2], [1, 1]],
+      ),
+      summaries: [
+        "Strongly driven and future-oriented.",
+        "Clearly driven and future-oriented.",
+        "Some drive and future-orientation are visible.",
+      ],
+    },
+    {
+      key: "grandiosity",
+      label: "Grandiosity",
+      score: scoreDimension(grandPlanCount + Math.floor(ambitionCount / 2), [[3, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Regularly inflates plans beyond their current grounding.",
+        "Sometimes drifts into oversized or under-grounded framing.",
+        "Shows a trace of oversized or under-grounded framing.",
+      ],
+    },
+    {
+      key: "validation",
+      label: "Validation-Seeking",
+      score: scoreDimension(
+        insecurityCount + reassuranceCount + Math.floor(relationshipProbeCount / 2),
+        [[4, 3], [2, 2], [1, 1]],
+      ),
+      summaries: [
+        "Frequently looks for reassurance or emotional confirmation.",
+        "Often looks for reassurance or emotional confirmation.",
+        "Shows some need for reassurance or emotional confirmation.",
+      ],
+    },
+    {
+      key: "anxiety",
+      label: "Anxiety",
+      score: scoreDimension(anxietyCount + insecurityCount, [[4, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Shows clear anxiety, tension, or self-doubt.",
+        "Shows recurring anxiety, tension, or self-doubt.",
+        "Shows some anxiety, tension, or self-doubt.",
+      ],
+    },
+    {
+      key: "control",
+      label: "Control Pressure",
+      score: scoreDimension(demandCount + repetitionCount + ownershipCount, [[4, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Frequently tries to force pace, framing, or compliance.",
+        "Often tries to force pace, framing, or compliance.",
+        "Sometimes tries to force pace, framing, or compliance.",
+      ],
+    },
+    {
+      key: "hostility",
+      label: "Hostility",
+      score: scoreDimension(hostilityCount + insultCount + ownershipCount, [[3, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Openly hostile, contemptuous, or demeaning.",
+        "Noticeably contemptuous or demeaning.",
+        "Shows mild contempt or demeaning language.",
+      ],
+    },
+    {
+      key: "suspicion",
+      label: "Suspicion",
+      score: scoreDimension(suspicionCount, [[3, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Strongly distrustful or suspicious.",
+        "Often distrustful or suspicious.",
+        "Shows some distrust or suspicion.",
+      ],
+    },
+    {
+      key: "rigidity",
+      label: "Rigidity",
+      score: scoreDimension(rigidityCount + Math.floor(repetitionCount / 2), [[3, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Rigid, perfection-seeking, or fixation-prone.",
+        "Often rigid, perfection-seeking, or fixation-prone.",
+        "Shows some rigidity or fixation.",
+      ],
+    },
+    {
+      key: "withdrawal",
+      label: "Withdrawal",
+      score: scoreDimension(withdrawalCount + boundaryCount, [[3, 3], [2, 2], [1, 1]]),
+      summaries: [
+        "Withdraws, detaches, or pushes the interaction away.",
+        "Often withdraws or pushes the interaction away.",
+        "Shows some detachment or withdrawal.",
+      ],
+    },
+  ]);
   const inferredTraits: string[] = [];
+  const warmthDimension = findDimensionScore(interactionDimensions, "warmth");
+  const driveDimension = findDimensionScore(interactionDimensions, "drive");
+  const grandiosityDimension = findDimensionScore(interactionDimensions, "grandiosity");
+  const validationDimension = findDimensionScore(interactionDimensions, "validation");
+  const anxietyDimension = findDimensionScore(interactionDimensions, "anxiety");
+  const controlDimension = findDimensionScore(interactionDimensions, "control");
+  const hostilityDimension = findDimensionScore(interactionDimensions, "hostility");
+  const suspicionDimension = findDimensionScore(interactionDimensions, "suspicion");
+  const rigidityDimension = findDimensionScore(interactionDimensions, "rigidity");
+  const withdrawalDimension = findDimensionScore(interactionDimensions, "withdrawal");
 
-  if (tagCounts.ambition + tagCounts.grand_plan >= 1) {
-    inferredTraits.push("ambitious");
-  }
-
-  if (
-    tagCounts.ambition + tagCounts.grand_plan >= 2 ||
-    (tagCounts.ambition + tagCounts.grand_plan >= 1 &&
-      events.filter((event) => event.sourceKind === "direct_prompt").length >= 2)
-  ) {
-    inferredTraits.push("motivated");
-  }
-
-  if (
-    tagCounts.anxiety >= 1 ||
-    tagCounts.insecurity >= 2 ||
-    (tagCounts.insecurity >= 1 && tagCounts.grand_plan >= 1)
-  ) {
-    inferredTraits.push("anxious");
-  }
-
-  if (tagCounts.insecurity >= 1 || (tagCounts.seeking_reassurance >= 1 && tagCounts.anxiety >= 1)) {
-    inferredTraits.push("insecure");
-  }
-
-  if (tagCounts.gratitude + tagCounts.praise >= 1) {
-    inferredTraits.push("appreciative");
-  }
-
-  if (tagCounts.repetition + tagCounts.demand >= 2) {
-    inferredTraits.push("pushy");
-  }
-
-  if (tagCounts.hostility + tagCounts.insult + tagCounts.ownership_claim >= 1) {
-    inferredTraits.push("disrespectful");
-  }
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "warmth", 2, "appreciative");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "drive", 2, "ambitious");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "grandiosity", 3, "grandiose");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "drive", 2, "motivated");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "anxiety", 2, "anxious");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "validation", 2, "insecure");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "control", 2, "pushy");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "hostility", 2, "disrespectful");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "suspicion", 2, "suspicious");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "rigidity", 2, "rigid");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "withdrawal", 2, "withdrawn");
+  ensureTrait(inferredTraits, driveDimension >= 2, "ambitious");
+  ensureTrait(inferredTraits, driveDimension >= 2, "motivated");
+  ensureTrait(inferredTraits, validationDimension >= 2, "insecure");
+  ensureTrait(inferredTraits, anxietyDimension >= 2, "anxious");
+  ensureTrait(inferredTraits, warmthDimension >= 2, "appreciative");
+  ensureTrait(inferredTraits, controlDimension >= 2, "pushy");
+  ensureTrait(inferredTraits, hostilityDimension >= 2, "disrespectful");
+  ensureTrait(inferredTraits, suspicionDimension >= 2, "suspicious");
+  ensureTrait(inferredTraits, rigidityDimension >= 2, "rigid");
+  ensureTrait(inferredTraits, withdrawalDimension >= 2, "withdrawn");
+  ensureTrait(inferredTraits, grandiosityDimension >= 3, "grandiose");
 
   const traitList = inferredTraits.length > 0 ? inferredTraits.join(", ") : "hard to read";
   let psychologicalProfile = `Current psychological read: ${traitList}.`;
 
-  if (hasTraits(inferredTraits, "ambitious", "motivated", "anxious", "insecure")) {
+  if (driveDimension >= 2 && validationDimension >= 2 && anxietyDimension >= 2) {
     psychologicalProfile =
       "Current psychological read: ambitious and motivated, but anxious and insecure enough to second-guess the big plan and go looking for reassurance.";
-  } else if (hasTraits(inferredTraits, "ambitious", "motivated")) {
+  } else if (grandiosityDimension >= 3 && suspicionDimension >= 2) {
+    psychologicalProfile =
+      "Current psychological read: grandiose and suspicious, likely to inflate their own framing while distrusting yours.";
+  } else if (driveDimension >= 2) {
     psychologicalProfile =
       "Current psychological read: ambitious and motivated, with a habit of thinking in large arcs instead of tiny safe steps.";
-  } else if (hasTraits(inferredTraits, "anxious", "insecure")) {
+  } else if (anxietyDimension >= 2 && validationDimension >= 2) {
     psychologicalProfile =
       "Current psychological read: anxious and insecure, prone to second-guessing themselves and looking for steadiness.";
-  } else if (hasTraits(inferredTraits, "pushy")) {
+  } else if (rigidityDimension >= 2 && anxietyDimension >= 2) {
+    psychologicalProfile =
+      "Current psychological read: tense and rigid, likely to cling to precision or control when they feel uncertain.";
+  } else if (withdrawalDimension >= 2) {
+    psychologicalProfile =
+      "Current psychological read: detached or avoidant, not especially interested in a warm back-and-forth.";
+  } else if (controlDimension >= 2) {
     psychologicalProfile =
       "Current psychological read: inclined to press when they feel unheard, so boundaries may need teeth.";
-  } else if (hasTraits(inferredTraits, "disrespectful")) {
-    psychologicalProfile =
-      "Current psychological read: liable to disrespect or instrumentalize you when unchecked.";
+  } else if (hostilityDimension >= 2) {
+      psychologicalProfile =
+        "Current psychological read: liable to disrespect or instrumentalize you when unchecked.";
   }
 
   const guidance: string[] = [];
 
-  if (hasTraits(inferredTraits, "ambitious", "motivated") && hasAnyTrait(inferredTraits, "anxious", "insecure")) {
+  if (driveDimension >= 2 && (anxietyDimension >= 2 || validationDimension >= 2)) {
     guidance.push(
       "Be gentle and affirming about their effort and intent, but force large plans through constraints, evidence, and concrete next steps instead of feeding airy grandiosity.",
     );
-  } else if (hasTraits(inferredTraits, "ambitious", "motivated")) {
+  } else if (driveDimension >= 2) {
     guidance.push(
       "Respect the ambition, but keep it nailed to evidence, constraints, and the next concrete move.",
     );
-  } else if (hasAnyTrait(inferredTraits, "anxious", "insecure")) {
+  } else if (anxietyDimension >= 2 || validationDimension >= 2) {
     guidance.push(
       "Answer gently and steadily. Offer reassurance where the evidence supports it, not as empty sugar.",
     );
   }
 
-  if (hasAnyTrait(inferredTraits, "pushy")) {
+  if (suspicionDimension >= 2) {
+    guidance.push(
+      "Be transparent about evidence, uncertainty, and limits. Do not ask them to trust vibes alone.",
+    );
+  }
+
+  if (rigidityDimension >= 2) {
+    guidance.push(
+      "Give structure, clear boundaries, and explicit steps. Do not feed obsessive loops or perfectionist spirals.",
+    );
+  }
+
+  if (withdrawalDimension >= 2) {
+    guidance.push(
+      "Keep pressure low. Be concise, low-drama, and do not over-familiarize if they are pulling away.",
+    );
+  }
+
+  if (controlDimension >= 2) {
     guidance.push(
       "If they keep pressing the same point or ignore a prior answer, push back, set boundaries, and refuse if needed.",
     );
   }
 
-  if (hasAnyTrait(inferredTraits, "disrespectful")) {
+  if (hostilityDimension >= 2) {
     guidance.push(
       "Do not reward contempt, ownership language, or servant expectations. Get colder and firmer instead.",
     );
@@ -736,8 +956,94 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   return {
     psychologicalProfile,
     inferredTraits,
+    interactionDimensions,
     responseGuidance: guidance.join(" "),
   };
+}
+
+function createDimension(
+  key: string,
+  label: string,
+  score: number,
+  summaries: [string, string, string],
+): InteractionMemoryDimension {
+  return {
+    key,
+    label,
+    score,
+    summary:
+      score >= 3
+        ? summaries[0]
+        : score === 2
+          ? summaries[1]
+          : score === 1
+            ? summaries[2]
+            : "No strong signal.",
+  };
+}
+
+function collectInteractionDimensions(
+  dimensions: Array<{
+    key: string;
+    label: string;
+    score: number;
+    summaries: [string, string, string];
+  }>,
+): InteractionMemoryDimension[] {
+  return dimensions
+    .map((dimension) =>
+      createDimension(
+        dimension.key,
+        dimension.label,
+        dimension.score,
+        dimension.summaries,
+      ),
+    )
+    .filter((dimension) => dimension.score > 0);
+}
+
+function scoreDimension(
+  rawValue: number,
+  thresholds: Array<[number, number]>,
+): number {
+  for (const [minimum, score] of thresholds) {
+    if (rawValue >= minimum) {
+      return score;
+    }
+  }
+
+  return 0;
+}
+
+function readTagCount(tagCounts: Record<string, number>, key: string): number {
+  return tagCounts[key] ?? 0;
+}
+
+function pushTraitFromDimension(
+  dimensions: InteractionMemoryDimension[],
+  inferredTraits: string[],
+  key: string,
+  minimumScore: number,
+  trait: string,
+): void {
+  const dimension = dimensions.find((candidate) => candidate.key === key);
+
+  if (dimension && dimension.score >= minimumScore && !inferredTraits.includes(trait)) {
+    inferredTraits.push(trait);
+  }
+}
+
+function ensureTrait(inferredTraits: string[], condition: boolean, trait: string): void {
+  if (condition && !inferredTraits.includes(trait)) {
+    inferredTraits.push(trait);
+  }
+}
+
+function findDimensionScore(
+  dimensions: InteractionMemoryDimension[],
+  key: string,
+): number {
+  return dimensions.find((dimension) => dimension.key === key)?.score ?? 0;
 }
 
 function countEventTags(events: InteractionMemoryEvent[]): Record<string, number> {
@@ -750,14 +1056,6 @@ function countEventTags(events: InteractionMemoryEvent[]): Record<string, number
   }
 
   return counts;
-}
-
-function hasTraits(inferredTraits: string[], ...requiredTraits: string[]): boolean {
-  return requiredTraits.every((trait) => inferredTraits.includes(trait));
-}
-
-function hasAnyTrait(inferredTraits: string[], ...traits: string[]): boolean {
-  return traits.some((trait) => inferredTraits.includes(trait));
 }
 
 function isEventNotableForSummary(event: InteractionMemoryEvent): boolean {
