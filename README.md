@@ -554,5 +554,6 @@ Reasonable next steps from here:
 - [SPEC.md](./SPEC.md)
 - [Architecture Overview](./docs/architecture/overview.md)
 - [Aetheria Persistent Agent Architecture](./docs/architecture/aetheria-persistent-agent-architecture.md)
+- [Aetheria Cold Wake MVP Scenario](./docs/architecture/aetheria-cold-wake-mvp-scenario.md)
 - [Things To Steal](./docs/research/things-to-steal.md)
 - [TypeScript Workspace Decision](./docs/decisions/0001-typescript-workspace.md)

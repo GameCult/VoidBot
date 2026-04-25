@@ -2,6 +2,8 @@
 
 This is the companion document to [Things To Steal](../research/things-to-steal.md).
 
+For the first concrete slice, see [Aetheria Cold Wake MVP Scenario](./aetheria-cold-wake-mvp-scenario.md).
+
 That document is the theft list. This one is the machine we are trying to build out of the stolen parts.
 
 The target is a persistent world full of in-universe agents who:
