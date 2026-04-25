@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
 . (Join-Path $PSScriptRoot "voidbot-operations-dashboard-lib.ps1")
+Set-Location -LiteralPath $repoRoot
 
 function Read-DotEnv {
   param(

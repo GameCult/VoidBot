@@ -210,6 +210,9 @@ function Invoke-CommandWithTimeout {
       throw "Command timed out after $TimeoutSeconds second(s): $FilePath $($ArgumentList -join ' ')"
     }
 
+    $process.Refresh()
+    $exitCode = $process.ExitCode
+
     $stdout = if (Test-Path -LiteralPath $stdoutPath) {
       Get-Content -LiteralPath $stdoutPath -Raw
     } else {
@@ -223,7 +226,7 @@ function Invoke-CommandWithTimeout {
     }
 
     return [PSCustomObject]@{
-      ExitCode = $process.ExitCode
+      ExitCode = $exitCode
       StdOut = $stdout
       StdErr = $stderr
     }
@@ -232,10 +235,39 @@ function Invoke-CommandWithTimeout {
   }
 }
 
+function Ensure-DockerCliOnPath {
+  $dockerCliDir = "C:\Program Files\Docker\Docker\resources\bin"
+
+  if (Test-Path -LiteralPath $dockerCliDir) {
+    $pathEntries = @($env:Path -split ";" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    if ($pathEntries -notcontains $dockerCliDir) {
+      $env:Path = "$dockerCliDir;$env:Path"
+    }
+  }
+}
+
+function Get-DockerExecutable {
+  Ensure-DockerCliOnPath
+
+  $command = Get-Command docker.exe -ErrorAction SilentlyContinue
+
+  if ($null -eq $command) {
+    $command = Get-Command docker -ErrorAction SilentlyContinue
+  }
+
+  if ($null -eq $command) {
+    throw "Docker CLI is not available on PATH."
+  }
+
+  return $command.Source
+}
+
 function Test-DockerAvailable {
   try {
-    $result = Invoke-CommandWithTimeout -FilePath "docker.exe" -ArgumentList @("version") -TimeoutSeconds 15
-    return $result.ExitCode -eq 0
+    $dockerExe = Get-DockerExecutable
+    & $dockerExe version *> $null
+    return $LASTEXITCODE -eq 0
   } catch {
     return $false
   }
@@ -248,13 +280,14 @@ function Get-DockerContainerHealth {
   )
 
   try {
-    $result = Invoke-CommandWithTimeout -FilePath "docker.exe" -ArgumentList @("inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", $ContainerName) -TimeoutSeconds 20
+    $dockerExe = Get-DockerExecutable
+    $result = & $dockerExe inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" $ContainerName 2>$null
 
-    if ($result.ExitCode -ne 0) {
+    if ($LASTEXITCODE -ne 0) {
       return $null
     }
 
-    return $result.StdOut.Trim()
+    return $result.Trim()
   } catch {
     return $null
   }
@@ -302,7 +335,8 @@ function Escape-SingleQuotedPowerShell {
 
 function Get-OptionalPropertyValue {
   param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
+    [AllowNull()]
     [object] $InputObject,
     [Parameter(Mandatory = $true)]
     [string] $PropertyName
@@ -494,26 +528,54 @@ try {
   if (-not (Test-Path -LiteralPath $runtimeStatusPath)) {
     Add-Check -Name "runtime.status_file" -Status "failed" -Detail "runtime-stack.json is missing at $runtimeStatusPath."
   } else {
-    $runtimeStatus = Get-Content -LiteralPath $runtimeStatusPath -Raw | ConvertFrom-Json
-    Add-Check -Name "runtime.status_file" -Status "passed" -Detail "Found runtime-stack.json." -Data @{
-      path = $runtimeStatusPath
+    try {
+      $runtimeStatus = Get-Content -LiteralPath $runtimeStatusPath -Raw | ConvertFrom-Json
+    } catch {
+      Add-Check -Name "runtime.status_file" -Status "failed" -Detail "runtime-stack.json could not be parsed: $($_.Exception.Message)" -Data @{
+        path = $runtimeStatusPath
+      }
+      $runtimeStatus = $null
     }
 
-    foreach ($component in @("bot", "worker")) {
-      $processIdValue = [int]$runtimeStatus.$component.pid
-
-      if ($processIdValue -le 0) {
-        Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component PID is missing from runtime-stack.json."
-        continue
+    if ($null -ne $runtimeStatus) {
+      Add-Check -Name "runtime.status_file" -Status "passed" -Detail "Found runtime-stack.json." -Data @{
+        path = $runtimeStatusPath
       }
 
-      if (Test-ProcessAlive -ProcessId $processIdValue) {
-        Add-Check -Name "runtime.$component" -Status "passed" -Detail "$component process $processIdValue is running." -Data @{
-          pid = $processIdValue
+      $runtimeStage = [string](Get-OptionalPropertyValue -InputObject $runtimeStatus -PropertyName "stage")
+      $runtimeReady = Get-OptionalPropertyValue -InputObject $runtimeStatus -PropertyName "ready"
+
+      if ($runtimeReady -eq $true -and $runtimeStage -eq "ready") {
+        Add-Check -Name "runtime.lifecycle" -Status "passed" -Detail "Runtime status reports ready." -Data @{
+          stage = $runtimeStage
+          ready = $runtimeReady
         }
       } else {
-        Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component process $processIdValue is not running anymore." -Data @{
-          pid = $processIdValue
+        $stageLabel = if ([string]::IsNullOrWhiteSpace($runtimeStage)) { "(missing)" } else { $runtimeStage }
+        Add-Check -Name "runtime.lifecycle" -Status "failed" -Detail "Runtime status reports stage '$stageLabel' with ready=$runtimeReady." -Data @{
+          stage = $runtimeStage
+          ready = $runtimeReady
+        }
+      }
+
+      foreach ($component in @("bot", "worker")) {
+        $componentStatus = Get-OptionalPropertyValue -InputObject $runtimeStatus -PropertyName $component
+        $processIdValueRaw = Get-OptionalPropertyValue -InputObject $componentStatus -PropertyName "pid"
+        $processIdValue = if ($null -ne $processIdValueRaw) { ($processIdValueRaw -as [int]) } else { $null }
+
+        if ($null -eq $processIdValue -or $processIdValue -le 0) {
+          Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component PID is missing from runtime-stack.json."
+          continue
+        }
+
+        if (Test-ProcessAlive -ProcessId $processIdValue) {
+          Add-Check -Name "runtime.$component" -Status "passed" -Detail "$component process $processIdValue is running." -Data @{
+            pid = $processIdValue
+          }
+        } else {
+          Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component process $processIdValue is not running anymore." -Data @{
+            pid = $processIdValue
+          }
         }
       }
     }
@@ -564,6 +626,7 @@ try {
         dsn = $databaseDsn
       }
     } else {
+      $dockerExe = Get-DockerExecutable
       $containerHealth = Get-DockerContainerHealth -ContainerName "voidbot-postgres"
 
       if ($containerHealth -eq "healthy") {
@@ -573,10 +636,10 @@ try {
         }
 
         try {
-          $tableResult = Invoke-CommandWithTimeout -FilePath "docker.exe" -ArgumentList @("exec", "voidbot-postgres", "psql", "-U", $dsn.username, "-d", $dsn.database, "-tAc", "select table_name from information_schema.tables where table_schema = 'public';") -TimeoutSeconds 20
+          $tableResult = & $dockerExe exec voidbot-postgres psql -U $dsn.username -d $dsn.database -tAc "select table_name from information_schema.tables where table_schema = 'public';"
 
-          if ($tableResult.ExitCode -ne 0) {
-            $stderr = $tableResult.StdErr.Trim()
+          if ($LASTEXITCODE -ne 0) {
+            $stderr = $Error[0].ToString().Trim()
             if ([string]::IsNullOrWhiteSpace($stderr)) {
               throw "psql table listing failed."
             }
@@ -584,7 +647,7 @@ try {
             throw "psql table listing failed: $stderr"
           }
 
-          $tables = @($tableResult.StdOut -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          $tables = @($tableResult -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
           foreach ($requiredTable in @("jobs", "audit_events", "interaction_memory_events")) {
             if ($tables -contains $requiredTable) {
               Add-Check -Name "postgres.table.$requiredTable" -Status "passed" -Detail "Postgres table $requiredTable exists."
