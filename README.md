@@ -553,4 +553,5 @@ Reasonable next steps from here:
 
 - [SPEC.md](./SPEC.md)
 - [Architecture Overview](./docs/architecture/overview.md)
+- [Things To Steal](./docs/research/things-to-steal.md)
 - [TypeScript Workspace Decision](./docs/decisions/0001-typescript-workspace.md)
