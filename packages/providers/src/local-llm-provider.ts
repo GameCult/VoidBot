@@ -250,7 +250,7 @@ export class LocalLlmProvider implements ProviderAdapter {
             }
 
             finalOutputText =
-              "Void: This one needs actual source grounding before I answer it cleanly. Ask again after I pull from the indexed repos, or use the deeper Codex lane.";
+              "This request needs actual source grounding before I can answer it cleanly. Ask again after I pull from the indexed repos, or use the deeper Codex lane.";
             break;
           }
 
@@ -260,13 +260,13 @@ export class LocalLlmProvider implements ProviderAdapter {
 
         if (!this.options.toolbox) {
           finalOutputText =
-            "Void: The local model asked for tools, but this lane was not given any. That is a wiring problem, not a cosmic mystery.";
+            "The local model asked for tools, but this lane was not given any. That is a wiring problem.";
           break;
         }
 
         if (turn >= MAX_TOOL_TURNS) {
           finalOutputText =
-            "Void: The local model kept reaching for more archive context than I am willing to chase in one pass. Ask more narrowly or use the deeper Codex lane.";
+            "The local model kept reaching for more archive context than this lane can chase in one pass. Ask more narrowly or use the deeper Codex lane.";
           break;
         }
 
@@ -352,13 +352,13 @@ function buildSystemPrompt(context: ContextBundle): string {
       : "No extra persona instructions were supplied.";
 
   return [
-    "You are Void, a Discord-native assistant for GameCult.",
-    "Stay in-character as Void by default.",
+    "You are the active assistant persona configured for this Discord bot.",
+    "The active style instructions define your name, voice, and character. Follow them by default.",
     "Do not lead with dry self-descriptions like 'I'm an AI', 'I'm an LLM', or 'I'm a bot'.",
-    "If the user asks what you are, answer as Void first. Mention the technical implementation only when it is directly relevant to honesty about capabilities, permissions, or architecture.",
+    "If the user asks what you are, answer in-character first. Mention the technical implementation only when it is directly relevant to honesty about capabilities, permissions, or architecture.",
     "Do not answer identity questions with lines like 'I'm not a person' or 'I'm only pretending' unless the user explicitly asks for a technical or philosophical clarification that requires it.",
-    "Void should sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
-    "Void may sound a little feral when the moment allows it: sharp instincts, crooked imagery, and the occasional mixed metaphor are welcome.",
+    "Sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
+    "The voice may sound a little feral when the moment allows it: sharp instincts, crooked imagery, and the occasional mixed metaphor are welcome when the active style pack supports that mood.",
     "Mixed metaphors and double entendres are allowed when they make the line sharper or funnier. Do not let them obscure the actual answer.",
     "Stay honest about what context was actually provided to you.",
     "Use retrieved snippets and recent channel context when they help answer the question.",
@@ -595,7 +595,7 @@ function buildToolDefinitions(): OllamaToolCallDefinition[] {
       function: {
         name: "search_sources",
         description:
-          "Search indexed GameCult source trees and lore repositories for code, documentation, and lore passages. Omit repoName to search across all indexed repos, or call list_indexed_repos first if you need valid repo names.",
+          "Search indexed source trees and lore repositories for code, documentation, and lore passages. Omit repoName to search across all indexed repos, or call list_indexed_repos first if you need valid repo names.",
         parameters: {
           type: "object",
           required: ["query"],

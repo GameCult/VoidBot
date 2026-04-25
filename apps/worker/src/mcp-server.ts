@@ -147,7 +147,7 @@ server.registerTool(
   {
     title: "Search Discord History",
     description:
-      "Search Void's archived Discord history with semantic retrieval. Use this for historical discussion, decisions, preferences, and prior conversations.",
+      "Search archived Discord history with semantic retrieval. Use this for historical discussion, decisions, preferences, and prior conversations.",
     inputSchema: searchHistoryInputSchema,
     annotations: {
       readOnlyHint: true,
@@ -204,7 +204,7 @@ server.registerTool(
   {
     title: "List Indexed Repositories",
     description:
-      "List the indexed GameCult source and lore repositories currently available to search. Use this when you want valid repoName filters for search_sources.",
+      "List the indexed source and lore repositories currently available to search. Use this when you want valid repoName filters for search_sources.",
     inputSchema: {},
     annotations: {
       readOnlyHint: true,
@@ -242,7 +242,7 @@ server.registerTool(
   {
     title: "Search Repository Sources",
     description:
-      "Search indexed GameCult source trees and lore repositories with semantic retrieval. Use this for code structure, implementation details, lore references, and repo-local documentation. Omit repoName to search across all indexed repos, or call list_indexed_repos first if you need valid repoName options.",
+      "Search indexed source trees and lore repositories with semantic retrieval. Use this for code structure, implementation details, lore references, and repo-local documentation. Omit repoName to search across all indexed repos, or call list_indexed_repos first if you need valid repoName options.",
     inputSchema: searchSourcesInputSchema,
     annotations: {
       readOnlyHint: true,
@@ -450,7 +450,7 @@ server.registerTool(
   {
     title: "Notify Owner",
     description:
-      "Send a Discord DM to the configured owner via Void. Use for completion notices, progress updates, or when explicitly asked to ping them.",
+      "Send a Discord DM to the configured owner. Use for completion notices, progress updates, or when explicitly asked to ping them.",
     inputSchema: notifyOwnerInputSchema,
     annotations: {
       readOnlyHint: false,
@@ -466,7 +466,7 @@ server.registerTool(
         content: [
           {
             type: "text",
-            text: "DISCORD_BOT_TOKEN is not configured, so Void cannot send notifications.",
+            text: "DISCORD_BOT_TOKEN is not configured, so notifications are unavailable.",
           },
         ],
         structuredContent: {
@@ -478,7 +478,7 @@ server.registerTool(
     }
 
     const dmChannelId = await openOwnerDmChannel(config.botToken, config.ownerDiscordId);
-    const posted = await postDiscordMessage(config.botToken, dmChannelId, `Void relay: ${message}`);
+    const posted = await postDiscordMessage(config.botToken, dmChannelId, message);
 
     return {
       content: [
@@ -502,7 +502,7 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error) => {
-  console.error("Void MCP server failed:", error);
+  console.error("MCP server failed:", error);
   process.exit(1);
 });
 

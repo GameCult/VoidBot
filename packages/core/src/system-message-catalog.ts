@@ -24,7 +24,7 @@ export class SystemMessageCatalog {
     const variants = normalizeVariants(this.messages[key]);
 
     if (variants.length === 0) {
-      return `Void: [missing system message: ${key}]`;
+      return `[missing system message: ${key}]`;
     }
 
     const state = this.shuffleState.get(key) ?? { bag: [] };
@@ -36,7 +36,7 @@ export class SystemMessageCatalog {
     const template = state.bag.shift();
 
     if (!template) {
-      return `Void: [missing system message: ${key}]`;
+      return `[missing system message: ${key}]`;
     }
 
     state.last = template;

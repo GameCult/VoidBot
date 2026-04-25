@@ -1,138 +1,138 @@
 {
   "mention.missing_prompt": [
-    "Void: You mentioned me, but you forgot the question.",
-    "Void: I can help, but I need an actual prompt after the mention."
+    "You mentioned the bot, but there was no actual question attached.",
+    "I can help, but I need a real prompt after the mention."
   ],
   "config.set_style.forbidden": [
-    "Void: Only admins are allowed to change my style pack.",
-    "Void: Tone control is restricted to admins."
+    "Only admins are allowed to change the style pack.",
+    "Tone control is restricted to admins."
   ],
   "config.set_style.reloaded": [
-    "Void: Reloaded style pack `{stylePackName}` from `{stylePackPath}` and refreshed stock messages from `{systemMessagesPath}`.",
-    "Void: Updated my style pack to `{stylePackName}` from `{stylePackPath}` and reloaded messages from `{systemMessagesPath}`."
+    "Reloaded style pack `{stylePackName}` from `{stylePackPath}` and refreshed stock messages from `{systemMessagesPath}`.",
+    "Updated the style pack to `{stylePackName}` from `{stylePackPath}` and reloaded messages from `{systemMessagesPath}`."
   ],
   "config.set_style.style_missing": [
-    "Void: Reloaded stock messages from `{systemMessagesPath}`, but there was no style pack at `{stylePackPath}`.",
-    "Void: Message catalog refreshed from `{systemMessagesPath}`. The style pack at `{stylePackPath}` is missing."
+    "Reloaded stock messages from `{systemMessagesPath}`, but there was no style pack at `{stylePackPath}`.",
+    "Message catalog refreshed from `{systemMessagesPath}`. The style pack at `{stylePackPath}` is missing."
   ],
   "command.unimplemented": [
-    "Void: That command exists, but the implementation behind it does not.",
-    "Void: The command is present. The machinery behind it is not."
+    "That command exists, but the implementation behind it does not.",
+    "The command is present. The machinery behind it is not."
   ],
   "error.with_message": [
-    "Void: Something failed: {errorMessage}",
-    "Void: The machinery hit an error: {errorMessage}"
+    "Something failed: {errorMessage}",
+    "The machinery hit an error: {errorMessage}"
   ],
   "error.generic": [
-    "Void: Something failed, and the error was annoyingly vague.",
-    "Void: Something broke, and I did not get a useful explanation."
+    "Something failed, and the error was annoyingly vague.",
+    "Something broke, and I did not get a useful explanation."
   ],
   "provider.none_available": [
-    "Void: No provider is available for you right now.",
-    "Void: I do not currently have an available provider for your request."
+    "No provider is available right now.",
+    "There is no available provider for this request right now."
   ],
   "provider.missing_registration": [
-    "Void: `{providerName}` is not registered.",
-    "Void: That provider name leads nowhere. `{providerName}` is not configured."
+    "`{providerName}` is not registered.",
+    "That provider name leads nowhere. `{providerName}` is not configured."
   ],
   "provider.access_denied.generic": [
-    "Void: That provider is not available to you.",
-    "Void: Access denied for that provider."
+    "That provider is not available to you.",
+    "Access denied for that provider."
   ],
   "permission.owner_codex.denied": [
-    "Void: The owner Codex provider is restricted to the configured owner account.",
-    "Void: That lane is reserved for the configured owner account."
+    "The owner Codex provider is restricted to the configured owner account.",
+    "That lane is reserved for the configured owner account."
   ],
   "permission.local_llm.denied": [
-    "Void: The local model is currently limited to admins and the configured owner.",
-    "Void: Access to the local model is restricted right now."
+    "The local model is currently limited to admins and the configured owner.",
+    "Access to the local model is restricted right now."
   ],
   "job.owner.awaiting_run_approval": [
-    "Void: Owner job `{jobId}` is waiting. Approve it with `/approve-job job-id:{jobId}` to prepare the manual bundle.",
-    "Void: Owner job `{jobId}` is queued for manual handling. Use `/approve-job job-id:{jobId}` when you want the bundle generated."
+    "Owner job `{jobId}` is waiting. Approve it with `/approve-job job-id:{jobId}` to prepare the manual bundle.",
+    "Owner job `{jobId}` is queued for manual handling. Use `/approve-job job-id:{jobId}` when you want the bundle generated."
   ],
   "job.owner.auto_queued": [
-    "Void: Owner job `{jobId}` is queued. If it stays short and read-only, I will answer here. If not, I will hand it off to the fuller Codex flow.",
-    "Void: Owner job `{jobId}` is in motion. Small read-only work stays here. Bigger work gets handed off."
+    "Owner job `{jobId}` is queued. If it stays short and read-only, the reply will come back here. If not, it will hand off to the fuller Codex flow.",
+    "Owner job `{jobId}` is in motion. Small read-only work stays here. Bigger work gets handed off."
   ],
   "job.owner.queue_failed_dm": [
-    "Void: I could not queue your request from `{channelName}`. Error: {errorMessage}",
-    "Void: The queue step failed for your request in `{channelName}`. Error: {errorMessage}"
+    "I could not queue your request from `{channelName}`. Error: {errorMessage}",
+    "The queue step failed for your request in `{channelName}`. Error: {errorMessage}"
   ],
   "job.owner.worker_failed_dm": [
-    "Void: Job `{jobId}` failed while `{providerName}` was handling `{command}`. Error: {errorMessage}",
-    "Void: The worker hit a failure on job `{jobId}` during `{command}` with `{providerName}`. Error: {errorMessage}"
+    "Job `{jobId}` failed while `{providerName}` was handling `{command}`. Error: {errorMessage}",
+    "The worker hit a failure on job `{jobId}` during `{command}` with `{providerName}`. Error: {errorMessage}"
   ],
   "job.not_found": [
-    "Void: I cannot find job `{jobId}`.",
-    "Void: There is no record of job `{jobId}`."
+    "I cannot find job `{jobId}`.",
+    "There is no record of job `{jobId}`."
   ],
   "job.approval_forbidden": [
-    "Void: You are not allowed to approve that job.",
-    "Void: Approval for that job is not available to you."
+    "You are not allowed to approve that job.",
+    "Approval for that job is not available to you."
   ],
   "job.run_approved": [
-    "Void: Job `{jobId}` is approved. The worker will pick it up on the next pass.",
-    "Void: Approval recorded for job `{jobId}`. The worker should handle it shortly."
+    "Job `{jobId}` is approved. The worker will pick it up on the next pass.",
+    "Approval recorded for job `{jobId}`. The worker should handle it shortly."
   ],
   "job.post_approval.needs_response": [
-    "Void: That job is waiting for post approval. Put the final response in the optional response field.",
-    "Void: I can post the result once you supply the final response in the optional response field."
+    "That job is waiting for post approval. Put the final response in the optional response field.",
+    "I can post the result once you supply the final response in the optional response field."
   ],
   "job.post_approved": [
-    "Void: Final reply posted for job `{jobId}`.",
-    "Void: Job `{jobId}` has been posted."
+    "Final reply posted for job `{jobId}`.",
+    "Job `{jobId}` has been posted."
   ],
   "job.no_action_for_state": [
-    "Void: Job `{jobId}` is in state `{jobState}`, so there is nothing to approve.",
-    "Void: No approval action is needed for job `{jobId}` while it is in `{jobState}`."
+    "Job `{jobId}` is in state `{jobState}`, so there is nothing to approve.",
+    "No approval action is needed for job `{jobId}` while it is in `{jobState}`."
   ],
   "job.rejection_forbidden": [
-    "Void: You are not allowed to reject that job.",
-    "Void: Rejection for that job is not available to you."
+    "You are not allowed to reject that job.",
+    "Rejection for that job is not available to you."
   ],
   "job.rejected": [
-    "Void: Job `{jobId}` has been rejected.",
-    "Void: Dismissed job `{jobId}`."
+    "Job `{jobId}` has been rejected.",
+    "Dismissed job `{jobId}`."
   ],
   "history.no_results": [
-    "Void: No indexed history matched that query.",
-    "Void: I searched the archive and found nothing for that query."
+    "No indexed history matched that query.",
+    "I searched the archive and found nothing for that query."
   ],
   "history.results_intro": [
-    "Void: Here are the relevant history hits:",
-    "Void: These are the archive results that looked useful:"
+    "Here are the relevant history hits:",
+    "These are the archive results that looked useful:"
   ],
   "summarize.no_messages": [
-    "Void: There are no recent messages here to summarize.",
-    "Void: This channel is too quiet to summarize right now."
+    "There are no recent messages here to summarize.",
+    "This channel is too quiet to summarize right now."
   ],
   "summarize.results_intro": [
-    "Void: Here is a quick summary of the recent conversation:",
-    "Void: Brief summary of the recent messages:"
+    "Here is a quick summary of the recent conversation:",
+    "Brief summary of the recent messages:"
   ],
   "reindex.forbidden": [
-    "Void: Only admins are allowed to reindex the archive.",
-    "Void: Reindexing is restricted to admins."
+    "Only admins are allowed to reindex the archive.",
+    "Reindexing is restricted to admins."
   ],
   "reindex.excluded": [
-    "Void: This channel is excluded from indexing.",
-    "Void: I am not configured to ingest this channel."
+    "This channel is excluded from indexing.",
+    "This channel is not configured for ingestion."
   ],
   "reindex.unsupported_channel": [
-    "Void: This channel does not expose message history, so there is nothing to reindex.",
-    "Void: Reindexing is not supported here because there is no message history to read."
+    "This channel does not expose message history, so there is nothing to reindex.",
+    "Reindexing is not supported here because there is no message history to read."
   ],
   "reindex.completed": [
-    "Void: Reindexing complete. I walked {archivedMessages} messages: created {createdMessages}, updated {updatedMessages}, left {unchangedMessages} untouched, and indexed {indexedChunks} chunks.",
-    "Void: Archive sweep finished. I reviewed {archivedMessages} messages, created {createdMessages}, updated {updatedMessages}, skipped {unchangedMessages}, and produced {indexedChunks} chunks."
+    "Reindexing complete. I walked {archivedMessages} messages: created {createdMessages}, updated {updatedMessages}, left {unchangedMessages} untouched, and indexed {indexedChunks} chunks.",
+    "Archive sweep finished. I reviewed {archivedMessages} messages, created {createdMessages}, updated {updatedMessages}, skipped {unchangedMessages}, and produced {indexedChunks} chunks."
   ],
   "provider_status.intro": [
-    "Void: Current provider status:",
-    "Void: Here is the current state of the configured providers:"
+    "Current provider status:",
+    "Here is the current state of the configured providers:"
   ],
   "owner_codex.handoff_notice": [
-    "Void: This request needs the fuller Codex flow. Check `{handoffPath}` and `{debugPath}` in the local workspace.",
-    "Void: This one is leaving Discord. Continue from `{handoffPath}` and use `{debugPath}` for the trace."
+    "This request needs the fuller Codex flow. Check `{handoffPath}` and `{debugPath}` in the local workspace.",
+    "This request is leaving Discord. Continue from `{handoffPath}` and use `{debugPath}` for the trace."
   ]
 }

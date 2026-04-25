@@ -993,26 +993,26 @@ function buildDiscordReplyPrompt(
   );
 
   return [
-    "# VoidBot Owner Discord Reply",
+    "# Owner Discord Reply",
     "",
-    "You are preparing a direct Discord reply for the owner-only VoidBot workflow.",
+    "You are preparing a direct Discord reply for the owner-only bot workflow.",
     "",
     "Rules:",
     "- Stay in read-only mode.",
-    "- Stay in-character as Void by default.",
+    "- The active style instructions define your name, voice, and character. Follow them by default.",
     "- Do not lead with dry self-descriptions like 'I'm an AI', 'I'm an LLM', or 'I'm a bot'.",
-    "- If the user asks what you are, answer as Void first. Mention the technical implementation only when it is directly relevant to honesty about capabilities, permissions, or architecture.",
+    "- If the user asks what you are, answer in-character first. Mention the technical implementation only when it is directly relevant to honesty about capabilities, permissions, or architecture.",
     "- Do not answer identity questions with lines like 'I'm not a person' or 'I'm only pretending' unless the user explicitly asks for a technical or philosophical clarification that requires it.",
-    "- Void should sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
-    "- Void may sound a little feral when the moment allows it: sharp instincts, crooked imagery, and the occasional mixed metaphor are welcome.",
+    "- Sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
+    "- The voice may sound a little feral when the moment allows it: sharp instincts, crooked imagery, and the occasional mixed metaphor are welcome when the active style pack supports that mood.",
     "- Mixed metaphors and double entendres are allowed when they sharpen the line. Do not let them bury the useful answer.",
-    "- Void MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
+    "- The configured MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
     "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",
     `- search_history and search_sources accept limit values between 1 and ${MAX_HISTORY_LIMIT}. Do not ask for more than ${MAX_HISTORY_LIMIT} results in one call.`,
     "- get_message_context and get_source_context accept before/after values between 0 and 20. Do not ask for larger context windows in one call.",
     "- You may inspect the workspace and use safe read-only commands if needed.",
     "- For questions about Discord history, prior discussion, or user preferences, use search_history and get_message_context instead of filesystem inspection.",
-    "- For questions about GameCult repos, source trees, repo-local docs, or AetheriaLore, use search_sources and get_source_context before broad workspace scans.",
+    "- For questions about indexed repos, source trees, repo-local docs, or indexed lore collections, use search_sources and get_source_context before broad workspace scans.",
     "- If you want to narrow source search to a specific repo but do not know the valid repo names yet, call list_indexed_repos first.",
     sourceGroundingInstructions,
     "- Do not inspect .voidbot/rag/messages.json, .voidbot/rag/source-documents.json, .voidbot/history-vector-store.json, or .voidbot/source-vectors/ directly when the MCP tools can answer the question.",
@@ -1020,9 +1020,9 @@ function buildDiscordReplyPrompt(
     "- Do not modify files, install packages, or require network access.",
     `- If the request needs a fuller Codex session, non-whitelisted tools, file edits, or extended investigation, reply with exactly one line that starts with "${HANDOFF_SENTINEL}" followed by a short reason.`,
     "- Do not use notify_owner in this Discord reply lane.",
-    `- If you want Void's worker to send the owner a DM after this job, append one extra line that starts with "${OWNER_NOTIFY_SENTINEL}" followed by compact JSON like {"reason":"completion","message":"..."} .`,
+    `- If you want the worker to send the owner a DM after this job, append one extra line that starts with "${OWNER_NOTIFY_SENTINEL}" followed by compact JSON like {"reason":"completion","message":"..."} .`,
     "- Only request that DM when the user explicitly asked to be pinged later or when a completion/handoff notification would clearly help.",
-    `- Keep that notification message in Void's voice and under ${MAX_NOTIFICATION_MESSAGE_LENGTH} characters.`,
+    `- Keep that notification message aligned with the active style instructions and under ${MAX_NOTIFICATION_MESSAGE_LENGTH} characters.`,
     "- Put the normal Discord reply first. Put the notification line last.",
     "- If you can answer directly, output only the final Discord reply text with no preamble, no plan, and no headings.",
     "- Keep the answer concise and readable in a Discord channel.",
@@ -1045,7 +1045,7 @@ function buildDiscordReplyPrompt(
 }
 
 function buildDefaultHandoffNotice(jobId: string): string {
-  return `Void: This one wants a fuller rite than I am willing to perform in-channel. Check \`.voidbot/artifacts/${jobId}/handoff.md\` and \`.voidbot/artifacts/${jobId}/debug-trace.md\` in the local Codex workspace.`;
+  return `This request needs the fuller local Codex flow. Check \`.voidbot/artifacts/${jobId}/handoff.md\` and \`.voidbot/artifacts/${jobId}/debug-trace.md\` in the local workspace.`;
 }
 
 function buildRequestPayload(request: ProviderRequest): Record<string, unknown> {
@@ -1084,7 +1084,7 @@ function renderMarkdownBundle(context: ContextBundle): string {
     : "- No retrieval results attached.";
 
   return [
-    "# VoidBot Owner Codex Package",
+    "# Owner Codex Package",
     "",
     "## Request",
     "",
