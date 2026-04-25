@@ -83,6 +83,7 @@ If you want the remote Ollama generation path too, configure:
 - `LOCAL_LLM_ALLOW_PUBLIC`
 
 `LOCAL_LLM_ALLOW_PUBLIC=false` is the sane default. It keeps the local model restricted to admins and the configured owner while you test.
+`LOCAL_LLM_OLLAMA_THINK=low` is a good default if you want better phrasing and a little more initiative without dragging reply time into the swamp.
 
 If you want a private local persona instead, point `STYLE_PACK_PATH` and `SYSTEM_MESSAGES_PATH` at your own ignored local files.
 
