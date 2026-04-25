@@ -162,6 +162,9 @@ export interface InteractionMemoryProfile {
   negativeCount: number;
   neutralCount: number;
   summary: string;
+  psychologicalProfile: string;
+  inferredTraits: string[];
+  responseGuidance: string;
   lastInteractionAt?: string;
   recentEvents: InteractionMemoryEvent[];
 }

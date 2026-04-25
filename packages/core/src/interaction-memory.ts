@@ -9,6 +9,7 @@ import {
   MAX_RECENT_INTERACTION_EVENTS,
   normalizeInteractionEvent,
   type RecordInteractionInput,
+  shouldPersistInteractionEvent,
   summarizeInteractionProfile,
 } from "./interaction-memory-logic";
 
@@ -35,7 +36,7 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
     await this.writeChain;
     const store = await this.readUnlocked();
     const profile = store.profiles.find((candidate) => candidate.actorId === actorId);
-    return profile ? structuredClone(profile) : undefined;
+    return profile && profile.totalInteractions > 0 ? structuredClone(profile) : undefined;
   }
 
   public async recordInteraction(
@@ -43,7 +44,6 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
   ): Promise<InteractionMemoryProfile> {
     return this.serialize(async () => {
       const store = await this.readUnlocked();
-      const nextEvent = buildInteractionMemoryEvent(input);
       const existingProfileIndex = store.profiles.findIndex(
         (candidate) => candidate.actorId === input.actorId,
       );
@@ -51,17 +51,19 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
         existingProfileIndex === -1
           ? emptyInteractionProfile(input.actorId, input.actorName)
           : store.profiles[existingProfileIndex];
-      const updatedEvents = existingProfile.recentEvents.filter(
-        (event) => event.id !== nextEvent.id,
+      const priorEvents = existingProfile.recentEvents.filter(
+        (event) => event.id !== input.eventId,
       );
-      updatedEvents.push(nextEvent);
-      const nextProfile = summarizeInteractionProfile(
-        input.actorId,
-        input.actorName,
-        updatedEvents,
-      );
+      const nextEvent = buildInteractionMemoryEvent(input, priorEvents);
+      const nextProfile = shouldPersistInteractionEvent(nextEvent)
+        ? summarizeInteractionProfile(input.actorId, input.actorName, [...priorEvents, nextEvent])
+        : summarizeInteractionProfile(input.actorId, input.actorName, priorEvents);
 
-      if (existingProfileIndex === -1) {
+      if (nextProfile.totalInteractions === 0) {
+        if (existingProfileIndex !== -1) {
+          store.profiles.splice(existingProfileIndex, 1);
+        }
+      } else if (existingProfileIndex === -1) {
         store.profiles.push(nextProfile);
       } else {
         store.profiles[existingProfileIndex] = nextProfile;
@@ -121,9 +123,10 @@ function normalizeStore(store: InteractionMemoryStore): InteractionMemoryStore {
         profile.actorId,
         profile.actorName,
         (profile.recentEvents ?? [])
-          .map(normalizeInteractionEvent)
+          .map((event) => normalizeInteractionEvent(event))
           .slice(-MAX_RECENT_INTERACTION_EVENTS),
-      )),
+      ))
+      .filter((profile) => profile.totalInteractions > 0),
   };
 }
 

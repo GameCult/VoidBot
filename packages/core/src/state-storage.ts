@@ -15,6 +15,7 @@ import { type AuditEventInput, type AuditLog, FileAuditLog } from "./audit-log";
 import {
   buildInteractionMemoryEvent,
   type RecordInteractionInput,
+  shouldPersistInteractionEvent,
   summarizeInteractionProfile,
 } from "./interaction-memory-logic";
 import {
@@ -397,17 +398,29 @@ class PostgresInteractionMemoryBank implements InteractionMemoryBank {
       return undefined;
     }
 
-    return summarizeInteractionProfile(
+    const profile = summarizeInteractionProfile(
       actorId,
       events[events.length - 1].actorName,
       events,
     );
+
+    return profile.totalInteractions > 0 ? profile : undefined;
   }
 
   public async recordInteraction(
     input: RecordInteractionInput,
   ): Promise<InteractionMemoryProfile> {
-    const event = buildInteractionMemoryEvent(input);
+    const existingEvents = await this.listActorEvents(input.actorId);
+    const priorEvents = existingEvents.filter((event) => event.id !== input.eventId);
+    const event = buildInteractionMemoryEvent(input, priorEvents);
+
+    if (!shouldPersistInteractionEvent(event)) {
+      if (input.eventId) {
+        await this.pool.query("delete from interaction_memory_events where id = $1", [input.eventId]);
+      }
+
+      return summarizeInteractionProfile(input.actorId, input.actorName, priorEvents);
+    }
 
     await this.pool.query(
       `insert into interaction_memory_events (
@@ -464,8 +477,7 @@ class PostgresInteractionMemoryBank implements InteractionMemoryBank {
       ],
     );
 
-    const events = await this.listActorEvents(input.actorId);
-    return summarizeInteractionProfile(input.actorId, input.actorName, events);
+    return summarizeInteractionProfile(input.actorId, input.actorName, [...priorEvents, event]);
   }
 
   private async listActorEvents(actorId: string): Promise<InteractionMemoryEvent[]> {

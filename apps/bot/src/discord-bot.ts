@@ -583,17 +583,19 @@ interface PromptHandlerOptions {
 }
 
 async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
-      const interactionMemory = await options.interactionMemory.recordInteraction({
-        actorId: options.actor.id,
-        actorName: options.actor.displayName,
-        sourceKind: "direct_prompt",
-        guildId: options.guildContext.guildId,
-        channelId: options.guildContext.channelId,
-        channelName: options.guildContext.channelName,
-        command: options.command,
+  const rememberedInteraction = await options.interactionMemory.recordInteraction({
+    actorId: options.actor.id,
+    actorName: options.actor.displayName,
+    sourceKind: "direct_prompt",
+    guildId: options.guildContext.guildId,
+    channelId: options.guildContext.channelId,
+    channelName: options.guildContext.channelName,
+    command: options.command,
     prompt: options.prompt,
     eventId: options.requestMessageId,
   });
+  const interactionMemory =
+    rememberedInteraction.totalInteractions > 0 ? rememberedInteraction : undefined;
   const providerName =
     options.forceProvider ?? pickProvider(options.actor, options.guildContext, options.providerRegistry);
 
