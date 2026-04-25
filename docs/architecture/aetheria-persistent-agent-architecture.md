@@ -4,6 +4,8 @@ This is the companion document to [Things To Steal](../research/things-to-steal.
 
 For the first concrete slice, see [Aetheria Cold Wake MVP Scenario](./aetheria-cold-wake-mvp-scenario.md).
 
+For the scaling model that explains how a crowded region can be simulated with a relatively small persistent cast, see [Aetheria Agent Population Model](./aetheria-agent-population-model.md).
+
 That document is the theft list. This one is the machine we are trying to build out of the stolen parts.
 
 The target is a persistent world full of in-universe agents who:

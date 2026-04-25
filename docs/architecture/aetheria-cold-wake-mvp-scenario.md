@@ -2,7 +2,7 @@
 
 This is the first buildable scenario brief for the persistent-world agent work.
 
-The broader machine lives in [Aetheria Persistent Agent Architecture](./aetheria-persistent-agent-architecture.md). This document is the narrower, dirtier thing: one bounded slice of the setting that is small enough to simulate and rich enough to misbehave.
+The broader machine lives in [Aetheria Persistent Agent Architecture](./aetheria-persistent-agent-architecture.md). The population scaling answer lives in [Aetheria Agent Population Model](./aetheria-agent-population-model.md). This document is the narrower, dirtier thing: one bounded slice of the setting that is small enough to simulate and rich enough to misbehave.
 
 ## Premise
 
