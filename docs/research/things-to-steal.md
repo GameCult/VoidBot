@@ -2,6 +2,8 @@
 
 This document is the running backlog of ideas worth stealing from frontier research, adjacent products, and our own better impulses.
 
+If you want the companion systems sketch for turning this into a persistent Aetheria cast engine, see [Aetheria Persistent Agent Architecture](../architecture/aetheria-persistent-agent-architecture.md).
+
 The goal is not to build a chatbot that exists to nod, flatter, and perform a personality like a cheap mask. The goal is a system that can:
 
 - remember specific events
