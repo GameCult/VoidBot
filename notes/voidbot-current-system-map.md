@@ -5,7 +5,11 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 ## Main Organs
 
 - `apps/bot/src/discord-bot.ts`
-  - Discord gateway, commands, mention handling, permissions, provider selection, rate-limit gating, and context assembly entrypoint.
+  - Discord gateway shell: client bootstrap, provider wiring, event registration, and top-level orchestration.
+- `apps/bot/src/discord-bot-handlers.ts`
+  - Prompt/command handling, provider dispatch, rate-limit gating, job approval/rejection, reindexing, and slash-command registration helpers.
+- `apps/bot/src/discord-bot-support.ts`
+  - Discord-shape adapters, archive/source conversion helpers, ambient-memory ingestion helpers, source-grounding hint logic, and bot-side message formatting/rendering helpers.
 - `apps/worker/src/index.ts`
   - owner-job poller, provider execution, handoff packaging, and MCP wiring for the worker-side lane.
 - `apps/worker/src/mcp-server.ts`
@@ -35,12 +39,13 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 
 ## Flow 1: Discord Request To Provider
 
-1. `apps/bot/src/discord-bot.ts` receives a slash command or mention-driven request.
+1. `apps/bot/src/discord-bot.ts` receives a slash command or mention-driven request and delegates prompt/command work into `apps/bot/src/discord-bot-handlers.ts`.
 2. Permission checks run through `packages/core/src/permission-engine.ts`.
 3. Void usage limits are applied through `packages/core/src/void-usage-rate-limiter.ts` backed by `packages/core/src/state-storage.ts`.
-4. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile and any retrieval hints.
-5. Provider selection goes through `packages/providers/src/index.ts`.
-6. The bot either:
+4. `apps/bot/src/discord-bot-support.ts` adapts Discord message/interaction shapes, ambient-memory events, and source-grounding hints.
+5. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile and any retrieval hints.
+6. Provider selection goes through `packages/providers/src/index.ts`.
+7. The bot either:
    - answers directly through `local_llm`, or
    - queues an owner job for the worker / `owner_codex` path.
 

@@ -22,12 +22,13 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - `.voidbot/` owns archives, artifacts, logs, status files, and backups.
 - `owner_codex` and `local_llm` are the active reply lanes.
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
+- The Discord bot lane is no longer one swollen entrypoint; gateway wiring remains in `apps/bot/src/discord-bot.ts` while command/prompt handlers and Discord-shape support helpers now live under `apps/bot/src/discord-bot-*.ts`.
 - Ops health, backup verification, offsite sync, and dashboard surfaces already exist.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 
 ## Likely Next Bounded Move
 
-- The next good structural cut is probably `apps/bot/src/discord-bot.ts` or `packages/core/src/interaction-memory-logic.ts`.
+- The next good structural cut is probably `packages/core/src/interaction-memory-logic.ts` or `packages/core/src/state-storage.ts`.
 - Prefer the seam with the clearest concern split rather than chasing line count for its own sake.
 - Do not broaden scope into a heroic "refactor everything" binge. One organ at a time.
 

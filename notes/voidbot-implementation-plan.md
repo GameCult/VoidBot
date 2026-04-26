@@ -28,7 +28,7 @@ Use the persistent project-state surfaces to keep future work source-grounded an
 ### 4. Legibility Hardening
 
 - continue splitting oversized runtime files where concern boundaries are already obvious
-- likely next cuts: `apps/bot/src/discord-bot.ts`, `packages/core/src/interaction-memory-logic.ts`, or `packages/core/src/state-storage.ts`
+- likely next cuts: `packages/core/src/interaction-memory-logic.ts` or `packages/core/src/state-storage.ts`
 - keep behavior stable while moving concerns into smaller organs
 
 ### 5. The Still-Scaffolded Paths

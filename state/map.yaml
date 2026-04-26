@@ -73,6 +73,7 @@ landed_baseline:
     - Interaction memory and behavioral profiling are live.
     - Source-grounding enforcement and tool-driven retrieval are live.
     - The owner Codex lane is now split into orchestration, runtime/parsing, shared helpers, and rendering modules instead of one swollen provider file.
+    - The Discord bot lane is now split into a gateway shell plus dedicated command-handler and support helper modules instead of one swollen entrypoint file.
 
 rejected_paths:
   - name: transcript_only_continuity
@@ -83,5 +84,5 @@ rejected_paths:
     reason: vibes produce plausible slop that sounds smart and lies with a straight face
 
 current_status:
-  summary: VoidBot now has a real project-memory spine plus the first legibility-hardening pass on a major runtime organ. The owner Codex lane was split into smaller seams, which lowers local edit risk without changing the behavioral contract. The stack is still dense, but it no longer depends purely on transcript memory or one-file monarchies to stay coherent.
-  next_action: Keep using the canonical state files for re-entry, then continue decomposing the next oversized organ with the clearest concern boundaries, likely the Discord bot entrypoint or the interaction-memory policy slab.
+  summary: VoidBot now has a real project-memory spine plus two legibility-hardening passes on major runtime organs. The owner Codex lane and Discord bot lane were both split into smaller seams, which lowers local edit risk without changing the behavioral contract. The stack is still dense, but it no longer depends purely on transcript memory or one-file monarchies to stay coherent.
+  next_action: Keep using the canonical state files for re-entry, then continue decomposing the next oversized organ with the clearest concern boundaries, likely the interaction-memory policy slab or the state-storage persistence slab.
