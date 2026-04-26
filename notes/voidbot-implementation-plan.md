@@ -4,7 +4,7 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-Use the new persistent project-state surfaces to keep future work source-grounded and rehydratable while the stack keeps getting more interconnected.
+Use the persistent project-state surfaces to keep future work source-grounded and rehydratable while continuing to cut oversized runtime organs into cleaner seams.
 
 ## Near-Term Organs
 
@@ -23,9 +23,15 @@ Use the new persistent project-state surfaces to keep future work source-grounde
 ### 3. Admin And Forensics Surfaces
 
 - richer inspection around jobs, provider runs, tool usage, interaction memory, and rate-limit denials
-- better “what happened?” answers without spelunking raw artifacts by candlelight
+- better "what happened?" answers without spelunking raw artifacts by candlelight
 
-### 4. The Still-Scaffolded Paths
+### 4. Legibility Hardening
+
+- continue splitting oversized runtime files where concern boundaries are already obvious
+- likely next cuts: `apps/bot/src/discord-bot.ts`, `packages/core/src/interaction-memory-logic.ts`, or `packages/core/src/state-storage.ts`
+- keep behavior stable while moving concerns into smaller organs
+
+### 5. The Still-Scaffolded Paths
 
 - replace the remaining scaffolded provider paths with funded or production-grade implementations
 - move sandbox execution from policy theater to real constrained runners when the policy story is ready

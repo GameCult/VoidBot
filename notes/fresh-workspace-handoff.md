@@ -25,6 +25,12 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - Ops health, backup verification, offsite sync, and dashboard surfaces already exist.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 
+## Likely Next Bounded Move
+
+- The next good structural cut is probably `apps/bot/src/discord-bot.ts` or `packages/core/src/interaction-memory-logic.ts`.
+- Prefer the seam with the clearest concern split rather than chasing line count for its own sake.
+- Do not broaden scope into a heroic "refactor everything" binge. One organ at a time.
+
 ## Important Paths
 
 - Project root: `E:\Projects\VoidBot`
