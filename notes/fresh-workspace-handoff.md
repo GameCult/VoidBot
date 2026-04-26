@@ -21,6 +21,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - Qdrant owns history and source vectors.
 - `.voidbot/` owns archives, artifacts, logs, status files, and backups.
 - `owner_codex` and `local_llm` are the active reply lanes.
+- The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
 - Ops health, backup verification, offsite sync, and dashboard surfaces already exist.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 

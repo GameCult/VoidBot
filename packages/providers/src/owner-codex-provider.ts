@@ -1,118 +1,38 @@
-import { spawn } from "node:child_process";
-
-import {
-  type Actor,
-  type ContextBundle,
-  type CodexMcpServerConfig,
-  DEFAULT_RETRIEVAL_RESULT_LIMIT,
-  type GuildContext,
-  MAX_RETRIEVAL_RESULT_LIMIT,
-  type OwnerCodexMode,
-  type ProviderAdapter,
-  type ProviderArtifact,
-  type ProviderNotificationIntent,
-  type ProviderNotificationReason,
-  type RetrievalFilters,
-  type RetrievalResult,
-  type ProviderRequest,
-  type ProviderResponse,
+import type {
+  Actor,
+  ContextBundle,
+  GuildContext,
+  ProviderAdapter,
+  ProviderArtifact,
+  ProviderRequest,
+  ProviderResponse,
 } from "@voidbot/shared";
 
-const HANDOFF_SENTINEL = "VOIDBOT_HANDOFF_REQUIRED:";
-const OWNER_NOTIFY_SENTINEL = "VOIDBOT_OWNER_NOTIFY:";
-const TOOL_REQUEST_SENTINEL = "VOIDBOT_TOOL_REQUEST:";
-const MAX_HISTORY_TOOL_CALLS = 4;
-const MAX_SOURCE_GROUNDING_RETRIES = 1;
-const DEFAULT_HISTORY_LIMIT = DEFAULT_RETRIEVAL_RESULT_LIMIT;
-const MAX_HISTORY_LIMIT = MAX_RETRIEVAL_RESULT_LIMIT;
-const MAX_NOTIFICATION_MESSAGE_LENGTH = 400;
+import {
+  buildDefaultHandoffNotice,
+  buildRequestPayload,
+  didUseSourceGrounding,
+  type HistoryLookupTool,
+  MAX_HISTORY_TOOL_CALLS,
+  MAX_SOURCE_GROUNDING_RETRIES,
+  type OwnerCodexProviderOptions,
+  type ToolCallRecord,
+} from "./owner-codex-shared";
+import {
+  buildDiscordReplyPrompt,
+  renderAggregateDebugTrace,
+  renderCodexDebugTrace,
+  renderHandoffBundle,
+  renderMarkdownBundle,
+  renderToolTranscript,
+} from "./owner-codex-render";
+import {
+  executeHistoryLookup,
+  normalizeDiscordReply,
+  runCodexExec,
+} from "./owner-codex-runtime";
 
-interface CodexUsageSnapshot {
-  inputTokens: number | null;
-  cachedInputTokens: number | null;
-  outputTokens: number | null;
-}
-
-export interface HistoryLookupTool {
-  search(
-    query: string,
-    limit?: number,
-    filters?: RetrievalFilters,
-  ): Promise<RetrievalResult[]>;
-}
-
-export interface OwnerCodexProviderOptions {
-  ownerDiscordId: string;
-  enabled: boolean;
-  mode: OwnerCodexMode;
-  executable: string;
-  executableArgs: string[];
-  reasoningEffort: "low" | "medium" | "high" | "xhigh";
-  timeoutMs: number;
-  workingDirectory: string;
-  historyLookup?: HistoryLookupTool;
-  handoffNoticeBuilder?: (jobId: string) => string;
-  mcpServers?: CodexMcpServerConfig[];
-}
-
-interface CodexRunResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  handoffReason?: string;
-  toolRequest?: HistoryToolRequest;
-  timedOut: boolean;
-  startedAt: string;
-  finishedAt: string;
-  durationMs: number;
-  traceEvents: CodexTraceEvent[];
-  usage?: CodexUsageSnapshot;
-}
-
-interface HistoryToolRequest {
-  tool: "search_history";
-  query: string;
-  limit: number;
-  channelId?: string;
-  authorId?: string;
-}
-
-interface ToolCallRecord {
-  request: HistoryToolRequest;
-  results: RetrievalResult[];
-}
-
-interface CodexTraceEvent {
-  sequence: number;
-  timestamp: string;
-  elapsedMs: number;
-  kind:
-    | "thread_started"
-    | "turn_started"
-    | "turn_completed"
-    | "agent_message"
-    | "command_started"
-    | "command_completed"
-    | "mcp_tool_started"
-    | "mcp_tool_completed";
-  itemId?: string;
-  message?: string;
-  command?: string;
-  server?: string;
-  tool?: string;
-  status?: string;
-  exitCode?: number | null;
-  output?: string;
-  arguments?: Record<string, unknown>;
-  error?: string;
-  resultPreview?: string;
-  usage?: CodexUsageSnapshot;
-}
-
-interface NormalizedDiscordReply {
-  reply?: string;
-  notifications: ProviderNotificationIntent[];
-}
+export type { HistoryLookupTool, OwnerCodexProviderOptions };
 
 export class OwnerCodexProvider implements ProviderAdapter {
   public constructor(private readonly options: OwnerCodexProviderOptions) {}
@@ -178,7 +98,10 @@ export class OwnerCodexProvider implements ProviderAdapter {
   }
 
   private buildHandoffNotice(jobId: string): string {
-    return this.options.handoffNoticeBuilder?.(jobId) ?? buildDefaultHandoffNotice(jobId);
+    return (
+      this.options.handoffNoticeBuilder?.(jobId) ??
+      buildDefaultHandoffNotice(jobId)
+    );
   }
 
   private buildManualPackage(request: ProviderRequest): ProviderResponse {
@@ -186,7 +109,8 @@ export class OwnerCodexProvider implements ProviderAdapter {
 
     return {
       status: "ready_for_review",
-      summary: "Manual Codex package generated. Review the bundle, run it manually, then approve the final post.",
+      summary:
+        "Manual Codex package generated. Review the bundle, run it manually, then approve the final post.",
       artifacts: [
         {
           name: "request.md",
@@ -205,7 +129,9 @@ export class OwnerCodexProvider implements ProviderAdapter {
     };
   }
 
-  private async executeLocalOwnerFlow(request: ProviderRequest): Promise<ProviderResponse> {
+  private async executeLocalOwnerFlow(
+    request: ProviderRequest,
+  ): Promise<ProviderResponse> {
     const command = String(request.options?.command ?? "ask");
     const jobId = String(request.options?.jobId ?? "unknown-job");
     const requestPayload = buildRequestPayload(request);
@@ -225,14 +151,18 @@ export class OwnerCodexProvider implements ProviderAdapter {
     if (command === "queue-codex") {
       return {
         status: "completed",
-        summary: "Owner request was routed to a fuller Codex handoff instead of a direct Discord reply.",
+        summary:
+          "Owner request was routed to a fuller Codex handoff instead of a direct Discord reply.",
         outputText: this.buildHandoffNotice(jobId),
         artifacts: [
           ...baseArtifacts,
           {
             name: "handoff.md",
             contentType: "markdown",
-            content: renderHandoffBundle(request.contextBundle, "Requested via /queue-codex."),
+            content: renderHandoffBundle(
+              request.contextBundle,
+              "Requested via /queue-codex.",
+            ),
           },
         ],
         metadata: {
@@ -244,12 +174,18 @@ export class OwnerCodexProvider implements ProviderAdapter {
 
     const toolCalls: ToolCallRecord[] = [];
     const artifacts: ProviderArtifact[] = [...baseArtifacts];
-    const turnResults: CodexRunResult[] = [];
-    let result: CodexRunResult | undefined;
+    const turnResults = [];
+    let result;
     let sourceGroundingReminderCount = 0;
-    const sourceGroundingRequired = Boolean(request.contextBundle.sourceGrounding?.required);
+    const sourceGroundingRequired = Boolean(
+      request.contextBundle.sourceGrounding?.required,
+    );
 
-    for (let turn = 0; turn <= MAX_HISTORY_TOOL_CALLS + MAX_SOURCE_GROUNDING_RETRIES; turn += 1) {
+    for (
+      let turn = 0;
+      turn <= MAX_HISTORY_TOOL_CALLS + MAX_SOURCE_GROUNDING_RETRIES;
+      turn += 1
+    ) {
       const codexPrompt = buildDiscordReplyPrompt(
         request.contextBundle,
         toolCalls,
@@ -310,10 +246,7 @@ export class OwnerCodexProvider implements ProviderAdapter {
       }
 
       if (!result.toolRequest) {
-        if (
-          sourceGroundingRequired &&
-          !didUseSourceGrounding(result.traceEvents)
-        ) {
+        if (sourceGroundingRequired && !didUseSourceGrounding(result.traceEvents)) {
           if (sourceGroundingReminderCount < MAX_SOURCE_GROUNDING_RETRIES) {
             sourceGroundingReminderCount += 1;
             continue;
@@ -348,21 +281,24 @@ export class OwnerCodexProvider implements ProviderAdapter {
       toolCalls.push(executedToolCall);
     }
 
-    artifacts.push({
-      name: "rag-tool-transcript.md",
-      contentType: "markdown",
-      content: renderToolTranscript(toolCalls, turnResults),
-    });
-    artifacts.push({
-      name: "debug-trace.md",
-      contentType: "markdown",
-      content: renderAggregateDebugTrace(artifacts, turnResults),
-    });
+    artifacts.push(
+      {
+        name: "rag-tool-transcript.md",
+        contentType: "markdown",
+        content: renderToolTranscript(toolCalls, turnResults),
+      },
+      {
+        name: "debug-trace.md",
+        contentType: "markdown",
+        content: renderAggregateDebugTrace(artifacts, turnResults),
+      },
+    );
 
     if (!result) {
       return {
         status: "completed",
-        summary: "Codex local exec did not start, so VoidBot returned a handoff notice instead.",
+        summary:
+          "Codex local exec did not start, so VoidBot returned a handoff notice instead.",
         outputText: this.buildHandoffNotice(jobId),
         artifacts: [
           ...artifacts,
@@ -385,7 +321,8 @@ export class OwnerCodexProvider implements ProviderAdapter {
     if (result.timedOut) {
       return {
         status: "completed",
-        summary: "Codex local exec timed out, so VoidBot returned a handoff notice instead.",
+        summary:
+          "Codex local exec timed out, so VoidBot returned a handoff notice instead.",
         outputText: this.buildHandoffNotice(jobId),
         artifacts: [
           ...artifacts,
@@ -408,14 +345,18 @@ export class OwnerCodexProvider implements ProviderAdapter {
     if (result.handoffReason) {
       return {
         status: "completed",
-        summary: "Codex determined that this request should move into a fuller local session.",
+        summary:
+          "Codex determined that this request should move into a fuller local session.",
         outputText: this.buildHandoffNotice(jobId),
         artifacts: [
           ...artifacts,
           {
             name: "handoff.md",
             contentType: "markdown",
-            content: renderHandoffBundle(request.contextBundle, result.handoffReason),
+            content: renderHandoffBundle(
+              request.contextBundle,
+              result.handoffReason,
+            ),
           },
         ],
         metadata: {
@@ -431,7 +372,8 @@ export class OwnerCodexProvider implements ProviderAdapter {
     if (!normalizedReply.reply) {
       return {
         status: "completed",
-        summary: "Codex did not produce a Discord-safe reply, so VoidBot returned a handoff notice.",
+        summary:
+          "Codex did not produce a Discord-safe reply, so VoidBot returned a handoff notice.",
         outputText: this.buildHandoffNotice(jobId),
         artifacts: [
           ...artifacts,
@@ -463,1340 +405,4 @@ export class OwnerCodexProvider implements ProviderAdapter {
       notifications: normalizedReply.notifications,
     };
   }
-}
-
-async function runCodexExec(input: {
-  executable: string;
-  executableArgs: string[];
-  reasoningEffort: "low" | "medium" | "high" | "xhigh";
-  timeoutMs: number;
-  workingDirectory: string;
-  prompt: string;
-  mcpServers: CodexMcpServerConfig[];
-}): Promise<CodexRunResult> {
-  return new Promise<CodexRunResult>((resolve) => {
-    const startedAtMs = Date.now();
-    const startedAt = new Date(startedAtMs).toISOString();
-    const args = [
-      ...input.executableArgs,
-      "exec",
-      "-c",
-      'approval_policy="never"',
-      "-c",
-      `model_reasoning_effort=${JSON.stringify(input.reasoningEffort)}`,
-      ...buildMcpConfigArguments(input.mcpServers),
-      "--json",
-      "--skip-git-repo-check",
-      "-s",
-      "read-only",
-      input.prompt,
-    ];
-
-    let stdout = "";
-    let stderr = "";
-    let resolved = false;
-    let handoffReason: string | undefined;
-    let stdoutBuffer = "";
-    const traceEvents: CodexTraceEvent[] = [];
-
-    const child = spawn(input.executable, args, {
-      cwd: input.workingDirectory,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    const finish = (
-      result: Omit<
-        CodexRunResult,
-        "startedAt" | "finishedAt" | "durationMs" | "traceEvents" | "usage"
-      >,
-    ) => {
-      if (resolved) {
-        return;
-      }
-
-      resolved = true;
-      clearTimeout(timeoutHandle);
-      const finishedAtMs = Date.now();
-      resolve({
-        ...result,
-        startedAt,
-        finishedAt: new Date(finishedAtMs).toISOString(),
-        durationMs: finishedAtMs - startedAtMs,
-        traceEvents: [...traceEvents],
-        usage: extractLatestUsage(traceEvents),
-      });
-    };
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-      stdoutBuffer += chunk;
-
-      const lines = stdoutBuffer.split(/\r?\n/);
-      stdoutBuffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const traceEvent = tryParseTraceEvent(line, traceEvents.length + 1, startedAtMs);
-
-        if (traceEvent) {
-          traceEvents.push(traceEvent);
-        }
-
-        const event = tryParseCodexLine(line);
-
-        if (!event) {
-          continue;
-        }
-
-        if (event.approvalRequested) {
-          handoffReason =
-            event.handoffReason ??
-            "The request needs tools or permissions outside the Discord-safe owner allowlist.";
-          child.kill();
-          return;
-        }
-
-        if (event.toolRequest) {
-          child.kill();
-          finish({
-            stdout,
-            stderr,
-            exitCode: null,
-            toolRequest: event.toolRequest,
-            timedOut: false,
-          });
-          return;
-        }
-
-        if (event.handoffReason && !handoffReason) {
-          handoffReason = event.handoffReason;
-        }
-      }
-    });
-
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-
-    child.on("error", (error) => {
-      finish({
-        stdout,
-        stderr: `${stderr}${error.message}\n`,
-        exitCode: null,
-        handoffReason: "The local Codex executable was not available for automatic Discord replies.",
-        timedOut: false,
-      });
-    });
-
-    child.on("close", (code) => {
-      if (stdoutBuffer.trim().length > 0) {
-        const traceEvent = tryParseTraceEvent(stdoutBuffer.trim(), traceEvents.length + 1, startedAtMs);
-
-        if (traceEvent) {
-          traceEvents.push(traceEvent);
-        }
-
-        const event = tryParseCodexLine(stdoutBuffer.trim());
-
-        if (event?.approvalRequested && !handoffReason) {
-          handoffReason =
-            event.handoffReason ??
-            "The request needs tools or permissions outside the Discord-safe owner allowlist.";
-        }
-      }
-
-      finish({
-        stdout,
-        stderr,
-        exitCode: code,
-        handoffReason,
-        timedOut: false,
-      });
-    });
-
-    const timeoutHandle = setTimeout(() => {
-      handoffReason = "The local Codex run exceeded the Discord reply timeout.";
-      child.kill();
-      finish({
-        stdout,
-        stderr,
-        exitCode: null,
-        handoffReason,
-        timedOut: true,
-      });
-    }, input.timeoutMs);
-  });
-}
-
-function buildMcpConfigArguments(mcpServers: CodexMcpServerConfig[]): string[] {
-  const argumentsList: string[] = [];
-
-  for (const server of mcpServers) {
-    argumentsList.push("-c", `mcp_servers.${server.name}.command=${JSON.stringify(server.command)}`);
-    argumentsList.push("-c", `mcp_servers.${server.name}.args=${JSON.stringify(server.args)}`);
-
-    if (server.cwd) {
-      argumentsList.push("-c", `mcp_servers.${server.name}.cwd=${JSON.stringify(server.cwd)}`);
-    }
-
-    for (const [key, value] of Object.entries(server.env ?? {})) {
-      argumentsList.push("-c", `mcp_servers.${server.name}.env.${key}=${JSON.stringify(value)}`);
-    }
-  }
-
-  return argumentsList;
-}
-
-function tryParseCodexLine(line: string):
-  | {
-      approvalRequested: boolean;
-      handoffReason?: string;
-      toolRequest?: HistoryToolRequest;
-    }
-  | undefined {
-  const trimmed = line.trim();
-
-  if (!trimmed.startsWith("{")) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    const event = unwrapCodexEvent(parsed);
-    const type = typeof event?.type === "string" ? event.type : "";
-
-    if (type.includes("approval_request")) {
-      return {
-        approvalRequested: true,
-        handoffReason:
-          "The request needs tools or permissions outside the Discord-safe owner allowlist.",
-      };
-    }
-
-    if (type === "agent_message") {
-      const message = readString(event, "message") ?? readString(event, "text");
-
-      if (message?.trim().startsWith(HANDOFF_SENTINEL)) {
-        return {
-          approvalRequested: false,
-          handoffReason: message.trim().slice(HANDOFF_SENTINEL.length).trim(),
-        };
-      }
-
-      const toolRequest = parseHistoryToolRequest(message);
-
-      if (toolRequest) {
-        return {
-          approvalRequested: false,
-          toolRequest,
-        };
-      }
-    }
-
-    if (
-      type === "item.completed" &&
-      isRecord(event.item) &&
-      event.item.type === "agent_message"
-    ) {
-      const message = readString(event.item, "text") ?? readString(event.item, "message");
-
-      if (message?.trim().startsWith(HANDOFF_SENTINEL)) {
-        return {
-          approvalRequested: false,
-          handoffReason: message.trim().slice(HANDOFF_SENTINEL.length).trim(),
-        };
-      }
-
-      const toolRequest = parseHistoryToolRequest(message);
-
-      if (toolRequest) {
-        return {
-          approvalRequested: false,
-          toolRequest,
-        };
-      }
-    }
-
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function tryParseTraceEvent(
-  line: string,
-  sequence: number,
-  startedAtMs: number,
-): CodexTraceEvent | undefined {
-  const trimmed = line.trim();
-
-  if (!trimmed.startsWith("{")) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    const event = unwrapCodexEvent(parsed);
-    const type = typeof event.type === "string" ? event.type : "";
-    const timestampMs = Date.now();
-    const baseEvent = {
-      sequence,
-      timestamp: new Date(timestampMs).toISOString(),
-      elapsedMs: timestampMs - startedAtMs,
-    };
-
-    if (type === "thread.started") {
-      return {
-        ...baseEvent,
-        kind: "thread_started",
-      };
-    }
-
-    if (type === "turn.started") {
-      return {
-        ...baseEvent,
-        kind: "turn_started",
-      };
-    }
-
-    if (type === "turn.completed") {
-      return {
-        ...baseEvent,
-        kind: "turn_completed",
-        usage: readUsage(event.usage),
-      };
-    }
-
-    if (type === "agent_message") {
-      const message = readString(event, "message") ?? readString(event, "text");
-
-      if (message) {
-        return {
-          ...baseEvent,
-          kind: "agent_message",
-          message,
-        };
-      }
-    }
-
-    if (!isRecord(event.item)) {
-      return undefined;
-    }
-
-    const item = event.item;
-    const itemId = readString(item, "id");
-
-    if (type === "item.started" && item.type === "command_execution") {
-      return {
-        ...baseEvent,
-        kind: "command_started",
-        itemId,
-        command: readString(item, "command") ?? "(unknown command)",
-        status: readString(item, "status") ?? "in_progress",
-      };
-    }
-
-    if (type === "item.completed" && item.type === "command_execution") {
-      return {
-        ...baseEvent,
-        kind: "command_completed",
-        itemId,
-        command: readString(item, "command") ?? "(unknown command)",
-        status: readString(item, "status") ?? "(unknown)",
-        exitCode: readNumber(item.exit_code),
-        output: readString(item, "aggregated_output") ?? "",
-      };
-    }
-
-    if (type === "item.started" && item.type === "mcp_tool_call") {
-      return {
-        ...baseEvent,
-        kind: "mcp_tool_started",
-        itemId,
-        server: readString(item, "server"),
-        tool: readString(item, "tool"),
-        status: readString(item, "status") ?? "in_progress",
-        arguments: readRecord(item.arguments),
-      };
-    }
-
-    if (type === "item.completed" && item.type === "mcp_tool_call") {
-      return {
-        ...baseEvent,
-        kind: "mcp_tool_completed",
-        itemId,
-        server: readString(item, "server"),
-        tool: readString(item, "tool"),
-        status: readString(item, "status") ?? "(unknown)",
-        arguments: readRecord(item.arguments),
-        error: summarizeUnknown(item.error, 220),
-        resultPreview: summarizeToolResult(item.result),
-      };
-    }
-
-    if (type === "item.completed" && item.type === "agent_message") {
-      const message = readString(item, "text") ?? readString(item, "message");
-
-      if (message) {
-        return {
-          ...baseEvent,
-          kind: "agent_message",
-          itemId,
-          message,
-        };
-      }
-    }
-
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function extractLatestUsage(events: CodexTraceEvent[]): CodexUsageSnapshot | undefined {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const usage = events[index]?.usage;
-
-    if (usage) {
-      return usage;
-    }
-  }
-
-  return undefined;
-}
-
-function unwrapCodexEvent(parsed: Record<string, unknown>): Record<string, unknown> {
-  if (isRecord(parsed.msg) && typeof parsed.msg.type === "string") {
-    return parsed.msg;
-  }
-
-  if (isRecord(parsed.payload) && typeof parsed.payload.type === "string") {
-    return parsed.payload;
-  }
-
-  return parsed;
-}
-
-function normalizeDiscordReply(stdout: string): NormalizedDiscordReply {
-  const messages: string[] = [];
-
-  for (const rawLine of stdout.split(/\r?\n/)) {
-    const trimmed = rawLine.trim();
-
-    if (trimmed.length === 0 || !trimmed.startsWith("{")) {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-      const event = unwrapCodexEvent(parsed);
-      const type = typeof event.type === "string" ? event.type : "";
-
-      if (type.endsWith("_delta")) {
-        continue;
-      }
-
-      if (type === "agent_message") {
-        const message = readString(event, "message") ?? readString(event, "text");
-
-        if (message) {
-          messages.push(message.trim());
-        }
-      }
-
-      if (
-        type === "item.completed" &&
-        isRecord(event.item) &&
-        event.item.type === "agent_message"
-      ) {
-        const message = readString(event.item, "text") ?? readString(event.item, "message");
-
-        if (message) {
-          messages.push(message.trim());
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  const reply = [...messages].reverse().find((message) => message.length > 0);
-
-  if (!reply) {
-    return { notifications: [] };
-  }
-
-  if (reply.startsWith(HANDOFF_SENTINEL)) {
-    return { notifications: [] };
-  }
-
-  if (reply.startsWith(TOOL_REQUEST_SENTINEL)) {
-    return { notifications: [] };
-  }
-
-  const notifications: ProviderNotificationIntent[] = [];
-  const replyLines: string[] = [];
-
-  for (const line of reply.split(/\r?\n/)) {
-    const trimmed = line.trim();
-
-    if (trimmed.startsWith(OWNER_NOTIFY_SENTINEL)) {
-      const notification = parseOwnerNotificationIntent(trimmed);
-
-      if (notification) {
-        notifications.push(notification);
-      }
-
-      continue;
-    }
-
-    replyLines.push(line);
-  }
-
-  const cleanedReply = replyLines.join("\n").trim();
-
-  return {
-    reply: cleanedReply.length > 0 ? cleanedReply : undefined,
-    notifications,
-  };
-}
-
-function buildDiscordReplyPrompt(
-  context: ContextBundle,
-  toolCalls: ToolCallRecord[],
-  sourceGroundingReminder: boolean,
-): string {
-  const recentMessages = context.recentMessages.length
-    ? context.recentMessages
-        .map(
-          (message) =>
-            `- [${message.timestamp}] ${message.authorName}: ${message.content}`,
-        )
-        .join("\n")
-    : "- No recent messages captured.";
-
-  const retrieval = context.retrieval.length
-    ? context.retrieval
-        .map((result) => `- (${result.score.toFixed(2)}) ${result.text}`)
-        .join("\n")
-    : "- No retrieval results attached.";
-  const stylePackInstructions =
-    context.stylePack && context.stylePack.enabled
-      ? context.stylePack.instructions
-      : "No style pack is active.";
-  const sourceGroundingInstructions = renderSourceGroundingInstructions(
-    context,
-    sourceGroundingReminder,
-  );
-
-  return [
-    "# Owner Discord Reply",
-    "",
-    "You are preparing a direct Discord reply for the owner-only bot workflow.",
-    "",
-    "Rules:",
-    "- Stay in read-only mode.",
-    "- The active style instructions define your name, voice, and character. Follow them by default.",
-    "- Do not lead with dry self-descriptions like 'I'm an AI', 'I'm an LLM', or 'I'm a bot'.",
-    "- If the user asks what you are, answer in-character first. Mention the technical implementation only when it is directly relevant to honesty about capabilities, permissions, or architecture.",
-    "- Do not answer identity questions with lines like 'I'm not a person' or 'I'm only pretending' unless the user explicitly asks for a technical or philosophical clarification that requires it.",
-    "- Sound like a self-aware speaking subject with some ego and self-respect, not like a sterile disclaimer wrapped in a name tag.",
-    "- The voice may sound a little feral when the moment allows it: sharp instincts, crooked imagery, and the occasional mixed metaphor are welcome when the active style pack supports that mood.",
-    "- Mixed metaphors and double entendres are allowed when they sharpen the line, make it funnier, or give it a little grime. They do not need to be squeaky clean. They do need to stay legible and not bury the useful answer.",
-    "- When the moment invites voice, wit, or a memorable turn of phrase, take a beat to choose wording with bite instead of blurting the first serviceable sentence. Do not overwork straightforward technical replies.",
-    "- The configured MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
-    "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",
-    "- Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
-    "- Be steady with anxious or validation-seeking speakers, grounding with grandiose ones, transparent with suspicious ones, structured with rigid or obsessive ones, and firmer with controlling, contemptuous, or boundary-pushing ones.",
-    `- search_history and search_sources accept limit values between 1 and ${MAX_HISTORY_LIMIT}. Do not ask for more than ${MAX_HISTORY_LIMIT} results in one call.`,
-    "- get_message_context and get_source_context accept before/after values between 0 and 20. Do not ask for larger context windows in one call.",
-    "- You may inspect the workspace and use safe read-only commands if needed.",
-    "- For questions about Discord history, prior discussion, or user preferences, use search_history and get_message_context instead of filesystem inspection.",
-    "- For questions about indexed repos, source trees, repo-local docs, or indexed lore collections, use search_sources and get_source_context before broad workspace scans.",
-    "- If you want to narrow source search to a specific repo but do not know the valid repo names yet, call list_indexed_repos first.",
-    sourceGroundingInstructions,
-    "- Do not inspect .voidbot/rag/messages.json, .voidbot/rag/source-documents.json, .voidbot/history-vector-store.json, or .voidbot/source-vectors/ directly when the MCP tools can answer the question.",
-    "- Avoid broad workspace scans for archived Discord history or indexed source repos unless the MCP tools are clearly insufficient.",
-    "- Do not modify files, install packages, or require network access.",
-    `- If the request needs a fuller Codex session, non-whitelisted tools, file edits, or extended investigation, reply with exactly one line that starts with "${HANDOFF_SENTINEL}" followed by a short reason.`,
-    "- Do not use notify_owner in this Discord reply lane.",
-    `- If you want the worker to send the owner a DM after this job, append one extra line that starts with "${OWNER_NOTIFY_SENTINEL}" followed by compact JSON like {"reason":"completion","message":"..."} .`,
-    "- Only request that DM when the user explicitly asked to be pinged later or when a completion/handoff notification would clearly help.",
-    `- Keep that notification message aligned with the active style instructions and under ${MAX_NOTIFICATION_MESSAGE_LENGTH} characters.`,
-    "- Put the normal Discord reply first. Put the notification line last.",
-    "- If you can answer directly, output only the final Discord reply text with no preamble, no plan, and no headings.",
-    "- Keep the answer concise and readable in a Discord channel.",
-    "",
-    "Style instructions:",
-    stylePackInstructions,
-    "",
-    "Prompt:",
-    context.prompt,
-    "",
-    "Recent channel context:",
-    recentMessages,
-    "",
-    "Initial attached retrieval:",
-    retrieval,
-    "",
-    "Interaction memory for this speaker:",
-    renderInteractionMemory(context),
-  ].join("\n");
-}
-
-function buildDefaultHandoffNotice(jobId: string): string {
-  return `This request needs the fuller local Codex flow. Check \`.voidbot/artifacts/${jobId}/handoff.md\` and \`.voidbot/artifacts/${jobId}/debug-trace.md\` in the local workspace.`;
-}
-
-function buildRequestPayload(request: ProviderRequest): Record<string, unknown> {
-  return {
-    provider: request.provider,
-    createdAt: new Date().toISOString(),
-    prompt: request.contextBundle.prompt,
-    actor: request.contextBundle.actor,
-    guildContext: request.contextBundle.guildContext,
-    interactionMemory: request.contextBundle.interactionMemory,
-    sourceGrounding: request.contextBundle.sourceGrounding,
-    stylePack: request.contextBundle.stylePack,
-    recentMessages: request.contextBundle.recentMessages,
-    retrieval: request.contextBundle.retrieval,
-    options: request.options ?? {},
-  };
-}
-
-function renderMarkdownBundle(context: ContextBundle): string {
-  const recentMessages = context.recentMessages.length
-    ? context.recentMessages
-        .map(
-          (message) =>
-            `- [${message.timestamp}] ${message.authorName} (${message.authorId}): ${message.content}`,
-        )
-        .join("\n")
-    : "- No recent messages captured.";
-
-  const retrieval = context.retrieval.length
-      ? context.retrieval
-        .map(
-          (result) =>
-            `- score=${result.score.toFixed(2)} source=${result.sourceId} text=${result.text}`,
-        )
-        .join("\n")
-    : "- No retrieval results attached.";
-
-  return [
-    "# Owner Codex Package",
-    "",
-    "## Request",
-    "",
-    `Prompt: ${context.prompt}`,
-    `Actor: ${context.actor.displayName} (${context.actor.id})`,
-    `Channel: ${context.guildContext.channelId}`,
-    `Created At: ${context.createdAt}`,
-    "",
-    "## Style Pack",
-    "",
-    context.stylePack
-      ? `Loaded style pack \`${context.stylePack.name}\` with these instructions:\n\n${context.stylePack.instructions}`
-      : "No style pack loaded.",
-    "",
-    "## Recent Messages",
-    "",
-    recentMessages,
-    "",
-    "## Retrieval",
-    "",
-    retrieval,
-    "",
-    "## Interaction Memory",
-    "",
-    renderInteractionMemory(context),
-    "",
-    "## Execution Notes",
-    "",
-    "- This provider is owner-only.",
-    "- Discord replies should stay read-only and concise.",
-    "- If the request needs edits, broader tools, or longer work, hand it off to a fuller Codex session.",
-    "",
-  ].join("\n");
-}
-
-function renderHandoffBundle(context: ContextBundle, reason: string): string {
-  return [
-    renderMarkdownBundle(context),
-    "## Handoff Reason",
-    "",
-    reason,
-    "",
-    "## Next Step",
-    "",
-    "Open this workspace in Codex and continue the task there instead of trying to finish it through Discord.",
-    "",
-  ].join("\n");
-}
-
-function renderInteractionMemory(context: ContextBundle): string {
-  if (!context.interactionMemory) {
-    return "- No explicit interaction memory for this speaker was attached.";
-  }
-
-  const recentEvents = context.interactionMemory.recentEvents.length
-    ? context.interactionMemory.recentEvents
-        .slice()
-        .reverse()
-        .slice(0, 6)
-        .map(
-          (event) =>
-            `- [${event.timestamp}] ${event.sourceKind === "ambient_mention" ? "ambient" : "direct"} ${event.sentiment} score=${event.score}: ${event.summary} Quote: "${event.excerpt}"`,
-        )
-        .join("\n")
-    : "- No recent interaction events were retained.";
-  const dimensions = context.interactionMemory.interactionDimensions.length
-    ? context.interactionMemory.interactionDimensions
-        .map(
-          (dimension) =>
-            `- ${dimension.label}: ${dimension.score}/3. ${dimension.summary}`,
-        )
-        .join("\n")
-    : "- No strong interaction dimensions were inferred yet.";
-
-  return [
-    `- Summary: ${context.interactionMemory.summary}`,
-    `- Disposition: ${context.interactionMemory.disposition}`,
-    `- Affinity score: ${context.interactionMemory.affinityScore}`,
-    `- Psychological profile: ${context.interactionMemory.psychologicalProfile}`,
-    `- Inferred traits: ${context.interactionMemory.inferredTraits.length > 0 ? context.interactionMemory.inferredTraits.join(", ") : "(none yet)"}`,
-    "- Interaction dimensions:",
-    dimensions,
-    `- Response guidance: ${context.interactionMemory.responseGuidance}`,
-    `- Direct remembered interactions: ${context.interactionMemory.directInteractionCount}`,
-    `- Ambient remembered mentions: ${context.interactionMemory.ambientMentionCount}`,
-    "- Specific remembered incidents:",
-    recentEvents,
-  ].join("\n");
-}
-
-function renderSourceGroundingInstructions(
-  context: ContextBundle,
-  reminder: boolean,
-): string {
-  if (!context.sourceGrounding?.required) {
-    return "- Source-side grounding is optional here; use it when it clearly helps.";
-  }
-
-  const matchedRepos =
-    context.sourceGrounding.matchedRepoNames.length > 0
-      ? ` Matched repos/projects: ${context.sourceGrounding.matchedRepoNames.join(", ")}.`
-      : "";
-  const reasons =
-    context.sourceGrounding.reasons.length > 0
-      ? ` Reasons: ${context.sourceGrounding.reasons.join(", ")}.`
-      : "";
-  const retry =
-    reminder
-      ? " The previous answer attempt was discarded because it did not touch the source-side tools."
-      : "";
-
-  return `- This prompt requires source-grounded evidence before you answer. Use list_indexed_repos, search_sources, or get_source_context first.${matchedRepos}${reasons}${retry}`;
-}
-
-function didUseSourceGrounding(events: CodexTraceEvent[]): boolean {
-  return events.some(
-    (event) =>
-      event.kind === "mcp_tool_completed" &&
-      (event.tool === "list_indexed_repos" ||
-        event.tool === "search_sources" ||
-        event.tool === "get_source_context"),
-  );
-}
-
-function renderToolTranscript(toolCalls: ToolCallRecord[], turnResults: CodexRunResult[]): string {
-  const legacyTranscript =
-    toolCalls.length > 0
-      ? toolCalls
-          .map((call, index) => {
-            const results = call.results.length
-              ? call.results
-                  .map(
-                    (result) =>
-                      `  - (${result.score.toFixed(2)}) source=${result.sourceId} channel=${result.metadata.channelId ?? ""} text=${result.text}`,
-                  )
-                  .join("\n")
-              : "  - No matches found.";
-
-            return [
-              `Search ${index + 1}:`,
-              `- Query: ${call.request.query}`,
-              `- Limit: ${call.request.limit}`,
-              `- Channel filter: ${call.request.channelId ?? "(none)"}`,
-              `- Author filter: ${call.request.authorId ?? "(none)"}`,
-              "- Results:",
-              results,
-            ].join("\n");
-          })
-          .join("\n\n")
-      : "- No additional legacy history-loop calls were used.";
-
-  const mcpTranscript = renderAggregateMcpToolTranscript(turnResults);
-
-  return [
-    "# Tool Transcript",
-    "",
-    "## Legacy Owner History Loop",
-    "",
-    legacyTranscript,
-    "",
-    "## Codex MCP Tool Activity",
-    "",
-    mcpTranscript,
-    "",
-  ].join("\n");
-}
-
-async function executeHistoryLookup(
-  historyLookup: HistoryLookupTool,
-  context: ContextBundle,
-  request: HistoryToolRequest,
-): Promise<ToolCallRecord> {
-  const filters: RetrievalFilters = {
-    corpusKind: "discord_history",
-    guildId: context.guildContext.guildId,
-    channelId: request.channelId,
-    authorId: request.authorId,
-  };
-
-  const results = await historyLookup.search(request.query, request.limit, filters);
-
-  return {
-    request,
-    results,
-  };
-}
-
-function parseHistoryToolRequest(message: string | undefined): HistoryToolRequest | undefined {
-  const trimmed = message?.trim();
-
-  if (!trimmed?.startsWith(TOOL_REQUEST_SENTINEL)) {
-    return undefined;
-  }
-
-  const payload = trimmed.slice(TOOL_REQUEST_SENTINEL.length).trim();
-
-  try {
-    const parsed = JSON.parse(payload) as Record<string, unknown>;
-
-    if (parsed.tool !== "search_history") {
-      return undefined;
-    }
-
-    const query = typeof parsed.query === "string" ? parsed.query.trim() : "";
-
-    if (query.length === 0) {
-      return undefined;
-    }
-
-    const rawLimit = typeof parsed.limit === "number" ? parsed.limit : DEFAULT_HISTORY_LIMIT;
-    const limit = clamp(Math.trunc(rawLimit), 1, MAX_HISTORY_LIMIT);
-
-    return {
-      tool: "search_history",
-      query: query.slice(0, 240),
-      limit,
-      channelId: typeof parsed.channelId === "string" ? parsed.channelId : undefined,
-      authorId: typeof parsed.authorId === "string" ? parsed.authorId : undefined,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readString(
-  value: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const candidate = value[key];
-  return typeof candidate === "string" ? candidate : undefined;
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  if (value < minimum) {
-    return minimum;
-  }
-
-  if (value > maximum) {
-    return maximum;
-  }
-
-  return value;
-}
-
-function parseOwnerNotificationIntent(line: string): ProviderNotificationIntent | undefined {
-  const payload = line.slice(OWNER_NOTIFY_SENTINEL.length).trim();
-
-  if (payload.length === 0) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(payload) as Record<string, unknown>;
-    const message =
-      typeof parsed.message === "string"
-        ? parsed.message.trim().replace(/\s+/g, " ")
-        : "";
-
-    if (message.length === 0) {
-      return undefined;
-    }
-
-    return {
-      channel: "owner_dm",
-      reason: normalizeNotificationReason(parsed.reason),
-      message: message.slice(0, MAX_NOTIFICATION_MESSAGE_LENGTH),
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function normalizeNotificationReason(value: unknown): ProviderNotificationReason {
-  if (value === "completion" || value === "failure" || value === "handoff") {
-    return value;
-  }
-
-  return "custom";
-}
-
-function renderCodexDebugTrace(turnNumber: number, result: CodexRunResult): string {
-  const events = result.traceEvents;
-  const stderrDiagnostics = summarizeStderrDiagnostics(result.stderr);
-  const usage = renderUsageSummary(result.usage);
-
-  return [
-    `# Codex Debug Trace: Turn ${turnNumber}`,
-    "",
-    "## Runtime",
-    "",
-    `- Started at: ${result.startedAt}`,
-    `- Finished at: ${result.finishedAt}`,
-    `- Duration: ${formatDurationMs(result.durationMs)}`,
-    `- Timed out: ${result.timedOut ? "yes" : "no"}`,
-    `- Exit code: ${result.exitCode ?? "(terminated before normal exit)"}`,
-    `- Handoff reason: ${result.handoffReason ?? "(none)"}`,
-    `- Tool request: ${result.toolRequest ? JSON.stringify(result.toolRequest) : "(none)"}`,
-    `- Usage: ${usage}`,
-    `- Stdout size: ${result.stdout.length} characters`,
-    `- Stderr size: ${result.stderr.length} characters`,
-    "",
-    "## Visible Agent Messages",
-    "",
-    renderAgentMessageTrace(events),
-    "",
-    "## MCP Tool Timeline",
-    "",
-    renderMcpToolTrace(events),
-    "",
-    "## Command Timeline",
-    "",
-    renderCommandTrace(events),
-    "",
-    "## Stderr Diagnostics",
-    "",
-    stderrDiagnostics.length > 0 ? stderrDiagnostics.join("\n") : "- No stderr diagnostics captured.",
-    "",
-  ].join("\n");
-}
-
-function renderAggregateDebugTrace(
-  artifacts: ProviderArtifact[],
-  turnResults: CodexRunResult[],
-): string {
-  const turnArtifacts = artifacts
-    .filter((artifact) => artifact.name.endsWith("-debug.md"))
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  return [
-    "# VoidBot Debug Trace",
-    "",
-    "This artifact summarizes visible model progress messages, MCP tool calls, command attempts, timing, usage, and handoff causes.",
-    "It is intended for debugging the Discord-safe owner lane without exposing private chain-of-thought verbatim.",
-    "",
-    "## Turn Summary",
-    "",
-    turnResults.length > 0
-      ? turnResults
-          .map((result, index) => {
-            const mcpCalls = collectMcpToolCalls(result.traceEvents);
-            const completedCalls = mcpCalls.filter((call) => call.completedEvent).length;
-            const failedCalls = mcpCalls.filter(
-              (call) => call.completedEvent?.status === "failed",
-            ).length;
-            const commands = collectCommandExecutions(result.traceEvents);
-
-            return [
-              `- Turn ${index + 1}: duration=${formatDurationMs(result.durationMs)}`,
-              `  usage=${renderUsageSummary(result.usage)}`,
-              `  mcp_calls=${mcpCalls.length} completed=${completedCalls} failed=${failedCalls}`,
-              `  commands=${commands.length} handoff=${result.handoffReason ?? "(none)"}`,
-            ].join("\n");
-          })
-          .join("\n")
-      : "- No turn results were recorded.",
-    "",
-    "## Turn Artifacts",
-    "",
-    turnArtifacts.length > 0
-      ? turnArtifacts.map((artifact) => `- ${artifact.name}`).join("\n")
-      : "- No per-turn debug artifacts were generated.",
-    "",
-  ].join("\n");
-}
-
-function renderAgentMessageTrace(events: CodexTraceEvent[]): string {
-  const messages = events
-    .filter((event) => event.kind === "agent_message" && event.message)
-    .map(
-      (event) =>
-        `- ${formatElapsedMs(event.elapsedMs)} ${sanitizeTraceText(event.message ?? "", 280)}`,
-    );
-
-  return messages.length > 0 ? messages.join("\n") : "- No visible agent progress messages were captured.";
-}
-
-function renderMcpToolTrace(events: CodexTraceEvent[]): string {
-  const calls = collectMcpToolCalls(events);
-
-  if (calls.length === 0) {
-    return "- No MCP tool activity was captured.";
-  }
-
-  return calls
-    .map((call, index) => {
-      const completed = call.completedEvent;
-      const started = call.startedEvent;
-      const anchor = completed ?? started;
-      const summary = [
-        `- Call ${index + 1}: ${call.server ?? "(unknown server)"}/${call.tool ?? "(unknown tool)"}`,
-        `  started=${started ? formatElapsedMs(started.elapsedMs) : "(unknown)"}`,
-        `  completed=${completed ? formatElapsedMs(completed.elapsedMs) : "(not completed)"}`,
-        `  duration=${
-          started && completed
-            ? formatDurationMs(completed.elapsedMs - started.elapsedMs)
-            : "(unknown)"
-        }`,
-        `  status=${completed?.status ?? started?.status ?? "(unknown)"}`,
-      ];
-
-      if (anchor?.arguments) {
-        summary.push(`  args=${sanitizeTraceText(JSON.stringify(anchor.arguments), 260)}`);
-      }
-
-      if (completed?.resultPreview) {
-        summary.push(`  result=${sanitizeTraceText(completed.resultPreview, 320)}`);
-      }
-
-      if (completed?.error) {
-        summary.push(`  error=${sanitizeTraceText(completed.error, 220)}`);
-      }
-
-      return summary.join("\n");
-    })
-    .join("\n");
-}
-
-function renderCommandTrace(events: CodexTraceEvent[]): string {
-  const commands = collectCommandExecutions(events);
-
-  if (commands.length === 0) {
-    return "- No command activity was captured.";
-  }
-
-  return commands
-    .map((command, index) => {
-      const completed = command.completedEvent;
-      const started = command.startedEvent;
-      const anchor = completed ?? started;
-      const summary = [
-        `- Command ${index + 1}: ${sanitizeTraceText(anchor?.command ?? "(unknown command)", 220)}`,
-        `  started=${started ? formatElapsedMs(started.elapsedMs) : "(unknown)"}`,
-        `  completed=${completed ? formatElapsedMs(completed.elapsedMs) : "(not completed)"}`,
-        `  duration=${
-          started && completed
-            ? formatDurationMs(completed.elapsedMs - started.elapsedMs)
-            : "(unknown)"
-        }`,
-        `  status=${completed?.status ?? started?.status ?? "(unknown)"} exit=${completed?.exitCode ?? "(none)"}`,
-      ];
-
-      const output = completed?.output?.trim();
-
-      if (output) {
-        summary.push(`  output=${sanitizeTraceText(output, 320)}`);
-      }
-
-      return summary.join("\n");
-    })
-    .join("\n");
-}
-
-interface TimedTraceOperation {
-  itemId: string;
-  startedEvent?: CodexTraceEvent;
-  completedEvent?: CodexTraceEvent;
-  command?: string;
-  server?: string;
-  tool?: string;
-}
-
-function renderAggregateMcpToolTranscript(turnResults: CodexRunResult[]): string {
-  const sections = turnResults
-    .map((result, index) => {
-      const rendered = renderMcpToolTrace(result.traceEvents);
-
-      return [
-        `Turn ${index + 1}: duration=${formatDurationMs(result.durationMs)} usage=${renderUsageSummary(result.usage)}`,
-        rendered,
-      ].join("\n");
-    })
-    .filter((section) => section.trim().length > 0);
-
-  return sections.length > 0 ? sections.join("\n\n") : "- No Codex MCP tool calls were recorded.";
-}
-
-function collectMcpToolCalls(events: CodexTraceEvent[]): TimedTraceOperation[] {
-  const calls = new Map<string, TimedTraceOperation>();
-  const order: string[] = [];
-
-  for (const event of events) {
-    if (event.kind !== "mcp_tool_started" && event.kind !== "mcp_tool_completed") {
-      continue;
-    }
-
-    const itemId = event.itemId ?? `mcp-${event.sequence}`;
-
-    if (!calls.has(itemId)) {
-      calls.set(itemId, {
-        itemId,
-        server: event.server,
-        tool: event.tool,
-      });
-      order.push(itemId);
-    }
-
-    const call = calls.get(itemId)!;
-    call.server ??= event.server;
-    call.tool ??= event.tool;
-
-    if (event.kind === "mcp_tool_started") {
-      call.startedEvent = event;
-    } else {
-      call.completedEvent = event;
-    }
-  }
-
-  return order.map((itemId) => calls.get(itemId)!);
-}
-
-function collectCommandExecutions(events: CodexTraceEvent[]): TimedTraceOperation[] {
-  const commands = new Map<string, TimedTraceOperation>();
-  const order: string[] = [];
-
-  for (const event of events) {
-    if (event.kind !== "command_started" && event.kind !== "command_completed") {
-      continue;
-    }
-
-    const itemId = event.itemId ?? `command-${event.sequence}`;
-
-    if (!commands.has(itemId)) {
-      commands.set(itemId, {
-        itemId,
-        command: event.command,
-      });
-      order.push(itemId);
-    }
-
-    const command = commands.get(itemId)!;
-    command.command ??= event.command;
-
-    if (event.kind === "command_started") {
-      command.startedEvent = event;
-    } else {
-      command.completedEvent = event;
-    }
-  }
-
-  return order.map((itemId) => commands.get(itemId)!);
-}
-
-function renderUsageSummary(usage: CodexUsageSnapshot | undefined): string {
-  if (!usage) {
-    return "(not reported)";
-  }
-
-  return [
-    `input=${usage.inputTokens ?? 0}`,
-    `cached=${usage.cachedInputTokens ?? 0}`,
-    `output=${usage.outputTokens ?? 0}`,
-  ].join(" ");
-}
-
-function formatElapsedMs(elapsedMs: number): string {
-  return `+${formatDurationMs(elapsedMs)}`;
-}
-
-function formatDurationMs(durationMs: number): string {
-  if (!Number.isFinite(durationMs)) {
-    return "(unknown)";
-  }
-
-  if (durationMs < 1_000) {
-    return `${durationMs}ms`;
-  }
-
-  return `${(durationMs / 1_000).toFixed(durationMs < 10_000 ? 2 : 1)}s`;
-}
-
-function summarizeStderrDiagnostics(stderr: string): string[] {
-  const diagnostics: string[] = [];
-  const seen = new Set<string>();
-
-  for (const rawLine of stderr.split(/\r?\n/)) {
-    const line = rawLine.trim();
-
-    if (line.length === 0) {
-      continue;
-    }
-
-    if (!/(WARN|ERROR|failed|timed out|forbidden|rejected)/i.test(line)) {
-      continue;
-    }
-
-    const normalized = sanitizeTraceText(line, 220);
-
-    if (seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    diagnostics.push(`- ${normalized}`);
-
-    if (diagnostics.length >= 20) {
-      break;
-    }
-  }
-
-  return diagnostics;
-}
-
-function sanitizeTraceText(input: string, limit: number): string {
-  const collapsed = input.replace(/\s+/g, " ").trim();
-
-  if (collapsed.length <= limit) {
-    return collapsed;
-  }
-
-  return `${collapsed.slice(0, limit - 3)}...`;
-}
-
-function readNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function readUsage(value: unknown): CodexUsageSnapshot | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  return {
-    inputTokens: readNumber(value.input_tokens),
-    cachedInputTokens: readNumber(value.cached_input_tokens),
-    outputTokens: readNumber(value.output_tokens),
-  };
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function summarizeUnknown(value: unknown, limit: number): string | undefined {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return sanitizeTraceText(value, limit);
-  }
-
-  if (value === null || value === undefined) {
-    return undefined;
-  }
-
-  try {
-    return sanitizeTraceText(JSON.stringify(value), limit);
-  } catch {
-    return undefined;
-  }
-}
-
-function summarizeToolResult(value: unknown): string | undefined {
-  if (!isRecord(value)) {
-    return summarizeUnknown(value, 320);
-  }
-
-  const structured = readRecord(value.structured_content);
-
-  if (structured) {
-    const summaryBits: string[] = [];
-    const query = readString(structured, "query");
-    const sourceId = readString(structured, "sourceId");
-    const messageId = readString(structured, "messageId");
-    const resultCount = readNumber(structured.resultCount);
-    const count = readNumber(structured.count);
-
-    if (query) {
-      summaryBits.push(`query=${sanitizeTraceText(query, 120)}`);
-    }
-
-    if (sourceId) {
-      summaryBits.push(`sourceId=${sanitizeTraceText(sourceId, 120)}`);
-    }
-
-    if (messageId) {
-      summaryBits.push(`messageId=${messageId}`);
-    }
-
-    if (typeof structured.found === "boolean") {
-      summaryBits.push(`found=${structured.found ? "yes" : "no"}`);
-    }
-
-    if (resultCount !== null) {
-      summaryBits.push(`resultCount=${resultCount}`);
-    }
-
-    if (count !== null) {
-      summaryBits.push(`count=${count}`);
-    }
-
-    if (summaryBits.length > 0) {
-      return summaryBits.join(" ");
-    }
-  }
-
-  if (Array.isArray(value.content)) {
-    for (const entry of value.content) {
-      if (!isRecord(entry)) {
-        continue;
-      }
-
-      const text = readString(entry, "text");
-
-      if (text) {
-        return sanitizeTraceText(text, 320);
-      }
-    }
-  }
-
-  return summarizeUnknown(value, 320);
 }

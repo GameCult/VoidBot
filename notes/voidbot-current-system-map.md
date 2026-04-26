@@ -15,7 +15,13 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/core/src/context-builder.ts`
   - request context assembly, including interaction-memory/profile attachment.
 - `packages/providers/src/owner-codex-provider.ts`
-  - Discord-safe `codex exec` lane, read-only tool policy, source-grounding enforcement, traces, handoff behavior.
+  - thin orchestration layer for the Discord-safe `codex exec` lane.
+- `packages/providers/src/owner-codex-runtime.ts`
+  - Codex process execution, stdout/stderr parsing, trace-event normalization, history-tool loop requests, and owner-DM intent parsing.
+- `packages/providers/src/owner-codex-render.ts`
+  - prompt assembly, bundle rendering, and trace/debug transcript rendering for the owner lane.
+- `packages/providers/src/owner-codex-shared.ts`
+  - owner-lane constants, shared types, request-payload shaping, trace formatting helpers, and interaction-memory rendering.
 - `packages/providers/src/local-llm-provider.ts`
   - Ollama chat lane with a bounded host-managed read-only tool loop.
 - `packages/rag/src/retrieval-service.ts`
@@ -43,6 +49,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 1. `apps/worker/src/index.ts` polls approved jobs from durable state.
 2. The worker claims a job and dispatches it to the configured provider.
 3. `packages/providers/src/owner-codex-provider.ts` runs `codex exec` in the bounded lane, exposes the VoidBot MCP server, records traces, and enforces source grounding for repo/lore/project questions.
+   Runtime and parsing live in `packages/providers/src/owner-codex-runtime.ts`; prompt and artifact rendering live in `packages/providers/src/owner-codex-render.ts`.
 4. If the answer fits the Discord-safe lane, the worker posts it back.
 5. If the task needs deeper work, the worker writes a handoff bundle under `.voidbot/artifacts/<job-id>/` and posts the handoff response.
 

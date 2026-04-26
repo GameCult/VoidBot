@@ -1,7 +1,7 @@
 experiment:
   name: VoidBot
   status: active
-  phase: persistent_state_adoption
+  phase: legibility_hardening
   premise: >
     Keep VoidBot operable as a Discord-native assistant with real retrieval,
     durable ops, and explicit project memory surfaces instead of letting
@@ -14,8 +14,8 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Land persistent project-state scaffolding so future sessions can rehydrate
-    from canonical files before touching the increasingly interconnected stack.
+    Keep the new persistent state spine honest while cutting oversized runtime
+    organs into clearer seams before they grow another layer of moss.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -54,6 +54,7 @@ active_subgoals:
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
   - Preserve boring observability around Postgres, Qdrant, Ollama, Docker, backups, and watchdogs.
+  - Continue splitting oversized runtime files where concern boundaries are already obvious, starting with the remaining bot, worker, and memory-policy monarchies.
 
 accepted_design:
   - Bot, worker, providers, and RAG remain the main structural seams.
@@ -71,6 +72,7 @@ landed_baseline:
     - Local and offsite backups, watchdogs, and the operations dashboard are live.
     - Interaction memory and behavioral profiling are live.
     - Source-grounding enforcement and tool-driven retrieval are live.
+    - The owner Codex lane is now split into orchestration, runtime/parsing, shared helpers, and rendering modules instead of one swollen provider file.
 
 rejected_paths:
   - name: transcript_only_continuity
@@ -81,5 +83,5 @@ rejected_paths:
     reason: vibes produce plausible slop that sounds smart and lies with a straight face
 
 current_status:
-  summary: VoidBot now spans Discord routing, background jobs, Postgres state, Qdrant retrieval, source and lore indexing, provider-specific tool loops, ops automation, and a growing social-memory layer. The system works, but it is too interconnected to steer safely from transcript memory alone, so canonical project-state surfaces are being added to keep future work source-grounded and rehydratable.
-  next_action: After this persistence pass, rehydrate from the canonical state files before the next nontrivial change and keep the system map and evidence ledger fresh instead of letting continuity fall back to chat scrollback.
+  summary: VoidBot now has a real project-memory spine plus the first legibility-hardening pass on a major runtime organ. The owner Codex lane was split into smaller seams, which lowers local edit risk without changing the behavioral contract. The stack is still dense, but it no longer depends purely on transcript memory or one-file monarchies to stay coherent.
+  next_action: Keep using the canonical state files for re-entry, then continue decomposing the next oversized organ with the clearest concern boundaries, likely the Discord bot entrypoint or the interaction-memory policy slab.
