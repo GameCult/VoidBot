@@ -87,6 +87,18 @@ If you want the remote Ollama generation path too, configure:
 
 If you want a private local persona instead, point `STYLE_PACK_PATH` and `SYSTEM_MESSAGES_PATH` at your own ignored local files.
 
+Void usage limits are configurable too:
+
+- `VOID_USAGE_COOLDOWN_SECONDS`
+- `VOID_USAGE_DAILY_LIMIT`
+- `VOID_USAGE_UNLIMITED_USER_IDS`
+- `VOID_USAGE_UNLIMITED_ROLE_IDS`
+- `VOID_USAGE_BOOST_USER_IDS`
+- `VOID_USAGE_BOOST_ROLE_IDS`
+- `VOID_USAGE_BOOST_MULTIPLIER`
+
+The default shape is simple on purpose: everyone gets the base cooldown and daily cap, listed users or roles can be made unlimited, and listed users or roles can get a boosted lane that cuts cooldowns and multiplies daily allowance by `VOID_USAGE_BOOST_MULTIPLIER` (default `10`).
+
 ### 2. Install dependencies
 
 ```bash

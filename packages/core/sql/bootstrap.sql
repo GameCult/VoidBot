@@ -108,3 +108,15 @@ create table if not exists interaction_memory_events (
 
 create index if not exists interaction_memory_events_actor_timestamp_idx
   on interaction_memory_events (actor_id, event_timestamp desc);
+
+create table if not exists void_usage_rate_limit_state (
+  actor_id text primary key,
+  daily_bucket date not null,
+  daily_count integer not null default 0,
+  last_request_at timestamptz,
+  updated_at timestamptz not null default now(),
+  state_json jsonb not null default '{}'::jsonb
+);
+
+create index if not exists void_usage_rate_limit_state_bucket_idx
+  on void_usage_rate_limit_state (daily_bucket, updated_at desc);

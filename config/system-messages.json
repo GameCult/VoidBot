@@ -39,6 +39,14 @@
     "That provider is not available to you.",
     "Access denied for that provider."
   ],
+  "rate_limit.cooldown": [
+    "Easy. Wait {retryAfter} before asking again.",
+    "Not yet. Give it {retryAfter} before the next request."
+  ],
+  "rate_limit.daily_limit": [
+    "You hit today's cap of {dailyLimit} requests. It resets at {resetsAt}.",
+    "Today's limit is spent: {dailyLimit} requests. Try again after {resetsAt}."
+  ],
   "permission.owner_codex.denied": [
     "The owner Codex provider is restricted to the configured owner account.",
     "That lane is reserved for the configured owner account."

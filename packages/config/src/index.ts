@@ -94,6 +94,13 @@ const envSchema = z.object({
   INDEXED_CHANNEL_IDS: z.string().default(""),
   EXCLUDED_CHANNEL_IDS: z.string().default(""),
   EXCLUDED_CHANNEL_NAMES: z.string().default(""),
+  VOID_USAGE_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(30),
+  VOID_USAGE_DAILY_LIMIT: z.coerce.number().int().nonnegative().default(100),
+  VOID_USAGE_UNLIMITED_USER_IDS: z.string().default(""),
+  VOID_USAGE_UNLIMITED_ROLE_IDS: z.string().default(""),
+  VOID_USAGE_BOOST_USER_IDS: z.string().default(""),
+  VOID_USAGE_BOOST_ROLE_IDS: z.string().default(""),
+  VOID_USAGE_BOOST_MULTIPLIER: z.coerce.number().int().positive().default(10),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
 });
 
@@ -124,6 +131,7 @@ export interface AppConfig {
   auditLogFile: string;
   interactionMemoryFile: string;
   artifactsDir: string;
+  rateLimitStateFile: string;
   ragArchivePath: string;
   ragSourceArchivePath: string;
   ragImportStatePath: string;
@@ -158,6 +166,15 @@ export interface AppConfig {
     timeoutMs: number;
     historyCollection: string;
     sourceCollection: string;
+  };
+  rateLimits: {
+    defaultCooldownSeconds: number;
+    defaultDailyLimit: number;
+    unlimitedUserIds: string[];
+    unlimitedRoleIds: string[];
+    boostedUserIds: string[];
+    boostedRoleIds: string[];
+    boostedMultiplier: number;
   };
 }
 
@@ -287,6 +304,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     jobsFile: resolve(storageRoot, "jobs", "jobs.json"),
     auditLogFile: resolve(storageRoot, "audit", "events.jsonl"),
     interactionMemoryFile: resolve(storageRoot, "memory", "interactions.json"),
+    rateLimitStateFile: resolve(storageRoot, "limits", "usage.json"),
     artifactsDir: resolve(storageRoot, "artifacts"),
     ragArchivePath: resolve(parsed.RAG_ARCHIVE_PATH),
     ragSourceArchivePath: resolve(parsed.RAG_SOURCE_ARCHIVE_PATH),
@@ -322,6 +340,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.QDRANT_TIMEOUT_MS,
       historyCollection: parsed.QDRANT_HISTORY_COLLECTION,
       sourceCollection: parsed.QDRANT_SOURCE_COLLECTION,
+    },
+    rateLimits: {
+      defaultCooldownSeconds: parsed.VOID_USAGE_COOLDOWN_SECONDS,
+      defaultDailyLimit: parsed.VOID_USAGE_DAILY_LIMIT,
+      unlimitedUserIds: parseList(parsed.VOID_USAGE_UNLIMITED_USER_IDS),
+      unlimitedRoleIds: parseList(parsed.VOID_USAGE_UNLIMITED_ROLE_IDS),
+      boostedUserIds: parseList(parsed.VOID_USAGE_BOOST_USER_IDS),
+      boostedRoleIds: parseList(parsed.VOID_USAGE_BOOST_ROLE_IDS),
+      boostedMultiplier: parsed.VOID_USAGE_BOOST_MULTIPLIER,
     },
   };
 }

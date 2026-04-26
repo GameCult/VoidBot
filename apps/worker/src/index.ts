@@ -89,6 +89,7 @@ async function main(): Promise<void> {
     jobsFile: config.jobsFile,
     auditLogFile: config.auditLogFile,
     interactionMemoryFile: config.interactionMemoryFile,
+    rateLimitStateFile: config.rateLimitStateFile,
   });
   jobQueue = stateJobQueue;
   auditLog = stateAuditLog;

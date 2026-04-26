@@ -26,6 +26,7 @@ import {
   loadStylePack,
   loadSystemMessageCatalog,
   type SystemMessageCatalog,
+  VoidUsageRateLimiter,
 } from "@voidbot/core";
 import {
   LocalLlmProvider,
@@ -147,13 +148,19 @@ export async function startBot(): Promise<void> {
     jobQueue,
     auditLog,
     interactionMemory,
+    voidUsageRateLimits,
   } = await createStateStorage({
     backend: config.stateStorageBackend,
     databaseDsn: config.databaseDsn,
     jobsFile: config.jobsFile,
     auditLogFile: config.auditLogFile,
     interactionMemoryFile: config.interactionMemoryFile,
+    rateLimitStateFile: config.rateLimitStateFile,
   });
+  const voidUsageRateLimiter = new VoidUsageRateLimiter(
+    voidUsageRateLimits,
+    config.rateLimits,
+  );
   const contextBuilder = new ContextBuilder();
   let activeStylePack = await loadStylePack(config.stylePackPath);
   let activeSystemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
@@ -339,6 +346,7 @@ export async function startBot(): Promise<void> {
         prompt,
         command: "ask",
         actor: buildActorFromMessage(message),
+        roleIds: getRoleIdsFromMessage(message),
         guildContext: buildGuildContextFromMessage(message),
         outputChannelId: message.channelId,
         requestMessageId: message.id,
@@ -354,6 +362,7 @@ export async function startBot(): Promise<void> {
         jobQueue,
         auditLog,
         interactionMemory,
+        voidUsageRateLimiter,
         providerRegistry,
         stylePack: activeStylePack,
         systemMessages: activeSystemMessages,
@@ -406,6 +415,7 @@ export async function startBot(): Promise<void> {
 
     try {
       const actor = buildActorFromInteraction(interaction);
+      const roleIds = getRoleIdsFromInteraction(interaction);
       const guildContext = buildGuildContextFromInteraction(interaction);
 
       switch (interaction.commandName) {
@@ -417,6 +427,7 @@ export async function startBot(): Promise<void> {
             prompt: interaction.options.getString("question", true),
             command: "ask",
             actor,
+            roleIds,
             guildContext,
             outputChannelId: interaction.channelId,
             requestMessageId: interaction.id,
@@ -432,6 +443,7 @@ export async function startBot(): Promise<void> {
             jobQueue,
             auditLog,
             interactionMemory,
+            voidUsageRateLimiter,
             providerRegistry,
             stylePack: activeStylePack,
             systemMessages: activeSystemMessages,
@@ -443,6 +455,7 @@ export async function startBot(): Promise<void> {
             prompt: interaction.options.getString("prompt", true),
             command: "queue-codex",
             actor,
+            roleIds,
             guildContext,
             outputChannelId: interaction.channelId,
             requestMessageId: interaction.id,
@@ -458,6 +471,7 @@ export async function startBot(): Promise<void> {
             jobQueue,
             auditLog,
             interactionMemory,
+            voidUsageRateLimiter,
             providerRegistry,
             stylePack: activeStylePack,
             systemMessages: activeSystemMessages,
@@ -562,6 +576,7 @@ interface PromptHandlerOptions {
   prompt: string;
   command: CommandName;
   actor: Actor;
+  roleIds: string[];
   guildContext: GuildContext;
   outputChannelId: string;
   requestMessageId?: string;
@@ -575,6 +590,7 @@ interface PromptHandlerOptions {
   jobQueue: JobQueue;
   auditLog: AuditLog;
   interactionMemory: InteractionMemoryBank;
+  voidUsageRateLimiter: VoidUsageRateLimiter;
   providerRegistry: ProviderRegistry;
   stylePack?: StylePack;
   systemMessages: SystemMessageCatalog;
@@ -583,19 +599,6 @@ interface PromptHandlerOptions {
 }
 
 async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
-  const rememberedInteraction = await options.interactionMemory.recordInteraction({
-    actorId: options.actor.id,
-    actorName: options.actor.displayName,
-    sourceKind: "direct_prompt",
-    guildId: options.guildContext.guildId,
-    channelId: options.guildContext.channelId,
-    channelName: options.guildContext.channelName,
-    command: options.command,
-    prompt: options.prompt,
-    eventId: options.requestMessageId,
-  });
-  const interactionMemory =
-    rememberedInteraction.totalInteractions > 0 ? rememberedInteraction : undefined;
   const providerName =
     options.forceProvider ?? pickProvider(options.actor, options.guildContext, options.providerRegistry);
 
@@ -627,6 +630,50 @@ async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
     );
     return;
   }
+
+  const rateLimitDecision = await options.voidUsageRateLimiter.consume({
+    actorId: options.actor.id,
+    roleIds: options.roleIds,
+    command: options.command,
+    provider: providerName,
+    guildId: options.guildContext.guildId,
+    channelId: options.guildContext.channelId,
+  });
+
+  if (!rateLimitDecision.allowed) {
+    await options.auditLog.record({
+      type: "rate_limit.denied",
+      actorId: options.actor.id,
+      provider: providerName,
+      details: {
+        command: options.command,
+        reason: rateLimitDecision.reason,
+        dailyCount: rateLimitDecision.dailyCount,
+        dailyLimit: rateLimitDecision.policy.dailyLimit ?? null,
+        cooldownSeconds: rateLimitDecision.policy.cooldownSeconds ?? null,
+        retryAfterSeconds: rateLimitDecision.retryAfterSeconds ?? null,
+        resetsAt: rateLimitDecision.resetsAt ?? null,
+        modifier: rateLimitDecision.policy.modifier,
+        matchedSubjects: rateLimitDecision.policy.matchedSubjects,
+      },
+    });
+    await options.respond(renderRateLimitMessage(options.systemMessages, rateLimitDecision));
+    return;
+  }
+
+  const rememberedInteraction = await options.interactionMemory.recordInteraction({
+    actorId: options.actor.id,
+    actorName: options.actor.displayName,
+    sourceKind: "direct_prompt",
+    guildId: options.guildContext.guildId,
+    channelId: options.guildContext.channelId,
+    channelName: options.guildContext.channelName,
+    command: options.command,
+    prompt: options.prompt,
+    eventId: options.requestMessageId,
+  });
+  const interactionMemory =
+    rememberedInteraction.totalInteractions > 0 ? rememberedInteraction : undefined;
 
   const recentMessages = await getRecentMessages(options.channel, 10);
   const sourceGrounding = inferSourceGroundingHint(
@@ -964,6 +1011,32 @@ function buildActorFromInteraction(interaction: ChatInputCommandInteraction<Cach
       interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator) ?? false,
     isBot: interaction.user.bot,
   };
+}
+
+function getRoleIdsFromMessage(message: Message): string[] {
+  return message.member ? [...message.member.roles.cache.keys()] : [];
+}
+
+function getRoleIdsFromInteraction(
+  interaction: ChatInputCommandInteraction<CacheType>,
+): string[] {
+  const member = interaction.member;
+
+  if (!member || !("roles" in member)) {
+    return [];
+  }
+
+  const { roles } = member;
+
+  if (Array.isArray(roles)) {
+    return roles.filter((roleId): roleId is string => typeof roleId === "string");
+  }
+
+  if (roles && typeof roles === "object" && "cache" in roles) {
+    return [...roles.cache.keys()];
+  }
+
+  return [];
 }
 
 function buildGuildContextFromMessage(message: Message): GuildContext {
@@ -1347,6 +1420,22 @@ function renderSystemMessage(
   return systemMessages.render(key, variables);
 }
 
+function renderRateLimitMessage(
+  systemMessages: SystemMessageCatalog,
+  decision: Awaited<ReturnType<VoidUsageRateLimiter["consume"]>>,
+): string {
+  if (decision.reason === "daily_limit") {
+    return renderSystemMessage(systemMessages, "rate_limit.daily_limit", {
+      dailyLimit: decision.policy.dailyLimit ?? decision.dailyCount,
+      resetsAt: decision.resetsAt ? formatUtcTimestamp(decision.resetsAt) : "the next UTC midnight",
+    });
+  }
+
+  return renderSystemMessage(systemMessages, "rate_limit.cooldown", {
+    retryAfter: formatDurationSeconds(decision.retryAfterSeconds ?? 1),
+  });
+}
+
 function formatHistoryResults(
   results: Awaited<ReturnType<RetrievalService["searchHistory"]>>,
 ): Array<Record<string, unknown>> {
@@ -1434,6 +1523,40 @@ function truncate(input: string, limit: number): string {
   }
 
   return `${input.slice(0, limit - 3)}...`;
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const seconds = Math.max(1, Math.ceil(totalSeconds));
+
+  if (seconds < 60) {
+    return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainderSeconds = seconds % 60;
+
+  if (minutes < 60) {
+    return remainderSeconds === 0
+      ? `${minutes} minute${minutes === 1 ? "" : "s"}`
+      : `${minutes}m ${remainderSeconds}s`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainderMinutes = minutes % 60;
+
+  return remainderMinutes === 0
+    ? `${hours} hour${hours === 1 ? "" : "s"}`
+    : `${hours}h ${remainderMinutes}m`;
+}
+
+function formatUtcTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  const year = date.getUTCFullYear();
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getUTCDate()}`.padStart(2, "0");
+  const hours = `${date.getUTCHours()}`.padStart(2, "0");
+  const minutes = `${date.getUTCMinutes()}`.padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
 function canSendMessages(
