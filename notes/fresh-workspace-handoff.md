@@ -24,12 +24,13 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
 - The Discord bot lane is no longer one swollen entrypoint; gateway wiring remains in `apps/bot/src/discord-bot.ts` while command/prompt handlers and Discord-shape support helpers now live under `apps/bot/src/discord-bot-*.ts`.
 - Interaction-memory logic is no longer one thousand-line slab; event/tone analysis, shared constants, and profile synthesis are split across `packages/core/src/interaction-memory-*.ts`.
+- State storage is no longer one persistence omnibus; `packages/core/src/state-storage.ts` is now a thin factory over domain-specific Postgres/file store modules plus bootstrap/migration helpers.
 - Ops health, backup verification, offsite sync, and dashboard surfaces already exist.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 
 ## Likely Next Bounded Move
 
-- The next good structural cut is probably `packages/core/src/state-storage.ts`, `apps/worker/src/mcp-server.ts`, or `packages/providers/src/local-llm-provider.ts`.
+- The next good structural cut is probably `apps/worker/src/mcp-server.ts` or `packages/providers/src/local-llm-provider.ts`.
 - Prefer the seam with the clearest concern split rather than chasing line count for its own sake.
 - Do not broaden scope into a heroic "refactor everything" binge. One organ at a time.
 

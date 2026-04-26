@@ -15,7 +15,17 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `apps/worker/src/mcp-server.ts`
   - read-only retrieval tools and resource surfaces for archived history, indexed repos, lore, and owner notifications.
 - `packages/core/src/state-storage.ts`
-  - Postgres-backed durable state for jobs, audit events, interaction memory, and Void usage rate-limit counters.
+  - Thin state-storage factory that chooses file or Postgres backends and wires the domain stores together.
+- `packages/core/src/state-storage-postgres-bootstrap.ts`
+  - Postgres schema bootstrap plus one-time legacy file-state import.
+- `packages/core/src/state-storage-postgres-job-queue.ts`
+  - Postgres-backed job queue plus job row persistence helpers.
+- `packages/core/src/state-storage-postgres-audit-log.ts`
+  - Postgres-backed audit log plus audit-event upsert helper.
+- `packages/core/src/state-storage-postgres-interaction-memory.ts`
+  - Postgres-backed interaction-memory event storage and profile reconstruction.
+- `packages/core/src/state-storage-rate-limit-stores.ts`
+  - File and Postgres implementations for Void usage rate-limit state.
 - `packages/core/src/interaction-memory-analysis.ts`
   - Event construction, tone/tag analysis, repetition detection, and persistence gating for remembered interactions.
 - `packages/core/src/interaction-memory-profile.ts`
@@ -104,3 +114,8 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - backups and snapshots
 
 The important scar is that these stores are split on purpose. Do not casually weld them back into one convenient blob and act surprised when it becomes a moon.
+
+Within the Postgres path, the implementation is split on purpose now too:
+- `state-storage.ts` chooses the backend
+- `state-storage-postgres-bootstrap.ts` handles schema/bootstrap/import work
+- per-domain modules own queue, audit, interaction-memory, and rate-limit behavior

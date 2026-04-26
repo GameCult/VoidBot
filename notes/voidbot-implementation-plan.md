@@ -28,7 +28,7 @@ Use the persistent project-state surfaces to keep future work source-grounded an
 ### 4. Legibility Hardening
 
 - continue splitting oversized runtime files where concern boundaries are already obvious
-- likely next cuts: `packages/core/src/state-storage.ts`, `apps/worker/src/mcp-server.ts`, or `packages/providers/src/local-llm-provider.ts`
+- likely next cuts: `apps/worker/src/mcp-server.ts` or `packages/providers/src/local-llm-provider.ts`
 - keep behavior stable while moving concerns into smaller organs
 
 ### 5. The Still-Scaffolded Paths
