@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
 $syncScript = Join-Path $PSScriptRoot "sync-voidbot-backup-offsite.ps1"
+$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 
 function Read-DotEnv {
   param(
@@ -67,7 +68,8 @@ if (-not ($config.ContainsKey("OFFSITE_BACKUP_SSH_TARGET")) -or [string]::IsNull
 }
 
 $runAt = [DateTime]::ParseExact($taskTimeValue, "HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$syncScript`""
+# Use WSH as a GUI host so the interactive task can stay hidden without flashing a console.
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$syncScript`""
 $trigger = New-ScheduledTaskTrigger -Daily -At $runAt
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 6)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
@@ -79,7 +81,7 @@ Write-Host "Installed scheduled task: $taskNameValue"
 Write-Host "Schedule: daily at $taskTimeValue"
 Write-Host "Task runs as: $($env:USERDOMAIN)\$($env:USERNAME)"
 Write-Host "Logon mode: Interactive"
-Write-Host "Window mode: Hidden"
+Write-Host "Launcher: wscript.exe hidden PowerShell shim"
 Write-Host "Execution time limit: 6 hours"
 
 if ($RunNow) {

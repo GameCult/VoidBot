@@ -11,6 +11,7 @@ $ProgressPreference = "SilentlyContinue"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
 $checkScript = Join-Path $PSScriptRoot "check-voidbot-operations.ps1"
+$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 
 function Read-DotEnv {
   param(
@@ -76,7 +77,8 @@ if (-not ($config.ContainsKey("DISCORD_OWNER_ID")) -or [string]::IsNullOrWhiteSp
 }
 
 $startAt = (Get-Date).AddMinutes(5)
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$checkScript`" -NotifyOwner -FailOnIssues"
+# Use WSH as a GUI host so the interactive task can stay hidden without flashing a console.
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$checkScript`" -NotifyOwner -FailOnIssues"
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutesValue) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
@@ -88,7 +90,7 @@ Write-Host "Installed scheduled task: $taskNameValue"
 Write-Host "Schedule: every $intervalMinutesValue minute(s), starting at $($startAt.ToString('yyyy-MM-dd HH:mm'))"
 Write-Host "Task runs as: $($env:USERDOMAIN)\$($env:USERNAME)"
 Write-Host "Logon mode: Interactive"
-Write-Host "Window mode: Hidden"
+Write-Host "Launcher: wscript.exe hidden PowerShell shim"
 Write-Host "Execution time limit: 15 minutes"
 
 if ($RunNow) {
