@@ -13,6 +13,8 @@
     "dev:mcp": "tsx apps/worker/src/mcp-server.ts",
     "dev:worker": "tsx apps/worker/src/index.ts",
     "stack:start": "powershell -ExecutionPolicy Bypass -File scripts/start-voidbot-stack.ps1",
+    "state:status": "tsx tools/voidbot_state.ts status",
+    "state:prepare-compaction": "tsx tools/voidbot_prepare_compaction.ts",
     "state:backup": "powershell -ExecutionPolicy Bypass -File scripts/backup-voidbot-state.ps1",
     "state:restore": "powershell -ExecutionPolicy Bypass -File scripts/restore-voidbot-state.ps1",
     "state:verify-backup": "powershell -ExecutionPolicy Bypass -File scripts/verify-voidbot-backup.ps1",

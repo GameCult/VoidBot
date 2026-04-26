@@ -1,0 +1,85 @@
+experiment:
+  name: VoidBot
+  status: active
+  phase: persistent_state_adoption
+  premise: >
+    Keep VoidBot operable as a Discord-native assistant with real retrieval,
+    durable ops, and explicit project memory surfaces instead of letting
+    continuity dissolve into transcript fog.
+
+objective:
+  primary: >
+    Maintain and extend VoidBot as a Discord-native assistant for GameCult with
+    grounded answers from archived Discord history, indexed source trees, and
+    Aetheria lore, while keeping the system understandable enough to modify
+    safely.
+  current: >
+    Land persistent project-state scaffolding so future sessions can rehydrate
+    from canonical files before touching the increasingly interconnected stack.
+
+constraints:
+  - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
+  - Owner flow and public flow share infrastructure but have different provider and safety boundaries.
+  - Postgres, Qdrant, Ollama, Docker, and Discord failures are operationally real; observability matters as much as features.
+  - Persistent project state must stay small enough to rehydrate from without becoming a second swamp.
+
+invariants:
+  - The map is canonical and slow-changing.
+  - Scratch is temporary and disposable.
+  - Evidence is durable and distilled; routine activity proof belongs in git history, commits, smoke artifacts, or targeted logs.
+  - Jobs, audit events, interaction memory, and rate-limit state live in Postgres; vectors live in Qdrant; archives, artifacts, logs, and backups remain under `.voidbot/`.
+  - Source, repo, and lore answers must be grounded through source-side retrieval instead of vibes.
+  - When GameCult history, repo, or lore retrieval can answer the question, use the VoidBot MCP surfaces before raw repo spelunking.
+
+data_flow:
+  observe:
+    - user request
+    - repository state
+    - canonical project state files
+    - provider and runtime health
+    - verifier results and smoke outputs
+  process:
+    - rehydrate from map, handoff, system map, and implementation plan
+    - reason over one bounded organ
+    - modify only the surface that deserves the change
+    - verify the seam that matters
+    - record only durable evidence that changes future belief
+    - commit or backtrack
+  cut:
+    - revert failed hypotheses instead of preserving churn
+    - distill obsolete state instead of accumulating transcript-shaped sludge
+    - keep persistent state lean enough that re-entry sharpens the next turn instead of drowning it
+
+active_subgoals:
+  - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
+  - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
+  - Preserve boring observability around Postgres, Qdrant, Ollama, Docker, backups, and watchdogs.
+
+accepted_design:
+  - Bot, worker, providers, and RAG remain the main structural seams.
+  - State storage stays intentionally split: Postgres for operational state, Qdrant for vectors, `.voidbot/` for archives, artifacts, logs, and backup material.
+  - `owner_codex` and `local_llm` remain distinct lanes with different tool-execution and safety posture.
+  - The VoidBot MCP server is the preferred search plane for archived Discord, indexed GameCult repos, Aetheria lore, and owner notifications.
+  - Long-running work should expose durable logs or status files instead of relying on one attached session and hope.
+  - Persistent project memory must stay ruthlessly distilled; git history and artifacts carry routine proof.
+
+landed_baseline:
+  phases:
+    - Discord bot, worker, provider registry, and retrieval stack are live.
+    - Postgres-backed jobs, audit events, interaction memory, and rate-limit state are live.
+    - Qdrant-backed history and source retrieval are live.
+    - Local and offsite backups, watchdogs, and the operations dashboard are live.
+    - Interaction memory and behavioral profiling are live.
+    - Source-grounding enforcement and tool-driven retrieval are live.
+
+rejected_paths:
+  - name: transcript_only_continuity
+    reason: repo complexity is now too high to trust chat fog as the only memory surface
+  - name: monolithic_local_state_blobs
+    reason: giant shared files for unrelated state hide costs and rot the next rehydrate
+  - name: source_answers_without_retrieval
+    reason: vibes produce plausible slop that sounds smart and lies with a straight face
+
+current_status:
+  summary: VoidBot now spans Discord routing, background jobs, Postgres state, Qdrant retrieval, source and lore indexing, provider-specific tool loops, ops automation, and a growing social-memory layer. The system works, but it is too interconnected to steer safely from transcript memory alone, so canonical project-state surfaces are being added to keep future work source-grounded and rehydratable.
+  next_action: After this persistence pass, rehydrate from the canonical state files before the next nontrivial change and keep the system map and evidence ledger fresh instead of letting continuity fall back to chat scrollback.

@@ -49,6 +49,8 @@ The repo is split into a bot, a worker, and a handful of focused packages:
 
 The durable local state is split on purpose: Postgres holds jobs, audit events, and interaction memory, while `.voidbot/` keeps artifacts, archives, logs, and detached indexing status.
 
+There is also a project-memory spine now for future Codex sessions: `state/map.yaml`, `state/scratch.md`, `state/evidence.jsonl`, `notes/fresh-workspace-handoff.md`, and the helper CLIs under `tools/`. The point is to rehydrate from canonical files instead of pretending the transcript will stay coherent forever.
+
 ## Quick Start
 
 ### 1. Configure `.env`
@@ -509,6 +511,32 @@ Defaults come from `.env` / `.env.example`:
 
 The watchdog task also uses `Interactive` logon because the remote freshness check relies on the same local SSH key material as the offsite sync path.
 
+## Persistent Project State
+
+VoidBot is now large enough that transcript memory alone is a stupid way to steer it. The repo carries a small canonical project-state scaffold for future sessions:
+
+- `state/map.yaml`: slow-changing canonical project map and current next action
+- `state/scratch.md`: disposable one-subgoal working memory
+- `state/branches.json`: hypothesis / branch ledger
+- `state/evidence.jsonl`: distilled belief-changing evidence, rejections, and scars
+- `notes/fresh-workspace-handoff.md`: re-entry packet
+- `notes/voidbot-current-system-map.md`: source-grounded control-flow explanation
+- `notes/voidbot-implementation-plan.md`: larger-organ build order
+
+Useful commands:
+
+```bash
+npm run state:status
+npm run state:prepare-compaction
+```
+
+For direct edits to the ledger surfaces:
+
+```bash
+npx tsx tools/voidbot_state.ts add-evidence --type research --status ok --note "..."
+npx tsx tools/voidbot_state.ts add-branch --id branch-id --hypothesis "..."
+```
+
 ## Commands
 
 Current slash commands:
@@ -538,6 +566,11 @@ Useful local state and docs:
 - `.voidbot/status/operations-health.json`: latest watchdog health report
 - `.voidbot/status/operations-watchdog.json`: live watchdog run-state plus last notification metadata
 - `.voidbot/status/operations-dashboard.html`: auto-refreshing local operations dashboard
+- `state/map.yaml`: canonical project map and current next action
+- `state/evidence.jsonl`: distilled project-memory ledger
+- `notes/fresh-workspace-handoff.md`: re-entry packet for future sessions
+- `notes/voidbot-current-system-map.md`: source-grounded system map
+- `notes/voidbot-implementation-plan.md`: larger-organ plan
 - `config/system-messages.json`: rotating stock system messages
 - `styles/void-default.md`: public default style pack
 - `docs/architecture/overview.md`: higher-level architecture notes
