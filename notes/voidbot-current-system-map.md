@@ -16,6 +16,10 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - read-only retrieval tools and resource surfaces for archived history, indexed repos, lore, and owner notifications.
 - `packages/core/src/state-storage.ts`
   - Postgres-backed durable state for jobs, audit events, interaction memory, and Void usage rate-limit counters.
+- `packages/core/src/interaction-memory-analysis.ts`
+  - Event construction, tone/tag analysis, repetition detection, and persistence gating for remembered interactions.
+- `packages/core/src/interaction-memory-profile.ts`
+  - Profile synthesis, disposition, psychological read, inferred traits, interaction dimensions, and response-guidance construction.
 - `packages/core/src/context-builder.ts`
   - request context assembly, including interaction-memory/profile attachment.
 - `packages/providers/src/owner-codex-provider.ts`
@@ -43,9 +47,10 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 2. Permission checks run through `packages/core/src/permission-engine.ts`.
 3. Void usage limits are applied through `packages/core/src/void-usage-rate-limiter.ts` backed by `packages/core/src/state-storage.ts`.
 4. `apps/bot/src/discord-bot-support.ts` adapts Discord message/interaction shapes, ambient-memory events, and source-grounding hints.
-5. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile and any retrieval hints.
-6. Provider selection goes through `packages/providers/src/index.ts`.
-7. The bot either:
+5. `packages/core/src/interaction-memory-analysis.ts` turns direct prompts or ambient mentions into normalized remembered events; `packages/core/src/interaction-memory-profile.ts` distills remembered events into a reusable social read.
+6. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile and any retrieval hints.
+7. Provider selection goes through `packages/providers/src/index.ts`.
+8. The bot either:
    - answers directly through `local_llm`, or
    - queues an owner job for the worker / `owner_codex` path.
 

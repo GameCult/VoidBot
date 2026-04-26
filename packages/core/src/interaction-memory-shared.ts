@@ -1,0 +1,78 @@
+export const MAX_RECENT_INTERACTION_EVENTS = 24;
+export const MAX_AFFINITY_SCORE = 12;
+export const SUMMARY_EVENT_LIMIT = 3;
+export const REPETITION_LOOKBACK_EVENTS = 8;
+export const REPETITION_LOOKBACK_HOURS = 12;
+
+export const SIGNIFICANT_INTERACTION_TAGS = new Set<string>([
+  "gratitude",
+  "praise",
+  "apology",
+  "hostility",
+  "insult",
+  "ownership_claim",
+  "demand",
+  "repetition",
+  "identity_query",
+  "relationship_probe",
+  "boundary",
+  "ambition",
+  "grand_plan",
+  "anxiety",
+  "insecurity",
+  "seeking_reassurance",
+  "suspicion",
+  "rigidity",
+  "withdrawal",
+]);
+
+export const SUMMARY_NOTABLE_TAGS = new Set<string>([
+  "gratitude",
+  "praise",
+  "apology",
+  "hostility",
+  "insult",
+  "ownership_claim",
+  "demand",
+  "repetition",
+  "identity_query",
+  "relationship_probe",
+  "boundary",
+  "ambition",
+  "grand_plan",
+  "anxiety",
+  "insecurity",
+  "seeking_reassurance",
+  "suspicion",
+  "rigidity",
+  "withdrawal",
+]);
+
+export const PROMPT_SIGNATURE_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "be",
+  "do",
+  "does",
+  "for",
+  "how",
+  "i",
+  "if",
+  "in",
+  "is",
+  "it",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "the",
+  "this",
+  "to",
+  "what",
+  "why",
+  "you",
+  "your",
+]);
