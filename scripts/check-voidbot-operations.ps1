@@ -405,6 +405,25 @@ function Invoke-RemoteLinuxCommand {
   return [string]($response -join "`n")
 }
 
+function Invoke-WatchdogExtension {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Path,
+    [Parameter(Mandatory = $true)]
+    [hashtable] $Context
+  )
+
+  . $Path
+
+  $extensionCommand = Get-Command -Name "Invoke-VoidBotWatchdogExtension" -ErrorAction SilentlyContinue
+
+  if ($null -eq $extensionCommand) {
+    throw "Watchdog extension at $Path did not define Invoke-VoidBotWatchdogExtension."
+  }
+
+  & $extensionCommand -Context $Context
+}
+
 function Open-OwnerDmChannel {
   param(
     [Parameter(Mandatory = $true)]
@@ -515,16 +534,9 @@ $offsiteRemoteWindowsDir = if ($config.ContainsKey("OFFSITE_BACKUP_REMOTE_WINDOW
 $offsiteTarget = if ($config.ContainsKey("OFFSITE_BACKUP_SSH_TARGET")) { $config["OFFSITE_BACKUP_SSH_TARGET"] } else { "" }
 $offsiteKeepLatest = if ($config.ContainsKey("OFFSITE_BACKUP_REMOTE_KEEP_LATEST")) { [int]$config["OFFSITE_BACKUP_REMOTE_KEEP_LATEST"] } else { 14 }
 $offsiteLabel = if ($config.ContainsKey("OFFSITE_BACKUP_LABEL") -and -not [string]::IsNullOrWhiteSpace($config["OFFSITE_BACKUP_LABEL"])) { $config["OFFSITE_BACKUP_LABEL"] } else { "offsite-auto" }
-$repixelizerMonitorEnabled = if ($config.ContainsKey("REPIXELIZER_MONITOR_ENABLED") -and -not [string]::IsNullOrWhiteSpace($config["REPIXELIZER_MONITOR_ENABLED"])) { [System.Convert]::ToBoolean($config["REPIXELIZER_MONITOR_ENABLED"]) } else { $true }
-$repixelizerPublicBaseUrl = if ($config.ContainsKey("REPIXELIZER_MONITOR_PUBLIC_BASE_URL") -and -not [string]::IsNullOrWhiteSpace($config["REPIXELIZER_MONITOR_PUBLIC_BASE_URL"])) { $config["REPIXELIZER_MONITOR_PUBLIC_BASE_URL"].TrimEnd("/") } else { "https://repixelizer.gamecult.org" }
-$repixelizerSshTarget = if ($config.ContainsKey("REPIXELIZER_MONITOR_SSH_TARGET")) { $config["REPIXELIZER_MONITOR_SSH_TARGET"] } else { "" }
-$repixelizerSshIdentityFile = if ($config.ContainsKey("REPIXELIZER_MONITOR_SSH_IDENTITY_FILE")) { $config["REPIXELIZER_MONITOR_SSH_IDENTITY_FILE"] } else { "" }
-$repixelizerRecentMinutes = if ($config.ContainsKey("REPIXELIZER_MONITOR_RECENT_MINUTES")) { [int]$config["REPIXELIZER_MONITOR_RECENT_MINUTES"] } else { 15 }
-$repixelizerQueueFullFailCount = if ($config.ContainsKey("REPIXELIZER_MONITOR_QUEUE_FULL_FAIL_COUNT")) { [int]$config["REPIXELIZER_MONITOR_QUEUE_FULL_FAIL_COUNT"] } else { 1 }
-$repixelizerJobFailedFailCount = if ($config.ContainsKey("REPIXELIZER_MONITOR_JOB_FAILED_FAIL_COUNT")) { [int]$config["REPIXELIZER_MONITOR_JOB_FAILED_FAIL_COUNT"] } else { 1 }
-$repixelizerStaleCancelWarnCount = if ($config.ContainsKey("REPIXELIZER_MONITOR_STALE_CANCEL_WARN_COUNT")) { [int]$config["REPIXELIZER_MONITOR_STALE_CANCEL_WARN_COUNT"] } else { 3 }
-$repixelizerSlowJobSeconds = if ($config.ContainsKey("REPIXELIZER_MONITOR_SLOW_JOB_SECONDS")) { [double]$config["REPIXELIZER_MONITOR_SLOW_JOB_SECONDS"] } else { 45.0 }
-$repixelizerSlowJobWarnCount = if ($config.ContainsKey("REPIXELIZER_MONITOR_SLOW_JOB_WARN_COUNT")) { [int]$config["REPIXELIZER_MONITOR_SLOW_JOB_WARN_COUNT"] } else { 3 }
+$watchdogExtensionScriptRaw = if ($config.ContainsKey("VOIDBOT_HEALTHCHECK_EXTENSION_SCRIPT") -and -not [string]::IsNullOrWhiteSpace($config["VOIDBOT_HEALTHCHECK_EXTENSION_SCRIPT"])) { $config["VOIDBOT_HEALTHCHECK_EXTENSION_SCRIPT"] } else { ".voidbot/private/check-voidbot-operations.local.ps1" }
+$watchdogExtensionScript = Resolve-ConfigPath -RepoRoot $repoRoot -Value $watchdogExtensionScriptRaw -Fallback ".voidbot/private/check-voidbot-operations.local.ps1"
+$watchdogExtensionExplicit = $config.ContainsKey("VOIDBOT_HEALTHCHECK_EXTENSION_SCRIPT") -and -not [string]::IsNullOrWhiteSpace($config["VOIDBOT_HEALTHCHECK_EXTENSION_SCRIPT"])
 $logCaptureStarted = Start-LogCapture -LogPath $logPath
 $previousWatchdogState = if (Test-Path -LiteralPath $watchdogStatePath) {
   try {
@@ -958,108 +970,28 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
     }
   }
 
-  Set-WatchdogStep -CurrentStep "repixelizer_checks" -Detail "Checking Repixelizer public health and recent service pressure."
-  if (-not $repixelizerMonitorEnabled) {
-    Add-Check -Name "repixelizer.monitor" -Status "passed" -Detail "Repixelizer monitor is disabled by REPIXELIZER_MONITOR_ENABLED."
-  } else {
+  Set-WatchdogStep -CurrentStep "extension_checks" -Detail "Running local watchdog extension checks."
+  if (Test-Path -LiteralPath $watchdogExtensionScript) {
     try {
-      $health = Get-Json -Url "$repixelizerPublicBaseUrl/api/health"
-      if ([string]$health.status -eq "ok") {
-        Add-Check -Name "repixelizer.health" -Status "passed" -Detail "Repixelizer public health endpoint is ok." -Data @{
-          url = "$repixelizerPublicBaseUrl/api/health"
-        }
-      } else {
-        Add-Check -Name "repixelizer.health" -Status "failed" -Detail "Repixelizer public health returned status '$([string]$health.status)'." -Data @{
-          url = "$repixelizerPublicBaseUrl/api/health"
-        }
+      Invoke-WatchdogExtension -Path $watchdogExtensionScript -Context @{
+        RepoRoot = $repoRoot
+        StorageRoot = $storageRoot
+        Config = $config
+        RuntimeStatusPath = $runtimeStatusPath
+        HealthStatusPath = $statusPath
+        OffsiteStatusPath = $offsiteStatusPath
+      }
+      Add-Check -Name "watchdog.extension" -Status "passed" -Detail "Loaded local watchdog extension checks." -Data @{
+        path = $watchdogExtensionScript
       }
     } catch {
-      Add-Check -Name "repixelizer.health" -Status "failed" -Detail "Repixelizer public health check failed: $($_.Exception.Message)" -Data @{
-        url = "$repixelizerPublicBaseUrl/api/health"
+      Add-Check -Name "watchdog.extension" -Status "failed" -Detail "Local watchdog extension failed: $($_.Exception.Message)" -Data @{
+        path = $watchdogExtensionScript
       }
     }
-
-    if ([string]::IsNullOrWhiteSpace($repixelizerSshTarget)) {
-      Add-Check -Name "repixelizer.journal" -Status "warning" -Detail "Repixelizer journal pressure check skipped because REPIXELIZER_MONITOR_SSH_TARGET is blank."
-    } else {
-      try {
-        $recentWindow = [Math]::Max(1, $repixelizerRecentMinutes)
-        $since = "$recentWindow minutes ago"
-        $escapedSince = $since.Replace("'", "'\''")
-        $journalCommand = "journalctl -u repixelizer-gui --since '$escapedSince' --no-pager -o cat"
-        $journalText = Invoke-RemoteLinuxCommand -Target $repixelizerSshTarget -IdentityFile $repixelizerSshIdentityFile -Command $journalCommand
-        $journalLines = @($journalText -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        $queueFullLines = @($journalLines | Where-Object { $_ -match "repixelizer_queue_full" })
-        $failedLines = @($journalLines | Where-Object { $_ -match "repixelizer_job_failed" })
-        $staleCancelLines = @($journalLines | Where-Object { $_ -match "repixelizer_job_canceled" -and $_ -match "stopped heartbeating" })
-        $slowRunSeconds = @(
-          $journalLines | ForEach-Object {
-            if ($_ -match "repixelizer_job_completed" -and $_ -match "run_seconds=([0-9]+(?:\.[0-9]+)?)") {
-              [double]$Matches[1]
-            }
-          } | Where-Object { $_ -ge $repixelizerSlowJobSeconds }
-        )
-
-        if ($queueFullLines.Count -ge $repixelizerQueueFullFailCount) {
-          Add-Check -Name "repixelizer.queue_full" -Status "failed" -Detail "Repixelizer queue filled $($queueFullLines.Count) time(s) in the last $recentWindow minute(s)." -Data @{
-            threshold = $repixelizerQueueFullFailCount
-            recentMinutes = $recentWindow
-          }
-        } else {
-          Add-Check -Name "repixelizer.queue_full" -Status "passed" -Detail "No Repixelizer queue saturation above threshold in the last $recentWindow minute(s)." -Data @{
-            count = $queueFullLines.Count
-            threshold = $repixelizerQueueFullFailCount
-            recentMinutes = $recentWindow
-          }
-        }
-
-        if ($failedLines.Count -ge $repixelizerJobFailedFailCount) {
-          Add-Check -Name "repixelizer.job_failed" -Status "failed" -Detail "Repixelizer logged $($failedLines.Count) failed job(s) in the last $recentWindow minute(s)." -Data @{
-            threshold = $repixelizerJobFailedFailCount
-            recentMinutes = $recentWindow
-          }
-        } else {
-          Add-Check -Name "repixelizer.job_failed" -Status "passed" -Detail "No Repixelizer job failures above threshold in the last $recentWindow minute(s)." -Data @{
-            count = $failedLines.Count
-            threshold = $repixelizerJobFailedFailCount
-            recentMinutes = $recentWindow
-          }
-        }
-
-        if ($staleCancelLines.Count -ge $repixelizerStaleCancelWarnCount) {
-          Add-Check -Name "repixelizer.stale_cancellations" -Status "warning" -Detail "Repixelizer canceled $($staleCancelLines.Count) stale browser job(s) in the last $recentWindow minute(s)." -Data @{
-            threshold = $repixelizerStaleCancelWarnCount
-            recentMinutes = $recentWindow
-          }
-        } else {
-          Add-Check -Name "repixelizer.stale_cancellations" -Status "passed" -Detail "Repixelizer stale-browser cancellations are below threshold." -Data @{
-            count = $staleCancelLines.Count
-            threshold = $repixelizerStaleCancelWarnCount
-            recentMinutes = $recentWindow
-          }
-        }
-
-        if ($slowRunSeconds.Count -ge $repixelizerSlowJobWarnCount) {
-          Add-Check -Name "repixelizer.slow_jobs" -Status "warning" -Detail "Repixelizer had $($slowRunSeconds.Count) job(s) at or above $repixelizerSlowJobSeconds run seconds in the last $recentWindow minute(s)." -Data @{
-            thresholdCount = $repixelizerSlowJobWarnCount
-            thresholdSeconds = $repixelizerSlowJobSeconds
-            maxRunSeconds = [Math]::Round(($slowRunSeconds | Measure-Object -Maximum).Maximum, 3)
-            recentMinutes = $recentWindow
-          }
-        } else {
-          Add-Check -Name "repixelizer.slow_jobs" -Status "passed" -Detail "Repixelizer slow-job count is below threshold." -Data @{
-            count = $slowRunSeconds.Count
-            thresholdCount = $repixelizerSlowJobWarnCount
-            thresholdSeconds = $repixelizerSlowJobSeconds
-            recentMinutes = $recentWindow
-          }
-        }
-      } catch {
-        Add-Check -Name "repixelizer.journal" -Status "failed" -Detail "Repixelizer journal pressure check failed: $($_.Exception.Message)" -Data @{
-          target = $repixelizerSshTarget
-          recentMinutes = $repixelizerRecentMinutes
-        }
-      }
+  } elseif ($watchdogExtensionExplicit) {
+    Add-Check -Name "watchdog.extension" -Status "warning" -Detail "Configured watchdog extension script is missing." -Data @{
+      path = $watchdogExtensionScript
     }
   }
 

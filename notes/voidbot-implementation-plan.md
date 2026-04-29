@@ -19,7 +19,7 @@ Use the persistent project-state surfaces to keep future work source-grounded an
 - add a real restore-drill cadence instead of stopping at backup verification
 - reduce dependence on interactive workstation logon where practical
 - keep watchdog signals and dashboard diagnostics honest when dependencies are degraded
-- keep adjacent-service checks deliberate so VoidBot does not quietly mutate into a generic infra panic funnel
+- keep adjacent-service checks behind private local extensions so VoidBot does not quietly mutate into a generic infra panic funnel
 
 ### 3. Admin And Forensics Surfaces
 
