@@ -86,7 +86,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/start-voidbot-stack.ps1`
   - stack bootstrap, health checks, fresh build, stale-process cleanup, bot/worker restart, runtime status emission.
 - `scripts/check-voidbot-operations.ps1`
-  - watchdog for process liveness, Qdrant, Postgres, Ollama, Discord auth, backup freshness, and offsite sync freshness.
+  - watchdog for process liveness, Qdrant, Postgres, Ollama, Discord auth, backup freshness, offsite sync freshness, and configured Repixelizer fire signals.
 - `scripts/backup-voidbot-state.ps1`
   - local backup of Postgres, Qdrant snapshots, and RAG archives.
 - `scripts/restore-voidbot-state.ps1`
@@ -95,6 +95,11 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - verified offsite backup sync to the Qwen box.
 - `scripts/voidbot-operations-dashboard-lib.ps1`
   - dashboard rendering for the local ops surface.
+
+When configured, the watchdog now also federates a small amount of adjacent-service pain into the same ops lane:
+- public `GET /api/health` against Repixelizer
+- recent `repixelizer-gui` journald pressure on Yggdrasil over SSH
+- owner DM escalation for queue saturation, failed jobs, stale cancellations, and slow-job clusters
 
 ## Storage Boundaries
 

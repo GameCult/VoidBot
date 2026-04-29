@@ -21,6 +21,7 @@ constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
   - Owner flow and public flow share infrastructure but have different provider and safety boundaries.
   - Postgres, Qdrant, Ollama, Docker, and Discord failures are operationally real; observability matters as much as features.
+  - The watchdog now also carries selected adjacent-service fire signals, so cross-project monitoring scope must stay intentional instead of turning into generic infra soup.
   - Persistent project state must stay small enough to rehydrate from without becoming a second swamp.
 
 invariants:
@@ -53,7 +54,7 @@ data_flow:
 active_subgoals:
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
-  - Preserve boring observability around Postgres, Qdrant, Ollama, Docker, backups, and watchdogs.
+  - Preserve boring observability around Postgres, Qdrant, Ollama, Docker, backups, watchdogs, and the newly federated Repixelizer fire signals.
   - Continue splitting oversized runtime files where concern boundaries are already obvious, starting with the remaining bot, worker, and memory-policy monarchies.
 
 accepted_design:
@@ -72,6 +73,7 @@ landed_baseline:
     - Local and offsite backups, watchdogs, and the operations dashboard are live.
     - Interaction memory and behavioral profiling are live.
     - Source-grounding enforcement and tool-driven retrieval are live.
+    - The operations watchdog now monitors Repixelizer public health plus recent Yggdrasil journald pressure signals and routes serious queue or job failures through the existing owner DM notification path.
     - The owner Codex lane is now split into orchestration, runtime/parsing, shared helpers, and rendering modules instead of one swollen provider file.
     - The Discord bot lane is now split into a gateway shell plus dedicated command-handler and support helper modules instead of one swollen entrypoint file.
     - Interaction-memory logic is now split into event/tone analysis and profile-synthesis modules instead of one slab trying to be both the ear and the therapist.
@@ -86,5 +88,5 @@ rejected_paths:
     reason: vibes produce plausible slop that sounds smart and lies with a straight face
 
 current_status:
-  summary: VoidBot now has a real project-memory spine plus four legibility-hardening passes on major runtime organs. The owner Codex lane, Discord bot lane, interaction-memory logic, and state-storage persistence layer were all split into smaller seams, which lowers local edit risk without changing their behavioral contracts. The stack is still dense, but it no longer depends purely on transcript memory or one-file monarchies to stay coherent.
+  summary: VoidBot now has a real project-memory spine plus four legibility-hardening passes on major runtime organs. The owner Codex lane, Discord bot lane, interaction-memory logic, and state-storage persistence layer were all split into smaller seams, and the ops spine now also carries Repixelizer fire-signal monitoring through the existing watchdog and owner-notification path. The stack is still dense, but it no longer depends purely on transcript memory or one-file monarchies to stay coherent.
   next_action: Keep using the canonical state files for re-entry, then continue decomposing the next oversized organ with the clearest concern boundaries, likely the MCP server or local LLM provider.
