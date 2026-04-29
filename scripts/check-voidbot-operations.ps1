@@ -424,6 +424,38 @@ function Invoke-WatchdogExtension {
   & $extensionCommand -Context $Context
 }
 
+function Invoke-DiscordJsonRequest {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Method,
+    [Parameter(Mandatory = $true)]
+    [string] $Url,
+    [Parameter(Mandatory = $true)]
+    [string] $BotToken,
+    [Parameter(Mandatory = $true)]
+    [string] $JsonBody
+  )
+
+  $bodyPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + ".json")
+
+  try {
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($bodyPath, $JsonBody, $utf8NoBom)
+    $response = & curl.exe -fsS -X $Method $Url `
+      -H "Authorization: Bot $BotToken" `
+      -H "Content-Type: application/json" `
+      --data-binary "@$bodyPath"
+
+    if ($LASTEXITCODE -ne 0) {
+      throw "Request failed for $Url"
+    }
+
+    return $response
+  } finally {
+    Remove-Item -LiteralPath $bodyPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Open-OwnerDmChannel {
   param(
     [Parameter(Mandatory = $true)]
@@ -433,14 +465,7 @@ function Open-OwnerDmChannel {
   )
 
   $payload = @{ recipient_id = $OwnerDiscordId } | ConvertTo-Json -Compress
-  $response = & curl.exe -fsS -X POST "https://discord.com/api/v10/users/@me/channels" `
-    -H "Authorization: Bot $BotToken" `
-    -H "Content-Type: application/json" `
-    --data-raw $payload
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to open the owner DM channel."
-  }
+  $response = Invoke-DiscordJsonRequest -Method "POST" -Url "https://discord.com/api/v10/users/@me/channels" -BotToken $BotToken -JsonBody $payload
 
   $parsed = $response | ConvertFrom-Json
 
@@ -469,14 +494,7 @@ function Send-OwnerDm {
     }
   } | ConvertTo-Json -Depth 4 -Compress
 
-  & curl.exe -fsS -X POST "https://discord.com/api/v10/channels/$dmChannelId/messages" `
-    -H "Authorization: Bot $BotToken" `
-    -H "Content-Type: application/json" `
-    --data-raw $payload *> $null
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to send the owner DM."
-  }
+  [void](Invoke-DiscordJsonRequest -Method "POST" -Url "https://discord.com/api/v10/channels/$dmChannelId/messages" -BotToken $BotToken -JsonBody $payload)
 }
 
 function Build-OwnerNotificationMessage {
