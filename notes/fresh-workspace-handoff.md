@@ -26,6 +26,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - Interaction-memory logic is no longer one thousand-line slab; event/tone analysis, shared constants, and profile synthesis are split across `packages/core/src/interaction-memory-*.ts`.
 - State storage is no longer one persistence omnibus; `packages/core/src/state-storage.ts` is now a thin factory over domain-specific Postgres/file store modules plus bootstrap/migration helpers.
 - Ops health, backup verification, offsite sync, and dashboard surfaces already exist.
+- The stack has a dedicated logon startup task path now, so a reboot does not have to mean manual necromancy for bot and worker.
 - The operations watchdog now supports ignored local extension checks, so adjacent-service fire signals can ride the same owner DM alert path without hardcoding private project gossip into the public repo.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 

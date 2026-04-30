@@ -22,6 +22,7 @@
     "state:dashboard": "powershell -ExecutionPolicy Bypass -File scripts/render-voidbot-operations-dashboard.ps1 -Open",
     "state:render-dashboard": "powershell -ExecutionPolicy Bypass -File scripts/render-voidbot-operations-dashboard.ps1",
     "state:sync-offsite": "powershell -ExecutionPolicy Bypass -File scripts/sync-voidbot-backup-offsite.ps1",
+    "state:install-startup-task": "powershell -ExecutionPolicy Bypass -File scripts/install-stack-startup-task.ps1",
     "state:install-offsite-task": "powershell -ExecutionPolicy Bypass -File scripts/install-offsite-backup-task.ps1",
     "state:install-watchdog-task": "powershell -ExecutionPolicy Bypass -File scripts/install-operations-watchdog-task.ps1",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",

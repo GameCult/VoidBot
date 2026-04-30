@@ -546,6 +546,7 @@ $backupRoot = Join-Path $storageRoot "backups"
 $backupMaxAgeHours = if ($config.ContainsKey("VOIDBOT_BACKUP_MAX_AGE_HOURS")) { [double]$config["VOIDBOT_BACKUP_MAX_AGE_HOURS"] } else { 30.0 }
 $offsiteMaxAgeHours = if ($config.ContainsKey("VOIDBOT_OFFSITE_BACKUP_MAX_AGE_HOURS")) { [double]$config["VOIDBOT_OFFSITE_BACKUP_MAX_AGE_HOURS"] } else { 36.0 }
 $notifyRepeatHours = if ($config.ContainsKey("VOIDBOT_HEALTHCHECK_NOTIFY_REPEAT_HOURS")) { [double]$config["VOIDBOT_HEALTHCHECK_NOTIFY_REPEAT_HOURS"] } else { 12.0 }
+$stackStartupTaskName = if ($config.ContainsKey("VOIDBOT_STACK_STARTUP_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["VOIDBOT_STACK_STARTUP_TASK_NAME"])) { $config["VOIDBOT_STACK_STARTUP_TASK_NAME"] } else { "VoidBot Stack Startup" }
 $watchdogTaskName = if ($config.ContainsKey("VOIDBOT_HEALTHCHECK_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["VOIDBOT_HEALTHCHECK_TASK_NAME"])) { $config["VOIDBOT_HEALTHCHECK_TASK_NAME"] } else { "VoidBot Operations Watchdog" }
 $offsiteTaskName = if ($config.ContainsKey("OFFSITE_BACKUP_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["OFFSITE_BACKUP_TASK_NAME"])) { $config["OFFSITE_BACKUP_TASK_NAME"] } else { "VoidBot Offsite Backup" }
 $offsiteRemoteWindowsDir = if ($config.ContainsKey("OFFSITE_BACKUP_REMOTE_WINDOWS_DIR") -and -not [string]::IsNullOrWhiteSpace($config["OFFSITE_BACKUP_REMOTE_WINDOWS_DIR"])) { $config["OFFSITE_BACKUP_REMOTE_WINDOWS_DIR"] } else { "C:\Meta\voidbot-backups" }
@@ -865,6 +866,19 @@ try {
   }
 
   Set-WatchdogStep -CurrentStep "scheduled_task_checks" -Detail "Inspecting scheduled task installation and status files."
+  try {
+    $startupTask = Get-ScheduledTask -TaskName $stackStartupTaskName -ErrorAction Stop
+    $startupEnabled = [bool]$startupTask.Settings.Enabled
+    $startupTaskStatus = if ($startupEnabled) { "passed" } else { "failed" }
+    $startupTaskDetail = if ($startupEnabled) { "Stack startup task is installed and enabled." } else { "Stack startup task is installed but disabled." }
+    Add-Check -Name "scheduled_task.stack_startup" -Status $startupTaskStatus -Detail $startupTaskDetail -Data @{
+      taskName = $stackStartupTaskName
+      state = [string]$startupTask.State
+    }
+  } catch {
+    Add-Check -Name "scheduled_task.stack_startup" -Status "warning" -Detail "Stack startup task $stackStartupTaskName is not installed yet."
+  }
+
   try {
     $offsiteTask = Get-ScheduledTask -TaskName $offsiteTaskName -ErrorAction Stop
     $offsiteEnabled = [bool]$offsiteTask.Settings.Enabled

@@ -85,6 +85,8 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 
 - `scripts/start-voidbot-stack.ps1`
   - stack bootstrap, health checks, fresh build, stale-process cleanup, bot/worker restart, runtime status emission.
+- `scripts/install-stack-startup-task.ps1`
+  - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
   - watchdog for process liveness, Qdrant, Postgres, Ollama, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
 - `scripts/backup-voidbot-state.ps1`

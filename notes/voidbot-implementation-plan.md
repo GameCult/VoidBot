@@ -18,6 +18,7 @@ Use the persistent project-state surfaces to keep future work source-grounded an
 
 - add a real restore-drill cadence instead of stopping at backup verification
 - reduce dependence on interactive workstation logon where practical
+- keep the stack startup task installed and visible so reboots do not quietly leave runtime dead
 - keep watchdog signals and dashboard diagnostics honest when dependencies are degraded
 - keep adjacent-service checks behind private local extensions so VoidBot does not quietly mutate into a generic infra panic funnel
 

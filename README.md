@@ -193,6 +193,14 @@ That script:
 - writes runtime status to `.voidbot/status/runtime-stack.json`
 - writes logs to `.voidbot/logs/bot.log` and `.voidbot/logs/worker.log`
 
+If you do not want a reboot or fresh logon to leave the bot dead on the floor, install the startup task once:
+
+```bash
+npm run state:install-startup-task
+```
+
+That creates the `VoidBot Stack Startup` scheduled task, which runs `scripts/start-voidbot-stack.ps1` at logon through the same hidden launcher shim the other ops tasks use.
+
 If you want the raw split-terminal path for debugging, those still exist:
 
 ```bash
