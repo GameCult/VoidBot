@@ -77,7 +77,32 @@ That matters. We do not want a personality museum. We want a machine that update
 
 The future personality layer should not be one trait sheet. It should be a stack.
 
-### 1. Stable-ish Dispositions
+### 1. Underlying Organization
+
+This sits deeper than ordinary traits.
+
+Track things like:
+
+- self-coherence
+- contingent worth
+- shame sensitivity
+- attachment hunger
+- threat sensitivity
+- reciprocity capacity
+- mentalization quality
+- authenticity tolerance
+- mask rigidity
+
+This is the layer that answers questions like:
+
+- how stable does the self feel from the inside
+- how much does worth depend on approval, utility, purity, admiration, or submission
+- how catastrophic does exposure or diminishment feel
+- how much of the self must be performed to remain lovable or safe
+
+This matters because some personalities are not merely "high in trait X." Some are organized around a damaged or contingent self that must be defended, staged, concealed, or externally regulated to stay upright.
+
+### 2. Stable-ish Dispositions
 
 These are slow-changing tendencies:
 
@@ -92,7 +117,7 @@ These are slow-changing tendencies:
 
 These are the closest thing to trait structure. They change, but slowly.
 
-### 2. Behavioral Dimensions
+### 3. Behavioral Dimensions
 
 These are the live handles we actually use in social and economic simulation:
 
@@ -109,7 +134,7 @@ These are the live handles we actually use in social and economic simulation:
 
 These can be updated from remembered incidents, repeated patterns, and institutional pressure.
 
-### 3. Relationship State
+### 4. Relationship State
 
 This is where the real blood is.
 
@@ -128,7 +153,37 @@ Per target person, group, faction, or institution, track things like:
 
 This is where "they are warm in general" becomes "they are warm with her but clipped with him and terrified of them."
 
-### 4. Situational State
+### 5. Performed Self And Defensive Style
+
+Everyone performs to some degree. The interesting question is not whether a mask exists, but how necessary and rigid it is.
+
+Track presentation strategies such as:
+
+- charm
+- compliance
+- superiority
+- detachment
+- seductiveness
+- martyrdom
+- competence theater
+- moral theater
+- cultivated opacity
+
+For some agents this is just social polish. For others it is part of the load-bearing architecture of the self.
+
+That means:
+
+- what is revealed is not identical to what is true
+- concealment is not mere absence of data
+- performance style is itself data about how the person survives other minds
+
+This is also where we should model the distinction between:
+
+- ordinary social performance
+- strategic impression management
+- defensive false-self maintenance
+
+### 6. Situational State
 
 These are transient modifiers:
 
@@ -144,7 +199,7 @@ These are transient modifiers:
 
 These should tilt behavior without being mistaken for identity.
 
-### 5. Goals And Value Hierarchy
+### 7. Goals And Value Hierarchy
 
 Personality without priorities is decorative plumbing.
 
@@ -157,6 +212,34 @@ Track:
 - what it considers unforgivable
 
 That is what turns temperament into decisions.
+
+## A Note On Masks, Personality Disorder, And Performed Selves
+
+One of the important corrections to simplistic personality modeling is that people do not always reveal who they are, and they may not fully know who they are in any clean or integrated sense either.
+
+Everyone wears a mask to some extent. That part is normal. But some people are organized much more heavily around performance because the self they built early on was contingent: lovable only when useful, safe only when compliant, coherent only when mirrored correctly.
+
+That distinction matters.
+
+The model should allow for the possibility that:
+
+- a person has an underlying organization that is more fragile than their surface suggests
+- the performed self exists to regulate other people as much as to express anything authentic
+- injury to the mask can feel like injury to existence itself
+- oscillation between charm, contempt, neediness, distance, compliance, and control is not random inconsistency but the phenomenon we are trying to model
+
+So we should not ask only:
+
+- what trait does this line reveal
+
+We should also ask:
+
+- what is being defended
+- what must be maintained
+- what threatens the shell
+- how much room does this person allow for unperformed self
+
+That is part of why broad trait systems are too tidy for the thing we want.
 
 ## Specific Improvements Worth Adding
 
@@ -172,12 +255,20 @@ The next promising additions are:
   - desire for closeness, reassurance, fusion, or privileged access
 - `Distance-Seeking`
   - need for space, reluctance to be known, aversion to pressure or intimacy
+- `Mask Rigidity`
+  - how tightly the performed self must be maintained under observation
+- `Shame Reactivity`
+  - how catastrophic diminishment, correction, exposure, or failure feels
+- `Impression-Management Intensity`
+  - how actively the person curates what others are allowed to see
 
 These matter because the current model can tell "anxious" from "rigid," but it cannot yet cleanly tell:
 
 - clingy from avoidant
 - intermittently intense from steadily difficult
 - unstable from merely suspicious
+- ordinary social polish from defensive self-performance
+- insecurity from shell-maintenance panic
 
 ### Split Social Stance From Thinking Style
 
@@ -194,6 +285,26 @@ We should separately track something like `project-thinking style`, including te
 - coherent planner vs chaos improviser
 
 That matters for Aetheria populations and consumer behavior even when there is no direct social confrontation in view.
+
+### Split Underlying Organization From Surface Presentation
+
+Right now the model is mostly concerned with what the agent sounds like.
+
+That is not enough.
+
+We should explicitly separate:
+
+- underlying organization
+- performed self
+- situational state
+- expressed signal
+
+That lets the system model cases where:
+
+- the surface is charming but the underlying relationship stance is instrumental
+- the surface is cold but the underlying issue is shame or fragility
+- the surface is compliant while resentment and dependency accumulate underneath
+- the speaker is actively obfuscating traits to preserve a shell
 
 ### Add Reflection And Consolidation
 

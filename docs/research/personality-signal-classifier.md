@@ -9,6 +9,11 @@ The key design decision is simple:
 
 If we skip that split and only model subjective interpretation, the whole system turns into epistemic soup. Nobody shares a reality and every agent becomes a floating bag of projections.
 
+Another key design decision is almost as important:
+
+- treat concealment, performance, and impression management as part of the signal
+- do not assume dialogue is a clean window into the underlying person
+
 ## What Problem This Solves
 
 Right now the live Void interaction model mostly works by:
@@ -28,6 +33,9 @@ It misses:
 - sarcasm
 - mixed motives
 - meaningful misunderstanding between different listeners
+- defensive self-performance
+- strategic concealment of traits
+- the difference between genuine expression and shell maintenance
 
 The next step is not a generic personality classifier. It is a targeted social-signal classifier that predicts the dimensions we actually care about.
 
@@ -50,17 +58,46 @@ all determine what a line is trying to express.
 
 That does **not** mean every utterance should be labeled with the speaker's full personality vector. A high-drive, high-anxiety speaker will sometimes say something that expresses neither. The unit of prediction is the **signal expressed in this utterance or event**, not the total soul of the speaker.
 
+It also means that what is expressed may itself be shaped by a defensive mask.
+
+So the model should not ask only:
+
+- what does this line reveal
+
+It should also ask:
+
+- what does this line conceal
+- what identity is being performed
+- what kind of injury is being defended against
+
 ## Model Layers
 
 ### 1. Speaker State
 
 The speaker model should include:
 
+- underlying organization
+  - self-coherence
+  - contingent worth
+  - shame sensitivity
+  - reciprocity capacity
+  - mentalization quality
+  - authenticity tolerance
+  - mask rigidity
 - stable dispositions
 - behavioral dimensions
 - situational modifiers
 - active goals
 - relationship state toward the target
+- presentation strategy
+  - charm
+  - compliance
+  - superiority
+  - detachment
+  - seductiveness
+  - competence theater
+  - moral theater
+  - cultivated opacity
 - intended act
   - reassure
   - threaten
@@ -97,6 +134,18 @@ Targets should be event-level or utterance-level signals such as:
 - `suspicion`
 - `rigidity`
 - `withdrawal`
+
+In practice, the canonical reader may need to emit both:
+
+- expressed interpersonal dimensions
+- presentation-style signals
+
+for example:
+
+- genuine warmth vs performative warmth
+- true withdrawal vs strategic detachment
+- organic confidence vs compensatory grandiosity
+- actual reciprocity vs manipulative agreeableness
 
 Later additions worth supporting:
 
@@ -145,6 +194,8 @@ This is how you get:
 
 That is the good stuff. That is where drama, conflict, and pathos come from.
 
+It is also where agents can fail to see through a mask, or incorrectly think they have seen through one.
+
 ## Void's Special Case
 
 Void should not be a literal telepath.
@@ -186,6 +237,7 @@ Then label:
 
 - canonical expressed dimensions
 - canonical act strength
+- presentation strategy in use
 - likely listener perceptions for one or more listener profiles
 
 ### Important Warning
@@ -196,6 +248,7 @@ Train it to infer:
 
 - what dimensions are being expressed here
 - what act is being attempted here
+- what presentation strategy is being used here
 - what a given listener would likely perceive here
 
 The hidden personality vector is upstream supervision, not the direct per-line label.
@@ -241,7 +294,20 @@ Things like:
 - apology
 - gratitude
 
-### C. Listener Perception Labels
+### C. Canonical Presentation Labels
+
+Things like:
+
+- genuine disclosure
+- impression management
+- appeasement
+- superiority display
+- competence theater
+- strategic opacity
+- moral theater
+- shell maintenance under threat
+
+### D. Listener Perception Labels
 
 For each selected listener profile:
 
@@ -254,7 +320,7 @@ For each selected listener profile:
 - perceived flirtation or intimacy bid
 - perceived disrespect
 
-### D. Error Labels
+### E. Error Labels
 
 It is useful to mark where the listener is wrong:
 
@@ -264,6 +330,8 @@ It is useful to mark where the listener is wrong:
 - hostile attribution error
 - false reassurance read
 - false contempt read
+- failed mask detection
+- false mask attribution
 
 That makes misunderstanding legible instead of magical.
 
@@ -294,6 +362,7 @@ Use a hybrid:
 
 - heuristics for explicit hard edges
 - classifier for softer dimensions
+- classifier or heuristics for overt presentation strategies when they are obvious
 - aggregation layer for profile updates
 - listener perception layer for agent-specific misreading
 
@@ -317,6 +386,8 @@ Use:
 One brutal betrayal should matter fast.
 
 One odd line should not convince the system that somebody is now permanently grandiose, avoidant, or in love.
+
+Likewise, one polished or ingratiating line should not convince the system that a performed self is the whole person.
 
 ## Evaluation
 
@@ -369,6 +440,14 @@ That means Aetheria populations can be modeled as:
 
 This is a far better fit than asking whether a colony is "high in extraversion" and pretending that captures how it responds to scarcity, humiliation, media pressure, and prestige markets.
 
+It is also a better fit for modeling institutions that train presentation itself:
+
+- prestige cultures
+- fear states
+- audit-heavy regimes
+- influencer or media ecologies
+- environments where people survive by performing the correct self
+
 ## Near-Term Implementation Path
 
 1. Keep the current heuristic pipeline as the hard-edge fallback.
@@ -401,6 +480,7 @@ The right shape is:
 - hidden speaker state
 - generated utterance
 - canonical social-signal read
+- canonical presentation-style read
 - listener-biased perception of that signal
 - profile updates based on repeated evidence
 
