@@ -4,6 +4,8 @@ This note exists because the useful ideas were starting to sprawl across chat, `
 
 The immediate trigger was an older Aetheria design note in the `AetheriaLore` repo at `Aetheria/Game Design/Colonies and Population.md`. That note uses Big Five traits as colony-level economic parameters. It is a perfectly respectable old-school move. It is also weaker than what the Void interaction model is already stumbling toward.
 
+If you want the focused classifier architecture for reading those traits and signals from dialogue, see [Personality Signal Classifier](./personality-signal-classifier.md).
+
 ## Why The Old Big Five Layer Is Not Enough
 
 The Aetheria note frames populations in terms of:
