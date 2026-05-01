@@ -4,6 +4,8 @@ This document is the running backlog of ideas worth stealing from frontier resea
 
 If you want the companion systems sketch for turning this into a persistent Aetheria cast engine, see [Aetheria Persistent Agent Architecture](../architecture/aetheria-persistent-agent-architecture.md).
 
+If you want the more focused note on where the Void interaction model should go next, and why it already outclasses the old Big Five colony layer from Aetheria planning docs, see [Personality Model Roadmap](./personality-model-roadmap.md).
+
 The goal is not to build a chatbot that exists to nod, flatter, and perform a personality like a cheap mask. The goal is a system that can:
 
 - remember specific events
