@@ -134,6 +134,9 @@ Targets should be event-level or utterance-level signals such as:
 - `suspicion`
 - `rigidity`
 - `withdrawal`
+- `volatility`
+- `attachment_seeking`
+- `distance_seeking`
 
 In practice, the canonical reader may need to emit both:
 
@@ -147,11 +150,8 @@ for example:
 - organic confidence vs compensatory grandiosity
 - actual reciprocity vs manipulative agreeableness
 
-Later additions worth supporting:
+Additional useful targets worth supporting:
 
-- `volatility`
-- `attachment_seeking`
-- `distance_seeking`
 - `status_hunger`
 - `submission`
 - `dominance`
@@ -485,3 +485,5 @@ The right shape is:
 - profile updates based on repeated evidence
 
 That gives us honest reading, organic misunderstanding, and enough structure to let agents become socially interesting instead of merely chatty.
+
+For the broader state-distribution and prompt-projection architecture that should feed this classifier, see [Agent State Distributions And Prompt Projection](../architecture/agent-state-distributions-and-prompt-projection.md).

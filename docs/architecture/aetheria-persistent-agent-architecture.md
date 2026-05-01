@@ -6,6 +6,8 @@ For the first concrete slice, see [Aetheria Cold Wake MVP Scenario](./aetheria-c
 
 For the scaling model that explains how a crowded region can be simulated with a relatively small persistent cast, see [Aetheria Agent Population Model](./aetheria-agent-population-model.md).
 
+For the deeper note on how culture, personality distributions, memory, and perceived state should project into prompts, see [Agent State Distributions And Prompt Projection](./agent-state-distributions-and-prompt-projection.md).
+
 That document is the theft list. This one is the machine we are trying to build out of the stolen parts.
 
 The target is a persistent world full of in-universe agents who:

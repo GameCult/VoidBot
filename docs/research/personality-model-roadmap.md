@@ -58,6 +58,9 @@ It derives behavioral dimensions such as:
 - `Suspicion`
 - `Rigidity`
 - `Withdrawal`
+- `Volatility`
+- `Attachment-Seeking`
+- `Distance-Seeking`
 
 Those are better than Big Five for our purposes because they speak directly to:
 
@@ -245,9 +248,9 @@ That is part of why broad trait systems are too tidy for the thing we want.
 
 These were not properly banked elsewhere and should stop living only in chat residue.
 
-### Add More Behavioral Dimensions
+### Treat The Core Social Dimensions As First-Class
 
-The next promising additions are:
+The rebuild should treat these as first-class from the start, not as nice extras for some later prettier version:
 
 - `Volatility`
   - mood-lability, escalation speed, susceptibility to emotional swing
@@ -364,10 +367,7 @@ That is much closer to Aetheria than personality taxidermy.
 
 ## Near-Term Work To Steal Next
 
-1. Keep the current Void interaction dimensions, but add:
-   - `Volatility`
-   - `Attachment-Seeking`
-   - `Distance-Seeking`
+1. In the rebuild, treat `Volatility`, `Attachment-Seeking`, and `Distance-Seeking` as core dimensions from day one.
 2. Split `social stance` from `project-thinking style`.
 3. Add reflection jobs that consolidate episodes into semantic profile and relationship updates.
 4. Add evaluation fixtures for:
@@ -381,6 +381,8 @@ That is much closer to Aetheria than personality taxidermy.
    - institutional conditioning
    - relationship state
    - collective memory
+
+For the concrete state and prompt architecture behind that port, see [Agent State Distributions And Prompt Projection](../architecture/agent-state-distributions-and-prompt-projection.md).
 
 ## Bottom Line
 
