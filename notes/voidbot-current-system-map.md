@@ -13,7 +13,17 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `apps/worker/src/index.ts`
   - owner-job poller, provider execution, handoff packaging, and MCP wiring for the worker-side lane.
 - `apps/worker/src/mcp-server.ts`
-  - read-only retrieval tools and resource surfaces for archived history, indexed repos, lore, and owner notifications.
+  - thin stdio entrypoint that boots the MCP context and registers the resource/tool surfaces.
+- `apps/worker/src/mcp-server-context.ts`
+  - workspace bootstrap, config loading, archive/vector wiring, retrieval-service creation, and source-context ingester setup for the MCP lane.
+- `apps/worker/src/mcp-server-resources.ts`
+  - MCP resource registration for indexed repos plus history/source semantic-search resource templates.
+- `apps/worker/src/mcp-server-tools.ts`
+  - MCP tool registration for archived history search, indexed source/lore search, context windows, repo listing, and owner notifications.
+- `apps/worker/src/mcp-server-shared.ts`
+  - MCP input schemas, argument types, and shared result-formatting/resource helper functions.
+- `apps/worker/src/mcp-server-discord.ts`
+  - Discord DM-channel creation and message-post helpers for `notify_owner`.
 - `packages/core/src/state-storage.ts`
   - Thin state-storage factory that chooses file or Postgres backends and wires the domain stores together.
 - `packages/core/src/state-storage-postgres-bootstrap.ts`
@@ -41,7 +51,13 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/providers/src/owner-codex-shared.ts`
   - owner-lane constants, shared types, request-payload shaping, trace formatting helpers, and interaction-memory rendering.
 - `packages/providers/src/local-llm-provider.ts`
-  - Ollama chat lane with a bounded host-managed read-only tool loop.
+  - thin orchestration shell for the Ollama chat lane plus the bounded host-managed read-only tool loop.
+- `packages/providers/src/local-llm-render.ts`
+  - local-lane prompt assembly, interaction-memory rendering, source-grounding reminders, and artifact rendering.
+- `packages/providers/src/local-llm-tools.ts`
+  - local-lane tool definitions, assistant-message normalization, tool argument parsing, and toolbox execution helpers.
+- `packages/providers/src/local-llm-shared.ts`
+  - local-lane constants, shared request/response/tool types, and low-level text/metadata helpers.
 - `packages/rag/src/retrieval-service.ts`
   - high-level history/source retrieval API used by bot, worker, and provider tool loops.
 - `packages/rag/src/qdrant-vector-store.ts`
@@ -79,7 +95,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 2. `packages/rag/src/retrieval-service.ts` translates history/source queries into vector lookups plus metadata filters.
 3. `packages/rag/src/qdrant-vector-store.ts` executes the live vector lookups against separate history and source collections.
 4. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive detached source/lore reindex work.
-5. `apps/worker/src/mcp-server.ts` exposes retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
+5. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
 
 ## Flow 4: Ops And Recovery
 

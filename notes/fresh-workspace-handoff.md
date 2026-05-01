@@ -22,7 +22,9 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - `.voidbot/` owns archives, artifacts, logs, status files, and backups.
 - `owner_codex` and `local_llm` are the active reply lanes.
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
+- The local Ollama lane is no longer one swollen file; orchestration stays in `packages/providers/src/local-llm-provider.ts` while prompt/rendering, tool-loop helpers, and shared types/constants live under `packages/providers/src/local-llm-*.ts`.
 - The Discord bot lane is no longer one swollen entrypoint; gateway wiring remains in `apps/bot/src/discord-bot.ts` while command/prompt handlers and Discord-shape support helpers now live under `apps/bot/src/discord-bot-*.ts`.
+- The worker MCP surface is no longer one swollen server file; stdio bootstrap stays in `apps/worker/src/mcp-server.ts` while context bootstrap, resource registration, tool registration, Discord notify helpers, and shared formatting/schema helpers live under `apps/worker/src/mcp-server-*.ts`.
 - Interaction-memory logic is no longer one thousand-line slab; event/tone analysis, shared constants, and profile synthesis are split across `packages/core/src/interaction-memory-*.ts`.
 - State storage is no longer one persistence omnibus; `packages/core/src/state-storage.ts` is now a thin factory over domain-specific Postgres/file store modules plus bootstrap/migration helpers.
 - Ops health, backup verification, offsite sync, and dashboard surfaces already exist.
@@ -32,9 +34,9 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 ## Likely Next Bounded Move
 
-- The next good structural cut is probably `apps/worker/src/mcp-server.ts` or `packages/providers/src/local-llm-provider.ts`.
-- Prefer the seam with the clearest concern split rather than chasing line count for its own sake.
-- Do not broaden scope into a heroic "refactor everything" binge. One organ at a time.
+- The obvious refactor queue is basically cleared.
+- The next good bounded move is probably higher-priority public-lane hardening or richer admin/forensics surfaces instead of another ceremonial anatomy lesson.
+- If you do another structural cut, make the file earn it. Do not keep refactoring just because stale notes sound lonely.
 
 ## Important Paths
 

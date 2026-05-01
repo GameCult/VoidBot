@@ -4,7 +4,7 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-Use the persistent project-state surfaces to keep future work source-grounded and rehydratable while continuing to cut oversized runtime organs into cleaner seams.
+Use the persistent project-state surfaces to keep future work source-grounded and rehydratable while returning from the cleanup pass to higher-priority hardening work.
 
 ## Near-Term Organs
 
@@ -29,9 +29,9 @@ Use the persistent project-state surfaces to keep future work source-grounded an
 
 ### 4. Legibility Hardening
 
-- continue splitting oversized runtime files where concern boundaries are already obvious
-- likely next cuts: `apps/worker/src/mcp-server.ts` or `packages/providers/src/local-llm-provider.ts`
-- keep behavior stable while moving concerns into smaller organs
+- the obvious runtime-file monarchies have already been cut into cleaner seams
+- keep behavior stable and only do more structural surgery when a specific file clearly earns it
+- do not keep petting the line-count graph once the actual design risk has dropped
 
 ### 5. The Still-Scaffolded Paths
 
