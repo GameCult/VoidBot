@@ -1012,6 +1012,7 @@ $files = Get-ChildItem -LiteralPath $dir -Filter $pattern -File | Sort-Object La
         RuntimeStatusPath = $runtimeStatusPath
         HealthStatusPath = $statusPath
         OffsiteStatusPath = $offsiteStatusPath
+        NotifyOwner = [bool]$NotifyOwner
       }
       Add-Check -Name "watchdog.extension" -Status "passed" -Detail "Loaded local watchdog extension checks." -Data @{
         path = $watchdogExtensionScript
