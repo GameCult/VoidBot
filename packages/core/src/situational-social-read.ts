@@ -16,6 +16,8 @@ interface SituationalSocialReadInput {
   interactionMemory?: InteractionMemoryProfile;
 }
 
+type JsonSchema = Record<string, unknown>;
+
 interface InferSituationalSocialReadRequestBody {
   model: string;
   messages: Array<{
@@ -25,7 +27,7 @@ interface InferSituationalSocialReadRequestBody {
   stream: false;
   think: false;
   keep_alive: string;
-  format: "json";
+  format: JsonSchema;
   options: {
     num_ctx: number;
     temperature: number;
@@ -38,10 +40,6 @@ interface InferSituationalSocialReadResponseBody {
   };
 }
 
-interface InferPronounEvidenceResponseBody {
-  pronounEvidence?: unknown;
-}
-
 export interface OllamaSituationalSocialReadInfererOptions {
   ollamaBaseUrl: string;
   ollamaModel: string;
@@ -52,6 +50,70 @@ export interface OllamaSituationalSocialReadInfererOptions {
 
 const MAX_RECENT_MESSAGES = 12;
 const MAX_MESSAGE_CHARS = 280;
+const SITUATIONAL_SOCIAL_READ_SCHEMA: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    summary: { type: "string" },
+    roomTone: { type: "string" },
+    speakerCurrentRead: { type: "string" },
+    socialFrame: { type: "string" },
+    responseGuidance: { type: "string" },
+    supportingSignals: {
+      type: "array",
+      items: { type: "string" },
+    },
+    pronounEvidence: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          pronounSet: {
+            type: "string",
+            enum: ["they/them", "he/him", "she/her"],
+          },
+          source: {
+            type: "string",
+            enum: [
+              "explicit_self_statement",
+              "explicit_correction",
+              "direct_third_party_statement",
+              "contextual_relational_inference",
+              "ambient_usage",
+            ],
+          },
+          stance: {
+            type: "string",
+            enum: ["prefer", "avoid"],
+          },
+          confidence: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+          },
+          excerpt: { type: "string" },
+        },
+        required: [
+          "pronounSet",
+          "source",
+          "stance",
+          "confidence",
+          "excerpt",
+        ],
+      },
+    },
+  },
+  required: [
+    "summary",
+    "roomTone",
+    "speakerCurrentRead",
+    "socialFrame",
+    "responseGuidance",
+    "supportingSignals",
+    "pronounEvidence",
+  ],
+};
 
 export class OllamaSituationalSocialReadInferer {
   public constructor(
@@ -80,6 +142,7 @@ export class OllamaSituationalSocialReadInferer {
       const rawContent = await this.requestStructuredJson(
         buildSystemPrompt(),
         buildUserPrompt(input, recentMessages),
+        SITUATIONAL_SOCIAL_READ_SCHEMA,
         controller.signal,
       );
 
@@ -92,17 +155,7 @@ export class OllamaSituationalSocialReadInferer {
       if (!parsed) {
         return undefined;
       }
-
-      const pronounEvidence = await this.inferPronounEvidence(
-        input,
-        recentMessages,
-        controller.signal,
-      );
-
-      return {
-        ...parsed,
-        pronounEvidence,
-      };
+      return parsed;
     } catch (error) {
       if ((error as Error).name === "AbortError") {
         throw new Error(
@@ -116,31 +169,10 @@ export class OllamaSituationalSocialReadInferer {
     }
   }
 
-  private async inferPronounEvidence(
-    input: SituationalSocialReadInput,
-    recentMessages: SourceMessage[],
-    signal: AbortSignal,
-  ): Promise<PronounEvidence[]> {
-    try {
-      const rawContent = await this.requestStructuredJson(
-        buildPronounSystemPrompt(),
-        buildPronounUserPrompt(input, recentMessages),
-        signal,
-      );
-
-      if (!rawContent) {
-        return [];
-      }
-
-      return parsePronounEvidencePayload(rawContent);
-    } catch {
-      return [];
-    }
-  }
-
   private async requestStructuredJson(
     systemPrompt: string,
     userPrompt: string,
+    format: JsonSchema,
     signal: AbortSignal,
   ): Promise<string | undefined> {
     const requestBody: InferSituationalSocialReadRequestBody = {
@@ -158,10 +190,10 @@ export class OllamaSituationalSocialReadInferer {
       stream: false,
       think: false,
       keep_alive: this.options.ollamaKeepAlive,
-      format: "json",
+      format,
       options: {
         num_ctx: this.options.ollamaNumCtx,
-        temperature: 0.2,
+        temperature: 0,
       },
     };
 
@@ -199,27 +231,15 @@ function buildSystemPrompt(): string {
     '- "socialFrame": what kind of interaction this is and how it should be framed',
     '- "responseGuidance": private guidance for the final reply model',
     '- "supportingSignals": an array of short evidence bullets tied to the visible context',
-    "If the evidence is weak, say so plainly inside the fields instead of inventing drama.",
-  ].join("\n");
-}
-
-function buildPronounSystemPrompt(): string {
-  return [
-    "You are extracting structured pronoun evidence for the current Discord speaker.",
-    "Use the current prompt itself plus any recent room transcript as evidence.",
-    "Never guess from the speaker name alone.",
-    "Return strict JSON only with one key: \"pronounEvidence\".",
-    "\"pronounEvidence\" must be an array of evidence objects about the current speaker only.",
-    "Each evidence object must contain: \"pronounSet\", \"source\", \"stance\", \"confidence\", and \"excerpt\".",
+    '- "pronounEvidence": an array of evidence objects about the current speaker only, each with "pronounSet", "source", "stance", "confidence", and "excerpt"',
+    "Treat the current prompt itself as valid room context for pronoun evidence and social framing.",
+    "If the current speaker explicitly states acceptable pronouns or explicitly rejects a pronoun, emit that evidence here even if no prior transcript is attached.",
+    "If the speaker explicitly accepts multiple pronoun sets, emit one evidence object per accepted set.",
     'Use only these pronoun sets: "they/them", "he/him", "she/her".',
     'Use only these evidence sources: "explicit_self_statement", "explicit_correction", "direct_third_party_statement", "contextual_relational_inference", "ambient_usage".',
     'Use stance "prefer" when the speaker accepts a pronoun set and "avoid" when the speaker explicitly rejects it.',
-    "If the speaker explicitly accepts multiple pronoun sets, emit one evidence object per accepted set.",
-    "Examples:",
-    '- "I prefer male or gender neutral pronouns" -> emit "he/him" prefer and "they/them" prefer.',
-    '- "call me by they/them preferably" -> emit "they/them" prefer.',
-    '- "do not call me he" -> emit "he/him" avoid.',
-    'If there is no real evidence, return {"pronounEvidence":[]}.',
+    'If there is no real pronoun evidence, return "pronounEvidence": [].',
+    "If the evidence is weak, say so plainly inside the fields instead of inventing drama.",
   ].join("\n");
 }
 
@@ -263,34 +283,6 @@ function buildUserPrompt(
   ].join("\n");
 }
 
-function buildPronounUserPrompt(
-  input: SituationalSocialReadInput,
-  recentMessages: SourceMessage[],
-): string {
-  const recentTranscript =
-    recentMessages.length > 0
-      ? recentMessages
-          .map(
-            (message) =>
-              `- [${message.timestamp}] ${message.authorName}${message.isBot ? " (bot)" : ""}: ${truncate(message.content, MAX_MESSAGE_CHARS)}`,
-          )
-          .join("\n")
-      : "- No recent room transcript was attached.";
-
-  return [
-    `Current speaker: ${input.actor.displayName} (${input.actor.id})`,
-    "",
-    "Current prompt:",
-    input.prompt,
-    "",
-    "Recent room transcript:",
-    recentTranscript,
-    "",
-    "Extract pronoun evidence for the current speaker only.",
-    "Do not output anything except the requested JSON object.",
-  ].join("\n");
-}
-
 function parseSituationalSocialRead(
   input: string,
 ): SituationalSocialRead | undefined {
@@ -308,6 +300,7 @@ function parseSituationalSocialRead(
     const socialFrame = normalizeModelText(parsed.socialFrame);
     const responseGuidance = normalizeModelText(parsed.responseGuidance);
     const supportingSignals = normalizeStringArray(parsed.supportingSignals);
+    const pronounEvidence = normalizePronounEvidenceArray(parsed.pronounEvidence);
 
     if (
       !summary ||
@@ -326,25 +319,10 @@ function parseSituationalSocialRead(
       socialFrame,
       responseGuidance,
       supportingSignals,
-      pronounEvidence: [],
+      pronounEvidence,
     };
   } catch {
     return undefined;
-  }
-}
-
-function parsePronounEvidencePayload(input: string): PronounEvidence[] {
-  const normalized = unwrapStructuredFence(input);
-
-  if (!normalized.startsWith("{")) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(normalized) as InferPronounEvidenceResponseBody;
-    return normalizePronounEvidenceArray(parsed.pronounEvidence);
-  } catch {
-    return [];
   }
 }
 
