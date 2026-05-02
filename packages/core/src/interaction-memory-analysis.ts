@@ -13,6 +13,7 @@ import {
   REPETITION_LOOKBACK_HOURS,
   SIGNIFICANT_INTERACTION_TAGS,
 } from "./interaction-memory-shared";
+import { extractDirectPromptPronounEvidence } from "./pronoun-evidence";
 
 export interface RecordInteractionInput {
   actorId: string;
@@ -306,6 +307,16 @@ function analyzeInteractionTone(
     " stop replying ",
   ]);
 
+  const pronounEvidence = extractDirectPromptPronounEvidence(prompt, timestamp);
+
+  if (pronounEvidence.some((entry) => entry.stance === "prefer")) {
+    tags.add("pronoun_preference");
+  }
+
+  if (pronounEvidence.some((entry) => entry.stance === "avoid")) {
+    tags.add("pronoun_correction");
+  }
+
   if (tags.has("courtesy") && (tags.has("gratitude") || tags.has("apology") || tags.has("praise"))) {
     score += 1;
   }
@@ -427,6 +438,24 @@ function buildEventSummary(
 
   if (tags.has("boundary")) {
     return ambient ? "Talked about shutting you down or pushing you away." : "Tried to shut you down or push you away.";
+  }
+
+  if (tags.has("pronoun_correction") && tags.has("pronoun_preference")) {
+    return ambient
+      ? "Clarified someone else's pronoun preference while talking about identity."
+      : "Explicitly corrected how they want to be referred to.";
+  }
+
+  if (tags.has("pronoun_correction")) {
+    return ambient
+      ? "Corrected pronoun usage while talking about identity."
+      : "Explicitly rejected a pronoun they do not want used for them.";
+  }
+
+  if (tags.has("pronoun_preference")) {
+    return ambient
+      ? "Named a pronoun preference while talking about identity."
+      : "Explicitly stated how they prefer to be referred to.";
   }
 
   if (tags.has("ambition") && (tags.has("anxiety") || tags.has("insecurity"))) {

@@ -46,7 +46,10 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
     await this.writeChain;
     const store = await this.readUnlocked();
     const profile = store.profiles.find((candidate) => candidate.actorId === actorId);
-    return profile && profile.totalInteractions > 0 ? structuredClone(profile) : undefined;
+    return profile &&
+      (profile.totalInteractions > 0 || profile.pronounEvidence.length > 0)
+      ? structuredClone(profile)
+      : undefined;
   }
 
   public async recordInteraction(
@@ -79,7 +82,10 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
             existingProfile,
           );
 
-      if (nextProfile.totalInteractions === 0) {
+      if (
+        nextProfile.totalInteractions === 0 &&
+        nextProfile.pronounEvidence.length === 0
+      ) {
         if (existingProfileIndex !== -1) {
           store.profiles.splice(existingProfileIndex, 1);
         }
@@ -108,12 +114,10 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
       const existingProfileIndex = store.profiles.findIndex(
         (candidate) => candidate.actorId === actorId,
       );
-
-      if (existingProfileIndex === -1) {
-        return undefined;
-      }
-
-      const existingProfile = store.profiles[existingProfileIndex]!;
+      const existingProfile =
+        existingProfileIndex === -1
+          ? emptyInteractionProfile(actorId, actorName)
+          : store.profiles[existingProfileIndex]!;
       const mergedIdentityState = mergePronounEvidenceIntoIdentityState(
         existingProfile,
         evidence,
@@ -124,7 +128,13 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
         existingProfile.recentEvents,
         mergedIdentityState,
       );
-      store.profiles[existingProfileIndex] = nextProfile;
+
+      if (existingProfileIndex === -1) {
+        store.profiles.push(nextProfile);
+      } else {
+        store.profiles[existingProfileIndex] = nextProfile;
+      }
+
       await this.writeUnlocked(store);
       return structuredClone(nextProfile);
     });
@@ -183,7 +193,10 @@ function normalizeStore(store: InteractionMemoryStore): InteractionMemoryStore {
           .slice(-MAX_RECENT_INTERACTION_EVENTS),
         normalizeInteractionIdentityState(profile),
       ))
-      .filter((profile) => profile.totalInteractions > 0),
+      .filter(
+        (profile) =>
+          profile.totalInteractions > 0 || profile.pronounEvidence.length > 0,
+      ),
   };
 }
 

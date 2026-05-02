@@ -111,12 +111,16 @@ create index if not exists interaction_memory_events_actor_timestamp_idx
 
 create table if not exists interaction_identity_profiles (
   actor_id text primary key,
+  actor_name text not null default '',
   pronoun_policy text not null default 'unknown',
   resolved_pronoun_set text,
   pronoun_confidence double precision,
   profile_json jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+alter table if exists interaction_identity_profiles
+  add column if not exists actor_name text not null default '';
 
 create table if not exists void_usage_rate_limit_state (
   actor_id text primary key,

@@ -11,6 +11,7 @@ import {
 import type { AppConfig } from "@voidbot/config";
 import {
   ContextBuilder,
+  extractDirectPromptPronounEvidence,
   type OllamaSituationalSocialReadInferer,
   PermissionEngine,
   type AuditLog,
@@ -229,12 +230,20 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     recentMessages,
     interactionMemory,
   });
-  if (situationalSocialRead?.pronounEvidence.length) {
+  const directPromptPronounEvidence = extractDirectPromptPronounEvidence(
+    options.prompt,
+  );
+  const combinedPronounEvidence = [
+    ...directPromptPronounEvidence,
+    ...(situationalSocialRead?.pronounEvidence ?? []),
+  ];
+
+  if (combinedPronounEvidence.length > 0) {
     interactionMemory =
       (await options.interactionMemory.recordPronounEvidence(
         options.actor.id,
         options.actor.displayName,
-        situationalSocialRead.pronounEvidence,
+        combinedPronounEvidence,
       )) ?? interactionMemory;
   }
 

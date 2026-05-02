@@ -73,13 +73,18 @@ export async function migrateLegacyFileStateIfNeeded(
         continue;
       }
 
-      await upsertInteractionIdentityState(client, profile.actorId, {
-        pronounPolicy: profile.pronounPolicy,
-        resolvedPronounSet: profile.resolvedPronounSet,
-        pronounConfidence: profile.pronounConfidence,
-        pronounGuidance: profile.pronounGuidance,
-        pronounEvidence: profile.pronounEvidence,
-      });
+      await upsertInteractionIdentityState(
+        client,
+        profile.actorId,
+        profile.actorName,
+        {
+          pronounPolicy: profile.pronounPolicy,
+          resolvedPronounSet: profile.resolvedPronounSet,
+          pronounConfidence: profile.pronounConfidence,
+          pronounGuidance: profile.pronounGuidance,
+          pronounEvidence: profile.pronounEvidence,
+        },
+      );
     }
 
     await client.query(

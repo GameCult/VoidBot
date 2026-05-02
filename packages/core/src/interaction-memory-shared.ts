@@ -24,6 +24,8 @@ export const SIGNIFICANT_INTERACTION_TAGS = new Set<string>([
   "suspicion",
   "rigidity",
   "withdrawal",
+  "pronoun_preference",
+  "pronoun_correction",
 ]);
 
 export const SUMMARY_NOTABLE_TAGS = new Set<string>([
@@ -46,6 +48,8 @@ export const SUMMARY_NOTABLE_TAGS = new Set<string>([
   "suspicion",
   "rigidity",
   "withdrawal",
+  "pronoun_preference",
+  "pronoun_correction",
 ]);
 
 export const PROMPT_SIGNATURE_STOPWORDS = new Set([

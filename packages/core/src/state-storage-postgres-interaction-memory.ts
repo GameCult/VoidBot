@@ -23,11 +23,21 @@ export class PostgresInteractionMemoryBank implements InteractionMemoryBank {
   public async getProfile(
     actorId: string,
   ): Promise<InteractionMemoryProfile | undefined> {
-    const identityState = await this.getIdentityState(actorId);
+    const identityRecord = await this.getIdentityRecord(actorId);
+    const identityState = identityRecord?.state;
     const events = await this.listActorEvents(actorId);
 
     if (events.length === 0) {
-      return undefined;
+      if (!identityState) {
+        return undefined;
+      }
+
+      return summarizeInteractionProfile(
+        actorId,
+        identityRecord?.actorName || actorId,
+        [],
+        identityState,
+      );
     }
 
     const profile = summarizeInteractionProfile(
@@ -37,13 +47,16 @@ export class PostgresInteractionMemoryBank implements InteractionMemoryBank {
       identityState,
     );
 
-    return profile.totalInteractions > 0 ? profile : undefined;
+    return profile.totalInteractions > 0 || profile.pronounEvidence.length > 0
+      ? profile
+      : undefined;
   }
 
   public async recordInteraction(
     input: RecordInteractionInput,
   ): Promise<InteractionMemoryProfile> {
-    const identityState = await this.getIdentityState(input.actorId);
+    const identityRecord = await this.getIdentityRecord(input.actorId);
+    const identityState = identityRecord?.state;
     const existingEvents = await this.listActorEvents(input.actorId);
     const priorEvents = existingEvents.filter((event) => event.id !== input.eventId);
     const event = buildInteractionMemoryEvent(input, priorEvents);
@@ -82,23 +95,19 @@ export class PostgresInteractionMemoryBank implements InteractionMemoryBank {
 
     const existingEvents = await this.listActorEvents(actorId);
 
-    if (existingEvents.length === 0) {
-      return undefined;
-    }
-
     const mergedIdentityState = mergePronounEvidenceIntoIdentityState(
-      await this.getIdentityState(actorId),
+      (await this.getIdentityRecord(actorId))?.state,
       evidence,
     );
 
-    await upsertInteractionIdentityState(this.pool, actorId, mergedIdentityState);
-
-    return summarizeInteractionProfile(
+    await upsertInteractionIdentityState(
+      this.pool,
       actorId,
       actorName,
-      existingEvents,
       mergedIdentityState,
     );
+
+    return summarizeInteractionProfile(actorId, actorName, existingEvents, mergedIdentityState);
   }
 
   private async listActorEvents(actorId: string): Promise<InteractionMemoryEvent[]> {
@@ -115,23 +124,28 @@ export class PostgresInteractionMemoryBank implements InteractionMemoryBank {
       .filter((event): event is InteractionMemoryEvent => event !== undefined);
   }
 
-  private async getIdentityState(
+  private async getIdentityRecord(
     actorId: string,
-  ): Promise<InteractionIdentityState | undefined> {
-    const result = await this.pool.query<{ profile_json: unknown }>(
-      `select profile_json
+  ): Promise<{ actorName: string; state: InteractionIdentityState } | undefined> {
+    const result = await this.pool.query<{ actor_name: string; profile_json: unknown }>(
+      `select actor_name, profile_json
        from interaction_identity_profiles
        where actor_id = $1`,
       [actorId],
     );
 
-    if (!result.rows[0]) {
+    const row = result.rows[0];
+
+    if (!row) {
       return undefined;
     }
 
-    return normalizeInteractionIdentityState(
-      deserializeJson<InteractionIdentityState>(result.rows[0].profile_json),
-    );
+    return {
+      actorName: row.actor_name,
+      state: normalizeInteractionIdentityState(
+        deserializeJson<InteractionIdentityState>(row.profile_json),
+      ),
+    };
   }
 }
 
@@ -198,25 +212,29 @@ export async function upsertInteractionMemoryEvent(
 export async function upsertInteractionIdentityState(
   client: Pool | PoolClient,
   actorId: string,
+  actorName: string,
   state: InteractionIdentityState,
 ): Promise<void> {
   await client.query(
     `insert into interaction_identity_profiles (
       actor_id,
+      actor_name,
       pronoun_policy,
       resolved_pronoun_set,
       pronoun_confidence,
       profile_json,
       updated_at
-    ) values ($1, $2, $3, $4, $5::jsonb, now())
+    ) values ($1, $2, $3, $4, $5, $6::jsonb, now())
     on conflict (actor_id) do update
-    set pronoun_policy = excluded.pronoun_policy,
+    set actor_name = excluded.actor_name,
+        pronoun_policy = excluded.pronoun_policy,
         resolved_pronoun_set = excluded.resolved_pronoun_set,
         pronoun_confidence = excluded.pronoun_confidence,
         profile_json = excluded.profile_json,
         updated_at = now()`,
     [
       actorId,
+      actorName,
       state.pronounPolicy,
       state.resolvedPronounSet ?? null,
       state.pronounConfidence ?? null,
