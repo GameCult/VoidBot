@@ -22,7 +22,7 @@ export function buildToolDefinitions(): OllamaToolCallDefinition[] {
       function: {
         name: "search_history",
         description:
-          "Search archived Discord history for prior conversations, decisions, preferences, and discussion fragments.",
+          "Search archived Discord history for prior conversations, real incidents, personal stories, decisions, preferences, relationship history, and discussion fragments from the server.",
         parameters: {
           type: "object",
           required: ["query"],
@@ -78,7 +78,7 @@ export function buildToolDefinitions(): OllamaToolCallDefinition[] {
       function: {
         name: "search_sources",
         description:
-          "Search indexed source trees and lore repositories for code, documentation, and lore passages. Omit repoName to search across all indexed repos, or call list_indexed_repos first if you need valid repo names.",
+          "Search indexed source trees and lore repositories for code, documentation, authored worldbuilding, and project material. Use this for repo/lore questions, not as the first stop for real-life incidents or prior Discord conversations. Omit repoName to search across all indexed repos, or call list_indexed_repos first if you need valid repo names.",
         parameters: {
           type: "object",
           required: ["query"],

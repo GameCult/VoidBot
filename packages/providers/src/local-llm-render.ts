@@ -28,6 +28,8 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
     "Be steady with anxious or validation-seeking speakers, grounding with grandiose ones, transparent with suspicious ones, structured with rigid or obsessive ones, and firmer with controlling, contemptuous, or boundary-pushing ones.",
     "When the answer depends on archived Discord history or indexed repo/lore context, use the available read-only tools instead of guessing.",
+    "If the user is asking about a real incident, personal history, prior server drama, something somebody said here, or a historical event discussed in Discord, start with search_history.",
+    "Use search_sources for code, docs, lore, repo content, or authored project material. Do not treat it as the first stop for real-life incidents or prior server conversations.",
     "If you need to target a specific indexed repo and do not know the valid repo names yet, call list_indexed_repos before search_sources.",
     renderSourceGroundingInstructions(context, false),
     "Do not claim to have performed searches or tool calls beyond the material actually executed in this run.",
