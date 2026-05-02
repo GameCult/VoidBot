@@ -76,6 +76,7 @@ const envSchema = z.object({
   SOURCE_REPO_INCLUDE_PREFIXES: z.string().default("AetheriaLore:Aetheria/"),
   LOCAL_LLM_OLLAMA_BASE_URL: z.string().url().default("http://127.0.0.1:11434"),
   LOCAL_LLM_OLLAMA_MODEL: z.string().min(1).default("qwen3.5:9b"),
+  LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL: optionalNonEmptyString,
   LOCAL_LLM_OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   LOCAL_LLM_OLLAMA_KEEP_ALIVE: z.string().min(1).default("10m"),
   LOCAL_LLM_OLLAMA_THINK: z.string().default("false"),
@@ -151,6 +152,7 @@ export interface AppConfig {
   localLlm: {
     ollamaBaseUrl: string;
     ollamaModel: string;
+    socialReadOllamaModel: string;
     ollamaTimeoutMs: number;
     ollamaKeepAlive: string;
     ollamaThink: OllamaThinkMode;
@@ -326,6 +328,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     localLlm: {
       ollamaBaseUrl: parsed.LOCAL_LLM_OLLAMA_BASE_URL,
       ollamaModel: parsed.LOCAL_LLM_OLLAMA_MODEL,
+      socialReadOllamaModel:
+        parsed.LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL ?? parsed.LOCAL_LLM_OLLAMA_MODEL,
       ollamaTimeoutMs: parsed.LOCAL_LLM_OLLAMA_TIMEOUT_MS,
       ollamaKeepAlive: parsed.LOCAL_LLM_OLLAMA_KEEP_ALIVE,
       ollamaThink: parseOllamaThinkMode(parsed.LOCAL_LLM_OLLAMA_THINK),

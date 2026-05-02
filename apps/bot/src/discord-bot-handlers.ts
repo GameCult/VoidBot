@@ -762,7 +762,7 @@ async function inferSituationalSocialRead(
         channelName: options.guildContext.channelName ?? null,
         promptExcerpt: truncate(options.prompt, 280),
         recentMessageCount: input.recentMessages.length,
-        model: options.config.localLlm.ollamaModel,
+        model: options.config.localLlm.socialReadOllamaModel,
         summary: read.summary,
         roomTone: read.roomTone,
         speakerCurrentRead: read.speakerCurrentRead,
@@ -784,7 +784,7 @@ async function inferSituationalSocialRead(
         channelId: options.guildContext.channelId,
         channelName: options.guildContext.channelName ?? null,
         promptExcerpt: truncate(options.prompt, 280),
-        model: options.config.localLlm.ollamaModel,
+        model: options.config.localLlm.socialReadOllamaModel,
         errorMessage:
           error instanceof Error ? error.message : "Unexpected situational social read failure.",
       },

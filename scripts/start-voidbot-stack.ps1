@@ -478,6 +478,7 @@ $ragOllamaModel = if ($config.ContainsKey("RAG_OLLAMA_MODEL")) { $config["RAG_OL
 $localLlmEnabled = if ($config.ContainsKey("ENABLED_PROVIDERS")) { $config["ENABLED_PROVIDERS"] -like "*local_llm*" } else { $false }
 $localLlmBaseUrl = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_BASE_URL")) { $config["LOCAL_LLM_OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
 $localLlmModel = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_MODEL")) { $config["LOCAL_LLM_OLLAMA_MODEL"] } else { "qwen3.5:9b" }
+$localLlmSocialReadModel = if ($config.ContainsKey("LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL") -and -not [string]::IsNullOrWhiteSpace($config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"])) { $config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"] } else { $localLlmModel }
 
 if ($stateStorageBackend -eq "postgres") {
   $status.stage = "postgres"
@@ -514,6 +515,18 @@ if ($localLlmEnabled) {
   $status.stage = "local_llm"
   Write-StatusFile -Path $statusPath -Status $status
   $status.localLlmOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmModel -Label "Local LLM Ollama" -LogDir $logDir
+
+  if ($localLlmSocialReadModel -eq $localLlmModel) {
+    $status.localLlmSocialReadOllama = @{
+      url = $localLlmBaseUrl
+      model = $localLlmSocialReadModel
+      healthy = $true
+      mirrorsLocalLlm = $true
+    }
+  } else {
+    $status.localLlmSocialReadOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmSocialReadModel -Label "Local LLM social-read Ollama" -LogDir $logDir
+  }
+
   Write-StatusFile -Path $statusPath -Status $status
 }
 

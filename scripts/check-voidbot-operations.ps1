@@ -822,6 +822,14 @@ try {
   }
   $localLlmUrl = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_BASE_URL")) { $config["LOCAL_LLM_OLLAMA_BASE_URL"] } else { "" }
   $localLlmModel = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_MODEL")) { $config["LOCAL_LLM_OLLAMA_MODEL"] } else { "" }
+  $localLlmSocialReadModel = if (
+    $config.ContainsKey("LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL") -and
+    -not [string]::IsNullOrWhiteSpace($config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"])
+  ) {
+    $config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"]
+  } else {
+    $localLlmModel
+  }
   $localLlmEnabled = ($enabledProviders -contains "local_llm") -or (
     $config.ContainsKey("LOCAL_LLM_ALLOW_PUBLIC") -and [string]$config["LOCAL_LLM_ALLOW_PUBLIC"] -eq "true"
   )
@@ -842,14 +850,44 @@ try {
           models = $localLlmModels
         }
       }
+
+      if ([string]::IsNullOrWhiteSpace($localLlmSocialReadModel)) {
+        Add-Check -Name "local_llm.social_read_model" -Status "warning" -Detail "Social-read sidecar model is blank, so it will fall back to the main local LLM model." -Data @{
+          url = $localLlmUrl
+          model = $localLlmModel
+        }
+      } elseif ($localLlmModels -contains $localLlmSocialReadModel) {
+        $socialReadDetail = if ($localLlmSocialReadModel -eq $localLlmModel) {
+          "Social-read sidecar reuses the main local LLM model $localLlmSocialReadModel."
+        } else {
+          "Social-read sidecar is reachable and has $localLlmSocialReadModel."
+        }
+
+        Add-Check -Name "local_llm.social_read_model" -Status "passed" -Detail $socialReadDetail -Data @{
+          url = $localLlmUrl
+          model = $localLlmSocialReadModel
+        }
+      } else {
+        Add-Check -Name "local_llm.social_read_model" -Status "failed" -Detail "Local LLM Ollama is reachable but missing social-read model $localLlmSocialReadModel." -Data @{
+          url = $localLlmUrl
+          models = $localLlmModels
+        }
+      }
     } catch {
       Add-Check -Name "local_llm.model" -Status "failed" -Detail "Local LLM Ollama check failed: $($_.Exception.Message)" -Data @{
         url = $localLlmUrl
         model = $localLlmModel
       }
+      Add-Check -Name "local_llm.social_read_model" -Status "failed" -Detail "Social-read Ollama check failed: $($_.Exception.Message)" -Data @{
+        url = $localLlmUrl
+        model = $localLlmSocialReadModel
+      }
     }
   } else {
     Add-Check -Name "local_llm.model" -Status "passed" -Detail "Local LLM check skipped because the provider is not enabled for this runtime." -Data @{
+      enabledProviders = $enabledProviders
+    }
+    Add-Check -Name "local_llm.social_read_model" -Status "passed" -Detail "Social-read model check skipped because the local LLM provider is not enabled for this runtime." -Data @{
       enabledProviders = $enabledProviders
     }
   }

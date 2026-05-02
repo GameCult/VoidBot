@@ -78,6 +78,7 @@ If you want the remote Ollama generation path too, configure:
 
 - `LOCAL_LLM_OLLAMA_BASE_URL`
 - `LOCAL_LLM_OLLAMA_MODEL`
+- `LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL`
 - `LOCAL_LLM_OLLAMA_TIMEOUT_MS`
 - `LOCAL_LLM_OLLAMA_KEEP_ALIVE`
 - `LOCAL_LLM_OLLAMA_THINK`
@@ -86,6 +87,7 @@ If you want the remote Ollama generation path too, configure:
 
 `LOCAL_LLM_ALLOW_PUBLIC=false` is the sane default. It keeps the local model restricted to admins and the configured owner while you test.
 `LOCAL_LLM_OLLAMA_THINK=low` is a good default if you want better phrasing and a little more initiative without dragging reply time into the swamp.
+`LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL` is optional. Leave it blank to reuse the main local reply model, or set it when you want the room-reading sidecar on a different model than the public/local response lane.
 
 If you want a private local persona instead, point `STYLE_PACK_PATH` and `SYSTEM_MESSAGES_PATH` at your own ignored local files.
 

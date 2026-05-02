@@ -150,7 +150,7 @@ export async function startBot(): Promise<void> {
   const contextBuilder = new ContextBuilder();
   const situationalSocialReadInferer = new OllamaSituationalSocialReadInferer({
     ollamaBaseUrl: config.localLlm.ollamaBaseUrl,
-    ollamaModel: config.localLlm.ollamaModel,
+    ollamaModel: config.localLlm.socialReadOllamaModel,
     ollamaTimeoutMs: config.localLlm.ollamaTimeoutMs,
     ollamaKeepAlive: config.localLlm.ollamaKeepAlive,
     ollamaNumCtx: config.localLlm.ollamaNumCtx,
