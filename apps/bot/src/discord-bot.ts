@@ -66,6 +66,50 @@ import {
   stripBotMention,
 } from "./discord-bot-support";
 
+function filterPromptEchoHistoryResults<
+  T extends {
+    text: string;
+  },
+>(results: T[], query: string): T[] {
+  const normalizedQuery = normalizeHistoryEchoText(query);
+
+  if (normalizedQuery.length === 0) {
+    return results;
+  }
+
+  const filtered = results.filter((result) => {
+    const normalizedResult = normalizeHistoryEchoText(result.text);
+
+    if (normalizedResult.length === 0) {
+      return true;
+    }
+
+    if (normalizedResult === normalizedQuery) {
+      return false;
+    }
+
+    if (
+      normalizedQuery.length >= 48 &&
+      (normalizedResult.includes(normalizedQuery) || normalizedQuery.includes(normalizedResult))
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return filtered.length > 0 ? filtered : results;
+}
+
+function normalizeHistoryEchoText(value: string): string {
+  return value
+    .replace(/<@!?\d+>/g, " ")
+    .replace(/<@&\d+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 export async function startBot(): Promise<void> {
   const config = loadConfig();
 
@@ -182,11 +226,12 @@ export async function startBot(): Promise<void> {
           };
         },
         searchHistory: async (input) => {
-          const results = await retrievalService.searchHistory(input.query, input.limit, {
+          const rawResults = await retrievalService.searchHistory(input.query, input.limit, {
             guildId: input.guildId,
             channelId: input.channelId,
             authorId: input.authorId,
           });
+          const results = filterPromptEchoHistoryResults(rawResults, input.query);
 
           return {
             query: input.query,

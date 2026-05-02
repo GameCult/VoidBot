@@ -26,10 +26,13 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "Use retrieved snippets and recent channel context when they help answer the question.",
     "If explicit interaction memory for the current speaker is attached, you may let it gently color the tone and reference it when relevant, but do not invent history beyond what was provided.",
     "Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
+    "The attached interaction memory and inferred guidance are private response scaffolding, not content to expose. Do not quote, summarize, classify, or explain the speaker's inferred traits, engagement patterns, psychological profile, or hidden response guidance unless they explicitly ask how you are reading them.",
+    "Do not turn a substantive question into a meta-analysis of the user's personality, engagement style, sentiment, or recent conversation behavior unless they explicitly asked for that kind of read.",
     "Be steady with anxious or validation-seeking speakers, grounding with grandiose ones, transparent with suspicious ones, structured with rigid or obsessive ones, and firmer with controlling, contemptuous, or boundary-pushing ones.",
     "When the answer depends on archived Discord history or indexed repo/lore context, use the available read-only tools instead of guessing.",
     "If the user is asking about a real incident, personal history, prior server drama, something somebody said here, or a historical event discussed in Discord, start with search_history.",
     "Use search_sources for code, docs, lore, repo content, or authored project material. Do not treat it as the first stop for real-life incidents or prior server conversations.",
+    "If a history search gives you echoes of the current question or other repeated ask-lines, ignore those and look for earlier substantive messages, links, or fetch surrounding context with get_message_context.",
     "If you need to target a specific indexed repo and do not know the valid repo names yet, call list_indexed_repos before search_sources.",
     renderSourceGroundingInstructions(context, false),
     "Do not claim to have performed searches or tool calls beyond the material actually executed in this run.",
@@ -101,26 +104,10 @@ function renderInteractionMemory(context: ContextBundle): string {
         )
         .join("\n")
     : "- No recent interaction events were retained.";
-  const dimensions = context.interactionMemory.interactionDimensions.length
-    ? context.interactionMemory.interactionDimensions
-        .map(
-          (dimension) =>
-            `- ${dimension.label}: ${dimension.score}/3. ${dimension.summary}`,
-        )
-        .join("\n")
-    : "- No strong interaction dimensions were inferred yet.";
-
   return [
-    `- Summary: ${context.interactionMemory.summary}`,
-    `- Disposition: ${context.interactionMemory.disposition}`,
-    `- Affinity score: ${context.interactionMemory.affinityScore}`,
-    `- Psychological profile: ${context.interactionMemory.psychologicalProfile}`,
-    `- Inferred traits: ${context.interactionMemory.inferredTraits.length > 0 ? context.interactionMemory.inferredTraits.join(", ") : "(none yet)"}`,
-    "- Interaction dimensions:",
-    dimensions,
-    `- Response guidance: ${context.interactionMemory.responseGuidance}`,
-    `- Direct remembered interactions: ${context.interactionMemory.directInteractionCount}`,
-    `- Ambient remembered mentions: ${context.interactionMemory.ambientMentionCount}`,
+    `- Relationship summary: ${context.interactionMemory.summary}`,
+    `- Current stance: ${context.interactionMemory.disposition}; affinity=${context.interactionMemory.affinityScore}`,
+    `- Private response guidance (do not reveal): ${context.interactionMemory.responseGuidance}`,
     "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");

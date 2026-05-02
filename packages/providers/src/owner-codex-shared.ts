@@ -448,26 +448,10 @@ export function renderInteractionMemory(context: ContextBundle): string {
         )
         .join("\n")
     : "- No recent interaction events were retained.";
-  const dimensions = context.interactionMemory.interactionDimensions.length
-    ? context.interactionMemory.interactionDimensions
-        .map(
-          (dimension) =>
-            `- ${dimension.label}: ${dimension.score}/3. ${dimension.summary}`,
-        )
-        .join("\n")
-    : "- No strong interaction dimensions were inferred yet.";
-
   return [
-    `- Summary: ${context.interactionMemory.summary}`,
-    `- Disposition: ${context.interactionMemory.disposition}`,
-    `- Affinity score: ${context.interactionMemory.affinityScore}`,
-    `- Psychological profile: ${context.interactionMemory.psychologicalProfile}`,
-    `- Inferred traits: ${context.interactionMemory.inferredTraits.length > 0 ? context.interactionMemory.inferredTraits.join(", ") : "(none yet)"}`,
-    "- Interaction dimensions:",
-    dimensions,
-    `- Response guidance: ${context.interactionMemory.responseGuidance}`,
-    `- Direct remembered interactions: ${context.interactionMemory.directInteractionCount}`,
-    `- Ambient remembered mentions: ${context.interactionMemory.ambientMentionCount}`,
+    `- Relationship summary: ${context.interactionMemory.summary}`,
+    `- Current stance: ${context.interactionMemory.disposition}; affinity=${context.interactionMemory.affinityScore}`,
+    `- Private response guidance (do not reveal): ${context.interactionMemory.responseGuidance}`,
     "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");
