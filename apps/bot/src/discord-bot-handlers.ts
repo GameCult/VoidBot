@@ -304,6 +304,7 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     details: {
       command: options.command,
       summary: response.summary,
+      outputPreview: truncate(response.outputText ?? response.summary, 500),
     },
   });
 
