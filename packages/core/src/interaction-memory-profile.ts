@@ -29,6 +29,7 @@ interface PsychologicalRead {
 export interface InteractionIdentityState {
   pronounPolicy: PronounPolicy;
   resolvedPronounSet?: PronounSet;
+  resolvedPronounSets: PronounSet[];
   pronounConfidence?: number;
   pronounGuidance: string;
   pronounEvidence: PronounEvidence[];
@@ -86,6 +87,7 @@ export function summarizeInteractionProfile(
     responseGuidance: psychologicalRead.responseGuidance,
     pronounPolicy: normalizedIdentityState.pronounPolicy,
     resolvedPronounSet: normalizedIdentityState.resolvedPronounSet,
+    resolvedPronounSets: normalizedIdentityState.resolvedPronounSets,
     pronounConfidence: normalizedIdentityState.pronounConfidence,
     pronounGuidance: normalizedIdentityState.pronounGuidance,
     pronounEvidence: normalizedIdentityState.pronounEvidence,
@@ -108,6 +110,7 @@ export function emptyInteractionProfile(
 export function emptyInteractionIdentityState(): InteractionIdentityState {
   return {
     pronounPolicy: "unknown",
+    resolvedPronounSets: [],
     pronounGuidance:
       "No reliable pronoun preference is established for this speaker yet. Use their name or neutral phrasing unless the current context states otherwise.",
     pronounEvidence: [],
@@ -599,12 +602,45 @@ function resolveInteractionIdentityState(
     )
     .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
 
-  if (explicitPreferred.length > 0) {
-    const winning = explicitPreferred[0]!;
+  const explicitPreferredSets = [
+    ...new Set(
+      explicitPreferred
+        .map((entry) => entry.pronounSet)
+        .filter(
+          (pronounSet) =>
+            !normalizedEvidence.some(
+              (entry) =>
+                entry.pronounSet === pronounSet &&
+                entry.stance === "avoid" &&
+                (entry.source === "explicit_self_statement" ||
+                  entry.source === "explicit_correction") &&
+                entry.timestamp >=
+                  (explicitPreferred.find((candidate) => candidate.pronounSet === pronounSet)
+                    ?.timestamp ?? ""),
+            ),
+        ),
+    ),
+  ];
+
+  if (explicitPreferredSets.length > 1) {
+    return {
+      pronounPolicy: "explicit",
+      resolvedPronounSets: explicitPreferredSets,
+      pronounConfidence: 1,
+      pronounGuidance: `Any of these pronoun sets are explicitly acceptable for this speaker: ${explicitPreferredSets.join(", ")}. Avoid pronoun sets they explicitly rejected.`,
+      pronounEvidence: normalizedEvidence,
+    };
+  }
+
+  if (explicitPreferredSets.length === 1) {
+    const winning = explicitPreferred.find(
+      (entry) => entry.pronounSet === explicitPreferredSets[0],
+    )!;
 
     return {
       pronounPolicy: "explicit",
       resolvedPronounSet: winning.pronounSet,
+      resolvedPronounSets: [winning.pronounSet],
       pronounConfidence: winning.confidence,
       pronounGuidance: `Use ${winning.pronounSet} for this speaker. This preference came from an explicit statement or correction and should override softer contextual guesses.`,
       pronounEvidence: normalizedEvidence,
@@ -629,6 +665,7 @@ function resolveInteractionIdentityState(
   if (!winner || winner[1] <= 0) {
     return {
       pronounPolicy: "unknown",
+      resolvedPronounSets: [],
       pronounGuidance:
         "Pronoun evidence exists, but it does not establish a clear usable preference yet. Use the speaker's name or neutral phrasing unless they clarify.",
       pronounEvidence: normalizedEvidence,
@@ -638,6 +675,7 @@ function resolveInteractionIdentityState(
   if (runnerUp && Math.abs(winner[1] - runnerUp[1]) < 1) {
     return {
       pronounPolicy: "conflicted",
+      resolvedPronounSets: [],
       pronounGuidance:
         "Pronoun evidence for this speaker is conflicted or too close to call. Avoid guessing; use their name or neutral phrasing unless they clarify.",
       pronounEvidence: normalizedEvidence,
@@ -649,6 +687,7 @@ function resolveInteractionIdentityState(
   return {
     pronounPolicy: "inferred",
     resolvedPronounSet: winner[0],
+    resolvedPronounSets: [winner[0]],
     pronounConfidence: confidence,
     pronounGuidance: `Prefer ${winner[0]} for this speaker based on accumulated contextual evidence, but switch immediately if they or the room explicitly correct it.`,
     pronounEvidence: normalizedEvidence,

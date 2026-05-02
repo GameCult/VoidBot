@@ -5,6 +5,7 @@ import {
   type InteractionMemoryEvent,
   type InteractionMemorySentiment,
   type InteractionMemorySourceKind,
+  type PronounEvidence,
 } from "@voidbot/shared";
 
 import {
@@ -13,7 +14,6 @@ import {
   REPETITION_LOOKBACK_HOURS,
   SIGNIFICANT_INTERACTION_TAGS,
 } from "./interaction-memory-shared";
-import { extractDirectPromptPronounEvidence } from "./pronoun-evidence";
 
 export interface RecordInteractionInput {
   actorId: string;
@@ -26,6 +26,7 @@ export interface RecordInteractionInput {
   prompt: string;
   timestamp?: string;
   eventId?: string;
+  pronounEvidence?: PronounEvidence[];
 }
 
 interface ToneAnalysis {
@@ -44,7 +45,13 @@ export function buildInteractionMemoryEvent(
 ): InteractionMemoryEvent {
   const timestamp = input.timestamp ?? new Date().toISOString();
   const prompt = input.prompt.trim();
-  const analysis = analyzeInteractionTone(prompt, input.sourceKind, timestamp, priorEvents);
+  const analysis = analyzeInteractionTone(
+    prompt,
+    input.sourceKind,
+    timestamp,
+    priorEvents,
+    input.pronounEvidence,
+  );
 
   return {
     id: input.eventId ?? randomUUID(),
@@ -66,6 +73,10 @@ export function buildInteractionMemoryEvent(
 }
 
 export function shouldPersistInteractionEvent(event: InteractionMemoryEvent): boolean {
+  if (event.sourceKind === "direct_prompt") {
+    return true;
+  }
+
   if (event.sourceKind === "ambient_mention") {
     return true;
   }
@@ -88,14 +99,15 @@ export function normalizeInteractionEvent(
     event.timestamp,
     priorEvents,
   );
+  const mergedTags = mergePronounTags(analysis.tags, event.tags);
 
   return {
     ...event,
     sourceKind,
-    summary: buildEventSummary(sourceKind, analysis.sentiment, new Set(analysis.tags)),
+    summary: buildEventSummary(sourceKind, analysis.sentiment, new Set(mergedTags)),
     sentiment: analysis.sentiment,
     score: analysis.score,
-    tags: analysis.tags,
+    tags: mergedTags,
   };
 }
 
@@ -104,6 +116,7 @@ function analyzeInteractionTone(
   sourceKind: InteractionMemorySourceKind,
   timestamp: string,
   priorEvents: InteractionMemoryEvent[],
+  pronounEvidence: PronounEvidence[] = [],
 ): ToneAnalysis {
   const normalized = ` ${prompt
     .toLowerCase()
@@ -307,8 +320,6 @@ function analyzeInteractionTone(
     " stop replying ",
   ]);
 
-  const pronounEvidence = extractDirectPromptPronounEvidence(prompt, timestamp);
-
   if (pronounEvidence.some((entry) => entry.stance === "prefer")) {
     tags.add("pronoun_preference");
   }
@@ -349,6 +360,21 @@ function analyzeInteractionTone(
     score: clamp(score, -4, 4),
     tags: [...tags],
   };
+}
+
+function mergePronounTags(
+  derivedTags: string[],
+  priorTags: string[] | undefined,
+): string[] {
+  const merged = new Set(derivedTags);
+
+  for (const tag of priorTags ?? []) {
+    if (tag === "pronoun_preference" || tag === "pronoun_correction") {
+      merged.add(tag);
+    }
+  }
+
+  return [...merged];
 }
 
 function matchWeightedPhrases(

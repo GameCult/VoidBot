@@ -80,6 +80,7 @@ export async function migrateLegacyFileStateIfNeeded(
         {
           pronounPolicy: profile.pronounPolicy,
           resolvedPronounSet: profile.resolvedPronounSet,
+          resolvedPronounSets: profile.resolvedPronounSets,
           pronounConfidence: profile.pronounConfidence,
           pronounGuidance: profile.pronounGuidance,
           pronounEvidence: profile.pronounEvidence,

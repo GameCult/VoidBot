@@ -11,7 +11,6 @@ import {
 import type { AppConfig } from "@voidbot/config";
 import {
   ContextBuilder,
-  extractDirectPromptPronounEvidence,
   type OllamaSituationalSocialReadInferer,
   PermissionEngine,
   type AuditLog,
@@ -211,6 +210,14 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     return;
   }
 
+  let interactionMemory = await options.interactionMemory.getProfile(options.actor.id);
+
+  const recentMessages = await getRecentMessages(options.channel, 10);
+  const situationalSocialRead = await inferSituationalSocialRead(options, {
+    recentMessages,
+    interactionMemory,
+  });
+  const pronounEvidence = situationalSocialRead?.pronounEvidence ?? [];
   const rememberedInteraction = await options.interactionMemory.recordInteraction({
     actorId: options.actor.id,
     actorName: options.actor.displayName,
@@ -221,29 +228,19 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     command: options.command,
     prompt: options.prompt,
     eventId: options.requestMessageId,
+    pronounEvidence,
   });
-  let interactionMemory =
-    rememberedInteraction.totalInteractions > 0 ? rememberedInteraction : undefined;
+  interactionMemory =
+    rememberedInteraction.totalInteractions > 0 || rememberedInteraction.pronounEvidence.length > 0
+      ? rememberedInteraction
+      : undefined;
 
-  const recentMessages = await getRecentMessages(options.channel, 10);
-  const situationalSocialRead = await inferSituationalSocialRead(options, {
-    recentMessages,
-    interactionMemory,
-  });
-  const directPromptPronounEvidence = extractDirectPromptPronounEvidence(
-    options.prompt,
-  );
-  const combinedPronounEvidence = [
-    ...directPromptPronounEvidence,
-    ...(situationalSocialRead?.pronounEvidence ?? []),
-  ];
-
-  if (combinedPronounEvidence.length > 0) {
+  if (pronounEvidence.length > 0) {
     interactionMemory =
       (await options.interactionMemory.recordPronounEvidence(
         options.actor.id,
         options.actor.displayName,
-        combinedPronounEvidence,
+        pronounEvidence,
       )) ?? interactionMemory;
   }
 

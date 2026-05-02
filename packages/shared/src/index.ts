@@ -204,6 +204,7 @@ export interface InteractionMemoryProfile {
   responseGuidance: string;
   pronounPolicy: PronounPolicy;
   resolvedPronounSet?: PronounSet;
+  resolvedPronounSets: PronounSet[];
   pronounConfidence?: number;
   pronounGuidance: string;
   pronounEvidence: PronounEvidence[];

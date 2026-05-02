@@ -508,7 +508,7 @@ export function renderInteractionProfileDisclosure(
     "",
     "Pronoun handling:",
     `- Policy: ${profile.pronounPolicy}`,
-    `- Resolved set: ${profile.resolvedPronounSet ?? "none"}`,
+    `- Resolved sets: ${profile.resolvedPronounSets.length > 0 ? profile.resolvedPronounSets.join(", ") : profile.resolvedPronounSet ?? "none"}`,
     `- Confidence: ${profile.pronounConfidence !== undefined ? `${Math.round(profile.pronounConfidence * 100)}%` : "n/a"}`,
     `- Guidance: ${profile.pronounGuidance}`,
     "- Evidence:",
