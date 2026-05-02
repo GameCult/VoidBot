@@ -12,7 +12,6 @@ export const HANDOFF_SENTINEL = "VOIDBOT_HANDOFF_REQUIRED:";
 export const OWNER_NOTIFY_SENTINEL = "VOIDBOT_OWNER_NOTIFY:";
 export const TOOL_REQUEST_SENTINEL = "VOIDBOT_TOOL_REQUEST:";
 export const MAX_HISTORY_TOOL_CALLS = 4;
-export const MAX_SOURCE_GROUNDING_RETRIES = 1;
 export const MAX_NOTIFICATION_MESSAGE_LENGTH = 400;
 
 export interface CodexUsageSnapshot {
@@ -35,6 +34,7 @@ export interface OwnerCodexProviderOptions {
   mode: OwnerCodexMode;
   executable: string;
   executableArgs: string[];
+  model: string;
   reasoningEffort: "low" | "medium" | "high" | "xhigh";
   timeoutMs: number;
   workingDirectory: string;
@@ -131,16 +131,6 @@ export function buildRequestPayload(
 
 export function buildDefaultHandoffNotice(jobId: string): string {
   return `This request needs the fuller local Codex flow. Check \`.voidbot/artifacts/${jobId}/handoff.md\` and \`.voidbot/artifacts/${jobId}/debug-trace.md\` in the local workspace.`;
-}
-
-export function didUseSourceGrounding(events: CodexTraceEvent[]): boolean {
-  return events.some(
-    (event) =>
-      event.kind === "mcp_tool_completed" &&
-      (event.tool === "list_indexed_repos" ||
-        event.tool === "search_sources" ||
-        event.tool === "get_source_context"),
-  );
 }
 
 export function extractLatestUsage(

@@ -11,10 +11,8 @@ import type {
 import {
   buildDefaultHandoffNotice,
   buildRequestPayload,
-  didUseSourceGrounding,
   type HistoryLookupTool,
   MAX_HISTORY_TOOL_CALLS,
-  MAX_SOURCE_GROUNDING_RETRIES,
   type OwnerCodexProviderOptions,
   type ToolCallRecord,
 } from "./owner-codex-shared";
@@ -176,25 +174,18 @@ export class OwnerCodexProvider implements ProviderAdapter {
     const artifacts: ProviderArtifact[] = [...baseArtifacts];
     const turnResults = [];
     let result;
-    let sourceGroundingReminderCount = 0;
-    const sourceGroundingRequired = Boolean(
-      request.contextBundle.sourceGrounding?.required,
-    );
 
-    for (
-      let turn = 0;
-      turn <= MAX_HISTORY_TOOL_CALLS + MAX_SOURCE_GROUNDING_RETRIES;
-      turn += 1
-    ) {
+    for (let turn = 0; turn <= MAX_HISTORY_TOOL_CALLS; turn += 1) {
       const codexPrompt = buildDiscordReplyPrompt(
         request.contextBundle,
         toolCalls,
-        sourceGroundingReminderCount > 0,
+        false,
       );
 
       result = await runCodexExec({
         executable: this.options.executable,
         executableArgs: this.options.executableArgs,
+        model: this.options.model,
         reasoningEffort: this.options.reasoningEffort,
         timeoutMs: this.options.timeoutMs,
         workingDirectory: this.options.workingDirectory,
@@ -246,16 +237,6 @@ export class OwnerCodexProvider implements ProviderAdapter {
       }
 
       if (!result.toolRequest) {
-        if (sourceGroundingRequired && !didUseSourceGrounding(result.traceEvents)) {
-          if (sourceGroundingReminderCount < MAX_SOURCE_GROUNDING_RETRIES) {
-            sourceGroundingReminderCount += 1;
-            continue;
-          }
-
-          result.handoffReason =
-            "This question needed source-grounded evidence, but the reply lane never used the source tools.";
-        }
-
         break;
       }
 

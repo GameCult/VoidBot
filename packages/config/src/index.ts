@@ -86,6 +86,7 @@ const envSchema = z.object({
   OWNER_CODEX_MODE: z.string().min(1).default("local_exec_owner_only"),
   CODEX_EXECUTABLE: z.string().min(1).default("codex"),
   CODEX_EXEC_ARGS: z.string().default(""),
+  CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
   CODEX_MODEL_REASONING_EFFORT: z.enum(["low", "medium", "high", "xhigh"]).default("low"),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   STYLE_PACK_PATH: z.string().min(1).default("styles/void-default.md"),
@@ -116,6 +117,7 @@ export interface AppConfig {
   ownerCodexMode: OwnerCodexMode;
   codexExecutable: string;
   codexExecArgs: string[];
+  codexModel: string;
   codexModelReasoningEffort: "low" | "medium" | "high" | "xhigh";
   codexExecTimeoutMs: number;
   stylePackPath: string;
@@ -285,6 +287,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ownerCodexMode: parseOwnerCodexMode(parsed.OWNER_CODEX_MODE),
     codexExecutable: parsed.CODEX_EXECUTABLE,
     codexExecArgs: parseList(parsed.CODEX_EXEC_ARGS),
+    codexModel: parsed.CODEX_MODEL,
     codexModelReasoningEffort: parsed.CODEX_MODEL_REASONING_EFFORT,
     codexExecTimeoutMs: parsed.CODEX_EXEC_TIMEOUT_MS,
     stylePackPath: resolve(parsed.STYLE_PACK_PATH),

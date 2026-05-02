@@ -333,7 +333,11 @@ function renderSourceGroundingInstructions(
   context: ContextBundle,
   reminder: boolean,
 ): string {
-  if (!context.sourceGrounding?.required) {
+  if (
+    !context.sourceGrounding ||
+    (context.sourceGrounding.matchedRepoNames.length === 0 &&
+      context.sourceGrounding.reasons.length === 0)
+  ) {
     return "- Source-side grounding is optional here; use it when it clearly helps.";
   }
 
@@ -349,7 +353,7 @@ function renderSourceGroundingInstructions(
     ? " The previous answer attempt was discarded because it did not touch the source-side tools."
     : "";
 
-  return `- This prompt requires source-grounded evidence before you answer. Use list_indexed_repos, search_sources, or get_source_context first.${matchedRepos}${reasons}${retry}`;
+  return `- This prompt may benefit from source-side grounding. Use list_indexed_repos, search_sources, or get_source_context if repo, lore, or source evidence would sharpen the answer.${matchedRepos}${reasons}${retry}`;
 }
 
 function renderAgentMessageTrace(events: CodexTraceEvent[]): string {

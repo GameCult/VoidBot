@@ -5,7 +5,6 @@ import {
 
 export type OllamaThinkMode = boolean | "low" | "medium" | "high";
 export const MAX_TOOL_TURNS = 4;
-export const MAX_SOURCE_GROUNDING_RETRIES = 1;
 export const MAX_TOOL_RESULTS = MAX_RETRIEVAL_RESULT_LIMIT;
 export const MAX_CONTEXT_WINDOW = 20;
 

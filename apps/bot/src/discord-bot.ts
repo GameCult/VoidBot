@@ -149,6 +149,7 @@ export async function startBot(): Promise<void> {
       mode: config.ownerCodexMode,
       executable: config.codexExecutable,
       executableArgs: config.codexExecArgs,
+      model: config.codexModel,
       reasoningEffort: config.codexModelReasoningEffort,
       timeoutMs: config.codexExecTimeoutMs,
       workingDirectory: process.cwd(),

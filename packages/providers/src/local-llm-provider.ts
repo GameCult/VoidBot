@@ -10,9 +10,7 @@ import {
 import {
   buildArtifacts,
   buildPrompt,
-  buildSourceGroundingReminder,
   buildSystemPrompt,
-  didUseSourceGrounding,
 } from "./local-llm-render";
 import {
   executeToolCall,
@@ -20,7 +18,6 @@ import {
   normalizeAssistantMessage,
 } from "./local-llm-tools";
 import {
-  MAX_SOURCE_GROUNDING_RETRIES,
   MAX_TOOL_TURNS,
   type LocalLlmProviderOptions,
   type OllamaChatMessage,
@@ -96,8 +93,6 @@ export class LocalLlmProvider implements ProviderAdapter {
     const tools = this.options.toolbox ? buildToolDefinitions() : undefined;
     const toolTrace: ToolTraceRecord[] = [];
     const thinkingTrace: string[] = [];
-    const sourceGroundingRequired = Boolean(request.contextBundle.sourceGrounding?.required);
-    let sourceGroundingReminderCount = 0;
 
     try {
       let finalPayload: OllamaChatResponse | undefined;
@@ -146,25 +141,6 @@ export class LocalLlmProvider implements ProviderAdapter {
 
         if (toolCalls.length === 0) {
           const candidateOutput = normalizeModelText(assistantMessage.content);
-
-          if (
-            sourceGroundingRequired &&
-            !didUseSourceGrounding(toolTrace) &&
-            this.options.toolbox
-          ) {
-            if (sourceGroundingReminderCount < MAX_SOURCE_GROUNDING_RETRIES) {
-              sourceGroundingReminderCount += 1;
-              messages.push({
-                role: "user",
-                content: buildSourceGroundingReminder(request.contextBundle),
-              });
-              continue;
-            }
-
-            finalOutputText =
-              "This request needs actual source grounding before I can answer it cleanly. Ask again after I pull from the indexed repos, or use the deeper Codex lane.";
-            break;
-          }
 
           finalOutputText = candidateOutput;
           break;

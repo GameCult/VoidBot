@@ -79,18 +79,6 @@ export function buildPrompt(context: ContextBundle): string {
   ].join("\n");
 }
 
-export function buildSourceGroundingReminder(context: ContextBundle): string {
-  return `${renderSourceGroundingInstructions(context, true)} Answer again only after using the source-side tools.`;
-}
-
-export function didUseSourceGrounding(toolTrace: ToolTraceRecord[]): boolean {
-  return toolTrace.some((trace) =>
-    trace.tool === "list_indexed_repos" ||
-    trace.tool === "search_sources" ||
-    trace.tool === "get_source_context",
-  );
-}
-
 export function buildArtifacts(input: LocalLlmArtifactsInput): ProviderArtifact[] {
   return buildBaseArtifacts(input);
 }
@@ -140,16 +128,12 @@ function renderSourceGroundingInstructions(
   context: ContextBundle,
   reminder: boolean,
 ): string {
-  if (!context.sourceGrounding?.required) {
-    return "Source-side grounding is optional here; use it when it clearly helps.";
-  }
-
   const matchedRepos =
-    context.sourceGrounding.matchedRepoNames.length > 0
+    context.sourceGrounding?.matchedRepoNames && context.sourceGrounding.matchedRepoNames.length > 0
       ? ` Matched repos/projects: ${context.sourceGrounding.matchedRepoNames.join(", ")}.`
       : "";
   const reasons =
-    context.sourceGrounding.reasons.length > 0
+    context.sourceGrounding?.reasons && context.sourceGrounding.reasons.length > 0
       ? ` Reasons: ${context.sourceGrounding.reasons.join(", ")}.`
       : "";
   const retry =
@@ -157,5 +141,13 @@ function renderSourceGroundingInstructions(
       ? " The previous answer attempt was discarded because it did not touch the source-side tools."
       : "";
 
-  return `This prompt requires source-grounded evidence before you answer. Use list_indexed_repos, search_sources, or get_source_context first.${matchedRepos}${reasons}${retry}`;
+  if (
+    !context.sourceGrounding ||
+    (context.sourceGrounding.matchedRepoNames.length === 0 &&
+      context.sourceGrounding.reasons.length === 0)
+  ) {
+    return "Source-side grounding is optional here; use it when it clearly helps.";
+  }
+
+  return `This prompt may benefit from source-side grounding. Use list_indexed_repos, search_sources, or get_source_context if repo, lore, or source evidence would sharpen the answer.${matchedRepos}${reasons}${retry}`;
 }

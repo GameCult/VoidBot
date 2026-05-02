@@ -288,7 +288,7 @@ export function inferSourceGroundingHint(
   }
 
   return {
-    required: reasons.size > 0,
+    required: false,
     reasons: [...reasons],
     matchedRepoNames: [...matchedRepoNames].sort(),
   };

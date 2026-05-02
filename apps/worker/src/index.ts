@@ -136,6 +136,7 @@ async function buildProviderRegistry(systemMessagesCatalog: SystemMessageCatalog
       mode: config.ownerCodexMode,
       executable: config.codexExecutable,
       executableArgs: config.codexExecArgs,
+      model: config.codexModel,
       reasoningEffort: config.codexModelReasoningEffort,
       timeoutMs: config.codexExecTimeoutMs,
       workingDirectory: process.cwd(),

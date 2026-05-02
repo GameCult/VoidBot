@@ -30,7 +30,7 @@ invariants:
   - Scratch is temporary and disposable.
   - Evidence is durable and distilled; routine activity proof belongs in git history, commits, smoke artifacts, or targeted logs.
   - Jobs, audit events, interaction memory, and rate-limit state live in Postgres; vectors live in Qdrant; archives, artifacts, logs, and backups remain under `.voidbot/`.
-  - Source, repo, and lore answers must be grounded through source-side retrieval instead of vibes.
+  - Source, repo, and lore answers should use source-side retrieval when the reply depends on indexed facts; the hinting is advisory, not a lexical veto.
   - When GameCult history, repo, or lore retrieval can answer the question, use the VoidBot MCP surfaces before raw repo spelunking.
 
 data_flow:
@@ -75,7 +75,7 @@ landed_baseline:
     - Local and offsite backups, watchdogs, and the operations dashboard are live.
     - The stack now has a dedicated logon startup task path so bot and worker can come back after a reboot without waiting for manual resurrection.
     - Interaction memory and behavioral profiling are live.
-    - Source-grounding enforcement and tool-driven retrieval are live.
+    - Tool-driven retrieval is live, and source-grounding hints now bias the reply lanes instead of hard-gating them with a lexical pre-classifier.
   - The operations watchdog can now load ignored local extension checks, so adjacent-service fire signals can piggyback on the owner DM path without turning the public repo into cross-project gossip.
   - The owner Codex lane is now split into orchestration, runtime/parsing, shared helpers, and rendering modules instead of one swollen provider file.
   - The local Ollama lane is now split into orchestration, prompt/render helpers, tool-loop helpers, and shared types/constants instead of one swollen provider file.

@@ -213,7 +213,7 @@ npm run dev:worker
 
 If `DISCORD_APPLICATION_ID` and `DISCORD_GUILD_ID` are set, the bot registers slash commands into that guild on startup.
 
-For `owner_codex`, the worker also needs a working local Codex CLI. If plain `codex` is not invokable from Node on your machine, point `CODEX_EXECUTABLE` and `CODEX_EXEC_ARGS` at the actual install.
+For `owner_codex`, the worker also needs a working local Codex CLI. If plain `codex` is not invokable from Node on your machine, point `CODEX_EXECUTABLE` and `CODEX_EXEC_ARGS` at the actual install. `CODEX_MODEL` pins the owner Discord lane to a specific model; the default is `gpt-5.4` so older local Codex installs do not faceplant on `gpt-5.5`.
 
 ## Example Questions
 
@@ -262,7 +262,7 @@ The `local_llm` provider uses Ollama chat completion plus a bounded host-managed
 
 Unlike the owner Codex lane, this is not MCP. It is a tighter host-controlled loop and deliberately excludes side-effecting tools.
 
-Project, repo, and lore questions are now source-grounded by policy: if the prompt matches indexed repo/project cues, Void must touch the source-side lookup tools before answering confidently.
+Project, repo, and lore questions should lean on the source-side lookup tools when the answer depends on indexed repo or lore facts. The providers now treat source-grounding hints as advisory instead of letting a dumb lexical hall monitor veto the whole reply before the model can think.
 
 ## Discord, Repo, And Lore Indexing
 

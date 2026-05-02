@@ -42,6 +42,7 @@ const MAX_HISTORY_LIMIT = MAX_RETRIEVAL_RESULT_LIMIT;
 export async function runCodexExec(input: {
   executable: string;
   executableArgs: string[];
+  model: string;
   reasoningEffort: "low" | "medium" | "high" | "xhigh";
   timeoutMs: number;
   workingDirectory: string;
@@ -54,6 +55,8 @@ export async function runCodexExec(input: {
     const args = [
       ...input.executableArgs,
       "exec",
+      "-m",
+      input.model,
       "-c",
       'approval_policy="never"',
       "-c",
