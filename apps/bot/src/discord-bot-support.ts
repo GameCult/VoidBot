@@ -249,7 +249,7 @@ export function inferSourceGroundingHint(
 
   for (const repo of repoSummaries) {
     for (const alias of buildRepoAliases(repo.repoName)) {
-      if (alias.length < 4) {
+      if (alias.length < 6) {
         continue;
       }
 

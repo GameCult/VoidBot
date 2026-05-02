@@ -271,14 +271,16 @@ export async function startBot(): Promise<void> {
       return;
     }
 
+    const isDirectMessage = !message.inGuild();
+
     await ingestIfIndexed(message, config.channelIndexing, ragPipeline);
     await rememberAmbientVoidReference(message, client.user?.id, interactionMemory);
 
-    if (!client.user || !message.mentions.has(client.user)) {
+    if (!client.user || (!isDirectMessage && !message.mentions.has(client.user))) {
       return;
     }
 
-    const prompt = stripBotMention(message.content).trim();
+    const prompt = isDirectMessage ? message.content.trim() : stripBotMention(message.content).trim();
 
     if (!prompt) {
       await replyToMessage(
@@ -313,7 +315,7 @@ export async function startBot(): Promise<void> {
         providerRegistry,
         stylePack: activeStylePack,
         systemMessages: activeSystemMessages,
-        silentOwnerQueueAck: true,
+        silentOwnerQueueAck: !isDirectMessage,
       });
     } catch (error) {
       console.error(error);
