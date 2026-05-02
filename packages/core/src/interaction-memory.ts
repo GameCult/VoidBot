@@ -4,12 +4,14 @@ import { dirname } from "node:path";
 import {
   type InteractionMemoryProfile,
   type PronounEvidence,
+  type StoredTranscriptParticipantRead,
 } from "@voidbot/shared";
 
 import {
   buildInteractionMemoryEvent,
   emptyInteractionProfile,
   mergePronounEvidenceIntoIdentityState,
+  mergeSocialReadEvidenceIntoIdentityState,
   MAX_RECENT_INTERACTION_EVENTS,
   normalizeInteractionIdentityState,
   normalizeInteractionEvent,
@@ -31,6 +33,9 @@ export interface InteractionMemoryBank {
     actorName: string,
     evidence: PronounEvidence[],
   ): Promise<InteractionMemoryProfile | undefined>;
+  recordSocialReadEvidence(
+    evidence: StoredTranscriptParticipantRead[],
+  ): Promise<void>;
 }
 
 export type { RecordInteractionInput } from "./interaction-memory-logic";
@@ -47,7 +52,11 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
     const store = await this.readUnlocked();
     const profile = store.profiles.find((candidate) => candidate.actorId === actorId);
     return profile &&
-      (profile.totalInteractions > 0 || profile.pronounEvidence.length > 0)
+      (
+        profile.totalInteractions > 0 ||
+        profile.pronounEvidence.length > 0 ||
+        profile.socialReadEvidence.length > 0
+      )
       ? structuredClone(profile)
       : undefined;
   }
@@ -84,7 +93,8 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
 
       if (
         nextProfile.totalInteractions === 0 &&
-        nextProfile.pronounEvidence.length === 0
+        nextProfile.pronounEvidence.length === 0 &&
+        nextProfile.socialReadEvidence.length === 0
       ) {
         if (existingProfileIndex !== -1) {
           store.profiles.splice(existingProfileIndex, 1);
@@ -97,6 +107,46 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
 
       await this.writeUnlocked(store);
       return structuredClone(nextProfile);
+    });
+  }
+
+  public async recordSocialReadEvidence(
+    evidence: StoredTranscriptParticipantRead[],
+  ): Promise<void> {
+    if (evidence.length === 0) {
+      return;
+    }
+
+    await this.serialize(async () => {
+      const store = await this.readUnlocked();
+
+      for (const entry of evidence) {
+        const existingProfileIndex = store.profiles.findIndex(
+          (candidate) => candidate.actorId === entry.actorId,
+        );
+        const existingProfile =
+          existingProfileIndex === -1
+            ? emptyInteractionProfile(entry.actorId, entry.actorName)
+            : store.profiles[existingProfileIndex]!;
+        const mergedIdentityState = mergeSocialReadEvidenceIntoIdentityState(
+          existingProfile,
+          [entry],
+        );
+        const nextProfile = summarizeInteractionProfile(
+          entry.actorId,
+          entry.actorName,
+          existingProfile.recentEvents,
+          mergedIdentityState,
+        );
+
+        if (existingProfileIndex === -1) {
+          store.profiles.push(nextProfile);
+        } else {
+          store.profiles[existingProfileIndex] = nextProfile;
+        }
+      }
+
+      await this.writeUnlocked(store);
     });
   }
 
@@ -195,7 +245,9 @@ function normalizeStore(store: InteractionMemoryStore): InteractionMemoryStore {
       ))
       .filter(
         (profile) =>
-          profile.totalInteractions > 0 || profile.pronounEvidence.length > 0,
+          profile.totalInteractions > 0 ||
+          profile.pronounEvidence.length > 0 ||
+          profile.socialReadEvidence.length > 0,
       ),
   };
 }

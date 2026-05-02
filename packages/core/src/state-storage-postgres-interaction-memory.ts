@@ -4,11 +4,13 @@ import {
   type InteractionMemoryEvent,
   type InteractionMemoryProfile,
   type PronounEvidence,
+  type StoredTranscriptParticipantRead,
 } from "@voidbot/shared";
 
 import {
   buildInteractionMemoryEvent,
   mergePronounEvidenceIntoIdentityState,
+  mergeSocialReadEvidenceIntoIdentityState,
   normalizeInteractionIdentityState,
   type RecordInteractionInput,
   shouldPersistInteractionEvent,
@@ -47,7 +49,11 @@ export class PostgresInteractionMemoryBank implements InteractionMemoryBank {
       identityState,
     );
 
-    return profile.totalInteractions > 0 || profile.pronounEvidence.length > 0
+    return (
+      profile.totalInteractions > 0 ||
+      profile.pronounEvidence.length > 0 ||
+      profile.socialReadEvidence.length > 0
+    )
       ? profile
       : undefined;
   }
@@ -108,6 +114,28 @@ export class PostgresInteractionMemoryBank implements InteractionMemoryBank {
     );
 
     return summarizeInteractionProfile(actorId, actorName, existingEvents, mergedIdentityState);
+  }
+
+  public async recordSocialReadEvidence(
+    evidence: StoredTranscriptParticipantRead[],
+  ): Promise<void> {
+    if (evidence.length === 0) {
+      return;
+    }
+
+    for (const entry of evidence) {
+      const mergedIdentityState = mergeSocialReadEvidenceIntoIdentityState(
+        (await this.getIdentityRecord(entry.actorId))?.state,
+        [entry],
+      );
+
+      await upsertInteractionIdentityState(
+        this.pool,
+        entry.actorId,
+        entry.actorName,
+        mergedIdentityState,
+      );
+    }
   }
 
   private async listActorEvents(actorId: string): Promise<InteractionMemoryEvent[]> {

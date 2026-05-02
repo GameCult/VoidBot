@@ -479,6 +479,39 @@ export function renderInteractionProfileDisclosure(
           )
           .join("\n")
       : "- No stored pronoun evidence yet.";
+  const socialReadEvidence =
+    profile.socialReadEvidence.length > 0
+      ? profile.socialReadEvidence
+          .slice(0, 8)
+          .map(
+            (entry) =>
+              `- [${entry.observedAt}] ${entry.summary} Signals: ${entry.supportingSignals.slice(0, 3).join(" | ") || "none recorded"}`,
+          )
+          .join("\n")
+      : "- No transcript-derived participant reads are stored yet.";
+  const scoreSections = [
+    formatScoredProfileLabelSection(
+      "Underlying organization",
+      profile.underlyingOrganizationScores,
+    ),
+    formatScoredProfileLabelSection(
+      "Stable dispositions",
+      profile.stableDispositionScores,
+    ),
+    formatScoredProfileLabelSection(
+      "Behavioral dimensions",
+      profile.behavioralDimensionScores,
+    ),
+    formatScoredProfileLabelSection(
+      "Presentation strategies",
+      profile.presentationStrategyScores,
+    ),
+    formatScoredProfileLabelSection("Voice style", profile.voiceStyleScores),
+  ].join("\n\n");
+  const currentSpeakerRead =
+    situationalSocialRead?.participantReads.find(
+      (entry) => entry.actorId === profile.actorId,
+    ) ?? situationalSocialRead?.participantReads[0];
   const situationalSection = situationalSocialRead
     ? [
         "",
@@ -488,6 +521,16 @@ export function renderInteractionProfileDisclosure(
         `- Speaker read: ${situationalSocialRead.speakerCurrentRead}`,
         `- Social frame: ${situationalSocialRead.socialFrame}`,
         `- Response guidance: ${situationalSocialRead.responseGuidance}`,
+        currentSpeakerRead
+          ? `- Current speaker situational state: ${currentSpeakerRead.situationalState.length > 0 ? currentSpeakerRead.situationalState.join(", ") : "none detected"}`
+          : "- Current speaker situational state: none detected",
+        currentSpeakerRead
+          ? `- Current speaker visible labels: behavioral=${
+              currentSpeakerRead.behavioralDimensions.join(", ") || "none"
+            }; presentation=${
+              currentSpeakerRead.presentationStrategies.join(", ") || "none"
+            }; voice=${currentSpeakerRead.voiceStyle.join(", ") || "none"}`
+          : "- Current speaker visible labels: none detected",
       ].join("\n")
     : "";
 
@@ -506,6 +549,9 @@ export function renderInteractionProfileDisclosure(
     "Interaction dimensions:",
     dimensions,
     "",
+    "Transcript-derived profile scores:",
+    scoreSections,
+    "",
     "Pronoun handling:",
     `- Policy: ${profile.pronounPolicy}`,
     `- Resolved sets: ${profile.resolvedPronounSets.length > 0 ? profile.resolvedPronounSets.join(", ") : profile.resolvedPronounSet ?? "none"}`,
@@ -518,10 +564,29 @@ export function renderInteractionProfileDisclosure(
     "",
     "Recent remembered incidents:",
     recentEvents,
+    "",
+    "Stored transcript-derived reads:",
+    socialReadEvidence,
     situationalSection,
   ]
     .filter((section) => section.length > 0)
     .join("\n");
+}
+
+function formatScoredProfileLabelSection(
+  title: string,
+  labels: Array<{ label: string; score: number; summary: string }>,
+): string {
+  if (labels.length === 0) {
+    return `${title}:\n- No strong signal yet.`;
+  }
+
+  return [
+    `${title}:`,
+    ...labels
+      .slice(0, 8)
+      .map((entry) => `- ${entry.label} (${entry.score}): ${entry.summary}`),
+  ].join("\n");
 }
 
 export function truncate(input: string, limit: number): string {

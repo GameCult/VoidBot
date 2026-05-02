@@ -5,15 +5,36 @@ import {
   type PronounEvidenceSource,
   type PronounEvidenceStance,
   type PronounSet,
+  socialReadBehavioralDimensionKeys,
+  socialReadPresentationStrategyKeys,
+  socialReadSituationalStateKeys,
+  socialReadStableDispositionKeys,
+  socialReadUnderlyingOrganizationKeys,
+  socialReadVoiceStyleKeys,
   type SituationalSocialRead,
   type SourceMessage,
+  type TranscriptParticipantRead,
 } from "@voidbot/shared";
+
+import {
+  BEHAVIORAL_DIMENSION_DESCRIPTORS,
+  PRESENTATION_STRATEGY_DESCRIPTORS,
+  SITUATIONAL_STATE_DESCRIPTORS,
+  STABLE_DISPOSITION_DESCRIPTORS,
+  UNDERLYING_ORGANIZATION_DESCRIPTORS,
+  VOICE_STYLE_DESCRIPTORS,
+} from "./social-read-glossary";
 
 interface SituationalSocialReadInput {
   prompt: string;
   actor: Actor;
   recentMessages?: SourceMessage[];
   interactionMemory?: InteractionMemoryProfile;
+}
+
+interface ParticipantRosterEntry {
+  actorId: string;
+  actorName: string;
 }
 
 type JsonSchema = Record<string, unknown>;
@@ -50,70 +71,38 @@ export interface OllamaSituationalSocialReadInfererOptions {
 
 const MAX_RECENT_MESSAGES = 12;
 const MAX_MESSAGE_CHARS = 280;
-const SITUATIONAL_SOCIAL_READ_SCHEMA: JsonSchema = {
+
+const PRONOUN_EVIDENCE_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    summary: { type: "string" },
-    roomTone: { type: "string" },
-    speakerCurrentRead: { type: "string" },
-    socialFrame: { type: "string" },
-    responseGuidance: { type: "string" },
-    supportingSignals: {
-      type: "array",
-      items: { type: "string" },
+    pronounSet: {
+      type: "string",
+      enum: ["they/them", "he/him", "she/her"],
     },
-    pronounEvidence: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          pronounSet: {
-            type: "string",
-            enum: ["they/them", "he/him", "she/her"],
-          },
-          source: {
-            type: "string",
-            enum: [
-              "explicit_self_statement",
-              "explicit_correction",
-              "direct_third_party_statement",
-              "contextual_relational_inference",
-              "ambient_usage",
-            ],
-          },
-          stance: {
-            type: "string",
-            enum: ["prefer", "avoid"],
-          },
-          confidence: {
-            type: "number",
-            minimum: 0,
-            maximum: 1,
-          },
-          excerpt: { type: "string" },
-        },
-        required: [
-          "pronounSet",
-          "source",
-          "stance",
-          "confidence",
-          "excerpt",
-        ],
-      },
+    source: {
+      type: "string",
+      enum: [
+        "explicit_self_statement",
+        "explicit_correction",
+        "direct_third_party_statement",
+        "contextual_relational_inference",
+        "ambient_usage",
+      ],
     },
+    stance: {
+      type: "string",
+      enum: ["prefer", "avoid"],
+    },
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+    },
+    excerpt: { type: "string" },
   },
-  required: [
-    "summary",
-    "roomTone",
-    "speakerCurrentRead",
-    "socialFrame",
-    "responseGuidance",
-    "supportingSignals",
-    "pronounEvidence",
-  ],
-};
+  required: ["pronounSet", "source", "stance", "confidence", "excerpt"],
+} satisfies JsonSchema;
 
 export class OllamaSituationalSocialReadInferer {
   public constructor(
@@ -127,22 +116,28 @@ export class OllamaSituationalSocialReadInferer {
     const recentMessages = (input.recentMessages ?? [])
       .filter((message) => message.content.trim().length > 0)
       .slice(-MAX_RECENT_MESSAGES);
+    const participantRoster = buildParticipantRoster(input.actor, recentMessages);
 
-    if (prompt.length === 0 && recentMessages.length === 0 && !input.interactionMemory) {
+    if (
+      prompt.length === 0 &&
+      recentMessages.length === 0 &&
+      !input.interactionMemory &&
+      participantRoster.length === 0
+    ) {
       return undefined;
     }
 
     const controller = new AbortController();
     const timeoutHandle = setTimeout(
       () => controller.abort(),
-      Math.min(this.options.ollamaTimeoutMs, 30_000),
+      this.options.ollamaTimeoutMs,
     );
 
     try {
       const rawContent = await this.requestStructuredJson(
         buildSystemPrompt(),
-        buildUserPrompt(input, recentMessages),
-        SITUATIONAL_SOCIAL_READ_SCHEMA,
+        buildUserPrompt(input, recentMessages, participantRoster),
+        buildSituationalSocialReadSchema(participantRoster),
         controller.signal,
       );
 
@@ -150,12 +145,7 @@ export class OllamaSituationalSocialReadInferer {
         return undefined;
       }
 
-      const parsed = parseSituationalSocialRead(rawContent);
-
-      if (!parsed) {
-        return undefined;
-      }
-      return parsed;
+      return parseSituationalSocialRead(rawContent, input.actor.id);
     } catch (error) {
       if ((error as Error).name === "AbortError") {
         throw new Error(
@@ -220,7 +210,7 @@ export class OllamaSituationalSocialReadInferer {
 function buildSystemPrompt(): string {
   return [
     "You are producing private room-reading scaffolding for a Discord bot reply.",
-    "Read the recent room context and infer only what is useful for this one reply.",
+    "Read the current prompt plus recent room context and infer only what is useful for this one reply.",
     "Do not diagnose, moralize, or write therapy notes.",
     "Do not infer more certainty than the evidence supports.",
     "This read is private scaffolding and must stay concise, practical, and grounded in visible behavior.",
@@ -231,28 +221,49 @@ function buildSystemPrompt(): string {
     '- "socialFrame": what kind of interaction this is and how it should be framed',
     '- "responseGuidance": private guidance for the final reply model',
     '- "supportingSignals": an array of short evidence bullets tied to the visible context',
-    '- "pronounEvidence": an array of evidence objects about the current speaker only, each with "pronounSet", "source", "stance", "confidence", and "excerpt"',
-    "Treat the current prompt itself as valid room context for pronoun evidence and social framing.",
-    "If the current speaker explicitly states acceptable pronouns or explicitly rejects a pronoun, emit that evidence here even if no prior transcript is attached.",
-    "If the speaker explicitly accepts multiple pronoun sets, emit one evidence object per accepted set.",
+    '- "participantReads": one structured participant profile for every non-bot human visible in the transcript, plus the current speaker if they are not already visible there',
+    "participantReads are the primary output. The room summary fields are secondary scaffolding.",
+    "Each participantRead is a binary detection pass over five durable Ghostlight label families: underlying organization, stable dispositions, behavioral dimensions, presentation strategy, and voice style.",
+    "Each participantRead also includes an ephemeral situationalState array for what looks activated right now in this specific moment. Situational state is current pressure, not durable identity truth.",
+    "Only emit labels that have real visible support in the attached prompt or transcript. Leave the label out if the evidence is weak or absent.",
+    "Never leave participantReads empty when a participant roster was provided. If the evidence is sparse, still emit the participantRead with a brief summary, sparse arrays, and any pronoun evidence you can justify.",
+    "For pronounEvidence inside each participantRead, only emit evidence grounded in the visible transcript or current prompt. Never guess from names alone.",
+    "If a participant explicitly states their acceptable pronouns in the current prompt or transcript, their participantRead must include pronounEvidence for those sets. Do not leave pronounEvidence empty in that case.",
+    "Treat the current prompt itself as valid room context for both social framing and participant profiling.",
+    "If a participant explicitly states acceptable pronouns or explicitly rejects a pronoun, emit that evidence for them even with no prior transcript.",
+    "If a participant explicitly accepts multiple pronoun sets, emit one evidence object per accepted set.",
+    "Ghostlight underlying organization labels:",
+    renderLabelGlossary(UNDERLYING_ORGANIZATION_DESCRIPTORS),
+    "Ghostlight stable disposition labels:",
+    renderLabelGlossary(STABLE_DISPOSITION_DESCRIPTORS),
+    "Ghostlight behavioral dimension labels:",
+    renderLabelGlossary(BEHAVIORAL_DIMENSION_DESCRIPTORS),
+    "Ghostlight presentation strategy labels:",
+    renderLabelGlossary(PRESENTATION_STRATEGY_DESCRIPTORS),
+    "Ghostlight voice style labels:",
+    renderLabelGlossary(VOICE_STYLE_DESCRIPTORS),
+    "Ghostlight situational state labels:",
+    renderLabelGlossary(SITUATIONAL_STATE_DESCRIPTORS),
     'Use only these pronoun sets: "they/them", "he/him", "she/her".',
-    'Use only these evidence sources: "explicit_self_statement", "explicit_correction", "direct_third_party_statement", "contextual_relational_inference", "ambient_usage".',
-    'Use stance "prefer" when the speaker accepts a pronoun set and "avoid" when the speaker explicitly rejects it.',
-    'If there is no real pronoun evidence, return "pronounEvidence": [].',
-    "If the evidence is weak, say so plainly inside the fields instead of inventing drama.",
+    'Use only these pronoun evidence sources: "explicit_self_statement", "explicit_correction", "direct_third_party_statement", "contextual_relational_inference", "ambient_usage".',
+    'Use pronoun stance "prefer" when the participant accepts a pronoun set and "avoid" when they explicitly reject it.',
+    "If evidence is weak, stay sparse rather than hallucinating a personality zoo.",
+    "Minimal participantRead example:",
+    '{"actorId":"123","actorName":"Example User","summary":"Asked a direct clarifying question and stated a pronoun preference.","underlyingOrganization":[],"stableDispositions":[],"behavioralDimensions":["suspicion"],"presentationStrategies":[],"voiceStyle":["plainspoken_directness"],"situationalState":["perceived_status_threat"],"pronounEvidence":[{"pronounSet":"they/them","source":"explicit_self_statement","stance":"prefer","confidence":1,"excerpt":"call me by they/them preferably"}],"supportingSignals":["They asked a direct challenge question.","They explicitly requested they/them pronouns."]}',
   ].join("\n");
 }
 
 function buildUserPrompt(
   input: SituationalSocialReadInput,
   recentMessages: SourceMessage[],
+  participantRoster: ParticipantRosterEntry[],
 ): string {
   const recentTranscript =
     recentMessages.length > 0
       ? recentMessages
           .map(
             (message) =>
-              `- [${message.timestamp}] ${message.authorName}${message.isBot ? " (bot)" : ""}: ${truncate(message.content, MAX_MESSAGE_CHARS)}`,
+              `- [${message.timestamp}] ${message.authorName} (${message.authorId})${message.isBot ? " (bot)" : ""}: ${truncate(message.content, MAX_MESSAGE_CHARS)}`,
           )
           .join("\n")
       : "- No recent room transcript was attached.";
@@ -263,6 +274,12 @@ function buildUserPrompt(
         `Private response guidance: ${input.interactionMemory.responseGuidance}`,
       ].join("\n")
     : "No explicit long-horizon interaction memory was attached.";
+  const participantLines =
+    participantRoster.length > 0
+      ? participantRoster
+          .map((participant) => `- ${participant.actorName} (${participant.actorId})`)
+          .join("\n")
+      : "- No participant roster was derived.";
 
   return [
     `Current speaker: ${input.actor.displayName} (${input.actor.id})`,
@@ -276,15 +293,136 @@ function buildUserPrompt(
     "Longer-horizon interaction memory:",
     interactionMemory,
     "",
+    "Participants to profile exactly once each:",
+    participantLines,
+    "",
     "Infer a private situational social read for this one reply.",
-    "If you emit pronounEvidence, it must be about the current speaker rather than unrelated third parties.",
-    "Ground it in the visible room context and the current prompt.",
+    "Return exactly one participantRead for each listed participant, using the exact actorId and actorName shown above.",
+    "Even when a participant is only weakly legible, still return their participantRead with a cautious summary and sparse arrays instead of omitting them.",
+    "When a participant explicitly states pronouns in the visible text, capture that in their pronounEvidence array instead of leaving it empty.",
+    "Ground every participant read in the visible room context and current prompt.",
     "Do not output anything except the requested JSON object.",
   ].join("\n");
 }
 
+function buildParticipantReadSchema(
+  participant: ParticipantRosterEntry,
+): JsonSchema {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      actorId: { type: "string", const: participant.actorId },
+      actorName: { type: "string", const: participant.actorName },
+      summary: { type: "string" },
+      underlyingOrganization: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...socialReadUnderlyingOrganizationKeys],
+        },
+      },
+      stableDispositions: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...socialReadStableDispositionKeys],
+        },
+      },
+      behavioralDimensions: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...socialReadBehavioralDimensionKeys],
+        },
+      },
+      presentationStrategies: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...socialReadPresentationStrategyKeys],
+        },
+      },
+      voiceStyle: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...socialReadVoiceStyleKeys],
+        },
+      },
+      situationalState: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [...socialReadSituationalStateKeys],
+        },
+      },
+      pronounEvidence: {
+        type: "array",
+        items: PRONOUN_EVIDENCE_SCHEMA,
+      },
+      supportingSignals: {
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+    required: [
+      "actorId",
+      "actorName",
+      "summary",
+      "underlyingOrganization",
+      "stableDispositions",
+      "behavioralDimensions",
+      "presentationStrategies",
+      "voiceStyle",
+      "situationalState",
+      "pronounEvidence",
+      "supportingSignals",
+    ],
+  } satisfies JsonSchema;
+}
+
+function buildSituationalSocialReadSchema(
+  participantRoster: ParticipantRosterEntry[],
+): JsonSchema {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      roomTone: { type: "string" },
+      speakerCurrentRead: { type: "string" },
+      socialFrame: { type: "string" },
+      responseGuidance: { type: "string" },
+      supportingSignals: {
+        type: "array",
+        items: { type: "string" },
+      },
+      participantReads: {
+        type: "array",
+        prefixItems: participantRoster.map((participant) =>
+          buildParticipantReadSchema(participant),
+        ),
+        items: false,
+        minItems: participantRoster.length,
+        maxItems: participantRoster.length,
+      },
+    },
+    required: [
+      "summary",
+      "roomTone",
+      "speakerCurrentRead",
+      "socialFrame",
+      "responseGuidance",
+      "supportingSignals",
+      "participantReads",
+    ],
+  } satisfies JsonSchema;
+}
+
 function parseSituationalSocialRead(
   input: string,
+  currentActorId: string,
 ): SituationalSocialRead | undefined {
   const normalized = unwrapStructuredFence(input);
 
@@ -300,7 +438,7 @@ function parseSituationalSocialRead(
     const socialFrame = normalizeModelText(parsed.socialFrame);
     const responseGuidance = normalizeModelText(parsed.responseGuidance);
     const supportingSignals = normalizeStringArray(parsed.supportingSignals);
-    const pronounEvidence = normalizePronounEvidenceArray(parsed.pronounEvidence);
+    const participantReads = normalizeParticipantReadArray(parsed.participantReads);
 
     if (
       !summary ||
@@ -312,6 +450,10 @@ function parseSituationalSocialRead(
       return undefined;
     }
 
+    const currentParticipantRead =
+      participantReads.find((entry) => entry.actorId === currentActorId) ??
+      participantReads[0];
+
     return {
       summary,
       roomTone,
@@ -319,7 +461,8 @@ function parseSituationalSocialRead(
       socialFrame,
       responseGuidance,
       supportingSignals,
-      pronounEvidence,
+      pronounEvidence: currentParticipantRead?.pronounEvidence ?? [],
+      participantReads,
     };
   } catch {
     return undefined;
@@ -334,6 +477,79 @@ function normalizeStringArray(value: unknown): string[] {
   return value
     .map((entry) => normalizeModelText(entry))
     .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizeParticipantReadArray(value: unknown): TranscriptParticipantRead[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizeParticipantRead(entry))
+    .filter((entry): entry is TranscriptParticipantRead => entry !== undefined);
+}
+
+function normalizeParticipantRead(value: unknown): TranscriptParticipantRead | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const actorId = normalizeModelText(record.actorId);
+  const actorName = normalizeModelText(record.actorName);
+  const summary = normalizeModelText(record.summary);
+  const underlyingOrganization = normalizeEnumArray(
+    record.underlyingOrganization,
+    socialReadUnderlyingOrganizationKeys,
+  );
+  const stableDispositions = normalizeEnumArray(
+    record.stableDispositions,
+    socialReadStableDispositionKeys,
+  );
+  const behavioralDimensions = normalizeEnumArray(
+    record.behavioralDimensions,
+    socialReadBehavioralDimensionKeys,
+  );
+  const presentationStrategies = normalizeEnumArray(
+    record.presentationStrategies,
+    socialReadPresentationStrategyKeys,
+  );
+  const voiceStyle = normalizeEnumArray(record.voiceStyle, socialReadVoiceStyleKeys);
+  const situationalState = normalizeEnumArray(
+    record.situationalState,
+    socialReadSituationalStateKeys,
+  );
+  const pronounEvidence = normalizePronounEvidenceArray(record.pronounEvidence);
+  const supportingSignals = normalizeStringArray(record.supportingSignals);
+
+  if (!actorId || !actorName || !summary) {
+    return undefined;
+  }
+
+  return {
+    actorId,
+    actorName,
+    summary,
+    underlyingOrganization,
+    stableDispositions,
+    behavioralDimensions,
+    presentationStrategies,
+    voiceStyle,
+    situationalState,
+    pronounEvidence,
+    supportingSignals,
+  };
+}
+
+function normalizeEnumArray<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is T => allowed.includes(entry as T));
 }
 
 function normalizePronounEvidenceArray(value: unknown): PronounEvidence[] {
@@ -431,4 +647,39 @@ function truncate(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function renderLabelGlossary(
+  definitions: Record<string, { label: string; description: string }>,
+): string {
+  return Object.entries(definitions)
+    .map(([key, descriptor]) => `- ${key}: ${descriptor.label}. ${descriptor.description}`)
+    .join("\n");
+}
+
+function buildParticipantRoster(
+  actor: Actor,
+  recentMessages: SourceMessage[],
+): ParticipantRosterEntry[] {
+  const roster = new Map<string, ParticipantRosterEntry>();
+
+  if (!actor.isBot) {
+    roster.set(actor.id, {
+      actorId: actor.id,
+      actorName: actor.displayName,
+    });
+  }
+
+  for (const message of recentMessages) {
+    if (message.isBot) {
+      continue;
+    }
+
+    roster.set(message.authorId, {
+      actorId: message.authorId,
+      actorName: message.authorName,
+    });
+  }
+
+  return [...roster.values()];
 }

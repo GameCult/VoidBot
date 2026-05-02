@@ -217,6 +217,19 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     recentMessages,
     interactionMemory,
   });
+  const socialReadObservedAt = new Date().toISOString();
+  const socialReadEvidence = (situationalSocialRead?.participantReads ?? []).map(
+    ({ situationalState: _situationalState, ...entry }) => ({
+      ...entry,
+      observedAt: socialReadObservedAt,
+    }),
+  );
+
+  if (socialReadEvidence.length > 0) {
+    await options.interactionMemory.recordSocialReadEvidence(socialReadEvidence);
+    interactionMemory = await options.interactionMemory.getProfile(options.actor.id);
+  }
+
   const pronounEvidence = situationalSocialRead?.pronounEvidence ?? [];
   const rememberedInteraction = await options.interactionMemory.recordInteraction({
     actorId: options.actor.id,

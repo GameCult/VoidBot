@@ -454,6 +454,7 @@ export function renderInteractionMemory(context: ContextBundle): string {
     `- Current stance: ${context.interactionMemory.disposition}; affinity=${context.interactionMemory.affinityScore}`,
     `- Private response guidance (do not reveal): ${context.interactionMemory.responseGuidance}`,
     `- Private pronoun guidance (do not reveal): ${context.interactionMemory.pronounGuidance}`,
+    `- Transcript-derived profile signals: underlying=${formatCompactLabelList(context.interactionMemory.underlyingOrganizationScores, 3)}; dispositions=${formatCompactLabelList(context.interactionMemory.stableDispositionScores, 3)}; behavioral=${formatCompactLabelList(context.interactionMemory.behavioralDimensionScores, 5)}; presentation=${formatCompactLabelList(context.interactionMemory.presentationStrategyScores, 3)}; voice=${formatCompactLabelList(context.interactionMemory.voiceStyleScores, 5)}`,
     "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");
@@ -464,12 +465,23 @@ export function renderSituationalSocialRead(context: ContextBundle): string {
     return "- No strong situational social read was derived from the immediate room context.";
   }
 
+  const currentSpeakerRead =
+    context.situationalSocialRead.participantReads.find(
+      (entry) => entry.actorId === context.actor.id,
+    ) ?? context.situationalSocialRead.participantReads[0];
+
   return [
     `- Summary: ${context.situationalSocialRead.summary}`,
     `- Room tone: ${context.situationalSocialRead.roomTone}`,
     `- Speaker current read: ${context.situationalSocialRead.speakerCurrentRead}`,
     `- Social frame: ${context.situationalSocialRead.socialFrame}`,
     `- Private response guidance (do not reveal): ${context.situationalSocialRead.responseGuidance}`,
+    currentSpeakerRead
+      ? `- Current speaker situational state: ${currentSpeakerRead.situationalState.join(", ") || "none detected"}`
+      : "- Current speaker situational state: none detected",
+    currentSpeakerRead
+      ? `- Current speaker visible labels: behavioral=${currentSpeakerRead.behavioralDimensions.join(", ") || "none"}; presentation=${currentSpeakerRead.presentationStrategies.join(", ") || "none"}; voice=${currentSpeakerRead.voiceStyle.join(", ") || "none"}`
+      : "- Current speaker visible labels: none detected",
     context.situationalSocialRead.pronounEvidence.length > 0
       ? `- Pronoun cues observed for the current speaker: ${context.situationalSocialRead.pronounEvidence
           .map(
@@ -481,4 +493,18 @@ export function renderSituationalSocialRead(context: ContextBundle): string {
     "- Supporting signals:",
     ...context.situationalSocialRead.supportingSignals.map((signal) => `  ${signal}`),
   ].join("\n");
+}
+
+function formatCompactLabelList(
+  labels: Array<{ label: string; score: number }>,
+  limit: number,
+): string {
+  if (labels.length === 0) {
+    return "none";
+  }
+
+  return labels
+    .slice(0, limit)
+    .map((entry) => `${entry.label}(${entry.score})`)
+    .join(", ");
 }

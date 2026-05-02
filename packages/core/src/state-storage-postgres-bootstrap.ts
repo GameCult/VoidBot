@@ -69,7 +69,7 @@ export async function migrateLegacyFileStateIfNeeded(
     }
 
     for (const profile of profiles) {
-      if (profile.pronounEvidence.length === 0) {
+      if (profile.pronounEvidence.length === 0 && profile.socialReadEvidence.length === 0) {
         continue;
       }
 
@@ -84,6 +84,7 @@ export async function migrateLegacyFileStateIfNeeded(
           pronounConfidence: profile.pronounConfidence,
           pronounGuidance: profile.pronounGuidance,
           pronounEvidence: profile.pronounEvidence,
+          socialReadEvidence: profile.socialReadEvidence,
         },
       );
     }

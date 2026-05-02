@@ -186,6 +186,149 @@ export interface PronounEvidence {
   timestamp: string;
 }
 
+export interface ScoredProfileLabel {
+  key: string;
+  label: string;
+  score: number;
+  summary: string;
+}
+
+export const socialReadUnderlyingOrganizationKeys = [
+  "self_coherence",
+  "contingent_worth",
+  "shame_sensitivity",
+  "reciprocity_capacity",
+  "mentalization_quality",
+  "authenticity_tolerance",
+  "mask_rigidity",
+  "external_regulation_dependence",
+] as const;
+export type SocialReadUnderlyingOrganizationKey =
+  (typeof socialReadUnderlyingOrganizationKeys)[number];
+
+export const socialReadStableDispositionKeys = [
+  "novelty_seeking",
+  "conformity",
+  "status_hunger",
+  "risk_tolerance",
+  "sociability",
+  "baseline_threat_sensitivity",
+  "aesthetic_appetite",
+  "ideological_rigidity",
+] as const;
+export type SocialReadStableDispositionKey =
+  (typeof socialReadStableDispositionKeys)[number];
+
+export const socialReadBehavioralDimensionKeys = [
+  "interpersonal_warmth",
+  "drive",
+  "grandiosity",
+  "validation_seeking",
+  "anxiety",
+  "control_pressure",
+  "hostility",
+  "suspicion",
+  "rigidity",
+  "withdrawal",
+  "volatility",
+  "attachment_seeking",
+  "distance_seeking",
+] as const;
+export type SocialReadBehavioralDimensionKey =
+  (typeof socialReadBehavioralDimensionKeys)[number];
+
+export const socialReadPresentationStrategyKeys = [
+  "charm",
+  "compliance",
+  "superiority",
+  "detachment",
+  "seductiveness",
+  "competence_theater",
+  "moral_theater",
+  "strategic_opacity",
+  "cultivated_harmlessness",
+  "abrasive_boundary",
+  "ironic_distance",
+] as const;
+export type SocialReadPresentationStrategyKey =
+  (typeof socialReadPresentationStrategyKeys)[number];
+
+export const socialReadVoiceStyleKeys = [
+  "dryness",
+  "verbal_warmth",
+  "formality",
+  "verbosity",
+  "pace",
+  "plainspoken_directness",
+  "lexical_precision",
+  "technical_density",
+  "technical_compression",
+  "figurative_language",
+  "lyricism",
+  "narrative_detail",
+  "emotional_explicitness",
+  "pointedness",
+  "self_disclosure",
+  "hedging",
+  "certainty_marking",
+  "politeness",
+  "coded_politeness",
+  "ritualized_address",
+  "register_switching",
+  "dialect_marking",
+  "theatricality",
+  "humor",
+  "conversational_dominance",
+  "listening_responsiveness",
+  "question_asking",
+  "profanity",
+] as const;
+export type SocialReadVoiceStyleKey =
+  (typeof socialReadVoiceStyleKeys)[number];
+
+export const socialReadSituationalStateKeys = [
+  "exhaustion",
+  "scarcity_pressure",
+  "humiliation",
+  "panic",
+  "triumph",
+  "grief",
+  "overstimulation",
+  "grievance_activation",
+  "acute_shame",
+  "perceived_status_threat",
+] as const;
+export type SocialReadSituationalStateKey =
+  (typeof socialReadSituationalStateKeys)[number];
+
+export interface TranscriptParticipantRead {
+  actorId: string;
+  actorName: string;
+  summary: string;
+  underlyingOrganization: SocialReadUnderlyingOrganizationKey[];
+  stableDispositions: SocialReadStableDispositionKey[];
+  behavioralDimensions: SocialReadBehavioralDimensionKey[];
+  presentationStrategies: SocialReadPresentationStrategyKey[];
+  voiceStyle: SocialReadVoiceStyleKey[];
+  situationalState: SocialReadSituationalStateKey[];
+  pronounEvidence: PronounEvidence[];
+  supportingSignals: string[];
+}
+
+export interface StoredTranscriptParticipantRead {
+  actorId: string;
+  actorName: string;
+  summary: string;
+  underlyingOrganization: SocialReadUnderlyingOrganizationKey[];
+  stableDispositions: SocialReadStableDispositionKey[];
+  behavioralDimensions: SocialReadBehavioralDimensionKey[];
+  presentationStrategies: SocialReadPresentationStrategyKey[];
+  voiceStyle: SocialReadVoiceStyleKey[];
+  pronounEvidence: PronounEvidence[];
+  supportingSignals: string[];
+  observedAt: string;
+}
+
 export interface InteractionMemoryProfile {
   actorId: string;
   actorName: string;
@@ -201,6 +344,11 @@ export interface InteractionMemoryProfile {
   psychologicalProfile: string;
   inferredTraits: string[];
   interactionDimensions: InteractionMemoryDimension[];
+  underlyingOrganizationScores: ScoredProfileLabel[];
+  stableDispositionScores: ScoredProfileLabel[];
+  behavioralDimensionScores: ScoredProfileLabel[];
+  presentationStrategyScores: ScoredProfileLabel[];
+  voiceStyleScores: ScoredProfileLabel[];
   responseGuidance: string;
   pronounPolicy: PronounPolicy;
   resolvedPronounSet?: PronounSet;
@@ -208,6 +356,7 @@ export interface InteractionMemoryProfile {
   pronounConfidence?: number;
   pronounGuidance: string;
   pronounEvidence: PronounEvidence[];
+  socialReadEvidence: StoredTranscriptParticipantRead[];
   lastInteractionAt?: string;
   recentEvents: InteractionMemoryEvent[];
 }
@@ -226,6 +375,7 @@ export interface SituationalSocialRead {
   responseGuidance: string;
   supportingSignals: string[];
   pronounEvidence: PronounEvidence[];
+  participantReads: TranscriptParticipantRead[];
 }
 
 export interface ContextBundle {

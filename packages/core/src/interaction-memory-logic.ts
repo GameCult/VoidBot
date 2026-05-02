@@ -11,6 +11,7 @@ export {
   emptyInteractionProfile,
   emptyInteractionIdentityState,
   mergePronounEvidenceIntoIdentityState,
+  mergeSocialReadEvidenceIntoIdentityState,
   normalizeInteractionIdentityState,
   summarizeInteractionProfile,
 } from "./interaction-memory-profile";

@@ -6,6 +6,8 @@ import {
   type PronounEvidence,
   type PronounPolicy,
   type PronounSet,
+  type ScoredProfileLabel,
+  type StoredTranscriptParticipantRead,
 } from "@voidbot/shared";
 
 import {
@@ -18,12 +20,27 @@ import {
   SUMMARY_EVENT_LIMIT,
   SUMMARY_NOTABLE_TAGS,
 } from "./interaction-memory-shared";
+import {
+  BEHAVIORAL_DIMENSION_DESCRIPTORS,
+  PRESENTATION_STRATEGY_DESCRIPTORS,
+  STABLE_DISPOSITION_DESCRIPTORS,
+  UNDERLYING_ORGANIZATION_DESCRIPTORS,
+  VOICE_STYLE_DESCRIPTORS,
+} from "./social-read-glossary";
 
 interface PsychologicalRead {
   psychologicalProfile: string;
   inferredTraits: string[];
   interactionDimensions: InteractionMemoryDimension[];
   responseGuidance: string;
+}
+
+interface SocialReadProfileScores {
+  underlyingOrganizationScores: ScoredProfileLabel[];
+  stableDispositionScores: ScoredProfileLabel[];
+  behavioralDimensionScores: ScoredProfileLabel[];
+  presentationStrategyScores: ScoredProfileLabel[];
+  voiceStyleScores: ScoredProfileLabel[];
 }
 
 export interface InteractionIdentityState {
@@ -33,9 +50,11 @@ export interface InteractionIdentityState {
   pronounConfidence?: number;
   pronounGuidance: string;
   pronounEvidence: PronounEvidence[];
+  socialReadEvidence: StoredTranscriptParticipantRead[];
 }
 
 const MAX_PRONOUN_EVIDENCE = 12;
+const MAX_SOCIAL_READ_EVIDENCE = 12;
 
 export function summarizeInteractionProfile(
   actorId: string,
@@ -62,8 +81,14 @@ export function summarizeInteractionProfile(
     -MAX_AFFINITY_SCORE,
     MAX_AFFINITY_SCORE,
   );
-  const psychologicalRead = buildPsychologicalRead(normalizedEvents);
   const normalizedIdentityState = normalizeInteractionIdentityState(identityState);
+  const socialReadScores = buildSocialReadProfileScores(
+    normalizedIdentityState.socialReadEvidence,
+  );
+  const psychologicalRead = buildPsychologicalRead(
+    normalizedEvents,
+    socialReadScores.behavioralDimensionScores,
+  );
 
   const profile: InteractionMemoryProfile = {
     actorId,
@@ -84,6 +109,11 @@ export function summarizeInteractionProfile(
     psychologicalProfile: psychologicalRead.psychologicalProfile,
     inferredTraits: psychologicalRead.inferredTraits,
     interactionDimensions: psychologicalRead.interactionDimensions,
+    underlyingOrganizationScores: socialReadScores.underlyingOrganizationScores,
+    stableDispositionScores: socialReadScores.stableDispositionScores,
+    behavioralDimensionScores: socialReadScores.behavioralDimensionScores,
+    presentationStrategyScores: socialReadScores.presentationStrategyScores,
+    voiceStyleScores: socialReadScores.voiceStyleScores,
     responseGuidance: psychologicalRead.responseGuidance,
     pronounPolicy: normalizedIdentityState.pronounPolicy,
     resolvedPronounSet: normalizedIdentityState.resolvedPronounSet,
@@ -91,7 +121,10 @@ export function summarizeInteractionProfile(
     pronounConfidence: normalizedIdentityState.pronounConfidence,
     pronounGuidance: normalizedIdentityState.pronounGuidance,
     pronounEvidence: normalizedIdentityState.pronounEvidence,
-    lastInteractionAt: normalizedEvents[normalizedEvents.length - 1]?.timestamp,
+    socialReadEvidence: normalizedIdentityState.socialReadEvidence,
+    lastInteractionAt:
+      normalizedEvents[normalizedEvents.length - 1]?.timestamp ??
+      normalizedIdentityState.socialReadEvidence[0]?.observedAt,
     recentEvents,
   };
 
@@ -114,6 +147,7 @@ export function emptyInteractionIdentityState(): InteractionIdentityState {
     pronounGuidance:
       "No reliable pronoun preference is established for this speaker yet. Use their name or neutral phrasing unless the current context states otherwise.",
     pronounEvidence: [],
+    socialReadEvidence: [],
   };
 }
 
@@ -124,7 +158,11 @@ export function normalizeInteractionIdentityState(
     return emptyInteractionIdentityState();
   }
 
-  return resolveInteractionIdentityState(state.pronounEvidence ?? []);
+  const resolved = resolveInteractionIdentityState(state.pronounEvidence ?? []);
+  return {
+    ...resolved,
+    socialReadEvidence: dedupeSocialReadEvidence(state.socialReadEvidence ?? []),
+  };
 }
 
 export function mergePronounEvidenceIntoIdentityState(
@@ -135,12 +173,65 @@ export function mergePronounEvidenceIntoIdentityState(
     ...(existingState?.pronounEvidence ?? []),
     ...newEvidence,
   ]);
-  return resolveInteractionIdentityState(mergedEvidence);
+  const resolved = resolveInteractionIdentityState(mergedEvidence);
+  return {
+    ...resolved,
+    socialReadEvidence: dedupeSocialReadEvidence(existingState?.socialReadEvidence ?? []),
+  };
+}
+
+export function mergeSocialReadEvidenceIntoIdentityState(
+  existingState: Partial<InteractionIdentityState> | undefined,
+  newEvidence: StoredTranscriptParticipantRead[],
+): InteractionIdentityState {
+  const normalizedExisting = normalizeInteractionIdentityState(existingState);
+  return {
+    ...normalizedExisting,
+    socialReadEvidence: dedupeSocialReadEvidence([
+      ...normalizedExisting.socialReadEvidence,
+      ...newEvidence,
+    ]),
+  };
 }
 
 function determineDisposition(
   profile: InteractionMemoryProfile,
 ): InteractionMemoryDisposition {
+  if (profile.totalInteractions === 0 && profile.socialReadEvidence.length > 0) {
+    const warmthScore = readProfileLabelScore(
+      profile.behavioralDimensionScores,
+      "interpersonal_warmth",
+    );
+    const hostilityScore = readProfileLabelScore(
+      profile.behavioralDimensionScores,
+      "hostility",
+    );
+    const suspicionScore = readProfileLabelScore(
+      profile.behavioralDimensionScores,
+      "suspicion",
+    );
+    const distanceScore = readProfileLabelScore(
+      profile.behavioralDimensionScores,
+      "distance_seeking",
+    );
+
+    if (hostilityScore >= 2) {
+      return "hostile";
+    }
+
+    if (suspicionScore >= 2 || distanceScore >= 2) {
+      return "wary";
+    }
+
+    if (warmthScore >= 4) {
+      return "warm";
+    }
+
+    if (warmthScore >= 2) {
+      return "friendly";
+    }
+  }
+
   if (profile.totalInteractions === 0) {
     return "neutral";
   }
@@ -174,7 +265,14 @@ function determineDisposition(
 
 function buildProfileSummary(profile: InteractionMemoryProfile): string {
   const leading = describeDisposition(profile.disposition);
-  const counts = `${profile.totalInteractions} remembered interaction${profile.totalInteractions === 1 ? "" : "s"}: ${profile.directInteractionCount} direct, ${profile.ambientMentionCount} ambient, ${profile.positiveCount} positive, ${profile.neutralCount} neutral, ${profile.negativeCount} negative.`;
+  const counts = [
+    `${profile.totalInteractions} remembered interaction${profile.totalInteractions === 1 ? "" : "s"}: ${profile.directInteractionCount} direct, ${profile.ambientMentionCount} ambient, ${profile.positiveCount} positive, ${profile.neutralCount} neutral, ${profile.negativeCount} negative.`,
+    profile.socialReadEvidence.length > 0
+      ? `${profile.socialReadEvidence.length} transcript-derived room read${profile.socialReadEvidence.length === 1 ? "" : "s"} are also shaping this profile.`
+      : undefined,
+  ]
+    .filter((entry): entry is string => Boolean(entry))
+    .join(" ");
   const recentNotable = profile.recentEvents
     .slice()
     .reverse()
@@ -190,6 +288,74 @@ function buildProfileSummary(profile: InteractionMemoryProfile): string {
   return recentNotable.length > 0
     ? `${leading} ${counts} ${psych} Recent notable moments: ${recentNotable}`
     : `${leading} ${counts} ${psych}`;
+}
+
+function buildSocialReadProfileScores(
+  evidence: StoredTranscriptParticipantRead[],
+): SocialReadProfileScores {
+  return {
+    underlyingOrganizationScores: buildScoredLabelsFromEvidence(
+      evidence,
+      (entry) => entry.underlyingOrganization,
+      UNDERLYING_ORGANIZATION_DESCRIPTORS,
+    ),
+    stableDispositionScores: buildScoredLabelsFromEvidence(
+      evidence,
+      (entry) => entry.stableDispositions,
+      STABLE_DISPOSITION_DESCRIPTORS,
+    ),
+    behavioralDimensionScores: buildScoredLabelsFromEvidence(
+      evidence,
+      (entry) => entry.behavioralDimensions,
+      BEHAVIORAL_DIMENSION_DESCRIPTORS,
+    ),
+    presentationStrategyScores: buildScoredLabelsFromEvidence(
+      evidence,
+      (entry) => entry.presentationStrategies,
+      PRESENTATION_STRATEGY_DESCRIPTORS,
+    ),
+    voiceStyleScores: buildScoredLabelsFromEvidence(
+      evidence,
+      (entry) => entry.voiceStyle,
+      VOICE_STYLE_DESCRIPTORS,
+    ),
+  };
+}
+
+function buildScoredLabelsFromEvidence<T extends string>(
+  evidence: StoredTranscriptParticipantRead[],
+  selector: (entry: StoredTranscriptParticipantRead) => readonly T[],
+  descriptors: Record<T, { label: string; description: string }>,
+): ScoredProfileLabel[] {
+  const counts = new Map<T, number>();
+
+  for (const entry of evidence) {
+    for (const key of selector(entry)) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([key, score]) => ({
+      key,
+      label: descriptors[key].label,
+      score,
+      summary: `Observed in ${score} transcript-derived room read${score === 1 ? "" : "s"}. ${descriptors[key].description}`,
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return left.label.localeCompare(right.label);
+    });
+}
+
+function readProfileLabelScore(
+  labels: ScoredProfileLabel[],
+  key: string,
+): number {
+  return labels.find((entry) => entry.key === key)?.score ?? 0;
 }
 
 function describeDisposition(disposition: InteractionMemoryDisposition): string {
@@ -209,8 +375,11 @@ function describeDisposition(disposition: InteractionMemoryDisposition): string 
   }
 }
 
-function buildPsychologicalRead(events: InteractionMemoryEvent[]): PsychologicalRead {
-  if (events.length === 0) {
+function buildPsychologicalRead(
+  events: InteractionMemoryEvent[],
+  behavioralDimensionScores: ScoredProfileLabel[],
+): PsychologicalRead {
+  if (events.length === 0 && behavioralDimensionScores.length === 0) {
     return {
       psychologicalProfile:
         "Current psychological read: nothing solid yet; there is not enough remembered signal to infer a stable vibe.",
@@ -239,7 +408,8 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   const rigidityCount = readTagCount(tagCounts, "rigidity");
   const withdrawalCount = readTagCount(tagCounts, "withdrawal");
   const boundaryCount = readTagCount(tagCounts, "boundary");
-  const interactionDimensions = collectInteractionDimensions([
+  const interactionDimensions = mergeInteractionDimensions(
+    collectInteractionDimensions([
     {
       key: "warmth",
       label: "Warmth",
@@ -346,7 +516,9 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
         "Shows some detachment or withdrawal.",
       ],
     },
-  ]);
+    ]),
+    buildSocialReadDimensions(behavioralDimensionScores),
+  );
   const inferredTraits: string[] = [];
   const warmthDimension = findDimensionScore(interactionDimensions, "warmth");
   const driveDimension = findDimensionScore(interactionDimensions, "drive");
@@ -358,6 +530,9 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   const suspicionDimension = findDimensionScore(interactionDimensions, "suspicion");
   const rigidityDimension = findDimensionScore(interactionDimensions, "rigidity");
   const withdrawalDimension = findDimensionScore(interactionDimensions, "withdrawal");
+  const volatilityDimension = findDimensionScore(interactionDimensions, "volatility");
+  const attachmentDimension = findDimensionScore(interactionDimensions, "attachment");
+  const distanceDimension = findDimensionScore(interactionDimensions, "distance");
 
   pushTraitFromDimension(interactionDimensions, inferredTraits, "warmth", 2, "appreciative");
   pushTraitFromDimension(interactionDimensions, inferredTraits, "drive", 2, "ambitious");
@@ -370,6 +545,9 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   pushTraitFromDimension(interactionDimensions, inferredTraits, "suspicion", 2, "suspicious");
   pushTraitFromDimension(interactionDimensions, inferredTraits, "rigidity", 2, "rigid");
   pushTraitFromDimension(interactionDimensions, inferredTraits, "withdrawal", 2, "withdrawn");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "volatility", 2, "volatile");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "attachment", 2, "attachment-seeking");
+  pushTraitFromDimension(interactionDimensions, inferredTraits, "distance", 2, "avoidant");
   ensureTrait(inferredTraits, driveDimension >= 2, "ambitious");
   ensureTrait(inferredTraits, driveDimension >= 2, "motivated");
   ensureTrait(inferredTraits, validationDimension >= 2, "insecure");
@@ -380,6 +558,9 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   ensureTrait(inferredTraits, suspicionDimension >= 2, "suspicious");
   ensureTrait(inferredTraits, rigidityDimension >= 2, "rigid");
   ensureTrait(inferredTraits, withdrawalDimension >= 2, "withdrawn");
+  ensureTrait(inferredTraits, volatilityDimension >= 2, "volatile");
+  ensureTrait(inferredTraits, attachmentDimension >= 2, "attachment-seeking");
+  ensureTrait(inferredTraits, distanceDimension >= 2, "avoidant");
   ensureTrait(inferredTraits, grandiosityDimension >= 3, "grandiose");
 
   const traitList = inferredTraits.length > 0 ? inferredTraits.join(", ") : "hard to read";
@@ -400,6 +581,15 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   } else if (rigidityDimension >= 2 && anxietyDimension >= 2) {
     psychologicalProfile =
       "Current psychological read: tense and rigid, likely to cling to precision or control when they feel uncertain.";
+  } else if (attachmentDimension >= 2 && anxietyDimension >= 2) {
+    psychologicalProfile =
+      "Current psychological read: anxious and attachment-seeking, likely to reach for reassurance, closeness, or being specifically chosen.";
+  } else if (distanceDimension >= 2 && withdrawalDimension >= 2) {
+    psychologicalProfile =
+      "Current psychological read: distance-seeking and avoidant, inclined to keep emotional space and resent being crowded.";
+  } else if (volatilityDimension >= 2) {
+    psychologicalProfile =
+      "Current psychological read: emotionally volatile, with quicker swings or escalations than the room around them.";
   } else if (withdrawalDimension >= 2) {
     psychologicalProfile =
       "Current psychological read: detached or avoidant, not especially interested in a warm back-and-forth.";
@@ -442,6 +632,24 @@ function buildPsychologicalRead(events: InteractionMemoryEvent[]): Psychological
   if (withdrawalDimension >= 2) {
     guidance.push(
       "Keep pressure low. Be concise, low-drama, and do not over-familiarize if they are pulling away.",
+    );
+  }
+
+  if (distanceDimension >= 2) {
+    guidance.push(
+      "Do not crowd them, overclaim intimacy, or demand disclosure. Give them room to stay opaque without treating that as a personal insult.",
+    );
+  }
+
+  if (attachmentDimension >= 2) {
+    guidance.push(
+      "Be warm without making false promises of privileged closeness. Reassure carefully, then keep the relationship grounded and bounded.",
+    );
+  }
+
+  if (volatilityDimension >= 2) {
+    guidance.push(
+      "Keep your own tone steady and do not mirror sudden swings back at them. Calm structure beats emotional whiplash.",
     );
   }
 
@@ -584,6 +792,111 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function buildSocialReadDimensions(
+  behavioralDimensionScores: ScoredProfileLabel[],
+): InteractionMemoryDimension[] {
+  if (behavioralDimensionScores.length === 0) {
+    return [];
+  }
+
+  return behavioralDimensionScores
+    .map((scoreLabel) => {
+      const config = mapBehavioralDimensionKey(scoreLabel.key);
+
+      if (!config) {
+        return undefined;
+      }
+
+      const score = transcriptCountToDimensionScore(scoreLabel.score);
+
+      if (score === 0) {
+        return undefined;
+      }
+
+      const descriptor =
+        BEHAVIORAL_DIMENSION_DESCRIPTORS[
+          scoreLabel.key as keyof typeof BEHAVIORAL_DIMENSION_DESCRIPTORS
+        ];
+
+      return {
+        key: config.key,
+        label: config.label,
+        score,
+        summary: `Observed in ${scoreLabel.score} transcript-derived room read${scoreLabel.score === 1 ? "" : "s"}. ${descriptor.description}`,
+      } satisfies InteractionMemoryDimension;
+    })
+    .filter((entry): entry is InteractionMemoryDimension => Boolean(entry))
+    .filter((entry) => entry.score > 0);
+}
+
+function mergeInteractionDimensions(
+  left: InteractionMemoryDimension[],
+  right: InteractionMemoryDimension[],
+): InteractionMemoryDimension[] {
+  const merged = new Map<string, InteractionMemoryDimension>();
+
+  for (const dimension of [...left, ...right]) {
+    const existing = merged.get(dimension.key);
+
+    if (!existing || dimension.score > existing.score) {
+      merged.set(dimension.key, dimension);
+    }
+  }
+
+  return [...merged.values()];
+}
+
+function transcriptCountToDimensionScore(value: number): number {
+  if (value >= 4) {
+    return 3;
+  }
+
+  if (value >= 2) {
+    return 2;
+  }
+
+  if (value >= 1) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function mapBehavioralDimensionKey(
+  key: ScoredProfileLabel["key"],
+): { key: string; label: string } | undefined {
+  switch (key) {
+    case "interpersonal_warmth":
+      return { key: "warmth", label: "Warmth" };
+    case "drive":
+      return { key: "drive", label: "Drive" };
+    case "grandiosity":
+      return { key: "grandiosity", label: "Grandiosity" };
+    case "validation_seeking":
+      return { key: "validation", label: "Validation-Seeking" };
+    case "anxiety":
+      return { key: "anxiety", label: "Anxiety" };
+    case "control_pressure":
+      return { key: "control", label: "Control Pressure" };
+    case "hostility":
+      return { key: "hostility", label: "Hostility" };
+    case "suspicion":
+      return { key: "suspicion", label: "Suspicion" };
+    case "rigidity":
+      return { key: "rigidity", label: "Rigidity" };
+    case "withdrawal":
+      return { key: "withdrawal", label: "Withdrawal" };
+    case "volatility":
+      return { key: "volatility", label: "Volatility" };
+    case "attachment_seeking":
+      return { key: "attachment", label: "Attachment-Seeking" };
+    case "distance_seeking":
+      return { key: "distance", label: "Distance-Seeking" };
+    default:
+      return undefined;
+  }
+}
+
 function resolveInteractionIdentityState(
   evidence: PronounEvidence[],
 ): InteractionIdentityState {
@@ -629,6 +942,7 @@ function resolveInteractionIdentityState(
       pronounConfidence: 1,
       pronounGuidance: `Any of these pronoun sets are explicitly acceptable for this speaker: ${explicitPreferredSets.join(", ")}. Avoid pronoun sets they explicitly rejected.`,
       pronounEvidence: normalizedEvidence,
+      socialReadEvidence: [],
     };
   }
 
@@ -644,6 +958,7 @@ function resolveInteractionIdentityState(
       pronounConfidence: winning.confidence,
       pronounGuidance: `Use ${winning.pronounSet} for this speaker. This preference came from an explicit statement or correction and should override softer contextual guesses.`,
       pronounEvidence: normalizedEvidence,
+      socialReadEvidence: [],
     };
   }
 
@@ -669,6 +984,7 @@ function resolveInteractionIdentityState(
       pronounGuidance:
         "Pronoun evidence exists, but it does not establish a clear usable preference yet. Use the speaker's name or neutral phrasing unless they clarify.",
       pronounEvidence: normalizedEvidence,
+      socialReadEvidence: [],
     };
   }
 
@@ -679,6 +995,7 @@ function resolveInteractionIdentityState(
       pronounGuidance:
         "Pronoun evidence for this speaker is conflicted or too close to call. Avoid guessing; use their name or neutral phrasing unless they clarify.",
       pronounEvidence: normalizedEvidence,
+      socialReadEvidence: [],
     };
   }
 
@@ -691,6 +1008,7 @@ function resolveInteractionIdentityState(
     pronounConfidence: confidence,
     pronounGuidance: `Prefer ${winner[0]} for this speaker based on accumulated contextual evidence, but switch immediately if they or the room explicitly correct it.`,
     pronounEvidence: normalizedEvidence,
+    socialReadEvidence: [],
   };
 }
 
@@ -727,4 +1045,27 @@ function weightPronounEvidence(entry: PronounEvidence): number {
           : 1;
 
   return base * clamp(entry.confidence, 0, 1);
+}
+
+function dedupeSocialReadEvidence(
+  evidence: StoredTranscriptParticipantRead[],
+): StoredTranscriptParticipantRead[] {
+  const deduped = new Map<string, StoredTranscriptParticipantRead>();
+
+  for (const entry of evidence) {
+    const key = [
+      entry.actorId,
+      entry.observedAt,
+      entry.summary.trim().toLowerCase(),
+    ].join("::");
+    const existing = deduped.get(key);
+
+    if (!existing || existing.observedAt < entry.observedAt) {
+      deduped.set(key, entry);
+    }
+  }
+
+  return [...deduped.values()]
+    .sort((left, right) => right.observedAt.localeCompare(left.observedAt))
+    .slice(0, MAX_SOCIAL_READ_EVIDENCE);
 }
