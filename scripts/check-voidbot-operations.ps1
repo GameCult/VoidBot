@@ -235,6 +235,46 @@ function Invoke-CommandWithTimeout {
   }
 }
 
+function Invoke-SourceRepoReconcile {
+  param(
+    [switch] $CheckOnly,
+    [switch] $Detached
+  )
+
+  $tsxCommand = Join-Path $repoRoot "node_modules\.bin\tsx.cmd"
+
+  if (-not (Test-Path -LiteralPath $tsxCommand)) {
+    throw "Local tsx launcher is missing at $tsxCommand."
+  }
+
+  $arguments = @("scripts/reconcile-source-repos.ts", "--json")
+
+  if ($CheckOnly) {
+    $arguments += "--check"
+  }
+
+  if ($Detached) {
+    $arguments += "--detached"
+  }
+
+  $stdout = (& $tsxCommand @arguments 2>&1 | Out-String).Trim()
+  $exitCode = $LASTEXITCODE
+
+  if ($exitCode -ne 0) {
+    if ([string]::IsNullOrWhiteSpace($stdout)) {
+      $stdout = "Source repo reconcile exited with code $exitCode."
+    }
+
+    throw $stdout
+  }
+
+  if ([string]::IsNullOrWhiteSpace($stdout)) {
+    throw "Source repo reconcile returned no JSON output."
+  }
+
+  return $stdout | ConvertFrom-Json
+}
+
 function Ensure-DockerCliOnPath {
   $dockerCliDir = "C:\Program Files\Docker\Docker\resources\bin"
 
@@ -652,6 +692,7 @@ try {
   $vectorStoreKind = if ($config.ContainsKey("VECTOR_STORE_KIND")) { $config["VECTOR_STORE_KIND"] } else { "local_json" }
   $historyCollection = if ($config.ContainsKey("QDRANT_HISTORY_COLLECTION")) { $config["QDRANT_HISTORY_COLLECTION"] } else { "voidbot_discord_history_chunks" }
   $sourceCollection = if ($config.ContainsKey("QDRANT_SOURCE_COLLECTION")) { $config["QDRANT_SOURCE_COLLECTION"] } else { "voidbot_repository_source_chunks" }
+  $qdrantReady = $vectorStoreKind -ne "qdrant"
 
   Set-WatchdogStep -CurrentStep "qdrant_checks" -Detail "Verifying Qdrant reachability and required collections."
   if ($vectorStoreKind -eq "qdrant") {
@@ -659,6 +700,7 @@ try {
     try {
       $collectionsResponse = Get-Json -Url "$($qdrantUrl.TrimEnd('/'))/collections"
       $collectionNames = @($collectionsResponse.result.collections | ForEach-Object { [string]$_.name })
+      $qdrantReady = $true
       Add-Check -Name "qdrant.reachable" -Status "passed" -Detail "Qdrant is reachable at $qdrantUrl." -Data @{
         url = $qdrantUrl
         collections = $collectionNames
@@ -742,6 +784,7 @@ try {
 
   $ragOllamaUrl = if ($config.ContainsKey("RAG_OLLAMA_BASE_URL")) { $config["RAG_OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
   $ragOllamaModel = if ($config.ContainsKey("RAG_OLLAMA_MODEL")) { $config["RAG_OLLAMA_MODEL"] } else { "qwen3-embedding:0.6b" }
+  $ragOllamaReady = $false
 
   Set-WatchdogStep -CurrentStep "ollama_checks" -Detail "Checking embedding and local LLM Ollama endpoints."
   try {
@@ -749,6 +792,7 @@ try {
     $ragModels = @($ragTags.models | ForEach-Object { [string]$_.name })
 
     if ($ragModels -contains $ragOllamaModel) {
+      $ragOllamaReady = $true
       Add-Check -Name "rag_ollama.model" -Status "passed" -Detail "Embedding Ollama is reachable and has $ragOllamaModel." -Data @{
         url = $ragOllamaUrl
         model = $ragOllamaModel
@@ -802,6 +846,54 @@ try {
   } else {
     Add-Check -Name "local_llm.model" -Status "passed" -Detail "Local LLM check skipped because the provider is not enabled for this runtime." -Data @{
       enabledProviders = $enabledProviders
+    }
+  }
+
+  $sourceRepoRoot = if ($config.ContainsKey("SOURCE_REPO_ROOT")) { $config["SOURCE_REPO_ROOT"] } else { "" }
+  if ([string]::IsNullOrWhiteSpace($sourceRepoRoot)) {
+    Add-Check -Name "source.repos" -Status "passed" -Detail "Source repo reconciliation check skipped because SOURCE_REPO_ROOT is blank."
+  } else {
+    Set-WatchdogStep -CurrentStep "source_repo_checks" -Detail "Reconciling discovered source repos against the indexed source archive."
+
+    try {
+      $sourceRepoPreview = Invoke-SourceRepoReconcile -CheckOnly
+      $missingRepos = @($sourceRepoPreview.missingRepos | ForEach-Object { [string]$_ })
+      $staleIndexedRepos = @($sourceRepoPreview.staleIndexedRepos | ForEach-Object { [string]$_ })
+
+      if ($missingRepos.Count -eq 0) {
+        Add-Check -Name "source.repos" -Status "passed" -Detail "All discovered source repos are represented in the indexed source archive." -Data @{
+          discoveredRepoCount = [int]$sourceRepoPreview.discoveredRepoCount
+          indexedRepoCount = [int]$sourceRepoPreview.indexedRepoCount
+          selectedRepoCount = [int]$sourceRepoPreview.selectedRepoCount
+        }
+      } elseif ($qdrantReady -and $ragOllamaReady) {
+        $sourceRepoRepair = Invoke-SourceRepoReconcile -Detached
+        $launchedRepos = @($sourceRepoRepair.launchedRepos | ForEach-Object { [string]$_ })
+        Add-Check -Name "source.repos" -Status "warning" -Detail "Detected $($missingRepos.Count) unindexed source repos and launched detached reconciliation." -Data @{
+          missingRepos = $missingRepos
+          launchedRepos = $launchedRepos
+          discoveredRepoCount = [int]$sourceRepoPreview.discoveredRepoCount
+          indexedRepoCount = [int]$sourceRepoPreview.indexedRepoCount
+        }
+      } else {
+        Add-Check -Name "source.repos" -Status "failed" -Detail "Detected $($missingRepos.Count) unindexed source repos, but source indexing dependencies are unhealthy." -Data @{
+          missingRepos = $missingRepos
+          qdrantReady = $qdrantReady
+          ragOllamaReady = $ragOllamaReady
+        }
+      }
+
+      if ($staleIndexedRepos.Count -eq 0) {
+        Add-Check -Name "source.stale_index" -Status "passed" -Detail "Indexed source archive has no repo summaries for repos that are no longer present."
+      } else {
+        Add-Check -Name "source.stale_index" -Status "warning" -Detail "Indexed source archive still carries repo summaries for repos that are no longer present." -Data @{
+          staleIndexedRepos = $staleIndexedRepos
+        }
+      }
+    } catch {
+      Add-Check -Name "source.repos" -Status "failed" -Detail "Source repo reconciliation check failed: $($_.Exception.Message)" -Data @{
+        sourceRepoRoot = $sourceRepoRoot
+      }
     }
   }
 

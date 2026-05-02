@@ -83,6 +83,8 @@ landed_baseline:
   - The worker MCP surface is now split into a thin stdio entrypoint plus dedicated bootstrap, resource, tool, Discord-notify, and shared-helper modules instead of one swollen server file.
   - Interaction-memory logic is now split into event/tone analysis and profile-synthesis modules instead of one slab trying to be both the ear and the therapist.
   - State storage is now split into a thin factory plus per-domain Postgres/file store modules and bootstrap/migration helpers instead of one persistence omnibus.
+  - Source archive storage is now sharded by repo behind a manifest plus per-repo shard directory instead of one giant `source-documents.json` blob.
+  - Source repo indexing now reconciles automatically during stack startup and watchdog runs, refreshing hooks, indexing newly discovered repos, and pruning stale repo shards when repos disappear from `SOURCE_REPO_ROOT`.
 
 rejected_paths:
   - name: transcript_only_continuity

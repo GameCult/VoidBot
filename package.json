@@ -33,6 +33,7 @@
     "rag:backfill": "tsx scripts/backfill-discord-logs.ts",
     "rag:index-sources": "tsx scripts/index-source-repos.ts",
     "rag:install-push-hooks": "tsx scripts/install-source-index-post-push-hooks.ts",
+    "rag:reconcile-sources": "tsx scripts/reconcile-source-repos.ts",
     "rag:migrate-qdrant": "tsx scripts/migrate-local-vectors-to-qdrant.ts",
     "rag:migrate-vector-layout": "tsx scripts/migrate-vector-store-layout.ts",
     "rag:rebuild": "tsx scripts/rebuild-rag-index.ts"

@@ -532,6 +532,16 @@ if ($LASTEXITCODE -ne 0) {
 
 Stop-StaleRuntimeProcesses -RepoRoot $repoRoot
 
+$status.stage = "source_reconcile"
+Write-StatusFile -Path $statusPath -Status $status
+
+Write-Host "Reconciling source repos..."
+& $npmCommand.Source run rag:reconcile-sources
+
+if ($LASTEXITCODE -ne 0) {
+  throw "npm run rag:reconcile-sources failed."
+}
+
 $botOut = Join-Path $logDir "bot.log"
 $botErr = Join-Path $logDir "bot.err.log"
 $workerOut = Join-Path $logDir "worker.log"

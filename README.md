@@ -323,6 +323,12 @@ Force a clean reindex for specific repos:
 npm run rag:index-sources -- --repo AetheriaLore --force
 ```
 
+Reconcile the discovered local repos against the source archive, install or refresh hooks, prune stale repo shards, and index anything new:
+
+```bash
+npm run rag:reconcile-sources
+```
+
 Recommended posture for a shared project root:
 
 - `SOURCE_REPO_PATTERNS=*`
@@ -355,6 +361,25 @@ Progress for those detached runs lives here:
 - log: `.voidbot/logs/source-hooks/<repo>.log`
 
 That gives you a real polling path instead of an attached session silently rotting while you wonder whether it hung.
+
+### Automatic repo discovery and repair
+
+VoidBot now also reconciles the repo set automatically:
+
+- `npm run stack:start` runs `npm run rag:reconcile-sources` before the bot and worker come back
+- `npm run state:check` compares discovered repos under `SOURCE_REPO_ROOT` to the indexed archive and will launch detached repair work if new repos exist
+- the reconcile pass refreshes hooks, indexes newly discovered repos, and prunes stale repo shards for repos that no longer exist under the configured root
+
+The old “install hooks once and hope forever” story is dead. New repos under the configured root should get picked up by normal startup and watchdog operations without manual babysitting.
+
+### Source archive layout
+
+The source archive is no longer one giant `source-documents.json` blob trying to die dramatically at scale.
+
+- `RAG_SOURCE_ARCHIVE_PATH` now stores a small repo-summary manifest
+- per-repo source documents live under the sibling shard directory `source-documents.repos/`
+
+That keeps incremental repo writes bounded to the repo that actually changed instead of rewriting the whole corpus every time one new project appears.
 
 ## Codex Integration
 

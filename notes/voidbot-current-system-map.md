@@ -65,7 +65,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/rag/src/message-archive.ts`
   - archived Discord message store under `.voidbot/rag/messages.json`.
 - `packages/rag/src/source-document-archive.ts`
-  - archived source/lore document store under `.voidbot/rag/source-documents.json`.
+  - archived source/lore document manifest under `.voidbot/rag/source-documents.json` plus per-repo shards under `.voidbot/rag/source-documents.repos/`.
 
 ## Flow 1: Discord Request To Provider
 
@@ -94,17 +94,18 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 1. `packages/rag/src/message-archive.ts` and `packages/rag/src/source-document-archive.ts` keep the raw corpora.
 2. `packages/rag/src/retrieval-service.ts` translates history/source queries into vector lookups plus metadata filters.
 3. `packages/rag/src/qdrant-vector-store.ts` executes the live vector lookups against separate history and source collections.
-4. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive detached source/lore reindex work.
-5. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
+4. `scripts/reconcile-source-repos.ts` discovers local Git repos, refreshes push hooks, prunes stale repo shards, and indexes newly discovered repos.
+5. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive explicit or detached per-repo source/lore reindex work.
+6. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
 
 ## Flow 4: Ops And Recovery
 
 - `scripts/start-voidbot-stack.ps1`
-  - stack bootstrap, health checks, fresh build, stale-process cleanup, bot/worker restart, runtime status emission.
+  - stack bootstrap, health checks, fresh build, stale-process cleanup, source-repo reconcile, bot/worker restart, runtime status emission.
 - `scripts/install-stack-startup-task.ps1`
   - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
-  - watchdog for process liveness, Qdrant, Postgres, Ollama, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
+  - watchdog for process liveness, Qdrant, Postgres, Ollama, source-repo reconcile drift, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
 - `scripts/backup-voidbot-state.ps1`
   - local backup of Postgres, Qdrant snapshots, and RAG archives.
 - `scripts/restore-voidbot-state.ps1`
@@ -129,6 +130,7 @@ When present, an ignored local script at `.voidbot/private/check-voidbot-operati
   - source/lore vectors
 - `.voidbot/`:
   - archived raw corpora
+  - source archive manifest plus per-repo source shards
   - job artifacts and traces
   - logs and status files
   - backups and snapshots

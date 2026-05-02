@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export class SerializedFileStore<T> {
@@ -10,23 +10,33 @@ export class SerializedFileStore<T> {
   ) {}
 
   public async snapshot(): Promise<T> {
-    await this.writeChain;
-    const store = await this.readUnlocked();
+    const store = await this.serialize(() => this.withInterprocessLock(() => this.readUnlocked()));
     return structuredClone(store);
   }
 
   public async overwrite(nextValue: T): Promise<void> {
     await this.serialize(async () => {
-      await this.writeUnlocked(nextValue);
+      await this.withInterprocessLock(() => this.writeUnlocked(nextValue));
     });
   }
 
   public async mutate<R>(mutator: (current: T) => R | Promise<R>): Promise<R> {
     return this.serialize(async () => {
-      const current = await this.readUnlocked();
-      const result = await mutator(current);
-      await this.writeUnlocked(current);
-      return result;
+      return this.withInterprocessLock(async () => {
+        const current = await this.readUnlocked();
+        const result = await mutator(current);
+        await this.writeUnlocked(current);
+        return result;
+      });
+    });
+  }
+
+  public async normalize(): Promise<void> {
+    await this.serialize(async () => {
+      await this.withInterprocessLock(async () => {
+        const current = await this.readUnlocked();
+        await this.writeUnlocked(current);
+      });
     });
   }
 
@@ -42,7 +52,7 @@ export class SerializedFileStore<T> {
   private async readUnlocked(): Promise<T> {
     try {
       const raw = await readFile(this.filePath, "utf8");
-      return JSON.parse(stripLeadingBom(raw)) as T;
+      return parseSerializedValue(stripLeadingBom(raw)) as T;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
 
@@ -56,10 +66,89 @@ export class SerializedFileStore<T> {
 
   private async writeUnlocked(value: T): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, `${JSON.stringify(value)}\n`, "utf8");
+    const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+    const serialized = `${JSON.stringify(value)}\n`;
+
+    try {
+      await writeFile(tempPath, serialized, "utf8");
+      await rm(this.filePath, { force: true });
+      await rename(tempPath, this.filePath);
+    } finally {
+      await rm(tempPath, { force: true }).catch(() => undefined);
+    }
+  }
+
+  private async withInterprocessLock<R>(operation: () => Promise<R>): Promise<R> {
+    const lockPath = `${this.filePath}.lock`;
+    await mkdir(dirname(lockPath), { recursive: true });
+    const deadline = Date.now() + 30_000;
+
+    for (;;) {
+      try {
+        const handle = await open(lockPath, "wx");
+
+        try {
+          return await operation();
+        } finally {
+          await handle.close();
+          await rm(lockPath, { force: true }).catch(() => undefined);
+        }
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+
+        if (code !== "EEXIST") {
+          throw error;
+        }
+
+        const lockIsStale = await isStaleLock(lockPath);
+
+        if (lockIsStale) {
+          await rm(lockPath, { force: true }).catch(() => undefined);
+          continue;
+        }
+
+        if (Date.now() >= deadline) {
+          throw new Error(`Timed out waiting for file lock: ${lockPath}`);
+        }
+
+        await delay(100);
+      }
+    }
   }
 }
 
 function stripLeadingBom(input: string): string {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+function parseSerializedValue(input: string): unknown {
+  try {
+    return JSON.parse(input);
+  } catch (error) {
+    const lines = input
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length > 1) {
+      return JSON.parse(lines[0]);
+    }
+
+    throw error;
+  }
+}
+
+async function isStaleLock(lockPath: string): Promise<boolean> {
+  try {
+    const lockStat = await stat(lockPath);
+    return Date.now() - lockStat.mtimeMs > 10 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
