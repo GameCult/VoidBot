@@ -242,12 +242,17 @@ function Invoke-SourceRepoReconcile {
   )
 
   $tsxCommand = Join-Path $repoRoot "node_modules\.bin\tsx.cmd"
+  $reconcileScript = Join-Path $repoRoot "scripts\reconcile-source-repos.ts"
 
   if (-not (Test-Path -LiteralPath $tsxCommand)) {
     throw "Local tsx launcher is missing at $tsxCommand."
   }
 
-  $arguments = @("scripts/reconcile-source-repos.ts", "--json")
+  if (-not (Test-Path -LiteralPath $reconcileScript)) {
+    throw "Source repo reconcile script is missing at $reconcileScript."
+  }
+
+  $arguments = @($reconcileScript, "--json")
 
   if ($CheckOnly) {
     $arguments += "--check"

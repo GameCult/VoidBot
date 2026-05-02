@@ -1,7 +1,8 @@
-import "dotenv/config";
-
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { config as loadDotEnv } from "dotenv";
 
 import { loadConfig } from "@voidbot/config";
 import { FileSourceDocumentArchiveRepository } from "@voidbot/rag";
@@ -39,7 +40,14 @@ interface ReconcileSummary {
   launchedRepos: string[];
 }
 
+const scriptPath = fileURLToPath(import.meta.url);
+const scriptDir = dirname(scriptPath);
+const voidbotRoot = resolve(scriptDir, "..");
+
 async function main(): Promise<void> {
+  process.chdir(voidbotRoot);
+  loadDotEnv({ path: join(voidbotRoot, ".env") });
+
   if (!process.env.DISCORD_OWNER_ID) {
     process.env.DISCORD_OWNER_ID = "__source_reconcile__";
   }
@@ -82,7 +90,7 @@ async function main(): Promise<void> {
   };
 
   if (!options.checkOnly) {
-    const hookSummary = await installSourceIndexPushHooks(process.cwd(), selectedRepos);
+    const hookSummary = await installSourceIndexPushHooks(voidbotRoot, selectedRepos);
     hookInstall = {
       installed: hookSummary.installed,
       updated: hookSummary.updated,
@@ -105,7 +113,7 @@ async function main(): Promise<void> {
   if (!options.checkOnly && reposToIndex.length > 0) {
     if (options.detached) {
       for (const repo of reposToIndex) {
-        await launchDetachedRepoIndex(process.cwd(), repo.repoName);
+        await launchDetachedRepoIndex(voidbotRoot, repo.repoName);
         launchedRepos.push(repo.repoName);
       }
     } else {
