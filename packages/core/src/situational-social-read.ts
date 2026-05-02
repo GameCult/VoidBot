@@ -145,7 +145,7 @@ export class OllamaSituationalSocialReadInferer {
         return undefined;
       }
 
-      return parseSituationalSocialRead(rawContent, input.actor.id);
+      return parseSituationalSocialRead(rawContent, input.actor.id, participantRoster);
     } catch (error) {
       if ((error as Error).name === "AbortError") {
         throw new Error(
@@ -305,15 +305,13 @@ function buildUserPrompt(
   ].join("\n");
 }
 
-function buildParticipantReadSchema(
-  participant: ParticipantRosterEntry,
-): JsonSchema {
+function buildParticipantReadSchema(): JsonSchema {
   return {
     type: "object",
     additionalProperties: false,
     properties: {
-      actorId: { type: "string", const: participant.actorId },
-      actorName: { type: "string", const: participant.actorName },
+      actorId: { type: "string" },
+      actorName: { type: "string" },
       summary: { type: "string" },
       underlyingOrganization: {
         type: "array",
@@ -400,12 +398,7 @@ function buildSituationalSocialReadSchema(
       },
       participantReads: {
         type: "array",
-        prefixItems: participantRoster.map((participant) =>
-          buildParticipantReadSchema(participant),
-        ),
-        items: false,
-        minItems: participantRoster.length,
-        maxItems: participantRoster.length,
+        items: buildParticipantReadSchema(),
       },
     },
     required: [
@@ -423,6 +416,7 @@ function buildSituationalSocialReadSchema(
 function parseSituationalSocialRead(
   input: string,
   currentActorId: string,
+  participantRoster: ParticipantRosterEntry[],
 ): SituationalSocialRead | undefined {
   const normalized = unwrapStructuredFence(input);
 
@@ -438,7 +432,10 @@ function parseSituationalSocialRead(
     const socialFrame = normalizeModelText(parsed.socialFrame);
     const responseGuidance = normalizeModelText(parsed.responseGuidance);
     const supportingSignals = normalizeStringArray(parsed.supportingSignals);
-    const participantReads = normalizeParticipantReadArray(parsed.participantReads);
+    const participantReads = normalizeParticipantReadArray(
+      parsed.participantReads,
+      participantRoster,
+    );
 
     if (
       !summary ||
@@ -479,24 +476,52 @@ function normalizeStringArray(value: unknown): string[] {
     .filter((entry): entry is string => Boolean(entry));
 }
 
-function normalizeParticipantReadArray(value: unknown): TranscriptParticipantRead[] {
+function normalizeParticipantReadArray(
+  value: unknown,
+  participantRoster: ParticipantRosterEntry[],
+): TranscriptParticipantRead[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value
-    .map((entry) => normalizeParticipantRead(entry))
+  const rosterById = new Map(
+    participantRoster.map((participant) => [participant.actorId, participant]),
+  );
+  const rosterByName = new Map(
+    participantRoster.map((participant) => [
+      participant.actorName.trim().toLowerCase(),
+      participant,
+    ]),
+  );
+  const deduped = new Map<string, TranscriptParticipantRead>();
+
+  for (const entry of value) {
+    const normalized = normalizeParticipantRead(entry, rosterById, rosterByName);
+
+    if (!normalized || deduped.has(normalized.actorId)) {
+      continue;
+    }
+
+    deduped.set(normalized.actorId, normalized);
+  }
+
+  return participantRoster
+    .map((participant) => deduped.get(participant.actorId))
     .filter((entry): entry is TranscriptParticipantRead => entry !== undefined);
 }
 
-function normalizeParticipantRead(value: unknown): TranscriptParticipantRead | undefined {
+function normalizeParticipantRead(
+  value: unknown,
+  rosterById: Map<string, ParticipantRosterEntry>,
+  rosterByName: Map<string, ParticipantRosterEntry>,
+): TranscriptParticipantRead | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
 
   const record = value as Record<string, unknown>;
-  const actorId = normalizeModelText(record.actorId);
-  const actorName = normalizeModelText(record.actorName);
+  const rawActorId = normalizeModelText(record.actorId);
+  const rawActorName = normalizeModelText(record.actorName);
   const summary = normalizeModelText(record.summary);
   const underlyingOrganization = normalizeEnumArray(
     record.underlyingOrganization,
@@ -521,14 +546,17 @@ function normalizeParticipantRead(value: unknown): TranscriptParticipantRead | u
   );
   const pronounEvidence = normalizePronounEvidenceArray(record.pronounEvidence);
   const supportingSignals = normalizeStringArray(record.supportingSignals);
+  const rosterEntry =
+    (rawActorId ? rosterById.get(rawActorId) : undefined) ??
+    (rawActorName ? rosterByName.get(rawActorName.trim().toLowerCase()) : undefined);
 
-  if (!actorId || !actorName || !summary) {
+  if (!rosterEntry || !summary) {
     return undefined;
   }
 
   return {
-    actorId,
-    actorName,
+    actorId: rosterEntry.actorId,
+    actorName: rosterEntry.actorName,
     summary,
     underlyingOrganization,
     stableDispositions,
