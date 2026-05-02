@@ -48,17 +48,19 @@ export class SystemMessageCatalog {
 
 export async function loadSystemMessageCatalog(
   catalogPath: string,
+  fallbackCatalogPath?: string,
 ): Promise<SystemMessageCatalog> {
-  const source = await readFile(catalogPath, "utf8");
-  const parsed = JSON.parse(source) as unknown;
+  const fallbackMessages =
+    fallbackCatalogPath && fallbackCatalogPath !== catalogPath
+      ? await readSystemMessageCatalogSource(fallbackCatalogPath)
+      : {};
+  const primaryMessages = await readSystemMessageCatalogSource(catalogPath);
+  const mergedMessages = {
+    ...fallbackMessages,
+    ...primaryMessages,
+  };
 
-  if (!isSystemMessageCatalogSource(parsed)) {
-    throw new Error(
-      `System message catalog at ${catalogPath} must be a JSON object whose values are strings or arrays of strings.`,
-    );
-  }
-
-  const invalidKeys = Object.entries(parsed)
+  const invalidKeys = Object.entries(mergedMessages)
     .filter(([, value]) => normalizeVariants(value).length === 0)
     .map(([key]) => key);
 
@@ -68,7 +70,7 @@ export async function loadSystemMessageCatalog(
     );
   }
 
-  return new SystemMessageCatalog(parsed);
+  return new SystemMessageCatalog(mergedMessages);
 }
 
 function isSystemMessageCatalogSource(
@@ -97,6 +99,21 @@ function normalizeVariants(value: string | string[] | undefined): string[] {
   return value
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+}
+
+async function readSystemMessageCatalogSource(
+  catalogPath: string,
+): Promise<SystemMessageCatalogSource> {
+  const source = await readFile(catalogPath, "utf8");
+  const parsed = JSON.parse(source) as unknown;
+
+  if (!isSystemMessageCatalogSource(parsed)) {
+    throw new Error(
+      `System message catalog at ${catalogPath} must be a JSON object whose values are strings or arrays of strings.`,
+    );
+  }
+
+  return parsed;
 }
 
 function shuffleVariants(variants: string[], lastUsed?: string): string[] {

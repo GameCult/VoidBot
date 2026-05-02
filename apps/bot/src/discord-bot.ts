@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import {
   Client,
   Events,
@@ -58,6 +60,7 @@ import {
   ingestIfIndexed,
   materializeMessage,
   notifyOwnerOfBotIssue,
+  replyToMessage,
   rememberAmbientVoidReference,
   renderSystemMessage,
   stripBotMention,
@@ -99,8 +102,12 @@ export async function startBot(): Promise<void> {
     config.rateLimits,
   );
   const contextBuilder = new ContextBuilder();
+  const baseSystemMessagesPath = resolve("config/system-messages.json");
   let activeStylePack = await loadStylePack(config.stylePackPath);
-  let activeSystemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
+  let activeSystemMessages = await loadSystemMessageCatalog(
+    config.systemMessagesPath,
+    baseSystemMessagesPath,
+  );
   const archiveRepository = new FileMessageArchiveRepository(config.ragArchivePath);
   const sourceArchiveRepository = new FileSourceDocumentArchiveRepository(
     config.ragSourceArchivePath,
@@ -274,7 +281,10 @@ export async function startBot(): Promise<void> {
     const prompt = stripBotMention(message.content).trim();
 
     if (!prompt) {
-      await message.reply(renderSystemMessage(activeSystemMessages, "mention.missing_prompt"));
+      await replyToMessage(
+        message,
+        renderSystemMessage(activeSystemMessages, "mention.missing_prompt"),
+      );
       return;
     }
 
@@ -289,7 +299,7 @@ export async function startBot(): Promise<void> {
         requestMessageId: message.id,
         channel: message.channel.isTextBased() ? message.channel : null,
         respond: async (content) => {
-          await message.reply(content);
+          await replyToMessage(message, content);
         },
         config,
         permissionEngine,
@@ -360,6 +370,7 @@ export async function startBot(): Promise<void> {
           const requestedProvider = parseProviderOverride(
             interaction.options.getString("provider", false),
           );
+          await interaction.deferReply({ ephemeral: true });
           await handlePrompt({
             prompt: interaction.options.getString("question", true),
             command: "ask",
@@ -388,6 +399,7 @@ export async function startBot(): Promise<void> {
           });
           break;
         case "queue-codex":
+          await interaction.deferReply({ ephemeral: true });
           await handlePrompt({
             prompt: interaction.options.getString("prompt", true),
             command: "queue-codex",
@@ -471,7 +483,10 @@ export async function startBot(): Promise<void> {
           }
 
           activeStylePack = await loadStylePack(config.stylePackPath);
-          activeSystemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
+          activeSystemMessages = await loadSystemMessageCatalog(
+            config.systemMessagesPath,
+            baseSystemMessagesPath,
+          );
           await replyEphemeral(
             interaction,
             activeStylePack

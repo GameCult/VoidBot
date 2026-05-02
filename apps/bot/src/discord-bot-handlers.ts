@@ -43,6 +43,8 @@ import {
   inferSourceGroundingHint,
   renderRateLimitMessage,
   renderSystemMessage,
+  sendChunkedChannelMessage,
+  splitDiscordContent,
   truncate,
 } from "./discord-bot-support";
 
@@ -564,12 +566,31 @@ export async function replyEphemeral(
   interaction: ChatInputCommandInteraction<CacheType>,
   content: string,
 ): Promise<void> {
-  if (interaction.replied || interaction.deferred) {
-    await interaction.followUp({ content, ephemeral: true });
+  const chunks = splitDiscordContent(content);
+
+  if (interaction.replied) {
+    for (const chunk of chunks) {
+      await interaction.followUp({ content: chunk, ephemeral: true });
+    }
+
     return;
   }
 
-  await interaction.reply({ content, ephemeral: true });
+  if (interaction.deferred) {
+    await interaction.editReply({ content: chunks[0] });
+
+    for (const chunk of chunks.slice(1)) {
+      await interaction.followUp({ content: chunk, ephemeral: true });
+    }
+
+    return;
+  }
+
+  await interaction.reply({ content: chunks[0], ephemeral: true });
+
+  for (const chunk of chunks.slice(1)) {
+    await interaction.followUp({ content: chunk, ephemeral: true });
+  }
 }
 
 function pickProvider(
@@ -605,5 +626,5 @@ async function postFinalResponse(client: Client, job: JobRecord, finalResponse: 
     throw new Error(`Channel ${job.outputChannelId} is not available for publishing.`);
   }
 
-  await channel.send(finalResponse);
+  await sendChunkedChannelMessage(channel, finalResponse);
 }

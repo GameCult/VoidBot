@@ -413,6 +413,57 @@ export function truncate(input: string, limit: number): string {
   return `${input.slice(0, limit - 3)}...`;
 }
 
+export function splitDiscordContent(input: string, limit = 1900): string[] {
+  const normalized = input.replace(/\r\n/g, "\n").trim();
+
+  if (normalized.length === 0) {
+    return ["(empty response)"];
+  }
+
+  if (normalized.length <= limit) {
+    return [normalized];
+  }
+
+  const chunks: string[] = [];
+  let remaining = normalized;
+
+  while (remaining.length > limit) {
+    const splitIndex = findSplitIndex(remaining, limit);
+    const nextChunk = remaining.slice(0, splitIndex).trim();
+    chunks.push(nextChunk.length > 0 ? nextChunk : remaining.slice(0, limit));
+    remaining = remaining.slice(splitIndex).trimStart();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
+export async function replyToMessage(message: Message, content: string): Promise<void> {
+  const chunks = splitDiscordContent(content);
+
+  await message.reply(chunks[0]);
+
+  if (!canSendMessages(message.channel)) {
+    return;
+  }
+
+  for (const chunk of chunks.slice(1)) {
+    await message.channel.send(chunk);
+  }
+}
+
+export async function sendChunkedChannelMessage(
+  channel: TextBasedChannel & { send: (content: string) => Promise<unknown> },
+  content: string,
+): Promise<void> {
+  for (const chunk of splitDiscordContent(content)) {
+    await channel.send(chunk);
+  }
+}
+
 export function formatDurationSeconds(totalSeconds: number): string {
   const seconds = Math.max(1, Math.ceil(totalSeconds));
 
@@ -435,6 +486,28 @@ export function formatDurationSeconds(totalSeconds: number): string {
   return remainderMinutes === 0
     ? `${hours} hour${hours === 1 ? "" : "s"}`
     : `${hours}h ${remainderMinutes}m`;
+}
+
+function findSplitIndex(input: string, limit: number): number {
+  const doubleNewline = input.lastIndexOf("\n\n", limit);
+
+  if (doubleNewline >= Math.floor(limit * 0.6)) {
+    return doubleNewline + 2;
+  }
+
+  const newline = input.lastIndexOf("\n", limit);
+
+  if (newline >= Math.floor(limit * 0.6)) {
+    return newline + 1;
+  }
+
+  const space = input.lastIndexOf(" ", limit);
+
+  if (space >= Math.floor(limit * 0.6)) {
+    return space + 1;
+  }
+
+  return limit;
 }
 
 export function formatUtcTimestamp(timestamp: string): string {

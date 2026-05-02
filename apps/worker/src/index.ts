@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
@@ -93,7 +93,10 @@ async function main(): Promise<void> {
   });
   jobQueue = stateJobQueue;
   auditLog = stateAuditLog;
-  systemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
+  systemMessages = await loadSystemMessageCatalog(
+    config.systemMessagesPath,
+    resolve("config/system-messages.json"),
+  );
   providerRegistry = await buildProviderRegistry(systemMessages);
   console.log(`VoidBot worker polling every ${config.workerPollIntervalMs}ms.`);
   await processPendingJobs();
@@ -110,7 +113,10 @@ async function processPendingJobs(): Promise<void> {
   isProcessing = true;
 
   try {
-    systemMessages = await loadSystemMessageCatalog(config.systemMessagesPath);
+    systemMessages = await loadSystemMessageCatalog(
+      config.systemMessagesPath,
+      resolve("config/system-messages.json"),
+    );
     providerRegistry = await buildProviderRegistry(systemMessages);
     const jobs = await jobQueue.claimRunnableJobs();
 
