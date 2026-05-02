@@ -11,6 +11,7 @@ import {
 import type { AppConfig } from "@voidbot/config";
 import {
   ContextBuilder,
+  type OllamaSituationalSocialReadInferer,
   PermissionEngine,
   type AuditLog,
   type InteractionMemoryBank,
@@ -28,6 +29,7 @@ import {
   type Actor,
   type CommandName,
   type GuildContext,
+  type InteractionMemoryProfile,
   type JobRecord,
   type ProviderName,
   type StylePack,
@@ -133,6 +135,7 @@ export interface PromptHandlerOptions {
   interactionMemory: InteractionMemoryBank;
   voidUsageRateLimiter: VoidUsageRateLimiter;
   providerRegistry: ProviderRegistry;
+  situationalSocialReadInferer?: OllamaSituationalSocialReadInferer;
   stylePack?: StylePack;
   systemMessages: SystemMessageCatalog;
   forceProvider?: ProviderName;
@@ -217,6 +220,10 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     rememberedInteraction.totalInteractions > 0 ? rememberedInteraction : undefined;
 
   const recentMessages = await getRecentMessages(options.channel, 10);
+  const situationalSocialRead = await inferSituationalSocialRead(options, {
+    recentMessages,
+    interactionMemory,
+  });
   const sourceGrounding = inferSourceGroundingHint(
     options.prompt,
     await options.sourceArchiveRepository.listRepoSummaries(),
@@ -238,6 +245,7 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     recentMessages,
     retrieval,
     interactionMemory,
+    situationalSocialRead,
     sourceGrounding,
     stylePack: options.stylePack,
   });
@@ -628,4 +636,68 @@ async function postFinalResponse(client: Client, job: JobRecord, finalResponse: 
   }
 
   await sendChunkedChannelMessage(channel, finalResponse);
+}
+
+async function inferSituationalSocialRead(
+  options: PromptHandlerOptions,
+  input: {
+    recentMessages: Awaited<ReturnType<typeof getRecentMessages>>;
+    interactionMemory?: InteractionMemoryProfile;
+  },
+) {
+  if (!options.situationalSocialReadInferer) {
+    return undefined;
+  }
+
+  try {
+    const read = await options.situationalSocialReadInferer.infer({
+      prompt: options.prompt,
+      actor: options.actor,
+      recentMessages: input.recentMessages,
+      interactionMemory: input.interactionMemory,
+    });
+
+    if (!read) {
+      return undefined;
+    }
+
+    await options.auditLog.record({
+      type: "situational_social_read.inferred",
+      actorId: options.actor.id,
+      provider: "local_llm",
+      details: {
+        command: options.command,
+        channelId: options.guildContext.channelId,
+        channelName: options.guildContext.channelName ?? null,
+        promptExcerpt: truncate(options.prompt, 280),
+        recentMessageCount: input.recentMessages.length,
+        model: options.config.localLlm.ollamaModel,
+        summary: read.summary,
+        roomTone: read.roomTone,
+        speakerCurrentRead: read.speakerCurrentRead,
+        socialFrame: read.socialFrame,
+        responseGuidance: read.responseGuidance,
+        supportingSignals: read.supportingSignals,
+      },
+    });
+
+    return read;
+  } catch (error) {
+    await options.auditLog.record({
+      type: "situational_social_read.failed",
+      actorId: options.actor.id,
+      provider: "local_llm",
+      details: {
+        command: options.command,
+        channelId: options.guildContext.channelId,
+        channelName: options.guildContext.channelName ?? null,
+        promptExcerpt: truncate(options.prompt, 280),
+        model: options.config.localLlm.ollamaModel,
+        errorMessage:
+          error instanceof Error ? error.message : "Unexpected situational social read failure.",
+      },
+    });
+
+    return undefined;
+  }
 }

@@ -41,7 +41,9 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/core/src/interaction-memory-profile.ts`
   - Profile synthesis, disposition, psychological read, inferred traits, interaction dimensions, and response-guidance construction.
 - `packages/core/src/context-builder.ts`
-  - request context assembly, including interaction-memory/profile attachment.
+  - request context assembly, including interaction-memory/profile attachment plus any precomputed situational social read.
+- `packages/core/src/situational-social-read.ts`
+  - quick Ollama sidecar inferer for ephemeral room-reading scaffolding built from the current prompt, recent room transcript, and longer-horizon interaction memory.
 - `packages/providers/src/owner-codex-provider.ts`
   - thin orchestration layer for the Discord-safe `codex exec` lane.
 - `packages/providers/src/owner-codex-runtime.ts`
@@ -73,10 +75,11 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 2. Permission checks run through `packages/core/src/permission-engine.ts`.
 3. Void usage limits are applied through `packages/core/src/void-usage-rate-limiter.ts` backed by `packages/core/src/state-storage.ts`.
 4. `apps/bot/src/discord-bot-support.ts` adapts Discord message/interaction shapes, ambient-memory events, and source-grounding hints.
-5. `packages/core/src/interaction-memory-analysis.ts` turns direct prompts or ambient mentions into normalized remembered events; `packages/core/src/interaction-memory-profile.ts` distills remembered events into a reusable social read.
-6. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile and any retrieval hints.
-7. Provider selection goes through `packages/providers/src/index.ts`.
-8. The bot either:
+5. `packages/core/src/interaction-memory-analysis.ts` turns direct prompts or ambient mentions into normalized remembered events; `packages/core/src/interaction-memory-profile.ts` distills remembered events into a reusable longer-horizon social read.
+6. `apps/bot/src/discord-bot-handlers.ts` runs a quick `think=false` local Ollama sidecar pass over the prompt and recent room transcript to infer an ephemeral situational social read, then records that read as an audit event for later aggregation.
+7. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile, the situational social read, and any retrieval hints.
+8. Provider selection goes through `packages/providers/src/index.ts`.
+9. The bot either:
    - answers directly through `local_llm`, or
    - queues an owner job for the worker / `owner_codex` path.
 
@@ -84,7 +87,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 
 1. `apps/worker/src/index.ts` polls approved jobs from durable state.
 2. The worker claims a job and dispatches it to the configured provider.
-3. `packages/providers/src/owner-codex-provider.ts` runs `codex exec` in the bounded lane, exposes the VoidBot MCP server, records traces, and enforces source grounding for repo/lore/project questions.
+3. `packages/providers/src/owner-codex-provider.ts` runs `codex exec` in the bounded lane, exposes the VoidBot MCP server, records traces, and carries advisory source-grounding hints plus retrieval tools for repo/lore/project questions.
    Runtime and parsing live in `packages/providers/src/owner-codex-runtime.ts`; prompt and artifact rendering live in `packages/providers/src/owner-codex-render.ts`.
 4. If the answer fits the Discord-safe lane, the worker posts it back.
 5. If the task needs deeper work, the worker writes a handoff bundle under `.voidbot/artifacts/<job-id>/` and posts the handoff response.

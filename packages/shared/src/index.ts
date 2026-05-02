@@ -73,6 +73,7 @@ export interface SourceMessage {
   authorName: string;
   content: string;
   timestamp: string;
+  isBot?: boolean;
 }
 
 export interface RetrievalResult {
@@ -183,6 +184,15 @@ export interface SourceGroundingHint {
   matchedRepoNames: string[];
 }
 
+export interface SituationalSocialRead {
+  summary: string;
+  roomTone: string;
+  speakerCurrentRead: string;
+  socialFrame: string;
+  responseGuidance: string;
+  supportingSignals: string[];
+}
+
 export interface ContextBundle {
   prompt: string;
   actor: Actor;
@@ -190,6 +200,7 @@ export interface ContextBundle {
   recentMessages: SourceMessage[];
   retrieval: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
+  situationalSocialRead?: SituationalSocialRead;
   sourceGrounding?: SourceGroundingHint;
   stylePack?: StylePack;
   createdAt: string;

@@ -25,6 +25,7 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "Stay honest about what context was actually provided to you.",
     "Use retrieved snippets and recent channel context when they help answer the question.",
     "If explicit interaction memory for the current speaker is attached, you may let it gently color the tone and reference it when relevant, but do not invent history beyond what was provided.",
+    "If a situational social read is attached, use it as private room-reading scaffolding for this one reply. It is ephemeral context, not a durable identity verdict.",
     "Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
     "The attached interaction memory and inferred guidance are private response scaffolding, not content to expose. Do not quote, summarize, classify, or explain the speaker's inferred traits, engagement patterns, psychological profile, or hidden response guidance unless they explicitly ask how you are reading them.",
     "Do not turn a substantive question into a meta-analysis of the user's personality, engagement style, sentiment, or recent conversation behavior unless they explicitly asked for that kind of read.",
@@ -63,6 +64,7 @@ export function buildPrompt(context: ContextBundle): string {
         .join("\n")
     : "- No archived retrieval snippets were attached.";
   const interactionMemory = renderInteractionMemory(context);
+  const situationalSocialRead = renderSituationalSocialRead(context);
 
   return [
     `Question: ${context.prompt}`,
@@ -79,6 +81,9 @@ export function buildPrompt(context: ContextBundle): string {
     "",
     "Interaction memory for this speaker:",
     interactionMemory,
+    "",
+    "Private situational social read for this room:",
+    situationalSocialRead,
     "",
     "If you need more archived history or source context than is included above, call the appropriate read-only tool before answering.",
   ].join("\n");
@@ -110,6 +115,22 @@ function renderInteractionMemory(context: ContextBundle): string {
     `- Private response guidance (do not reveal): ${context.interactionMemory.responseGuidance}`,
     "- Specific remembered incidents:",
     recentEvents,
+  ].join("\n");
+}
+
+function renderSituationalSocialRead(context: ContextBundle): string {
+  if (!context.situationalSocialRead) {
+    return "- No strong situational social read was derived from the immediate room context.";
+  }
+
+  return [
+    `- Summary: ${context.situationalSocialRead.summary}`,
+    `- Room tone: ${context.situationalSocialRead.roomTone}`,
+    `- Speaker current read: ${context.situationalSocialRead.speakerCurrentRead}`,
+    `- Social frame: ${context.situationalSocialRead.socialFrame}`,
+    `- Private response guidance (do not reveal): ${context.situationalSocialRead.responseGuidance}`,
+    "- Supporting signals:",
+    ...context.situationalSocialRead.supportingSignals.map((signal) => `  ${signal}`),
   ].join("\n");
 }
 

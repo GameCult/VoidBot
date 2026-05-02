@@ -62,6 +62,7 @@ accepted_design:
   - Bot, worker, providers, and RAG remain the main structural seams.
   - State storage stays intentionally split: Postgres for operational state, Qdrant for vectors, `.voidbot/` for archives, artifacts, logs, and backup material.
   - `owner_codex` and `local_llm` remain distinct lanes with different tool-execution and safety posture.
+  - Ephemeral room-reading should come from an explicit local-LLM sidecar inference pass plus raw recent-message evidence, not from a rules bucket pretending to understand natural language.
   - The VoidBot MCP server is the preferred search plane for archived Discord, indexed GameCult repos, Aetheria lore, and owner notifications.
   - Deep agent-state, personality, culture, and persistent-world design work now belongs to the sibling Ghostlight repo; VoidBot should consume that work instead of remaining its long-term home.
   - Long-running work should expose durable logs or status files instead of relying on one attached session and hope.
@@ -82,6 +83,7 @@ landed_baseline:
   - The Discord bot lane is now split into a gateway shell plus dedicated command-handler and support helper modules instead of one swollen entrypoint file.
   - The worker MCP surface is now split into a thin stdio entrypoint plus dedicated bootstrap, resource, tool, Discord-notify, and shared-helper modules instead of one swollen server file.
   - Interaction-memory logic is now split into event/tone analysis and profile-synthesis modules instead of one slab trying to be both the ear and the therapist.
+  - Situational social reads now come from a quick `think=false` local Ollama sidecar pass over the prompt plus recent room transcript, and those inferred reads are stored as audit events so they can be aggregated later without immediately hardening into profile truth.
   - State storage is now split into a thin factory plus per-domain Postgres/file store modules and bootstrap/migration helpers instead of one persistence omnibus.
   - Source archive storage is now sharded by repo behind a manifest plus per-repo shard directory instead of one giant `source-documents.json` blob.
   - Source repo indexing now reconciles automatically during stack startup and watchdog runs, refreshing hooks, indexing newly discovered repos, and pruning stale repo shards when repos disappear from `SOURCE_REPO_ROOT`.

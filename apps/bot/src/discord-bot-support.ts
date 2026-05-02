@@ -203,6 +203,7 @@ export function convertDiscordMessageToSource(message: Message): SourceMessage {
     authorName: message.author.displayName ?? message.author.username,
     content: message.content,
     timestamp: message.createdAt.toISOString(),
+    isBot: message.author.bot,
   };
 }
 

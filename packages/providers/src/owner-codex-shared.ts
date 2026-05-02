@@ -121,6 +121,7 @@ export function buildRequestPayload(
     actor: request.contextBundle.actor,
     guildContext: request.contextBundle.guildContext,
     interactionMemory: request.contextBundle.interactionMemory,
+    situationalSocialRead: request.contextBundle.situationalSocialRead,
     sourceGrounding: request.contextBundle.sourceGrounding,
     stylePack: request.contextBundle.stylePack,
     recentMessages: request.contextBundle.recentMessages,
@@ -454,5 +455,21 @@ export function renderInteractionMemory(context: ContextBundle): string {
     `- Private response guidance (do not reveal): ${context.interactionMemory.responseGuidance}`,
     "- Specific remembered incidents:",
     recentEvents,
+  ].join("\n");
+}
+
+export function renderSituationalSocialRead(context: ContextBundle): string {
+  if (!context.situationalSocialRead) {
+    return "- No strong situational social read was derived from the immediate room context.";
+  }
+
+  return [
+    `- Summary: ${context.situationalSocialRead.summary}`,
+    `- Room tone: ${context.situationalSocialRead.roomTone}`,
+    `- Speaker current read: ${context.situationalSocialRead.speakerCurrentRead}`,
+    `- Social frame: ${context.situationalSocialRead.socialFrame}`,
+    `- Private response guidance (do not reveal): ${context.situationalSocialRead.responseGuidance}`,
+    "- Supporting signals:",
+    ...context.situationalSocialRead.supportingSignals.map((signal) => `  ${signal}`),
   ].join("\n");
 }

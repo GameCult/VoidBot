@@ -10,6 +10,7 @@ import { loadConfig } from "@voidbot/config";
 import {
   buildVoidMcpServerConfig,
   ContextBuilder,
+  OllamaSituationalSocialReadInferer,
   PermissionEngine,
   createStateStorage,
   loadStylePack,
@@ -146,6 +147,13 @@ export async function startBot(): Promise<void> {
     config.rateLimits,
   );
   const contextBuilder = new ContextBuilder();
+  const situationalSocialReadInferer = new OllamaSituationalSocialReadInferer({
+    ollamaBaseUrl: config.localLlm.ollamaBaseUrl,
+    ollamaModel: config.localLlm.ollamaModel,
+    ollamaTimeoutMs: config.localLlm.ollamaTimeoutMs,
+    ollamaKeepAlive: config.localLlm.ollamaKeepAlive,
+    ollamaNumCtx: config.localLlm.ollamaNumCtx,
+  });
   const baseSystemMessagesPath = resolve("config/system-messages.json");
   let activeStylePack = await loadStylePack(config.stylePackPath);
   let activeSystemMessages = await loadSystemMessageCatalog(
@@ -359,6 +367,7 @@ export async function startBot(): Promise<void> {
         interactionMemory,
         voidUsageRateLimiter,
         providerRegistry,
+        situationalSocialReadInferer,
         stylePack: activeStylePack,
         systemMessages: activeSystemMessages,
         silentOwnerQueueAck: !isDirectMessage,
@@ -441,6 +450,7 @@ export async function startBot(): Promise<void> {
             interactionMemory,
             voidUsageRateLimiter,
             providerRegistry,
+            situationalSocialReadInferer,
             stylePack: activeStylePack,
             systemMessages: activeSystemMessages,
             forceProvider: requestedProvider,
@@ -470,6 +480,7 @@ export async function startBot(): Promise<void> {
             interactionMemory,
             voidUsageRateLimiter,
             providerRegistry,
+            situationalSocialReadInferer,
             stylePack: activeStylePack,
             systemMessages: activeSystemMessages,
             forceProvider: "owner_codex",
