@@ -347,6 +347,7 @@ export function formatHistoryResults(
     authorId: result.metadata.authorId,
     authorName: result.metadata.authorName,
     timestamp: result.metadata.timestamp,
+    timeContext: formatTimeContext(result.metadata.timestamp),
     jumpUrl: result.metadata.jumpUrl,
     threadId: result.metadata.threadId,
   }));
@@ -378,6 +379,7 @@ export function formatArchivedMessageContext(
     id: message.id,
     isAnchor: message.id === anchorMessageId,
     timestamp: message.timestamp,
+    timeContext: formatTimeContext(message.timestamp),
     authorId: message.authorId,
     authorName: message.authorName,
     channelId: message.channelId,
@@ -564,6 +566,51 @@ function normalizeForMatching(value: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function formatTimeContext(timestamp: string | undefined): string | undefined {
+  if (!timestamp) {
+    return undefined;
+  }
+
+  const parsed = new Date(timestamp);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  const absolute = formatUtcTimestamp(timestamp);
+  const now = new Date();
+  const deltaMs = now.getTime() - parsed.getTime();
+  const absDeltaMs = Math.abs(deltaMs);
+  const suffix = deltaMs >= 0 ? "ago" : "from now";
+
+  if (absDeltaMs < 60_000) {
+    return `${absolute} (just now)`;
+  }
+
+  const minuteMs = 60_000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  const yearMs = 365 * dayMs;
+
+  if (absDeltaMs < hourMs) {
+    const minutes = Math.round(absDeltaMs / minuteMs);
+    return `${absolute} (${minutes} minute${minutes === 1 ? "" : "s"} ${suffix})`;
+  }
+
+  if (absDeltaMs < dayMs) {
+    const hours = Math.round(absDeltaMs / hourMs);
+    return `${absolute} (${hours} hour${hours === 1 ? "" : "s"} ${suffix})`;
+  }
+
+  if (absDeltaMs < yearMs) {
+    const days = Math.round(absDeltaMs / dayMs);
+    return `${absolute} (${days} day${days === 1 ? "" : "s"} ${suffix})`;
+  }
+
+  const years = Math.round(absDeltaMs / yearMs);
+  return `${absolute} (${years} year${years === 1 ? "" : "s"} ${suffix})`;
 }
 
 function isAmbientVoidReference(

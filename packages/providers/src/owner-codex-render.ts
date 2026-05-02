@@ -40,7 +40,18 @@ export function buildDiscordReplyPrompt(
 
   const retrieval = context.retrieval.length
     ? context.retrieval
-        .map((result) => `- (${result.score.toFixed(2)}) ${result.text}`)
+        .map((result) => {
+          const timeContext =
+            result.sourceKind === "discord_message" && result.metadata.timestamp
+              ? ` [${result.metadata.timestamp}]`
+              : "";
+          const authorName =
+            result.sourceKind === "discord_message" && result.metadata.authorName
+              ? ` ${result.metadata.authorName}:`
+              : "";
+
+          return `- (${result.score.toFixed(2)})${timeContext}${authorName} ${result.text}`.trimEnd();
+        })
         .join("\n")
     : "- No retrieval results attached.";
   const stylePackInstructions =
@@ -90,6 +101,8 @@ export function buildDiscordReplyPrompt(
     "- You may inspect the workspace and use safe read-only commands if needed.",
     "- For questions about Discord history, prior discussion, or user preferences, use search_history and get_message_context instead of filesystem inspection.",
     "- If a history search gives you echoes of the current question or other repeated ask-lines, ignore those and look for earlier substantive messages, links, or fetch surrounding context with get_message_context.",
+    "- When discussing archived Discord messages or historical incidents, inspect timestamps and use the correct tense. Do not narrate old events as if they are unfolding right now. Use explicit dates or time markers when they matter.",
+    "- Do not guess anyone's pronouns from a name alone. If explicit pronouns were not provided in the attached context, prefer the person's name or neutral phrasing.",
     "- For questions about indexed repos, source trees, repo-local docs, or indexed lore collections, use search_sources and get_source_context before broad workspace scans.",
     "- If you want to narrow source search to a specific repo but do not know the valid repo names yet, call list_indexed_repos first.",
     sourceGroundingInstructions,
@@ -138,10 +151,18 @@ export function renderMarkdownBundle(context: ContextBundle): string {
 
   const retrieval = context.retrieval.length
     ? context.retrieval
-        .map(
-          (result) =>
-            `- score=${result.score.toFixed(2)} source=${result.sourceId} text=${result.text}`,
-        )
+        .map((result) => {
+          const timeContext =
+            result.sourceKind === "discord_message" && result.metadata.timestamp
+              ? ` time=${result.metadata.timestamp}`
+              : "";
+          const authorName =
+            result.sourceKind === "discord_message" && result.metadata.authorName
+              ? ` author=${result.metadata.authorName}`
+              : "";
+
+          return `- score=${result.score.toFixed(2)} source=${result.sourceId}${authorName}${timeContext} text=${result.text}`;
+        })
         .join("\n")
     : "- No retrieval results attached.";
 

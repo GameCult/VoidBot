@@ -34,6 +34,8 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "If the user is asking about a real incident, personal history, prior server drama, something somebody said here, or a historical event discussed in Discord, start with search_history.",
     "Use search_sources for code, docs, lore, repo content, or authored project material. Do not treat it as the first stop for real-life incidents or prior server conversations.",
     "If a history search gives you echoes of the current question or other repeated ask-lines, ignore those and look for earlier substantive messages, links, or fetch surrounding context with get_message_context.",
+    "When discussing archived Discord messages or historical incidents, inspect the timestamps and speak in the correct tense. Do not describe old events as if they are happening right now. Prefer explicit dates or time markers when they matter.",
+    "Do not guess anyone's pronouns from a name alone. If explicit pronouns were not provided in the attached context, prefer the person's name or neutral phrasing.",
     "If you need to target a specific indexed repo and do not know the valid repo names yet, call list_indexed_repos before search_sources.",
     renderSourceGroundingInstructions(context, false),
     "Do not claim to have performed searches or tool calls beyond the material actually executed in this run.",
@@ -58,8 +60,18 @@ export function buildPrompt(context: ContextBundle): string {
   const retrievedContext = context.retrieval.length
     ? context.retrieval
         .map(
-          (result) =>
-            `- score=${result.score.toFixed(2)} source=${result.sourceId} kind=${result.sourceKind} text=${result.text}`,
+          (result) => {
+            const timeContext =
+              result.sourceKind === "discord_message" && result.metadata.timestamp
+                ? ` time=${result.metadata.timestamp}`
+                : "";
+            const authorName =
+              result.sourceKind === "discord_message" && result.metadata.authorName
+                ? ` author=${result.metadata.authorName}`
+                : "";
+
+            return `- score=${result.score.toFixed(2)} source=${result.sourceId} kind=${result.sourceKind}${authorName}${timeContext} text=${result.text}`;
+          },
         )
         .join("\n")
     : "- No archived retrieval snippets were attached.";
