@@ -37,6 +37,7 @@ import { shouldIndexChannel } from "@voidbot/shared";
 
 import {
   handleApproveJob,
+  handleProfile,
   handlePrompt,
   handleRejectJob,
   handleReindexChannel,
@@ -515,6 +516,15 @@ export async function startBot(): Promise<void> {
               activeSystemMessages,
             ),
           );
+          break;
+        case "profile":
+          await handleProfile({
+            interaction,
+            actor,
+            interactionMemory,
+            auditLog,
+            systemMessages: activeSystemMessages,
+          });
           break;
         case "search-history":
           await handleSearchHistory(interaction, retrievalService, activeSystemMessages);

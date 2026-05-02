@@ -139,6 +139,14 @@
     "Current provider status:",
     "Here is the current state of the configured providers:"
   ],
+  "profile.dm_sent": [
+    "I sent your current profile read by DM.",
+    "Your profile read is in your DMs."
+  ],
+  "profile.dm_failed": [
+    "I tried to DM your profile, but Discord would not let me through.",
+    "I could not deliver the profile DM. Your privacy settings or DM permissions may be in the way."
+  ],
   "owner_codex.handoff_notice": [
     "This request needs the fuller Codex flow. Check `{handoffPath}` and `{debugPath}` in the local workspace.",
     "This request is leaving Discord. Continue from `{handoffPath}` and use `{debugPath}` for the trace."

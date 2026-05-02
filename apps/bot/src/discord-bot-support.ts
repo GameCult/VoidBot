@@ -26,8 +26,10 @@ import {
   type ChannelIndexingPolicy,
   type ChannelIndexingTarget,
   type GuildContext,
+  type InteractionMemoryProfile,
   type SourceGroundingHint,
   type SourceMessage,
+  type SituationalSocialRead,
   shouldIndexChannel,
 } from "@voidbot/shared";
 
@@ -406,6 +408,120 @@ export async function notifyOwnerOfBotIssue(
       }`,
     );
   }
+}
+
+export async function sendDirectMessage(
+  target: { send: (content: string) => Promise<unknown> },
+  content: string,
+): Promise<void> {
+  for (const chunk of splitDiscordContent(content)) {
+    await target.send(chunk);
+  }
+}
+
+export function renderInteractionProfileDisclosure(
+  actorName: string,
+  profile: InteractionMemoryProfile | undefined,
+  situationalSocialRead?: SituationalSocialRead,
+): string {
+  if (!profile) {
+    return [
+      `Void's current read on ${actorName}:`,
+      "",
+      "There is not enough durable interaction memory yet to form a meaningful long-horizon profile.",
+      situationalSocialRead
+        ? [
+            "",
+            "Ephemeral room read for this moment:",
+            `- Summary: ${situationalSocialRead.summary}`,
+            `- Room tone: ${situationalSocialRead.roomTone}`,
+            `- Speaker read: ${situationalSocialRead.speakerCurrentRead}`,
+            `- Social frame: ${situationalSocialRead.socialFrame}`,
+            `- Response guidance: ${situationalSocialRead.responseGuidance}`,
+          ].join("\n")
+        : "",
+    ]
+      .filter((section) => section.length > 0)
+      .join("\n");
+  }
+
+  const dimensions =
+    profile.interactionDimensions.length > 0
+      ? profile.interactionDimensions
+          .map(
+            (dimension) =>
+              `- ${dimension.label} (${dimension.score}/3): ${dimension.summary}`,
+          )
+          .join("\n")
+      : "- No strong interaction dimensions yet.";
+  const traits =
+    profile.inferredTraits.length > 0
+      ? profile.inferredTraits.join(", ")
+      : "No stable inferred traits yet.";
+  const recentEvents =
+    profile.recentEvents.length > 0
+      ? profile.recentEvents
+          .slice()
+          .reverse()
+          .slice(0, 8)
+          .map(
+            (event) =>
+              `- [${event.timestamp}] ${event.sourceKind === "ambient_mention" ? "ambient" : "direct"} ${event.sentiment} score=${event.score}: ${event.summary} Quote: "${event.excerpt}"`,
+          )
+          .join("\n")
+      : "- No retained recent incidents.";
+  const pronounEvidence =
+    profile.pronounEvidence.length > 0
+      ? profile.pronounEvidence
+          .map(
+            (entry) =>
+              `- [${entry.timestamp}] ${entry.stance} ${entry.pronounSet} via ${entry.source} (${Math.round(entry.confidence * 100)}%): "${entry.excerpt}"`,
+          )
+          .join("\n")
+      : "- No stored pronoun evidence yet.";
+  const situationalSection = situationalSocialRead
+    ? [
+        "",
+        "Ephemeral room read for this moment:",
+        `- Summary: ${situationalSocialRead.summary}`,
+        `- Room tone: ${situationalSocialRead.roomTone}`,
+        `- Speaker read: ${situationalSocialRead.speakerCurrentRead}`,
+        `- Social frame: ${situationalSocialRead.socialFrame}`,
+        `- Response guidance: ${situationalSocialRead.responseGuidance}`,
+      ].join("\n")
+    : "";
+
+  return [
+    `Void's current profile on ${actorName}:`,
+    "",
+    `Summary: ${profile.summary}`,
+    `Disposition: ${profile.disposition}`,
+    `Affinity score: ${profile.affinityScore}`,
+    `Interaction counts: total=${profile.totalInteractions}, direct=${profile.directInteractionCount}, ambient=${profile.ambientMentionCount}, positive=${profile.positiveCount}, neutral=${profile.neutralCount}, negative=${profile.negativeCount}`,
+    `Last interaction: ${profile.lastInteractionAt ?? "unknown"}`,
+    "",
+    `Psychological read: ${profile.psychologicalProfile}`,
+    `Inferred traits: ${traits}`,
+    "",
+    "Interaction dimensions:",
+    dimensions,
+    "",
+    "Pronoun handling:",
+    `- Policy: ${profile.pronounPolicy}`,
+    `- Resolved set: ${profile.resolvedPronounSet ?? "none"}`,
+    `- Confidence: ${profile.pronounConfidence !== undefined ? `${Math.round(profile.pronounConfidence * 100)}%` : "n/a"}`,
+    `- Guidance: ${profile.pronounGuidance}`,
+    "- Evidence:",
+    pronounEvidence,
+    "",
+    `Private response guidance: ${profile.responseGuidance}`,
+    "",
+    "Recent remembered incidents:",
+    recentEvents,
+    situationalSection,
+  ]
+    .filter((section) => section.length > 0)
+    .join("\n");
 }
 
 export function truncate(input: string, limit: number): string {

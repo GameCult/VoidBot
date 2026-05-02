@@ -45,6 +45,8 @@ import {
   inferSourceGroundingHint,
   renderRateLimitMessage,
   renderSystemMessage,
+  renderInteractionProfileDisclosure,
+  sendDirectMessage,
   sendChunkedChannelMessage,
   splitDiscordContent,
   truncate,
@@ -98,6 +100,9 @@ export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName("provider-status")
     .setDescription("Show current provider availability for you."),
+  new SlashCommandBuilder()
+    .setName("profile")
+    .setDescription("DM your current Void profile read to you."),
   new SlashCommandBuilder()
     .setName("search-history")
     .setDescription("Search indexed channel history.")
@@ -232,6 +237,7 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
         situationalSocialRead.pronounEvidence,
       )) ?? interactionMemory;
   }
+
   const sourceGrounding = inferSourceGroundingHint(
     options.prompt,
     await options.sourceArchiveRepository.listRepoSummaries(),
@@ -500,6 +506,64 @@ export async function handleSummarizeChannel(
     interaction,
     `${renderSystemMessage(systemMessages, "summarize.results_intro")}\n${summary}`,
   );
+}
+
+export async function handleProfile(options: {
+  interaction: ChatInputCommandInteraction<CacheType>;
+  actor: Actor;
+  interactionMemory: InteractionMemoryBank;
+  auditLog: AuditLog;
+  systemMessages: SystemMessageCatalog;
+}): Promise<void> {
+  const profile = await options.interactionMemory.getProfile(options.actor.id);
+  const disclosure = renderInteractionProfileDisclosure(
+    options.actor.displayName,
+    profile,
+  );
+
+  if (!options.interaction.inGuild()) {
+    await replyEphemeral(options.interaction, disclosure);
+    return;
+  }
+
+  try {
+    await sendDirectMessage(options.interaction.user, disclosure);
+    await options.auditLog.record({
+      type: "profile.dm_sent",
+      actorId: options.actor.id,
+      details: {
+        command: "profile",
+        channelId: options.interaction.channelId,
+        channelName:
+          options.interaction.channel && "name" in options.interaction.channel
+            ? options.interaction.channel.name ?? null
+            : null,
+      },
+    });
+    await replyEphemeral(
+      options.interaction,
+      renderSystemMessage(options.systemMessages, "profile.dm_sent"),
+    );
+  } catch (error) {
+    await options.auditLog.record({
+      type: "profile.dm_failed",
+      actorId: options.actor.id,
+      details: {
+        command: "profile",
+        channelId: options.interaction.channelId,
+        channelName:
+          options.interaction.channel && "name" in options.interaction.channel
+            ? options.interaction.channel.name ?? null
+            : null,
+        errorMessage:
+          error instanceof Error ? error.message : "Unexpected DM delivery failure.",
+      },
+    });
+    await replyEphemeral(
+      options.interaction,
+      renderSystemMessage(options.systemMessages, "profile.dm_failed"),
+    );
+  }
 }
 
 export async function handleReindexChannel(

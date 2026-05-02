@@ -8,6 +8,7 @@ export const commandNames = [
   "approve-job",
   "reject-job",
   "provider-status",
+  "profile",
   "reindex-channel",
   "set-style",
 ] as const;
