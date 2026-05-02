@@ -109,6 +109,15 @@ create table if not exists interaction_memory_events (
 create index if not exists interaction_memory_events_actor_timestamp_idx
   on interaction_memory_events (actor_id, event_timestamp desc);
 
+create table if not exists interaction_identity_profiles (
+  actor_id text primary key,
+  pronoun_policy text not null default 'unknown',
+  resolved_pronoun_set text,
+  pronoun_confidence double precision,
+  profile_json jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists void_usage_rate_limit_state (
   actor_id text primary key,
   daily_bucket date not null,

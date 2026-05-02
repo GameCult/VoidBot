@@ -14,6 +14,7 @@ import {
   upsertJob,
 } from "./state-storage-postgres-job-queue";
 import {
+  upsertInteractionIdentityState,
   upsertInteractionMemoryEvent,
 } from "./state-storage-postgres-interaction-memory";
 import { type StateStorageConfig } from "./state-storage-types";
@@ -65,6 +66,20 @@ export async function migrateLegacyFileStateIfNeeded(
 
     for (const event of memoryEvents) {
       await upsertInteractionMemoryEvent(client, event);
+    }
+
+    for (const profile of profiles) {
+      if (profile.pronounEvidence.length === 0) {
+        continue;
+      }
+
+      await upsertInteractionIdentityState(client, profile.actorId, {
+        pronounPolicy: profile.pronounPolicy,
+        resolvedPronounSet: profile.resolvedPronounSet,
+        pronounConfidence: profile.pronounConfidence,
+        pronounGuidance: profile.pronounGuidance,
+        pronounEvidence: profile.pronounEvidence,
+      });
     }
 
     await client.query(

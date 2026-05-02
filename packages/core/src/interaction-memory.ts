@@ -1,12 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { type InteractionMemoryProfile } from "@voidbot/shared";
+import {
+  type InteractionMemoryProfile,
+  type PronounEvidence,
+} from "@voidbot/shared";
 
 import {
   buildInteractionMemoryEvent,
   emptyInteractionProfile,
+  mergePronounEvidenceIntoIdentityState,
   MAX_RECENT_INTERACTION_EVENTS,
+  normalizeInteractionIdentityState,
   normalizeInteractionEvent,
   type RecordInteractionInput,
   shouldPersistInteractionEvent,
@@ -21,6 +26,11 @@ interface InteractionMemoryStore {
 export interface InteractionMemoryBank {
   getProfile(actorId: string): Promise<InteractionMemoryProfile | undefined>;
   recordInteraction(input: RecordInteractionInput): Promise<InteractionMemoryProfile>;
+  recordPronounEvidence(
+    actorId: string,
+    actorName: string,
+    evidence: PronounEvidence[],
+  ): Promise<InteractionMemoryProfile | undefined>;
 }
 
 export type { RecordInteractionInput } from "./interaction-memory-logic";
@@ -56,8 +66,18 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
       );
       const nextEvent = buildInteractionMemoryEvent(input, priorEvents);
       const nextProfile = shouldPersistInteractionEvent(nextEvent)
-        ? summarizeInteractionProfile(input.actorId, input.actorName, [...priorEvents, nextEvent])
-        : summarizeInteractionProfile(input.actorId, input.actorName, priorEvents);
+        ? summarizeInteractionProfile(
+            input.actorId,
+            input.actorName,
+            [...priorEvents, nextEvent],
+            existingProfile,
+          )
+        : summarizeInteractionProfile(
+            input.actorId,
+            input.actorName,
+            priorEvents,
+            existingProfile,
+          );
 
       if (nextProfile.totalInteractions === 0) {
         if (existingProfileIndex !== -1) {
@@ -69,6 +89,42 @@ export class FileInteractionMemoryBank implements InteractionMemoryBank {
         store.profiles[existingProfileIndex] = nextProfile;
       }
 
+      await this.writeUnlocked(store);
+      return structuredClone(nextProfile);
+    });
+  }
+
+  public async recordPronounEvidence(
+    actorId: string,
+    actorName: string,
+    evidence: PronounEvidence[],
+  ): Promise<InteractionMemoryProfile | undefined> {
+    if (evidence.length === 0) {
+      return this.getProfile(actorId);
+    }
+
+    return this.serialize(async () => {
+      const store = await this.readUnlocked();
+      const existingProfileIndex = store.profiles.findIndex(
+        (candidate) => candidate.actorId === actorId,
+      );
+
+      if (existingProfileIndex === -1) {
+        return undefined;
+      }
+
+      const existingProfile = store.profiles[existingProfileIndex]!;
+      const mergedIdentityState = mergePronounEvidenceIntoIdentityState(
+        existingProfile,
+        evidence,
+      );
+      const nextProfile = summarizeInteractionProfile(
+        actorId,
+        actorName,
+        existingProfile.recentEvents,
+        mergedIdentityState,
+      );
+      store.profiles[existingProfileIndex] = nextProfile;
       await this.writeUnlocked(store);
       return structuredClone(nextProfile);
     });
@@ -125,6 +181,7 @@ function normalizeStore(store: InteractionMemoryStore): InteractionMemoryStore {
         (profile.recentEvents ?? [])
           .map((event) => normalizeInteractionEvent(event))
           .slice(-MAX_RECENT_INTERACTION_EVENTS),
+        normalizeInteractionIdentityState(profile),
       ))
       .filter((profile) => profile.totalInteractions > 0),
   };

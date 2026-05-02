@@ -125,6 +125,7 @@ function renderInteractionMemory(context: ContextBundle): string {
     `- Relationship summary: ${context.interactionMemory.summary}`,
     `- Current stance: ${context.interactionMemory.disposition}; affinity=${context.interactionMemory.affinityScore}`,
     `- Private response guidance (do not reveal): ${context.interactionMemory.responseGuidance}`,
+    `- Private pronoun guidance (do not reveal): ${context.interactionMemory.pronounGuidance}`,
     "- Specific remembered incidents:",
     recentEvents,
   ].join("\n");
@@ -141,6 +142,14 @@ function renderSituationalSocialRead(context: ContextBundle): string {
     `- Speaker current read: ${context.situationalSocialRead.speakerCurrentRead}`,
     `- Social frame: ${context.situationalSocialRead.socialFrame}`,
     `- Private response guidance (do not reveal): ${context.situationalSocialRead.responseGuidance}`,
+    context.situationalSocialRead.pronounEvidence.length > 0
+      ? `- Pronoun cues observed for the current speaker: ${context.situationalSocialRead.pronounEvidence
+          .map(
+            (entry) =>
+              `${entry.stance} ${entry.pronounSet} via ${entry.source} (${Math.round(entry.confidence * 100)}%)`,
+          )
+          .join("; ")}`
+      : "- Pronoun cues observed for the current speaker: none worth trusting yet.",
     "- Supporting signals:",
     ...context.situationalSocialRead.supportingSignals.map((signal) => `  ${signal}`),
   ].join("\n");

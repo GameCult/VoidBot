@@ -216,7 +216,7 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     prompt: options.prompt,
     eventId: options.requestMessageId,
   });
-  const interactionMemory =
+  let interactionMemory =
     rememberedInteraction.totalInteractions > 0 ? rememberedInteraction : undefined;
 
   const recentMessages = await getRecentMessages(options.channel, 10);
@@ -224,6 +224,14 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     recentMessages,
     interactionMemory,
   });
+  if (situationalSocialRead?.pronounEvidence.length) {
+    interactionMemory =
+      (await options.interactionMemory.recordPronounEvidence(
+        options.actor.id,
+        options.actor.displayName,
+        situationalSocialRead.pronounEvidence,
+      )) ?? interactionMemory;
+  }
   const sourceGrounding = inferSourceGroundingHint(
     options.prompt,
     await options.sourceArchiveRepository.listRepoSummaries(),
@@ -678,6 +686,7 @@ async function inferSituationalSocialRead(
         socialFrame: read.socialFrame,
         responseGuidance: read.responseGuidance,
         supportingSignals: read.supportingSignals,
+        pronounEvidence: read.pronounEvidence,
       },
     });
 

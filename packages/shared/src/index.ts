@@ -158,6 +158,33 @@ export interface InteractionMemoryDimension {
   summary: string;
 }
 
+export const pronounSets = ["they/them", "he/him", "she/her"] as const;
+export type PronounSet = (typeof pronounSets)[number];
+
+export const pronounEvidenceSources = [
+  "explicit_self_statement",
+  "explicit_correction",
+  "direct_third_party_statement",
+  "contextual_relational_inference",
+  "ambient_usage",
+] as const;
+export type PronounEvidenceSource = (typeof pronounEvidenceSources)[number];
+
+export const pronounEvidenceStances = ["prefer", "avoid"] as const;
+export type PronounEvidenceStance = (typeof pronounEvidenceStances)[number];
+
+export const pronounPolicies = ["explicit", "inferred", "conflicted", "unknown"] as const;
+export type PronounPolicy = (typeof pronounPolicies)[number];
+
+export interface PronounEvidence {
+  pronounSet: PronounSet;
+  source: PronounEvidenceSource;
+  stance: PronounEvidenceStance;
+  confidence: number;
+  excerpt: string;
+  timestamp: string;
+}
+
 export interface InteractionMemoryProfile {
   actorId: string;
   actorName: string;
@@ -174,6 +201,11 @@ export interface InteractionMemoryProfile {
   inferredTraits: string[];
   interactionDimensions: InteractionMemoryDimension[];
   responseGuidance: string;
+  pronounPolicy: PronounPolicy;
+  resolvedPronounSet?: PronounSet;
+  pronounConfidence?: number;
+  pronounGuidance: string;
+  pronounEvidence: PronounEvidence[];
   lastInteractionAt?: string;
   recentEvents: InteractionMemoryEvent[];
 }
@@ -191,6 +223,7 @@ export interface SituationalSocialRead {
   socialFrame: string;
   responseGuidance: string;
   supportingSignals: string[];
+  pronounEvidence: PronounEvidence[];
 }
 
 export interface ContextBundle {

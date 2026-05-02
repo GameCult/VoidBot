@@ -3,6 +3,9 @@ import {
   type InteractionMemoryDisposition,
   type InteractionMemoryEvent,
   type InteractionMemoryProfile,
+  type PronounEvidence,
+  type PronounPolicy,
+  type PronounSet,
 } from "@voidbot/shared";
 
 import {
@@ -23,10 +26,21 @@ interface PsychologicalRead {
   responseGuidance: string;
 }
 
+export interface InteractionIdentityState {
+  pronounPolicy: PronounPolicy;
+  resolvedPronounSet?: PronounSet;
+  pronounConfidence?: number;
+  pronounGuidance: string;
+  pronounEvidence: PronounEvidence[];
+}
+
+const MAX_PRONOUN_EVIDENCE = 12;
+
 export function summarizeInteractionProfile(
   actorId: string,
   actorName: string,
   events: InteractionMemoryEvent[],
+  identityState?: InteractionIdentityState,
 ): InteractionMemoryProfile {
   const chronologicalEvents = events
     .slice()
@@ -48,6 +62,7 @@ export function summarizeInteractionProfile(
     MAX_AFFINITY_SCORE,
   );
   const psychologicalRead = buildPsychologicalRead(normalizedEvents);
+  const normalizedIdentityState = normalizeInteractionIdentityState(identityState);
 
   const profile: InteractionMemoryProfile = {
     actorId,
@@ -69,6 +84,11 @@ export function summarizeInteractionProfile(
     inferredTraits: psychologicalRead.inferredTraits,
     interactionDimensions: psychologicalRead.interactionDimensions,
     responseGuidance: psychologicalRead.responseGuidance,
+    pronounPolicy: normalizedIdentityState.pronounPolicy,
+    resolvedPronounSet: normalizedIdentityState.resolvedPronounSet,
+    pronounConfidence: normalizedIdentityState.pronounConfidence,
+    pronounGuidance: normalizedIdentityState.pronounGuidance,
+    pronounEvidence: normalizedIdentityState.pronounEvidence,
     lastInteractionAt: normalizedEvents[normalizedEvents.length - 1]?.timestamp,
     recentEvents,
   };
@@ -83,6 +103,36 @@ export function emptyInteractionProfile(
   actorName: string,
 ): InteractionMemoryProfile {
   return summarizeInteractionProfile(actorId, actorName, []);
+}
+
+export function emptyInteractionIdentityState(): InteractionIdentityState {
+  return {
+    pronounPolicy: "unknown",
+    pronounGuidance:
+      "No reliable pronoun preference is established for this speaker yet. Use their name or neutral phrasing unless the current context states otherwise.",
+    pronounEvidence: [],
+  };
+}
+
+export function normalizeInteractionIdentityState(
+  state: Partial<InteractionIdentityState> | undefined,
+): InteractionIdentityState {
+  if (!state) {
+    return emptyInteractionIdentityState();
+  }
+
+  return resolveInteractionIdentityState(state.pronounEvidence ?? []);
+}
+
+export function mergePronounEvidenceIntoIdentityState(
+  existingState: Partial<InteractionIdentityState> | undefined,
+  newEvidence: PronounEvidence[],
+): InteractionIdentityState {
+  const mergedEvidence = dedupePronounEvidence([
+    ...(existingState?.pronounEvidence ?? []),
+    ...newEvidence,
+  ]);
+  return resolveInteractionIdentityState(mergedEvidence);
 }
 
 function determineDisposition(
@@ -529,4 +579,113 @@ function formatShortDate(timestamp: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function resolveInteractionIdentityState(
+  evidence: PronounEvidence[],
+): InteractionIdentityState {
+  const normalizedEvidence = dedupePronounEvidence(evidence);
+
+  if (normalizedEvidence.length === 0) {
+    return emptyInteractionIdentityState();
+  }
+
+  const explicitPreferred = normalizedEvidence
+    .filter(
+      (entry) =>
+        entry.stance === "prefer" &&
+        (entry.source === "explicit_self_statement" ||
+          entry.source === "explicit_correction"),
+    )
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+
+  if (explicitPreferred.length > 0) {
+    const winning = explicitPreferred[0]!;
+
+    return {
+      pronounPolicy: "explicit",
+      resolvedPronounSet: winning.pronounSet,
+      pronounConfidence: winning.confidence,
+      pronounGuidance: `Use ${winning.pronounSet} for this speaker. This preference came from an explicit statement or correction and should override softer contextual guesses.`,
+      pronounEvidence: normalizedEvidence,
+    };
+  }
+
+  const weightedScores = new Map<PronounSet, number>();
+
+  for (const entry of normalizedEvidence) {
+    const weight = weightPronounEvidence(entry);
+    const signedWeight = entry.stance === "prefer" ? weight : -weight;
+    weightedScores.set(
+      entry.pronounSet,
+      (weightedScores.get(entry.pronounSet) ?? 0) + signedWeight,
+    );
+  }
+
+  const ranked = [...weightedScores.entries()].sort((left, right) => right[1] - left[1]);
+  const winner = ranked[0];
+  const runnerUp = ranked[1];
+
+  if (!winner || winner[1] <= 0) {
+    return {
+      pronounPolicy: "unknown",
+      pronounGuidance:
+        "Pronoun evidence exists, but it does not establish a clear usable preference yet. Use the speaker's name or neutral phrasing unless they clarify.",
+      pronounEvidence: normalizedEvidence,
+    };
+  }
+
+  if (runnerUp && Math.abs(winner[1] - runnerUp[1]) < 1) {
+    return {
+      pronounPolicy: "conflicted",
+      pronounGuidance:
+        "Pronoun evidence for this speaker is conflicted or too close to call. Avoid guessing; use their name or neutral phrasing unless they clarify.",
+      pronounEvidence: normalizedEvidence,
+    };
+  }
+
+  const confidence = Math.min(1, winner[1] / 6);
+
+  return {
+    pronounPolicy: "inferred",
+    resolvedPronounSet: winner[0],
+    pronounConfidence: confidence,
+    pronounGuidance: `Prefer ${winner[0]} for this speaker based on accumulated contextual evidence, but switch immediately if they or the room explicitly correct it.`,
+    pronounEvidence: normalizedEvidence,
+  };
+}
+
+function dedupePronounEvidence(evidence: PronounEvidence[]): PronounEvidence[] {
+  const deduped = new Map<string, PronounEvidence>();
+
+  for (const entry of evidence) {
+    const key = [
+      entry.pronounSet,
+      entry.source,
+      entry.stance,
+      entry.excerpt.trim().toLowerCase(),
+    ].join("::");
+    const existing = deduped.get(key);
+
+    if (!existing || existing.timestamp < entry.timestamp) {
+      deduped.set(key, entry);
+    }
+  }
+
+  return [...deduped.values()]
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+    .slice(0, MAX_PRONOUN_EVIDENCE);
+}
+
+function weightPronounEvidence(entry: PronounEvidence): number {
+  const base =
+    entry.source === "explicit_self_statement" || entry.source === "explicit_correction"
+      ? 6
+      : entry.source === "direct_third_party_statement"
+        ? 4
+        : entry.source === "contextual_relational_inference"
+          ? 2
+          : 1;
+
+  return base * clamp(entry.confidence, 0, 1);
 }

@@ -1,6 +1,10 @@
 import {
   type Actor,
   type InteractionMemoryProfile,
+  type PronounEvidence,
+  type PronounEvidenceSource,
+  type PronounEvidenceStance,
+  type PronounSet,
   type SituationalSocialRead,
   type SourceMessage,
 } from "@voidbot/shared";
@@ -143,6 +147,11 @@ function buildSystemPrompt(): string {
     '- "socialFrame": what kind of interaction this is and how it should be framed',
     '- "responseGuidance": private guidance for the final reply model',
     '- "supportingSignals": an array of short evidence bullets tied to the visible context',
+    '- "pronounEvidence": an array of evidence objects about the current speaker only, each with "pronounSet", "source", "stance", "confidence", and "excerpt"',
+    'Only emit pronounEvidence when the room context provides a real clue about the current speaker. Never guess from the speaker name alone.',
+    'Use only these pronoun sets: "they/them", "he/him", "she/her".',
+    'Use only these evidence sources: "explicit_self_statement", "explicit_correction", "direct_third_party_statement", "contextual_relational_inference", "ambient_usage".',
+    'Use stance "prefer" when the evidence supports usage and "avoid" when the evidence explicitly rejects a set.',
     "If the evidence is weak, say so plainly inside the fields instead of inventing drama.",
   ].join("\n");
 }
@@ -181,6 +190,7 @@ function buildUserPrompt(
     interactionMemory,
     "",
     "Infer a private situational social read for this one reply.",
+    "If you emit pronounEvidence, it must be about the current speaker rather than unrelated third parties.",
     "Ground it in the visible room context and the current prompt.",
     "Do not output anything except the requested JSON object.",
   ].join("\n");
@@ -203,6 +213,7 @@ function parseSituationalSocialRead(
     const socialFrame = normalizeModelText(parsed.socialFrame);
     const responseGuidance = normalizeModelText(parsed.responseGuidance);
     const supportingSignals = normalizeStringArray(parsed.supportingSignals);
+    const pronounEvidence = normalizePronounEvidenceArray(parsed.pronounEvidence);
 
     if (
       !summary ||
@@ -221,6 +232,7 @@ function parseSituationalSocialRead(
       socialFrame,
       responseGuidance,
       supportingSignals,
+      pronounEvidence,
     };
   } catch {
     return undefined;
@@ -235,6 +247,77 @@ function normalizeStringArray(value: unknown): string[] {
   return value
     .map((entry) => normalizeModelText(entry))
     .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizePronounEvidenceArray(value: unknown): PronounEvidence[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizePronounEvidence(entry))
+    .filter((entry): entry is PronounEvidence => entry !== undefined);
+}
+
+function normalizePronounEvidence(value: unknown): PronounEvidence | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const pronounSet = normalizePronounSet(record.pronounSet);
+  const source = normalizePronounEvidenceSource(record.source);
+  const stance = normalizePronounEvidenceStance(record.stance);
+  const confidence = normalizeConfidence(record.confidence);
+  const excerpt = normalizeModelText(record.excerpt);
+
+  if (!pronounSet || !source || !stance || confidence === undefined || !excerpt) {
+    return undefined;
+  }
+
+  return {
+    pronounSet,
+    source,
+    stance,
+    confidence,
+    excerpt,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function normalizePronounSet(value: unknown): PronounSet | undefined {
+  return value === "they/them" || value === "he/him" || value === "she/her"
+    ? value
+    : undefined;
+}
+
+function normalizePronounEvidenceSource(
+  value: unknown,
+): PronounEvidenceSource | undefined {
+  switch (value) {
+    case "explicit_self_statement":
+    case "explicit_correction":
+    case "direct_third_party_statement":
+    case "contextual_relational_inference":
+    case "ambient_usage":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function normalizePronounEvidenceStance(
+  value: unknown,
+): PronounEvidenceStance | undefined {
+  return value === "prefer" || value === "avoid" ? value : undefined;
+}
+
+function normalizeConfidence(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.min(1, Math.max(0, value));
 }
 
 function unwrapStructuredFence(input: string): string {

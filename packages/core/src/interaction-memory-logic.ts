@@ -9,5 +9,8 @@ export {
 
 export {
   emptyInteractionProfile,
+  emptyInteractionIdentityState,
+  mergePronounEvidenceIntoIdentityState,
+  normalizeInteractionIdentityState,
   summarizeInteractionProfile,
 } from "./interaction-memory-profile";
