@@ -1,4 +1,8 @@
-import { type ArchivedMessage } from "@voidbot/shared";
+import {
+  type ArchivedMessage,
+  type RetrievalFilters,
+  type RetrievalResult,
+} from "@voidbot/shared";
 
 import { normalizeText } from "./history-ingester";
 import { SerializedFileStore } from "./file-store";
@@ -12,6 +16,27 @@ interface MessageArchiveStore {
   version: 1;
   messages: ArchivedMessageRecord[];
 }
+
+const MIN_SEARCH_TOKEN_LENGTH = 4;
+const SEARCH_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "before",
+  "could",
+  "from",
+  "have",
+  "please",
+  "pretty",
+  "tell",
+  "that",
+  "them",
+  "they",
+  "this",
+  "what",
+  "with",
+  "would",
+  "your",
+]);
 
 export interface MessageArchiveMutationResult {
   created: number;
@@ -157,6 +182,42 @@ export class FileMessageArchiveRepository {
     const store = await this.store.snapshot();
     return store.messages.length;
   }
+
+  public async searchLexical(
+    query: string,
+    limit = 5,
+    filters?: Pick<RetrievalFilters, "guildId" | "channelId" | "authorId">,
+  ): Promise<RetrievalResult[]> {
+    const normalizedQuery = normalizeSearchText(query);
+    const queryTokens = extractSearchTokens(normalizedQuery);
+
+    if (normalizedQuery.length === 0 || queryTokens.length === 0) {
+      return [];
+    }
+
+    const store = await this.store.snapshot();
+    const scored = store.messages
+      .filter((message) => !message.deletedAt)
+      .filter((message) => matchesHistoryFilters(message, filters))
+      .map((message) => {
+        const score = scoreLexicalMatch(message, normalizedQuery, queryTokens);
+        return {
+          message,
+          score,
+        };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return right.message.timestamp.localeCompare(left.message.timestamp);
+      })
+      .slice(0, limit);
+
+    return scored.map(({ message, score }) => toRetrievalResult(message, score));
+  }
 }
 
 function toArchivedMessageRecord(
@@ -200,4 +261,103 @@ function belongsToSameConversation(
   }
 
   return candidate.channelId === anchor.channelId;
+}
+
+function matchesHistoryFilters(
+  message: ArchivedMessageRecord,
+  filters?: Pick<RetrievalFilters, "guildId" | "channelId" | "authorId">,
+): boolean {
+  if (!filters) {
+    return true;
+  }
+
+  if (filters.guildId && message.guildId !== filters.guildId) {
+    return false;
+  }
+
+  if (filters.channelId && message.channelId !== filters.channelId) {
+    return false;
+  }
+
+  if (filters.authorId && message.authorId !== filters.authorId) {
+    return false;
+  }
+
+  return true;
+}
+
+function extractSearchTokens(normalizedQuery: string): string[] {
+  return [...new Set(
+    normalizedQuery
+      .split(/[^\p{L}\p{N}]+/u)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= MIN_SEARCH_TOKEN_LENGTH)
+      .filter((token) => !SEARCH_STOP_WORDS.has(token)),
+  )];
+}
+
+function scoreLexicalMatch(
+  message: ArchivedMessageRecord,
+  normalizedQuery: string,
+  queryTokens: string[],
+): number {
+  const searchableContent = normalizeSearchText(message.content);
+  let score = 0;
+
+  if (searchableContent.includes(normalizedQuery)) {
+    score += 10;
+  }
+
+  let overlapCount = 0;
+
+  for (const token of queryTokens) {
+    if (searchableContent.includes(token)) {
+      overlapCount += 1;
+      score += token.length / 10;
+    }
+  }
+
+  if (overlapCount === 0) {
+    return 0;
+  }
+
+  if (message.content.includes("http://") || message.content.includes("https://")) {
+    score += 1.5;
+  }
+
+  if (message.channelId === message.guildId) {
+    score += 0.25;
+  }
+
+  return Number(score.toFixed(4));
+}
+
+function toRetrievalResult(message: ArchivedMessageRecord, score: number): RetrievalResult {
+  return {
+    chunkId: `${message.id}:archive`,
+    score,
+    text: message.content,
+    sourceId: message.id,
+    sourceKind: "discord_message",
+    metadata: {
+      sourceId: message.id,
+      guildId: message.guildId ?? "",
+      channelId: message.channelId,
+      channelName: message.metadata?.channelName ?? "",
+      authorId: message.authorId,
+      authorName: message.authorName,
+      timestamp: message.timestamp,
+      threadId: message.threadId ?? "",
+      jumpUrl: message.metadata?.jumpUrl ?? "",
+      corpusKind: "discord_history",
+    },
+  };
+}
+
+function normalizeSearchText(value: string): string {
+  return normalizeText(value)
+    .replace(/<@!?\d+>/g, " ")
+    .replace(/<@&\d+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

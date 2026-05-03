@@ -21,6 +21,7 @@ import {
 } from "@voidbot/core";
 import type { ProviderRegistry } from "@voidbot/providers";
 import {
+  FileMessageArchiveRepository,
   FileSourceDocumentArchiveRepository,
   RagPipeline,
   RetrievalService,
@@ -41,11 +42,13 @@ import {
   buildChannelIndexingTarget,
   canSendMessages,
   convertDiscordMessageToArchive,
+  filterPromptEchoHistoryResults,
   getRecentMessages,
   inferSourceGroundingHint,
   renderRateLimitMessage,
   renderSystemMessage,
   renderInteractionProfileDisclosure,
+  searchHistoryWithArchiveFallback,
   sendDirectMessage,
   sendChunkedChannelMessage,
   splitDiscordContent,
@@ -134,6 +137,7 @@ export interface PromptHandlerOptions {
   permissionEngine: PermissionEngine;
   contextBuilder: ContextBuilder;
   retrievalService: RetrievalService;
+  archiveRepository: FileMessageArchiveRepository;
   sourceArchiveRepository: FileSourceDocumentArchiveRepository;
   jobQueue: JobQueue;
   auditLog: AuditLog;
@@ -262,14 +266,22 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     await options.sourceArchiveRepository.listRepoSummaries(),
   );
   const shouldAttachInitialRetrieval =
-    !provider.getCapabilities().includes("tool_driven_retrieval") &&
-    (shouldIndexChannel(options.config.channelIndexing, buildChannelIndexingTarget(options.channel)) ||
-      providerName !== "owner_codex");
+    providerName === "local_llm" ||
+    (!provider.getCapabilities().includes("tool_driven_retrieval") &&
+      (shouldIndexChannel(options.config.channelIndexing, buildChannelIndexingTarget(options.channel)) ||
+        providerName !== "owner_codex"));
+  const initialRetrievalLimit = providerName === "local_llm" ? 3 : 5;
   const retrieval = shouldAttachInitialRetrieval
-    ? await options.retrievalService.search(options.prompt, 5, {
-        guildId: options.guildContext.guildId,
-        corpusKind: "discord_history",
-      })
+    ? filterPromptEchoHistoryResults(
+        await searchHistoryWithArchiveFallback({
+          retrievalService: options.retrievalService,
+          archiveRepository: options.archiveRepository,
+          query: options.prompt,
+          limit: initialRetrievalLimit,
+          guildId: options.guildContext.guildId,
+        }),
+        options.prompt,
+      ).slice(0, initialRetrievalLimit)
     : [];
   const contextBundle = options.contextBuilder.build({
     prompt: options.prompt,

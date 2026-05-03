@@ -65,6 +65,7 @@ import {
   replyToMessage,
   rememberAmbientVoidReference,
   renderSystemMessage,
+  searchHistoryWithArchiveFallback,
   stripBotMention,
 } from "./discord-bot-support";
 
@@ -235,12 +236,16 @@ export async function startBot(): Promise<void> {
           };
         },
         searchHistory: async (input) => {
-          const rawResults = await retrievalService.searchHistory(input.query, input.limit, {
+          const rawResults = await searchHistoryWithArchiveFallback({
+            retrievalService,
+            archiveRepository,
+            query: input.query,
+            limit: input.limit,
             guildId: input.guildId,
             channelId: input.channelId,
             authorId: input.authorId,
           });
-          const results = filterPromptEchoHistoryResults(rawResults, input.query);
+          const results = filterPromptEchoHistoryResults(rawResults, input.query).slice(0, input.limit);
 
           return {
             query: input.query,
@@ -362,6 +367,7 @@ export async function startBot(): Promise<void> {
         permissionEngine,
         contextBuilder,
         retrievalService,
+        archiveRepository,
         sourceArchiveRepository,
         jobQueue,
         auditLog,
@@ -445,6 +451,7 @@ export async function startBot(): Promise<void> {
             permissionEngine,
             contextBuilder,
             retrievalService,
+            archiveRepository,
             sourceArchiveRepository,
             jobQueue,
             auditLog,
@@ -475,6 +482,7 @@ export async function startBot(): Promise<void> {
             permissionEngine,
             contextBuilder,
             retrievalService,
+            archiveRepository,
             sourceArchiveRepository,
             jobQueue,
             auditLog,
