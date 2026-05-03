@@ -514,17 +514,39 @@ if ($ragBackend -eq "ollama") {
 if ($localLlmEnabled) {
   $status.stage = "local_llm"
   Write-StatusFile -Path $statusPath -Status $status
-  $status.localLlmOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmModel -Label "Local LLM Ollama" -LogDir $logDir
+  try {
+    $status.localLlmOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmModel -Label "Local LLM Ollama" -LogDir $logDir
+  } catch {
+    $status.localLlmOllama = @{
+      url = $localLlmBaseUrl
+      model = $localLlmModel
+      healthy = $false
+      degradedStartup = $true
+      error = $_.Exception.Message
+    }
+  }
 
   if ($localLlmSocialReadModel -eq $localLlmModel) {
     $status.localLlmSocialReadOllama = @{
       url = $localLlmBaseUrl
       model = $localLlmSocialReadModel
-      healthy = $true
+      healthy = [bool]$status.localLlmOllama.healthy
       mirrorsLocalLlm = $true
+      degradedStartup = if ($status.localLlmOllama.ContainsKey("degradedStartup")) { $status.localLlmOllama.degradedStartup } else { $false }
+      error = if ($status.localLlmOllama.ContainsKey("error")) { $status.localLlmOllama.error } else { $null }
     }
   } else {
-    $status.localLlmSocialReadOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmSocialReadModel -Label "Local LLM social-read Ollama" -LogDir $logDir
+    try {
+      $status.localLlmSocialReadOllama = Ensure-OllamaEndpoint -BaseUrl $localLlmBaseUrl -Model $localLlmSocialReadModel -Label "Local LLM social-read Ollama" -LogDir $logDir
+    } catch {
+      $status.localLlmSocialReadOllama = @{
+        url = $localLlmBaseUrl
+        model = $localLlmSocialReadModel
+        healthy = $false
+        degradedStartup = $true
+        error = $_.Exception.Message
+      }
+    }
   }
 
   Write-StatusFile -Path $statusPath -Status $status

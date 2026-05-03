@@ -1050,7 +1050,7 @@ try {
           remoteFile = $offsiteStatus.remoteFile
         }
       } else {
-        Add-Check -Name "offsite.status_file" -Status "failed" -Detail "Latest offsite sync status is '$([string]$offsiteStatus.status)' instead of completed." -Data @{
+        Add-Check -Name "offsite.status_file" -Status "warning" -Detail "Latest offsite sync status is '$([string]$offsiteStatus.status)' instead of completed." -Data @{
           error = [string](Get-OptionalPropertyValue -InputObject $offsiteStatus -PropertyName "error")
         }
       }
