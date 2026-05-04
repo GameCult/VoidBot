@@ -30,6 +30,7 @@ export async function postDiscordMessage(
   botToken: string,
   channelId: string,
   content: string,
+  replyToMessageId?: string,
 ): Promise<{ id: string }> {
   const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
     method: "POST",
@@ -39,6 +40,12 @@ export async function postDiscordMessage(
     },
     body: JSON.stringify({
       content,
+      message_reference: replyToMessageId
+        ? {
+            message_id: replyToMessageId,
+            fail_if_not_exists: false,
+          }
+        : undefined,
       allowed_mentions: {
         parse: [],
       },

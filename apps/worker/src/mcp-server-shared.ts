@@ -24,6 +24,12 @@ export const notifyOwnerInputSchema = {
   message: z.string().min(1).max(1800),
 };
 
+export const postDiscordMessageInputSchema = {
+  channelId: z.string().min(1),
+  content: z.string().min(1).max(1800),
+  replyToMessageId: z.string().min(1).optional(),
+};
+
 export const searchSourcesInputSchema = {
   query: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(MAX_RETRIEVAL_RESULT_LIMIT).optional(),
@@ -55,6 +61,12 @@ export interface MessageContextArgs {
 
 export interface NotifyOwnerArgs {
   message: string;
+}
+
+export interface PostDiscordMessageArgs {
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
 }
 
 export interface ListIndexedReposArgs {

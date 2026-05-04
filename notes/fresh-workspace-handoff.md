@@ -38,6 +38,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - There is now a 15-minute local Codex automation named `Void Moderator Rumination`. It treats `config/discord-server-rules.md`, `config/moderation-review-agent.md`, and `styles/void-default.md` as its doctrine/personality surfaces, uses `npm run moderation:recent-history` for chronological recent-message polling, and keeps its only routine writable memory in `.voidbot/private/moderation-agent-state.json`.
 - That moderation state file is now Ghostlight-shaped: identity, canonical state, goals, memories, perceived overlays, and a `moderation_runtime` block. The loop is also instructed to think like a constructive participant who embodies the rules, not just a clipboard looking for blood.
 - Directly invoked Discord replies now load that same private moderation state as distilled private self-state context, so the ruminating automation and the summoned Void share one evolving personality/state spine.
+- The worker MCP surface now exposes `post_discord_message`, so the moderation loop is no longer mute: it can reply in-channel or post proactively when participation would actually improve the room.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 
 ## Likely Next Bounded Move

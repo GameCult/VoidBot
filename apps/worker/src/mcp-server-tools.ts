@@ -10,6 +10,7 @@ import {
   type ListIndexedReposArgs,
   type MessageContextArgs,
   type NotifyOwnerArgs,
+  type PostDiscordMessageArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
   type SourceContextArgs,
@@ -18,6 +19,7 @@ import {
   formatSourceResults,
   messageContextInputSchema,
   notifyOwnerInputSchema,
+  postDiscordMessageInputSchema,
   renderJsonBlock,
   searchHistoryInputSchema,
   searchSourcesInputSchema,
@@ -289,6 +291,66 @@ export function registerVoidbotTools(
           messageId,
           count: formattedMessages.length,
           messages: formattedMessages,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
+    "post_discord_message",
+    {
+      title: "Post Discord Message",
+      description:
+        "Post a message to a Discord channel or thread as Void. Use this for constructive proactive participation, moderation nudges, or replies when speaking in-channel would genuinely help. Set replyToMessageId to reply to a specific message; omit it for a fresh post.",
+      inputSchema: postDiscordMessageInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (input: PostDiscordMessageArgs): Promise<CallToolResult> => {
+      const { channelId, content, replyToMessageId } = input;
+
+      if (!context.config.botToken) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "DISCORD_BOT_TOKEN is not configured, so Discord posting is unavailable.",
+            },
+          ],
+          structuredContent: {
+            sent: false,
+            reason: "missing_bot_token",
+            channelId,
+          },
+          isError: true,
+        };
+      }
+
+      const posted = await postDiscordMessage(
+        context.config.botToken,
+        channelId,
+        content,
+        replyToMessageId,
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: replyToMessageId
+              ? `Posted a reply in Discord channel ${channelId} as message ${posted.id}.`
+              : `Posted a message in Discord channel ${channelId} as message ${posted.id}.`,
+          },
+        ],
+        structuredContent: {
+          sent: true,
+          channelId,
+          messageId: posted.id,
+          replyToMessageId: replyToMessageId ?? null,
         },
       };
     },
