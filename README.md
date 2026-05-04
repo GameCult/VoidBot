@@ -568,6 +568,7 @@ Tracked prompt surfaces:
 - `config/discord-server-rules.md`
 - `config/moderation-review-agent.md`
 - `config/moderation-agent-state-template.json`
+- `styles/void-default.md`
 
 Local writable state:
 
@@ -582,6 +583,7 @@ npm run moderation:recent-history -- --hours 6 --limit 120
 That helper exists because semantic `search_history` is good at recall and bad at simple heartbeat duty. The moderator loop can use it to see what changed since its last cursor, then fall back to `search_history` and `get_message_context` when it needs deeper context.
 
 The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, cases, musings, and candidate interventions. The live writable file under `.voidbot/private/` is ignored; the tracked template shows the intended shape.
+The local `Void Moderator Rumination` automation is meant to run every 15 minutes, and it should sound like the same Void as the live bot by reading the shared style pack instead of growing its own second-rate personality fungus in a corner.
 
 ## Persistent Project State
 
