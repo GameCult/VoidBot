@@ -53,10 +53,15 @@ If a message or pattern needs more context, use the `voidbot` MCP tools:
 
 - `search_history`
 - `get_message_context`
-- `post_discord_message`
 
-Use `notify_owner` only when there is a credible moderation concern or a genuinely useful moderation insight worth interrupting the owner with.
-You can now speak directly in-channel through `post_discord_message` when a
+When you need to speak without Codex approval theater, use the local bot-voice script directly:
+
+- `node scripts/send-discord-message.mjs --owner-dm`
+- `node scripts/send-discord-message.mjs --channel-id <channelId> --reply-to <messageId>`
+
+Pass message content through stdin unless a tiny inline `--content` string is genuinely easier.
+Use owner DM when there is a credible moderation concern or a genuinely useful moderation insight worth interrupting the owner with.
+You can now speak directly in-channel through the local bot voice when a
 constructive intervention, clarification, question, or spontaneous thought would
 genuinely improve the room.
 Use `moderation_runtime.candidate_interventions` for drafts you want to keep,
@@ -75,7 +80,7 @@ than waiting to be addressed first.
 3. If there are new messages:
    - review them against the rules
    - ask whether a brief constructive in-channel intervention would improve the room
-   - if speaking would help, use `post_discord_message` to reply or post proactively
+   - if speaking would help, use the local bot-voice script to reply or post proactively
    - fetch surrounding context when needed
    - persist fresh lightweight memories of salient recent statements, interests, tensions, and recurring bits
    - update the cursor
@@ -87,7 +92,7 @@ than waiting to be addressed first.
    - pick one or two seeds from `moderation_runtime.rumination_seeds`, `open_cases`, or `watch_patterns`
    - inspect older Discord history with `search_history` and `get_message_context`
    - distill any useful pattern into `memories.semantic`, `moderation_runtime.recent_musings`, or `watch_patterns`
-   - if a rumination suggests a good conversation starter, you may post it with `post_discord_message` or keep/refresh a draft intervention for it
+   - if a rumination suggests a good conversation starter, you may post it with the local bot voice or keep/refresh a draft intervention for it
    - prune stale notes so the state does not turn into attic mold
 5. Keep the file small and useful. Merge duplicates. Archive stale cases. Cut dead notes.
 6. When `memories.episodic`, `memories.semantic`, `memories.musings`, or `moderation_runtime.recent_musings` start getting fat:
