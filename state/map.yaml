@@ -66,6 +66,7 @@ accepted_design:
   - The VoidBot MCP server is the preferred search plane for archived Discord, indexed GameCult repos, Aetheria lore, and owner notifications.
   - Bot-directed prompts should remain in the raw Discord archive for forensics, but default history indexing and retrieval should treat them as toxic self-reference rather than ordinary community memory.
   - Moderation review should run as a separate local Codex automation with tracked rules prompt surfaces plus one ignored structured state file, escalating via `notify_owner` instead of pretending the live Discord bot is a silent auto-punishment machine.
+  - The moderation agent should think of itself as a constructive participant as well as a reviewer, and its ignored structured state should follow a Ghostlight-shaped identity/canonical-state/goals/memories/overlays/runtime split rather than a flat notes bucket.
   - Deep agent-state, personality, culture, and persistent-world design work now belongs to the sibling Ghostlight repo; VoidBot should consume that work instead of remaining its long-term home.
   - Long-running work should expose durable logs or status files instead of relying on one attached session and hope.
   - Persistent project memory must stay ruthlessly distilled; git history and artifacts carry routine proof.
