@@ -9,3 +9,4 @@ export * from "./state-storage";
 export * from "./style-pack-loader";
 export * from "./system-message-catalog";
 export * from "./void-usage-rate-limiter";
+export * from "./void-self-state-loader";

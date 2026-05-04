@@ -12,6 +12,7 @@ import type { AppConfig } from "@voidbot/config";
 import {
   ContextBuilder,
   type OllamaSituationalSocialReadInferer,
+  loadVoidSelfState,
   PermissionEngine,
   type AuditLog,
   type InteractionMemoryBank,
@@ -265,6 +266,9 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     options.prompt,
     await options.sourceArchiveRepository.listRepoSummaries(),
   );
+  const voidSelfState = await loadVoidSelfState(
+    options.config.moderationAgentStatePath,
+  );
   const shouldAttachInitialRetrieval =
     providerName === "local_llm" ||
     (!provider.getCapabilities().includes("tool_driven_retrieval") &&
@@ -294,6 +298,7 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     situationalSocialRead,
     sourceGrounding,
     stylePack: options.stylePack,
+    voidSelfState,
   });
 
   if (providerName === "owner_codex") {

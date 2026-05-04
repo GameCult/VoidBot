@@ -124,6 +124,7 @@ export function buildRequestPayload(
     situationalSocialRead: request.contextBundle.situationalSocialRead,
     sourceGrounding: request.contextBundle.sourceGrounding,
     stylePack: request.contextBundle.stylePack,
+    voidSelfState: request.contextBundle.voidSelfState,
     recentMessages: request.contextBundle.recentMessages,
     retrieval: request.contextBundle.retrieval,
     options: request.options ?? {},

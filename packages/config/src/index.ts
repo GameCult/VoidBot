@@ -93,6 +93,10 @@ const envSchema = z.object({
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   STYLE_PACK_PATH: z.string().min(1).default("styles/void-default.md"),
   SYSTEM_MESSAGES_PATH: z.string().min(1).default("config/system-messages.json"),
+  MODERATION_AGENT_STATE_PATH: z
+    .string()
+    .min(1)
+    .default(".voidbot/private/moderation-agent-state.json"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
   EXCLUDED_CHANNEL_IDS: z.string().default(""),
@@ -125,6 +129,7 @@ export interface AppConfig {
   codexExecTimeoutMs: number;
   stylePackPath: string;
   systemMessagesPath: string;
+  moderationAgentStatePath: string;
   indexAllChannels: boolean;
   indexedChannelIds: string[];
   excludedChannelIds: string[];
@@ -297,6 +302,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     codexExecTimeoutMs: parsed.CODEX_EXEC_TIMEOUT_MS,
     stylePackPath: resolve(parsed.STYLE_PACK_PATH),
     systemMessagesPath: resolve(parsed.SYSTEM_MESSAGES_PATH),
+    moderationAgentStatePath: resolve(parsed.MODERATION_AGENT_STATE_PATH),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,
     indexedChannelIds,
     excludedChannelIds,

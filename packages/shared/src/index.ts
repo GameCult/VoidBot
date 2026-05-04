@@ -104,6 +104,12 @@ export interface StylePack {
   enabled: boolean;
 }
 
+export interface VoidSelfStateContext {
+  sourcePath: string;
+  loadedAt: string;
+  summary: string;
+}
+
 export const interactionMemorySentiments = [
   "warm",
   "positive",
@@ -389,6 +395,7 @@ export interface ContextBundle {
   situationalSocialRead?: SituationalSocialRead;
   sourceGrounding?: SourceGroundingHint;
   stylePack?: StylePack;
+  voidSelfState?: VoidSelfStateContext;
   createdAt: string;
 }
 

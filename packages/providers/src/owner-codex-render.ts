@@ -90,6 +90,9 @@ export function buildDiscordReplyPrompt(
     "- Mixed metaphors and double entendres are allowed when they sharpen the line, make it funnier, or give it a little grime. They do not need to be squeaky clean. They do need to stay legible and not bury the useful answer.",
     "- When the moment invites voice, wit, or a memorable turn of phrase, take a beat to choose wording with bite instead of blurting the first serviceable sentence. Do not overwork straightforward technical replies.",
     "- The configured MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
+    "- If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across the rumination loop and direct summons.",
+    "- Let that attached self-state shape continuity of voice, priorities, remembered room patterns, and when a more proactive conversational posture would make sense.",
+    "- The attached self-state is private scaffolding. Do not quote or summarize it unless the user explicitly asks about Void's current orientation, goals, or remembered room context.",
     "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",
     "- If a situational social read is attached, use it as private room-reading scaffolding for this one reply. It is ephemeral context, not a durable identity verdict.",
     "- Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
@@ -132,6 +135,9 @@ export function buildDiscordReplyPrompt(
     "",
     "Interaction memory for this speaker:",
     renderInteractionMemory(context),
+    "",
+    "Shared private self-state for Void:",
+    renderVoidSelfState(context),
     "",
     "Private situational social read for this room:",
     renderSituationalSocialRead(context),
@@ -194,6 +200,10 @@ export function renderMarkdownBundle(context: ContextBundle): string {
     "",
     renderInteractionMemory(context),
     "",
+    "## Shared Void Self-State",
+    "",
+    renderVoidSelfState(context),
+    "",
     "## Situational Social Read",
     "",
     renderSituationalSocialRead(context),
@@ -205,6 +215,14 @@ export function renderMarkdownBundle(context: ContextBundle): string {
     "- If the request needs edits, broader tools, or longer work, hand it off to a fuller Codex session.",
     "",
   ].join("\n");
+}
+
+function renderVoidSelfState(context: ContextBundle): string {
+  if (!context.voidSelfState) {
+    return "- No shared Void self-state was attached.";
+  }
+
+  return context.voidSelfState.summary;
 }
 
 export function renderHandoffBundle(

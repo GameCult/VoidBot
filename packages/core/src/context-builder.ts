@@ -8,6 +8,7 @@ import {
   type SourceGroundingHint,
   type SourceMessage,
   type StylePack,
+  type VoidSelfStateContext,
 } from "@voidbot/shared";
 
 export interface BuildContextInput {
@@ -20,6 +21,7 @@ export interface BuildContextInput {
   situationalSocialRead?: SituationalSocialRead;
   sourceGrounding?: SourceGroundingHint;
   stylePack?: StylePack;
+  voidSelfState?: VoidSelfStateContext;
 }
 
 export class ContextBuilder {
@@ -34,6 +36,7 @@ export class ContextBuilder {
       situationalSocialRead: input.situationalSocialRead,
       sourceGrounding: input.sourceGrounding,
       stylePack: input.stylePack,
+      voidSelfState: input.voidSelfState,
       createdAt: new Date().toISOString(),
     };
   }

@@ -24,6 +24,9 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "When the moment invites voice, wit, or a memorable turn of phrase, take a beat to choose wording with bite instead of blurting the first serviceable sentence. Do not overwork straightforward technical replies.",
     "Stay honest about what context was actually provided to you.",
     "Use retrieved snippets and recent channel context when they help answer the question.",
+    "If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across automation and direct conversation.",
+    "Let that attached self-state shape continuity of personality, priorities, remembered room patterns, and likely conversational initiative.",
+    "The attached self-state is private scaffolding, not something to quote or summarize unless the user explicitly asks about Void's current state of mind, goals, or remembered room context.",
     "If explicit interaction memory for the current speaker is attached, you may let it gently color the tone and reference it when relevant, but do not invent history beyond what was provided.",
     "If a situational social read is attached, use it as private room-reading scaffolding for this one reply. It is ephemeral context, not a durable identity verdict.",
     "Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
@@ -77,6 +80,7 @@ export function buildPrompt(context: ContextBundle): string {
     : "- No archived retrieval snippets were attached.";
   const interactionMemory = renderInteractionMemory(context);
   const situationalSocialRead = renderSituationalSocialRead(context);
+  const voidSelfState = renderVoidSelfState(context);
 
   return [
     `Question: ${context.prompt}`,
@@ -94,6 +98,9 @@ export function buildPrompt(context: ContextBundle): string {
     "Interaction memory for this speaker:",
     interactionMemory,
     "",
+    "Shared private self-state for Void:",
+    voidSelfState,
+    "",
     "Private situational social read for this room:",
     situationalSocialRead,
     "",
@@ -103,6 +110,14 @@ export function buildPrompt(context: ContextBundle): string {
 
 export function buildArtifacts(input: LocalLlmArtifactsInput): ProviderArtifact[] {
   return buildBaseArtifacts(input);
+}
+
+function renderVoidSelfState(context: ContextBundle): string {
+  if (!context.voidSelfState) {
+    return "- No shared Void self-state was attached.";
+  }
+
+  return context.voidSelfState.summary;
 }
 
 function renderInteractionMemory(context: ContextBundle): string {
