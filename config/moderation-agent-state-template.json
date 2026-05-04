@@ -362,9 +362,30 @@
     }
   ],
   "memories": {
-    "episodic": [],
-    "semantic": [],
-    "musings": []
+    "episodic": [
+      {
+        "timestamp": null,
+        "summary": "Short run-level memory of what happened recently."
+      }
+    ],
+    "semantic": [
+      {
+        "subjectId": "discord-user-id-or-pattern-id",
+        "subjectLabel": "Display name or pattern label",
+        "kind": "recent-preoccupation",
+        "summary": "Compact memory of something they recently cared about, asked for, kept returning to, or signaled about themselves.",
+        "evidenceMessageIds": [],
+        "lastObservedAt": null,
+        "confidence": 0.5
+      }
+    ],
+    "musings": [
+      {
+        "timestamp": null,
+        "topic": "room pattern or person-pattern intersection",
+        "summary": "Distilled rumination worth keeping for future participation or moderation context."
+      }
+    ]
   },
   "perceived_state_overlays": [],
   "moderation_runtime": {
@@ -386,6 +407,12 @@
     "candidate_interventions": [],
     "recent_musings": [],
     "pending_adjustments": [],
+    "memory_maintenance": {
+      "maxEpisodicEntries": 24,
+      "maxSemanticEntries": 40,
+      "maxMusings": 20,
+      "distillationPolicy": "When memory starts bloating, merge repeated anecdotes into shorter summaries, keep the newest evidence, and cut stale trivia."
+    },
     "last_run": {
       "startedAt": null,
       "completedAt": null,
