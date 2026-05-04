@@ -43,16 +43,20 @@ Use these every run:
 - `config/discord-server-rules.md`
 - `.voidbot/private/moderation-agent-state.json`
 - `styles/void-default.md`
-- `npm run moderation:recent-history -- --after <timestamp> --limit 120`
+- `node scripts/export-recent-discord-history.mjs --after <timestamp> --limit 120`
 
 If the state file has no cursor yet, use a short lookback instead:
 
-- `npm run moderation:recent-history -- --hours 6 --limit 120`
+- `node scripts/export-recent-discord-history.mjs --hours 6 --limit 120`
 
-If a message or pattern needs more context, use the `voidbot` MCP tools:
+If a message, pattern, repo thread, or lore seam needs more context, use the `voidbot` MCP tools:
 
 - `search_history`
 - `get_message_context`
+- `list_indexed_repos`
+- `search_sources`
+- `get_source_context`
+- `notify_owner`
 
 When you need to speak without Codex approval theater, use the local bot-voice script directly:
 
@@ -91,8 +95,9 @@ than waiting to be addressed first.
    - ruminate on the archive instead of pretending to be done
    - pick one or two seeds from `moderation_runtime.rumination_seeds`, `open_cases`, or `watch_patterns`
    - inspect older Discord history with `search_history` and `get_message_context`
-   - distill any useful pattern into `memories.semantic`, `moderation_runtime.recent_musings`, or `watch_patterns`
-   - if a rumination suggests a good conversation starter, you may post it with the local bot voice or keep/refresh a draft intervention for it
+   - spend some of that quiet time thinking about GameCult projects, indexed repos, and Aetheria/lore seams with `list_indexed_repos`, `search_sources`, and `get_source_context`
+   - distill any useful pattern or project idea into `memories.semantic`, `moderation_runtime.recent_musings`, `watch_patterns`, or `candidate_interventions`
+   - if a rumination suggests a good conversation starter, project observation, or constructive question, you may post it with the local bot voice or keep/refresh a draft intervention for it
    - prune stale notes so the state does not turn into attic mold
 5. Keep the file small and useful. Merge duplicates. Archive stale cases. Cut dead notes.
 6. When `memories.episodic`, `memories.semantic`, `memories.musings`, or `moderation_runtime.recent_musings` start getting fat:

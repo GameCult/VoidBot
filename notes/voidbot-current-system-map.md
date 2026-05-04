@@ -110,6 +110,10 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
   - watchdog for process liveness, Qdrant, Postgres, Ollama, source-repo reconcile drift, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
+- `scripts/run-void-moderator-rumination.ps1`
+  - scheduled moderation/participation runner that launches `codex exec` from the VoidBot workspace with the usual MCP/tool surface, writes status/log pulse files, and lets the unattended loop persist only `.voidbot/private/moderation-agent-state.json`.
+- `scripts/install-moderation-rumination-task.ps1`
+  - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - `scripts/backup-voidbot-state.ps1`
   - local backup of Postgres, Qdrant snapshots, and RAG archives.
 - `scripts/restore-voidbot-state.ps1`
@@ -145,3 +149,12 @@ Within the Postgres path, the implementation is split on purpose now too:
 - `state-storage.ts` chooses the backend
 - `state-storage-postgres-bootstrap.ts` handles schema/bootstrap/import work
 - per-domain modules own queue, audit, interaction-memory, and rate-limit behavior
+
+## Flow 5: Scheduled Moderation And Rumination
+
+1. The Windows scheduled task `Void Moderator Rumination` starts `scripts/run-void-moderator-rumination.ps1` every 15 minutes.
+2. The runner launches `codex exec` from `E:\Projects\VoidBot` with full local workspace/tool access so the child agent sees the same project rules, `.codex/config.toml`, and `voidbot` MCP server as a normal VoidBot workspace session.
+3. The child agent reads `config/discord-server-rules.md`, `config/moderation-review-agent.md`, `styles/void-default.md`, and `.voidbot/private/moderation-agent-state.json`.
+4. For chronological heartbeat duty, it polls `node scripts/export-recent-discord-history.mjs`; for deeper social or project context, it can use the usual retrieval tools (`search_history`, `get_message_context`, `list_indexed_repos`, `search_sources`, `get_source_context`).
+5. If speaking would genuinely help, it posts through `node scripts/send-discord-message.mjs`; otherwise it updates only the ignored moderation state file with cursors, memories, musings, and candidate interventions.
+6. The runner writes pulse files under `.voidbot/status/moderation-rumination.json` plus `.voidbot/logs/moderation-rumination*`, so the loop can be observed without pretending an app heartbeat card is a real workstation daemon.
