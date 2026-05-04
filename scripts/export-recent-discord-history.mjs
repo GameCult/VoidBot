@@ -1,44 +1,20 @@
-import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { loadConfig } from "@voidbot/config";
-import { FileMessageArchiveRepository } from "@voidbot/rag";
-import { readArchivedMessageKind, type ArchivedMessage } from "@voidbot/shared";
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-interface CliOptions {
-  after?: string;
-  hours?: number;
-  limit: number;
-  channelId?: string;
-  includeBotPrompts: boolean;
-}
-
-interface OutputMessage {
-  id: string;
-  timestamp: string;
-  channelId: string;
-  threadId?: string;
-  authorId: string;
-  authorName: string;
-  content: string;
-  attachments: string[];
-  messageKind: string;
-}
-
-async function main(): Promise<void> {
-  if (!process.env.DISCORD_OWNER_ID) {
-    process.env.DISCORD_OWNER_ID = "__moderation_recent_history__";
-  }
-
-  const config = loadConfig();
+function main() {
   const options = parseArgs(process.argv.slice(2));
-  const archiveRepository = new FileMessageArchiveRepository(config.ragArchivePath);
-  const messages = await archiveRepository.listAllActive();
-  const filtered = filterMessages(messages, options);
+  const archivePath = resolve(
+    repoRoot,
+    readConfiguredArchivePath() ?? ".voidbot/rag/messages.json",
+  );
+  const store = readArchiveStore(archivePath);
+  const filtered = filterMessages(store.messages ?? [], options);
   const selected = filtered.slice(-options.limit);
   const outputMessages = selected.map(toOutputMessage);
-  const transcript = outputMessages
-    .map((message) => formatTranscriptLine(message))
-    .join("\n");
+  const transcript = outputMessages.map(formatTranscriptLine).join("\n");
 
   process.stdout.write(
     `${JSON.stringify(
@@ -47,6 +23,7 @@ async function main(): Promise<void> {
         hours: options.hours ?? null,
         channelId: options.channelId ?? null,
         includeBotPrompts: options.includeBotPrompts,
+        archivePath,
         totalMatchingMessages: filtered.length,
         returnedMessages: outputMessages.length,
         oldestReturnedTimestamp: outputMessages[0]?.timestamp ?? null,
@@ -61,8 +38,8 @@ async function main(): Promise<void> {
   );
 }
 
-function parseArgs(args: string[]): CliOptions {
-  const options: CliOptions = {
+function parseArgs(args) {
+  const options = {
     limit: 80,
     includeBotPrompts: false,
   };
@@ -110,13 +87,77 @@ function parseArgs(args: string[]): CliOptions {
   return options;
 }
 
-function validateIsoTimestamp(value: string, flagName: string): void {
+function validateIsoTimestamp(value, flagName) {
   if (Number.isNaN(Date.parse(value))) {
     throw new Error(`${flagName} must be a valid ISO timestamp.`);
   }
 }
 
-function filterMessages(messages: ArchivedMessage[], options: CliOptions): ArchivedMessage[] {
+function readConfiguredArchivePath() {
+  if (process.env.RAG_ARCHIVE_PATH?.trim()) {
+    return process.env.RAG_ARCHIVE_PATH.trim();
+  }
+
+  const envPath = resolve(repoRoot, ".env");
+
+  try {
+    const raw = stripLeadingBom(readFileSync(envPath, "utf8"));
+    const parsed = parseDotEnv(raw);
+    return parsed.RAG_ARCHIVE_PATH?.trim() || undefined;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+function parseDotEnv(raw) {
+  const result = {};
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (trimmed.length === 0 || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    let value = trimmed.slice(separatorIndex + 1).trim();
+
+    if (
+      value.length >= 2 &&
+      ((value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    result[key] = value;
+  }
+
+  return result;
+}
+
+function readArchiveStore(archivePath) {
+  const raw = stripLeadingBom(readFileSync(archivePath, "utf8"));
+  const parsed = JSON.parse(raw);
+
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.messages)) {
+    throw new Error(`Archive at ${archivePath} does not have a messages array.`);
+  }
+
+  return parsed;
+}
+
+function filterMessages(messages, options) {
   const lowerBound =
     options.after ??
     (options.hours !== undefined
@@ -125,13 +166,19 @@ function filterMessages(messages: ArchivedMessage[], options: CliOptions): Archi
 
   return messages
     .filter((message) => !message.deletedAt)
-    .filter((message) => (options.includeBotPrompts ? true : readArchivedMessageKind(message) !== "bot_prompt"))
+    .filter((message) =>
+      options.includeBotPrompts ? true : readMessageKind(message) !== "bot_prompt",
+    )
     .filter((message) => (options.channelId ? message.channelId === options.channelId : true))
     .filter((message) => (lowerBound ? message.timestamp > lowerBound : true))
     .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }
 
-function toOutputMessage(message: ArchivedMessage): OutputMessage {
+function readMessageKind(message) {
+  return message?.metadata?.messageKind === "bot_prompt" ? "bot_prompt" : "default";
+}
+
+function toOutputMessage(message) {
   return {
     id: message.id,
     timestamp: message.timestamp,
@@ -140,12 +187,12 @@ function toOutputMessage(message: ArchivedMessage): OutputMessage {
     authorId: message.authorId,
     authorName: message.authorName,
     content: message.content,
-    attachments: message.attachments ?? [],
-    messageKind: readArchivedMessageKind(message),
+    attachments: Array.isArray(message.attachments) ? message.attachments : [],
+    messageKind: readMessageKind(message),
   };
 }
 
-function formatTranscriptLine(message: OutputMessage): string {
+function formatTranscriptLine(message) {
   const threadSuffix = message.threadId ? ` thread=${message.threadId}` : "";
   const attachmentSuffix =
     message.attachments.length > 0
@@ -154,7 +201,13 @@ function formatTranscriptLine(message: OutputMessage): string {
   return `[${message.timestamp}] ${message.authorName} (${message.authorId}) channel=${message.channelId}${threadSuffix}: ${message.content}${attachmentSuffix}`;
 }
 
-void main().catch((error) => {
-  console.error(error);
+function stripLeadingBom(input) {
+  return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+try {
+  main();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
-});
+}

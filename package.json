@@ -31,7 +31,7 @@
     "qdrant:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-docker-qdrant.ps1",
     "qdrant:up": "powershell -ExecutionPolicy Bypass -File scripts/start-qdrant.ps1",
     "rag:backfill": "tsx scripts/backfill-discord-logs.ts",
-    "moderation:recent-history": "tsx scripts/export-recent-discord-history.ts",
+    "moderation:recent-history": "node scripts/export-recent-discord-history.mjs",
     "rag:scrub-bot-prompts": "tsx scripts/scrub-bot-prompts-from-history.ts",
     "rag:index-sources": "tsx scripts/index-source-repos.ts",
     "rag:install-push-hooks": "tsx scripts/install-source-index-post-push-hooks.ts",
