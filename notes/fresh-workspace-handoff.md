@@ -35,6 +35,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - Source repo discovery now reconciles automatically during `npm run stack:start` and through the watchdog path, so new repos under `SOURCE_REPO_ROOT` stop waiting for manual hook folklore before they get indexed.
 - Bot-directed prompts now stay in the raw Discord archive but are excluded from default semantic history indexing and lexical fallback, so repeated summons stop teaching the bot its own call-and-response loops.
 - Source-grounding hints are advisory now; the owner and local lanes can decide when repo or lore tool use is actually warranted instead of obeying a lexical front-door veto.
+- There is now an hourly local Codex automation named `Void Moderator Rumination`. It treats `config/discord-server-rules.md` and `config/moderation-review-agent.md` as its tracked doctrine, uses `npm run moderation:recent-history` for chronological recent-message polling, and keeps its only routine writable memory in `.voidbot/private/moderation-agent-state.json`.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 
 ## Likely Next Bounded Move

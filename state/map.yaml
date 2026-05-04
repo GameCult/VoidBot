@@ -65,6 +65,7 @@ accepted_design:
   - Ephemeral room-reading should come from an explicit local-LLM sidecar inference pass plus raw recent-message evidence, not from a rules bucket pretending to understand natural language.
   - The VoidBot MCP server is the preferred search plane for archived Discord, indexed GameCult repos, Aetheria lore, and owner notifications.
   - Bot-directed prompts should remain in the raw Discord archive for forensics, but default history indexing and retrieval should treat them as toxic self-reference rather than ordinary community memory.
+  - Moderation review should run as a separate local Codex automation with tracked rules prompt surfaces plus one ignored structured state file, escalating via `notify_owner` instead of pretending the live Discord bot is a silent auto-punishment machine.
   - Deep agent-state, personality, culture, and persistent-world design work now belongs to the sibling Ghostlight repo; VoidBot should consume that work instead of remaining its long-term home.
   - Long-running work should expose durable logs or status files instead of relying on one attached session and hope.
   - Persistent project memory must stay ruthlessly distilled; git history and artifacts carry routine proof.
@@ -88,6 +89,7 @@ landed_baseline:
   - State storage is now split into a thin factory plus per-domain Postgres/file store modules and bootstrap/migration helpers instead of one persistence omnibus.
   - Source archive storage is now sharded by repo behind a manifest plus per-repo shard directory instead of one giant `source-documents.json` blob.
   - Source repo indexing now reconciles automatically during stack startup and watchdog runs, refreshing hooks, indexing newly discovered repos, and pruning stale repo shards when repos disappear from `SOURCE_REPO_ROOT`.
+  - A separate hourly moderation-rumination automation now reads tracked server rules, pulls recent chronological archive slices through a helper script, and maintains one ignored JSON state file under `.voidbot/private/` instead of smearing moderation memory across random notes.
 
 rejected_paths:
   - name: transcript_only_continuity

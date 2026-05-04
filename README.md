@@ -559,6 +559,27 @@ Defaults come from `.env` / `.env.example`:
 
 The watchdog task also uses `Interactive` logon because the remote freshness check relies on the same local SSH key material as the offsite sync path.
 
+## Moderator Review Loop
+
+Void can also keep a sandboxed little moderator brain running on a schedule without turning the live bot into an auto-ban carnival.
+
+Tracked prompt surfaces:
+
+- `config/discord-server-rules.md`
+- `config/moderation-review-agent.md`
+
+Local writable state:
+
+- `.voidbot/private/moderation-agent-state.json`
+
+Chronological recent-history helper:
+
+```bash
+npm run moderation:recent-history -- --hours 6 --limit 120
+```
+
+That helper exists because semantic `search_history` is good at recall and bad at simple heartbeat duty. The moderator loop can use it to see what changed since its last cursor, then fall back to `search_history` and `get_message_context` when it needs deeper context.
+
 ## Persistent Project State
 
 VoidBot is now large enough that transcript memory alone is a stupid way to steer it. The repo carries a small canonical project-state scaffold for future sessions:
