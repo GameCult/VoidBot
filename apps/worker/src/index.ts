@@ -19,11 +19,13 @@ import {
   ProviderRegistry,
 } from "@voidbot/providers";
 import {
+  filterPromptEchoHistoryResults,
   createTextEmbedder,
   createVectorStores,
   FileMessageArchiveRepository,
   FileSourceDocumentArchiveRepository,
   RetrievalService,
+  searchHistoryWithArchiveFallback,
   SourceDocumentIngester,
   type ArchivedMessageRecord,
 } from "@voidbot/rag";
@@ -34,50 +36,6 @@ import {
 } from "@voidbot/shared";
 
 const config = loadConfig();
-
-function filterPromptEchoHistoryResults<
-  T extends {
-    text: string;
-  },
->(results: T[], query: string): T[] {
-  const normalizedQuery = normalizeHistoryEchoText(query);
-
-  if (normalizedQuery.length === 0) {
-    return results;
-  }
-
-  const filtered = results.filter((result) => {
-    const normalizedResult = normalizeHistoryEchoText(result.text);
-
-    if (normalizedResult.length === 0) {
-      return true;
-    }
-
-    if (normalizedResult === normalizedQuery) {
-      return false;
-    }
-
-    if (
-      normalizedQuery.length >= 48 &&
-      (normalizedResult.includes(normalizedQuery) || normalizedQuery.includes(normalizedResult))
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-
-  return filtered.length > 0 ? filtered : results;
-}
-
-function normalizeHistoryEchoText(value: string): string {
-  return value
-    .replace(/<@!?\d+>/g, " ")
-    .replace(/<@&\d+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -214,10 +172,15 @@ async function buildProviderRegistry(systemMessagesCatalog: SystemMessageCatalog
           };
         },
         searchHistory: async (input) => {
-          const rawResults = await retrievalService.searchHistory(input.query, input.limit, {
+          const rawResults = await searchHistoryWithArchiveFallback({
+            retrievalService,
+            archiveRepository,
+            query: input.query,
+            limit: input.limit,
             guildId: input.guildId,
             channelId: input.channelId,
             authorId: input.authorId,
+            preserveOverfetch: true,
           });
           const results = filterPromptEchoHistoryResults(rawResults, input.query);
 

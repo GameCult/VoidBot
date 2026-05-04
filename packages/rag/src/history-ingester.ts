@@ -2,6 +2,8 @@ import {
   type ArchivedMessage,
   type EmbeddingChunk,
   type VectorStore,
+  readArchivedMessageKind,
+  isArchivedBotPrompt,
 } from "@voidbot/shared";
 
 const DEFAULT_CHUNK_SIZE = 420;
@@ -23,6 +25,10 @@ export class HistoryIngester {
   }
 
   public chunkMessage(message: ArchivedMessage): EmbeddingChunk[] {
+    if (isArchivedBotPrompt(message)) {
+      return [];
+    }
+
     const segments = splitText(message.content, this.chunkSize);
 
     return segments.map((segment, index) => ({
@@ -42,6 +48,7 @@ export class HistoryIngester {
         chunkIndex: String(index),
         threadId: message.threadId ?? "",
         editedAt: message.editedAt ?? "",
+        messageKind: readArchivedMessageKind(message),
       },
     }));
   }

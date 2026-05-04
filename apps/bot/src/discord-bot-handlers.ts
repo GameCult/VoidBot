@@ -279,6 +279,7 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
           query: options.prompt,
           limit: initialRetrievalLimit,
           guildId: options.guildContext.guildId,
+          preserveOverfetch: true,
         }),
         options.prompt,
       ).slice(0, initialRetrievalLimit)
@@ -492,10 +493,15 @@ export async function handleRejectJob(options: {
 export async function handleSearchHistory(
   interaction: ChatInputCommandInteraction<CacheType>,
   retrievalService: RetrievalService,
+  archiveRepository: FileMessageArchiveRepository,
   systemMessages: SystemMessageCatalog,
 ): Promise<void> {
   const query = interaction.options.getString("query", true);
-  const results = await retrievalService.searchHistory(query, 5, {
+  const results = await searchHistoryWithArchiveFallback({
+    retrievalService,
+    archiveRepository,
+    query,
+    limit: 5,
     guildId: interaction.guildId ?? undefined,
   });
 
@@ -603,6 +609,8 @@ export async function handleReindexChannel(
   channelIndexing: AppConfig["channelIndexing"],
   permissionEngine: PermissionEngine,
   ragPipeline: RagPipeline,
+  botUserId: string | undefined,
+  botRoleIds: string[],
   systemMessages: SystemMessageCatalog,
 ): Promise<void> {
   if (!permissionEngine.canReindex(actor)) {
@@ -632,7 +640,9 @@ export async function handleReindexChannel(
   }
 
   const fetched = await interaction.channel.messages.fetch({ limit: 100 });
-  const archivedMessages = [...fetched.values()].map(convertDiscordMessageToArchive);
+  const archivedMessages = [...fetched.values()].map((message) =>
+    convertDiscordMessageToArchive(message, { botUserId, botRoleIds }),
+  );
   const result = await ragPipeline.upsertMessages(archivedMessages);
 
   await replyEphemeral(

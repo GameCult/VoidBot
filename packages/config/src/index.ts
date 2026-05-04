@@ -42,6 +42,7 @@ const envSchema = z.object({
   DISCORD_APPLICATION_ID: optionalNonEmptyString,
   DISCORD_GUILD_ID: optionalNonEmptyString,
   DISCORD_OWNER_ID: z.string().min(1, "DISCORD_OWNER_ID is required"),
+  DISCORD_BOT_TRIGGER_ROLE_IDS: z.string().default(""),
   STATE_STORAGE_BACKEND: z.enum(["file", "postgres"]).default("postgres"),
   DATABASE_DSN: z.string().min(1).default("postgres://voidbot:voidbot@localhost:5432/voidbot"),
   VECTOR_STORE_KIND: z.enum(["local_json", "qdrant"]).default("local_json"),
@@ -112,6 +113,7 @@ export interface AppConfig {
   applicationId?: string;
   developmentGuildId?: string;
   ownerDiscordId: string;
+  botTriggerRoleIds: string[];
   stateStorageBackend: "file" | "postgres";
   databaseDsn: string;
   enabledProviders: ProviderName[];
@@ -283,6 +285,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     applicationId: parsed.DISCORD_APPLICATION_ID,
     developmentGuildId: parsed.DISCORD_GUILD_ID,
     ownerDiscordId: parsed.DISCORD_OWNER_ID,
+    botTriggerRoleIds: parseList(parsed.DISCORD_BOT_TRIGGER_ROLE_IDS),
     stateStorageBackend: parsed.STATE_STORAGE_BACKEND,
     databaseDsn: parsed.DATABASE_DSN,
     enabledProviders: parseProviders(parsed.ENABLED_PROVIDERS),

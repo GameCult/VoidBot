@@ -1,5 +1,6 @@
 export * from "./embedder-factory";
 export * from "./history-ingester";
+export * from "./history-retrieval";
 export * from "./discord-log-importer";
 export * from "./file-store";
 export * from "./file-vector-store";

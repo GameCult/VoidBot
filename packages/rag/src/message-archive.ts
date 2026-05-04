@@ -2,6 +2,8 @@ import {
   type ArchivedMessage,
   type RetrievalFilters,
   type RetrievalResult,
+  isArchivedBotPrompt,
+  readArchivedMessageKind,
 } from "@voidbot/shared";
 
 import { normalizeText } from "./history-ingester";
@@ -44,6 +46,11 @@ export interface MessageArchiveMutationResult {
   unchanged: number;
   storedMessages: ArchivedMessageRecord[];
   changedMessageIds: string[];
+}
+
+interface HistoryArchiveFilters
+  extends Pick<RetrievalFilters, "guildId" | "channelId" | "authorId"> {
+  includeBotPrompts?: boolean;
 }
 
 export class FileMessageArchiveRepository {
@@ -186,7 +193,7 @@ export class FileMessageArchiveRepository {
   public async searchLexical(
     query: string,
     limit = 5,
-    filters?: Pick<RetrievalFilters, "guildId" | "channelId" | "authorId">,
+    filters?: HistoryArchiveFilters,
   ): Promise<RetrievalResult[]> {
     const normalizedQuery = normalizeSearchText(query);
     const queryTokens = extractSearchTokens(normalizedQuery);
@@ -265,10 +272,14 @@ function belongsToSameConversation(
 
 function matchesHistoryFilters(
   message: ArchivedMessageRecord,
-  filters?: Pick<RetrievalFilters, "guildId" | "channelId" | "authorId">,
+  filters?: HistoryArchiveFilters,
 ): boolean {
   if (!filters) {
-    return true;
+    return !isArchivedBotPrompt(message);
+  }
+
+  if (!filters.includeBotPrompts && isArchivedBotPrompt(message)) {
+    return false;
   }
 
   if (filters.guildId && message.guildId !== filters.guildId) {
@@ -350,6 +361,7 @@ function toRetrievalResult(message: ArchivedMessageRecord, score: number): Retri
       threadId: message.threadId ?? "",
       jumpUrl: message.metadata?.jumpUrl ?? "",
       corpusKind: "discord_history",
+      messageKind: readArchivedMessageKind(message),
     },
   };
 }

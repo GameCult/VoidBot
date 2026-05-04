@@ -53,6 +53,7 @@ import {
   buildChannelIndexingTarget,
   buildGuildContextFromInteraction,
   buildGuildContextFromMessage,
+  filterPromptEchoHistoryResults,
   formatArchivedMessageContext,
   formatHistoryResults,
   formatProviderStatuses,
@@ -68,50 +69,6 @@ import {
   searchHistoryWithArchiveFallback,
   stripBotMention,
 } from "./discord-bot-support";
-
-function filterPromptEchoHistoryResults<
-  T extends {
-    text: string;
-  },
->(results: T[], query: string): T[] {
-  const normalizedQuery = normalizeHistoryEchoText(query);
-
-  if (normalizedQuery.length === 0) {
-    return results;
-  }
-
-  const filtered = results.filter((result) => {
-    const normalizedResult = normalizeHistoryEchoText(result.text);
-
-    if (normalizedResult.length === 0) {
-      return true;
-    }
-
-    if (normalizedResult === normalizedQuery) {
-      return false;
-    }
-
-    if (
-      normalizedQuery.length >= 48 &&
-      (normalizedResult.includes(normalizedQuery) || normalizedQuery.includes(normalizedResult))
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-
-  return filtered.length > 0 ? filtered : results;
-}
-
-function normalizeHistoryEchoText(value: string): string {
-  return value
-    .replace(/<@!?\d+>/g, " ")
-    .replace(/<@&\d+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
 
 export async function startBot(): Promise<void> {
   const config = loadConfig();
@@ -244,6 +201,7 @@ export async function startBot(): Promise<void> {
             guildId: input.guildId,
             channelId: input.channelId,
             authorId: input.authorId,
+            preserveOverfetch: true,
           });
           const results = filterPromptEchoHistoryResults(rawResults, input.query).slice(0, input.limit);
 
@@ -333,7 +291,13 @@ export async function startBot(): Promise<void> {
 
     const isDirectMessage = !message.inGuild();
 
-    await ingestIfIndexed(message, config.channelIndexing, ragPipeline);
+    await ingestIfIndexed(
+      message,
+      config.channelIndexing,
+      ragPipeline,
+      client.user?.id,
+      config.botTriggerRoleIds,
+    );
     await rememberAmbientVoidReference(message, client.user?.id, interactionMemory);
 
     if (!client.user || (!isDirectMessage && !message.mentions.has(client.user))) {
@@ -403,7 +367,13 @@ export async function startBot(): Promise<void> {
       return;
     }
 
-    await ingestIfIndexed(materializedMessage, config.channelIndexing, ragPipeline);
+    await ingestIfIndexed(
+      materializedMessage,
+      config.channelIndexing,
+      ragPipeline,
+      client.user?.id,
+      config.botTriggerRoleIds,
+    );
     await rememberAmbientVoidReference(
       materializedMessage,
       client.user?.id,
@@ -535,7 +505,12 @@ export async function startBot(): Promise<void> {
           });
           break;
         case "search-history":
-          await handleSearchHistory(interaction, retrievalService, activeSystemMessages);
+          await handleSearchHistory(
+            interaction,
+            retrievalService,
+            archiveRepository,
+            activeSystemMessages,
+          );
           break;
         case "summarize-channel":
           await handleSummarizeChannel(interaction, activeSystemMessages);
@@ -547,6 +522,8 @@ export async function startBot(): Promise<void> {
             config.channelIndexing,
             permissionEngine,
             ragPipeline,
+            client.user?.id,
+            config.botTriggerRoleIds,
             activeSystemMessages,
           );
           break;

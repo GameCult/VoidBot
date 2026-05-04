@@ -65,7 +65,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/rag/src/qdrant-vector-store.ts`
   - Qdrant vector persistence for history and source collections.
 - `packages/rag/src/message-archive.ts`
-  - archived Discord message store under `.voidbot/rag/messages.json`.
+  - archived Discord message store under `.voidbot/rag/messages.json`, including bot-directed prompts that stay preserved for forensics even when they are excluded from default history retrieval.
 - `packages/rag/src/source-document-archive.ts`
   - archived source/lore document manifest under `.voidbot/rag/source-documents.json` plus per-repo shards under `.voidbot/rag/source-documents.repos/`.
 
@@ -95,11 +95,12 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 ## Flow 3: Retrieval And Indexing
 
 1. `packages/rag/src/message-archive.ts` and `packages/rag/src/source-document-archive.ts` keep the raw corpora.
-2. `packages/rag/src/retrieval-service.ts` translates history/source queries into vector lookups plus metadata filters.
-3. `packages/rag/src/qdrant-vector-store.ts` executes the live vector lookups against separate history and source collections.
-4. `scripts/reconcile-source-repos.ts` discovers local Git repos, refreshes push hooks, prunes stale repo shards, and indexes newly discovered repos.
-5. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive explicit or detached per-repo source/lore reindex work.
-6. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
+2. Bot-directed prompts are tagged at ingest, kept in the raw Discord archive, and deliberately skipped when the history ingester builds semantic chunks so repeated summons stop poisoning normal retrieval.
+3. `packages/rag/src/retrieval-service.ts` translates history/source queries into vector lookups plus metadata filters.
+4. `packages/rag/src/qdrant-vector-store.ts` executes the live vector lookups against separate history and source collections.
+5. `scripts/reconcile-source-repos.ts` discovers local Git repos, refreshes push hooks, prunes stale repo shards, and indexes newly discovered repos.
+6. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive explicit or detached per-repo source/lore reindex work.
+7. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
 
 ## Flow 4: Ops And Recovery
 

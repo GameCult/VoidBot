@@ -1,6 +1,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
+import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 
 import { type VoidbotMcpContext } from "./mcp-server-context";
 import {
@@ -87,10 +88,12 @@ export function registerVoidbotResources(
     },
     async (uri, variables) => {
       const query = getRequiredVariable(variables, "query", "history search");
-      const results = await context.retrievalService.searchHistory(
+      const results = await searchHistoryWithArchiveFallback({
+        retrievalService: context.retrievalService,
+        archiveRepository: context.archiveRepository,
         query,
-        DEFAULT_RETRIEVAL_RESULT_LIMIT,
-      );
+        limit: DEFAULT_RETRIEVAL_RESULT_LIMIT,
+      });
 
       return jsonResource(uri, {
         query,

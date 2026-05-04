@@ -91,6 +91,12 @@ If you want the remote Ollama generation path too, configure:
 
 If you want a private local persona instead, point `STYLE_PACK_PATH` and `SYSTEM_MESSAGES_PATH` at your own ignored local files.
 
+If you sometimes summon Void through a role mention instead of the bot user mention, set:
+
+- `DISCORD_BOT_TRIGGER_ROLE_IDS`
+
+That lets the history pipeline classify those messages as bot-directed prompts too.
+
 Void usage limits are configurable too:
 
 - `VOID_USAGE_COOLDOWN_SECONDS`
@@ -275,6 +281,7 @@ Discord history is live and incremental:
 - matching channels are ingested on `MessageCreate`
 - edits are re-upserted
 - deletes remove indexed chunks
+- bot-directed prompts stay in the raw archive but are excluded from default semantic history indexing and lexical fallback, so the bot stops poisoning its own memory with repeated summons
 - `/reindex-channel` replays the most recent 100 messages from the current indexed channel
 - exported logs can be backfilled later
 
@@ -294,6 +301,12 @@ Useful flags:
 
 - `--no-recursive`
 - `--all-channels`
+
+If you need to mark old bot-directed prompts in the archive and prune their history vectors without deleting the raw messages:
+
+```bash
+npm run rag:scrub-bot-prompts
+```
 
 ### Source repos and lore
 

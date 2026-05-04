@@ -1,4 +1,5 @@
 export * from "./channel-indexing";
+export * from "./history-message-kind";
 
 export const commandNames = [
   "ask",

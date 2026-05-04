@@ -33,6 +33,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - The stack has a dedicated logon startup task path now, so a reboot does not have to mean manual necromancy for bot and worker.
 - The operations watchdog now supports ignored local extension checks, so adjacent-service fire signals can ride the same owner DM alert path without hardcoding private project gossip into the public repo.
 - Source repo discovery now reconciles automatically during `npm run stack:start` and through the watchdog path, so new repos under `SOURCE_REPO_ROOT` stop waiting for manual hook folklore before they get indexed.
+- Bot-directed prompts now stay in the raw Discord archive but are excluded from default semantic history indexing and lexical fallback, so repeated summons stop teaching the bot its own call-and-response loops.
 - Source-grounding hints are advisory now; the owner and local lanes can decide when repo or lore tool use is actually warranted instead of obeying a lexical front-door veto.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 

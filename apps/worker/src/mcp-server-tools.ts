@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
+import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 
 import { type VoidbotMcpContext } from "./mcp-server-context";
 import { openOwnerDmChannel, postDiscordMessage } from "./mcp-server-discord";
@@ -45,7 +46,11 @@ export function registerVoidbotTools(
     },
     async (input: SearchHistoryArgs): Promise<CallToolResult> => {
       const { query, limit, guildId, channelId, authorId } = input;
-      const results = await context.retrievalService.searchHistory(query, limit ?? DEFAULT_RETRIEVAL_RESULT_LIMIT, {
+      const results = await searchHistoryWithArchiveFallback({
+        retrievalService: context.retrievalService,
+        archiveRepository: context.archiveRepository,
+        query,
+        limit: limit ?? DEFAULT_RETRIEVAL_RESULT_LIMIT,
         guildId,
         channelId,
         authorId,

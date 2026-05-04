@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
+  applyArchivedMessageKind,
+  isArchivedBotPrompt,
   createTextEmbedder,
   createVectorStores,
   FileImportStateRepository,
@@ -60,7 +62,13 @@ async function main(): Promise<void> {
     channelIndexing: options.respectIndexingRules ? config.channelIndexing : undefined,
     previousState,
   });
-  const ingestResult = await ragPipeline.upsertMessages(importResult.messages);
+  const normalizedMessages = importResult.messages.map((message) =>
+    applyArchivedMessageKind(message, {
+      botUserId: config.applicationId,
+      botRoleIds: config.botTriggerRoleIds,
+    }),
+  );
+  const ingestResult = await ragPipeline.upsertMessages(normalizedMessages);
 
   await importStateRepository.write(importResult.nextState);
 
@@ -69,6 +77,11 @@ async function main(): Promise<void> {
   console.log(`Files imported: ${importResult.filesImported}`);
   console.log(`Files skipped (unchanged): ${importResult.filesSkipped}`);
   console.log(`Messages discovered: ${importResult.messages.length}`);
+  console.log(
+    `Bot-directed prompts archived but skipped for semantic history: ${
+      normalizedMessages.filter((message) => isArchivedBotPrompt(message)).length
+    }`,
+  );
   console.log(`Invalid records: ${importResult.invalidRecords}`);
   console.log(
     `Archive changes: created=${ingestResult.createdMessages}, updated=${ingestResult.updatedMessages}, unchanged=${ingestResult.unchangedMessages}`,

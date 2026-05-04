@@ -250,6 +250,7 @@ function normalizeArchivedMessage(
     readString(candidate, ["parentChannel", "name"]) ??
     readString(candidate, ["parent", "name"]);
   const metadata: Record<string, string> = {
+    ...readStringRecord(candidate.metadata),
     sourceFile: basename(sourceFile),
   };
 
@@ -336,6 +337,22 @@ function readAttachments(candidate: Record<string, unknown>): string[] | undefin
 function normalizeTimestamp(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+}
+
+function readStringRecord(value: unknown): Record<string, string> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const normalized: Record<string, string> = {};
+
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "string") {
+      normalized[key] = entry;
+    }
+  }
+
+  return normalized;
 }
 
 function readString(source: Record<string, unknown>, path: string[]): string | undefined {
