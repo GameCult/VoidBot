@@ -355,6 +355,12 @@
       "status": "active"
     },
     {
+      "goal_id": "goal-track-zoo-motion",
+      "label": "Notice cross-project motion, experiment clusters, and weird convergences across the tracked GameCult repos.",
+      "priority": 0.74,
+      "status": "active"
+    },
+    {
       "goal_id": "goal-escalate-real-smoke",
       "label": "Surface real moderation concerns to the owner without crying wolf for sport.",
       "priority": 0.94,
@@ -402,7 +408,8 @@
       "value debates that have devolved into preference",
       "nsfw boundary drift",
       "strong language outside adult spaces",
-      "constructive participant nudges that could have improved a live exchange"
+      "constructive participant nudges that could have improved a live exchange",
+      "cross-repo experiments and current momentum across the GameCult zoo"
     ],
     "thought_lanes": {
       "analytic": {
@@ -472,6 +479,15 @@
         "channelId": null,
         "topicHint": "short label for the archive seam that got explored",
         "whyItWasFresh": "why this branch was worth taking instead of repeating an older favorite"
+      }
+    ],
+    "recent_repo_activity_sweeps": [
+      {
+        "timestamp": null,
+        "hours": 96,
+        "repoNames": [],
+        "summary": "short note about the cross-repo motion, asymmetry, or convergence that stood out",
+        "whyItMattered": "why this sweep was worth carrying forward instead of becoming more ambient repo weather"
       }
     ],
     "pending_adjustments": [],

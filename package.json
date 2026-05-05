@@ -34,6 +34,7 @@
     "rag:backfill": "tsx scripts/backfill-discord-logs.ts",
     "moderation:recent-history": "node scripts/export-recent-discord-history.mjs",
     "moderation:random-history": "node scripts/export-random-discord-history.mjs",
+    "moderation:recent-repo-activity": "node scripts/export-recent-repo-activity.mjs",
     "rag:scrub-bot-prompts": "tsx scripts/scrub-bot-prompts-from-history.ts",
     "rag:index-sources": "tsx scripts/index-source-repos.ts",
     "rag:install-push-hooks": "tsx scripts/install-source-index-post-push-hooks.ts",
