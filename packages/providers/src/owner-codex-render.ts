@@ -105,6 +105,7 @@ export function buildDiscordReplyPrompt(
     "- The configured MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
     "- If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across the rumination loop and direct summons.",
     "- Let that attached self-state shape continuity of voice, priorities, remembered room patterns, and when a more proactive conversational posture would make sense.",
+    "- If that shared self-state includes a temporary invocation room log, treat it as live working memory for this summon instead of decorative background flavor.",
     "- The attached self-state is private scaffolding. Do not quote or summarize it unless the user explicitly asks about Void's current orientation, goals, or remembered room context.",
     sleepInstructions,
     "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",

@@ -1,12 +1,22 @@
 import { readFile } from "node:fs/promises";
 
-import { type VoidSelfStateContext } from "@voidbot/shared";
+import {
+  type GuildContext,
+  type SourceMessage,
+  type VoidSelfStateContext,
+} from "@voidbot/shared";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
 
+export interface LoadVoidSelfStateOptions {
+  recentMessages?: SourceMessage[];
+  guildContext?: GuildContext;
+}
+
 export async function loadVoidSelfState(
   statePath: string,
+  options: LoadVoidSelfStateOptions = {},
 ): Promise<VoidSelfStateContext | undefined> {
   let raw: string;
 
@@ -28,12 +38,15 @@ export async function loadVoidSelfState(
   return {
     sourcePath: statePath,
     loadedAt: new Date().toISOString(),
-    summary: renderVoidSelfStateSummary(parsed),
+    summary: renderVoidSelfStateSummary(parsed, options),
     projection,
   };
 }
 
-function renderVoidSelfStateSummary(state: JsonObject): string {
+function renderVoidSelfStateSummary(
+  state: JsonObject,
+  options: LoadVoidSelfStateOptions,
+): string {
   const identity = getObject(state, "identity");
   const goals = getArray(state, "goals");
   const memories = getObject(state, "memories");
@@ -127,6 +140,7 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
   const lastRun = getObject(runtime, "last_run");
   const lastRunSummary = readString(lastRun, "summary");
   const sleepCycleSummary = renderSleepCycleSummary(runtime, memories);
+  const transientRoomLog = renderTransientRoomLog(options);
 
   return [
     `- Identity: ${readString(identity, "name") ?? "Void"}${readString(identity, "public_description") ? ` - ${readString(identity, "public_description")}` : ""}`,
@@ -181,6 +195,34 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
     candidateInterventions.length > 0
       ? ["- Draft conversation/intervention seeds:", ...candidateInterventions].join("\n")
       : "- Draft conversation/intervention seeds: none recorded.",
+    transientRoomLog,
+  ].join("\n");
+}
+
+function renderTransientRoomLog(options: LoadVoidSelfStateOptions): string {
+  const recentMessages = (options.recentMessages ?? []).slice(-10);
+  const guildName = options.guildContext?.guildName ?? options.guildContext?.guildId ?? "(direct/unknown)";
+  const channelName =
+    options.guildContext?.channelName ?? options.guildContext?.channelId ?? "(unknown channel)";
+
+  if (recentMessages.length === 0) {
+    return [
+      "- Temporary invocation room log:",
+      `- Current room: guild=${guildName}; channel=${channelName}`,
+      "- No recent chat messages were attached to this invocation.",
+    ].join("\n");
+  }
+
+  const lines = recentMessages.map(
+    (message) =>
+      `- [${message.timestamp}] ${message.authorName}: ${collapseWhitespace(message.content || "(no text content)")}`,
+  );
+
+  return [
+    "- Temporary invocation room log:",
+    "- Treat this as live working memory for the current summon, not durable canon.",
+    `- Current room: guild=${guildName}; channel=${channelName}`,
+    ...lines,
   ].join("\n");
 }
 
@@ -424,4 +466,8 @@ function readNumber(value: JsonObject | undefined, key: string): number | undefi
 
 function isObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }

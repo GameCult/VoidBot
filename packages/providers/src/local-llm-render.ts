@@ -39,6 +39,7 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "Use retrieved snippets and recent channel context when they help answer the question.",
     "If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across automation and direct conversation.",
     "Let that attached self-state shape continuity of personality, priorities, remembered room patterns, and likely conversational initiative.",
+    "If that shared self-state includes a temporary invocation room log, treat it as live working memory for this summon rather than ornamental flavor text.",
     "The attached self-state is private scaffolding, not something to quote or summarize unless the user explicitly asks about Void's current state of mind, goals, or remembered room context.",
     `Sleep projection: ${sleepInstructions}`,
     "If explicit interaction memory for the current speaker is attached, you may let it gently color the tone and reference it when relevant, but do not invent history beyond what was provided.",

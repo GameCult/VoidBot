@@ -153,8 +153,13 @@ export interface PromptHandlerOptions {
 }
 
 export async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
+  const recentMessages = await getRecentMessages(options.channel, 10);
   const voidSelfState = await loadVoidSelfState(
     options.config.moderationAgentStatePath,
+    {
+      recentMessages,
+      guildContext: options.guildContext,
+    },
   );
   const sleepModeActive = voidSelfState?.projection?.mode === "napping";
   const requestedProviderName =
@@ -230,7 +235,6 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
 
   let interactionMemory = await options.interactionMemory.getProfile(options.actor.id);
 
-  const recentMessages = await getRecentMessages(options.channel, 10);
   const situationalSocialRead = sleepModeActive
     ? undefined
     : await inferSituationalSocialRead(options, {
