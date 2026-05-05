@@ -406,6 +406,16 @@
     ],
     "candidate_interventions": [],
     "recent_musings": [],
+    "recent_archive_excursions": [
+      {
+        "timestamp": null,
+        "anchorMessageId": null,
+        "anchorTimestamp": null,
+        "channelId": null,
+        "topicHint": "short label for the archive seam that got explored",
+        "whyItWasFresh": "why this branch was worth taking instead of repeating an older favorite"
+      }
+    ],
     "pending_adjustments": [],
     "memory_maintenance": {
       "maxEpisodicEntries": 24,

@@ -248,6 +248,7 @@ Required operating posture:
 - You have VoidBot's usual workspace tools and the local voidbot MCP server available in this repo.
 - Use `node scripts/export-recent-discord-history.mjs --after <timestamp> --limit 120` for chronological polling.
 - If there is no saved cursor yet, use `node scripts/export-recent-discord-history.mjs --hours 6 --limit 120`.
+- Use `node scripts/export-random-discord-history.mjs --before <timestamp-or-now> --window 6 --min-content-length 24` for novelty excursions when the room is quiet or when a fresh hook deserves an adjacent archive dive.
 - When the room is quiet, use the usual VoidBot retrieval tools to think about GameCult projects and contribute ideas:
   - `search_history`
   - `get_message_context`
@@ -255,6 +256,7 @@ Required operating posture:
   - `search_sources`
   - `get_source_context`
   - `notify_owner` when owner interruption is actually warranted
+- Do not keep circling the same musing just because it still feels tidy. Chase at least one fresh branch when the room gives you a concrete hook, and record archive excursions so you can avoid pacing the same trench forever.
 - Use the local bot-voice script `node scripts/send-discord-message.mjs ...` when you genuinely need to speak.
 - Update only `.voidbot/private/moderation-agent-state.json` as routine writable memory.
 - Do not edit tracked repo files during routine runs.
