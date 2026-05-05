@@ -23,6 +23,8 @@ function main() {
 
     const state = readJson(statePath);
     const canonicalState = ensureObject(state.canonical_state);
+    const runtime = ensureObject(state.moderation_runtime);
+    const sleepCycle = updateSleepCycle(runtime, now);
     const touchedVectors = [];
 
     for (const [categoryName, categoryValue] of Object.entries(canonicalState)) {
@@ -62,7 +64,10 @@ function main() {
       }
     }
 
-    const runtime = ensureObject(state.moderation_runtime);
+    if (sleepCycle.isNapping) {
+      applySleepBias(canonicalState, touchedVectors);
+    }
+
     const speakingBias = ensureObject(runtime.speaking_bias);
     const candidateInterventions = Array.isArray(runtime.candidate_interventions)
       ? runtime.candidate_interventions.filter(isObject)
@@ -113,6 +118,7 @@ function main() {
       }, 0);
     const topSpeakUrge = topThreadDesire(runtime, 4);
     const silencePressure = clamp(hoursSinceSpeech / 6, 0, 1);
+    const sleepiness = sleepCycle.isNapping ? 1 : 0;
 
     speakingBias.heraldRepoActivity = speakingBias.heraldRepoActivity !== false;
     speakingBias.minimumActiveReposForHeraldNote = Number(speakingBias.minimumActiveReposForHeraldNote ?? 2);
@@ -123,7 +129,7 @@ function main() {
     speakingBias.recentSpeechDamping = round3(recentSpeechDamping);
 
     const targetNeedToSpeak = clamp(
-      0.2 + silencePressure * 0.32 + draftPressure * 0.45 + freshRepoSweepPressure + topSpeakUrge * 0.28 - recentSpeechDamping * 0.5,
+      0.2 + silencePressure * 0.32 + draftPressure * 0.45 + freshRepoSweepPressure + topSpeakUrge * 0.28 - recentSpeechDamping * 0.5 - sleepiness * 0.26,
       0,
       1,
     );
@@ -132,7 +138,7 @@ function main() {
     speakingBias.needToSpeak = round3(priorNeedToSpeak + (targetNeedToSpeak - priorNeedToSpeak) * 0.42);
 
     const targetConfessionPressure = clamp(
-      0.16 + silencePressure * 0.22 + topExpressiveDelta(canonicalState) * 0.35 - recentSpeechDamping * 0.25,
+      0.16 + silencePressure * 0.22 + topExpressiveDelta(canonicalState) * 0.35 - recentSpeechDamping * 0.25 + sleepiness * 0.18,
       0,
       1,
     );
@@ -143,7 +149,7 @@ function main() {
     );
 
     const targetNoveltyPressure = clamp(
-      0.2 + recentNoveltyPressure + freshRepoSweepPressure * 0.7 + topSpeakUrge * 0.18,
+      0.2 + recentNoveltyPressure + freshRepoSweepPressure * 0.7 + topSpeakUrge * 0.18 + sleepiness * 0.06,
       0,
       1,
     );
@@ -177,6 +183,15 @@ function main() {
         confessionPressure: speakingBias.confessionPressure,
         noveltyPressure: speakingBias.noveltyPressure,
         recentSpeechDamping: speakingBias.recentSpeechDamping,
+      },
+      sleepCycle: {
+        isNapping: sleepCycle.isNapping,
+        currentNapStartedAt: sleepCycle.currentNapStartedAt ?? null,
+        currentNapEndsAt: sleepCycle.currentNapEndsAt ?? null,
+        nextNapStartsAt: sleepCycle.nextNapStartsAt ?? null,
+        activeDreamThemes: Array.isArray(sleepCycle.activeDreamThemes)
+          ? sleepCycle.activeDreamThemes
+          : [],
       },
     });
   });
@@ -225,6 +240,209 @@ function topExpressiveDelta(canonicalState) {
   }
 
   return strongest;
+}
+
+function applySleepBias(canonicalState, touchedVectors) {
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "situational_state",
+    vectorName: "exhaustion",
+    target: 0.74,
+    factor: 0.28,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "behavioral_dimensions",
+    vectorName: "withdrawal",
+    target: 0.46,
+    factor: 0.18,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "behavioral_dimensions",
+    vectorName: "distance_seeking",
+    target: 0.43,
+    factor: 0.16,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "behavioral_dimensions",
+    vectorName: "drive",
+    target: 0.41,
+    factor: 0.14,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "presentation_strategy",
+    vectorName: "detachment",
+    target: 0.38,
+    factor: 0.16,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "voice_style",
+    vectorName: "figurative_language",
+    target: 0.68,
+    factor: 0.18,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "voice_style",
+    vectorName: "self_disclosure",
+    target: 0.44,
+    factor: 0.16,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "voice_style",
+    vectorName: "technical_density",
+    target: 0.24,
+    factor: 0.18,
+  });
+  nudgeVector({
+    canonicalState,
+    touchedVectors,
+    categoryName: "voice_style",
+    vectorName: "question_asking",
+    target: 0.27,
+    factor: 0.2,
+  });
+}
+
+function nudgeVector({
+  canonicalState,
+  touchedVectors,
+  categoryName,
+  vectorName,
+  target,
+  factor,
+}) {
+  const category = canonicalState?.[categoryName];
+  const vector = isObject(category) ? category[vectorName] : undefined;
+
+  if (!isObject(vector) || typeof vector.current_activation !== "number") {
+    return;
+  }
+
+  const previous = vector.current_activation;
+  const next = clamp(previous + (target - previous) * factor, 0, 1);
+  vector.current_activation = round3(next);
+  touchedVectors.push({
+    key: `${categoryName}.${vectorName}`,
+    previous,
+    next,
+    delta: next - previous,
+    target,
+  });
+}
+
+function updateSleepCycle(runtime, now) {
+  const sleepCycle = ensureObject(runtime.sleep_cycle);
+  const enabled = sleepCycle.enabled !== false;
+  const cycleHours = clampNumber(sleepCycle.cycleHours, 4, 2, 12);
+  const napDurationMinutes = clampNumber(sleepCycle.napDurationMinutes, 60, 15, cycleHours * 60 - 5);
+  const phaseOffsetMinutesLocal = clampNumber(sleepCycle.phaseOffsetMinutesLocal, 120, 0, cycleHours * 60 - 1);
+  const replyMode =
+    typeof sleepCycle.replyMode === "string" && sleepCycle.replyMode.trim().length > 0
+      ? sleepCycle.replyMode
+      : "sleep_grumble";
+  const activeDreamThemes = Array.isArray(sleepCycle.activeDreamThemes)
+    ? sleepCycle.activeDreamThemes.filter((value) => typeof value === "string")
+    : [];
+
+  sleepCycle.enabled = enabled;
+  sleepCycle.cycleHours = cycleHours;
+  sleepCycle.napDurationMinutes = napDurationMinutes;
+  sleepCycle.phaseOffsetMinutesLocal = phaseOffsetMinutesLocal;
+  sleepCycle.replyMode = replyMode;
+  sleepCycle.activeDreamThemes = activeDreamThemes;
+
+  if (!enabled) {
+    sleepCycle.isNapping = false;
+    sleepCycle.currentNapStartedAt = null;
+    sleepCycle.currentNapEndsAt = null;
+    sleepCycle.nextNapStartsAt = null;
+    runtime.sleep_cycle = sleepCycle;
+    return sleepCycle;
+  }
+
+  const schedule = computeSleepSchedule(now, cycleHours, napDurationMinutes, phaseOffsetMinutesLocal);
+  const wasNapping = sleepCycle.isNapping === true;
+  sleepCycle.isNapping = schedule.isNapping;
+  sleepCycle.currentNapStartedAt = schedule.currentNapStartedAt;
+  sleepCycle.currentNapEndsAt = schedule.currentNapEndsAt;
+  sleepCycle.nextNapStartsAt = schedule.nextNapStartsAt;
+
+  if (schedule.isNapping && !wasNapping) {
+    sleepCycle.lastNapStartedAt = schedule.currentNapStartedAt;
+    sleepCycle.dreamCountInCurrentNap = 0;
+    sleepCycle.lastDistillationSummary = null;
+  }
+
+  if (!schedule.isNapping && wasNapping) {
+    sleepCycle.lastNapCompletedAt = schedule.previousNapEndedAt ?? sleepCycle.currentNapEndsAt ?? now.toISOString();
+    sleepCycle.activeDreamThemes = [];
+  }
+
+  runtime.sleep_cycle = sleepCycle;
+  return sleepCycle;
+}
+
+function computeSleepSchedule(now, cycleHours, napDurationMinutes, phaseOffsetMinutesLocal) {
+  const cycleLengthMinutes = cycleHours * 60;
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const minutesSinceDayStart =
+    now.getHours() * 60 +
+    now.getMinutes() +
+    now.getSeconds() / 60 +
+    now.getMilliseconds() / 60000;
+  const adjustedMinutes = minutesSinceDayStart - phaseOffsetMinutesLocal;
+  const cycleIndex = Math.floor(adjustedMinutes / cycleLengthMinutes);
+  const currentCycleStartMinutes = phaseOffsetMinutesLocal + cycleIndex * cycleLengthMinutes;
+  const napStartMinutes = currentCycleStartMinutes;
+  const napEndMinutes = napStartMinutes + napDurationMinutes;
+  const isNapping = minutesSinceDayStart >= napStartMinutes && minutesSinceDayStart < napEndMinutes;
+  const currentNapStartedAt = isNapping
+    ? minutesOffsetIso(dayStart, napStartMinutes)
+    : null;
+  const currentNapEndsAt = isNapping ? minutesOffsetIso(dayStart, napEndMinutes) : null;
+  const nextNapStartsAt = isNapping
+    ? minutesOffsetIso(dayStart, napStartMinutes + cycleLengthMinutes)
+    : minutesSinceDayStart < napStartMinutes
+      ? minutesOffsetIso(dayStart, napStartMinutes)
+      : minutesOffsetIso(dayStart, napStartMinutes + cycleLengthMinutes);
+  const previousNapEndedAt =
+    napEndMinutes <= minutesSinceDayStart
+      ? minutesOffsetIso(dayStart, napEndMinutes)
+      : minutesOffsetIso(dayStart, napEndMinutes - cycleLengthMinutes);
+
+  return {
+    isNapping,
+    currentNapStartedAt,
+    currentNapEndsAt,
+    nextNapStartsAt,
+    previousNapEndedAt,
+  };
+}
+
+function minutesOffsetIso(dayStart, offsetMinutes) {
+  const shifted = new Date(dayStart.getTime() + offsetMinutes * 60 * 1000);
+  return shifted.toISOString();
+}
+
+function clampNumber(value, fallback, min, max) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? clamp(value, min, max)
+    : fallback;
 }
 
 function computeTargetActivation({

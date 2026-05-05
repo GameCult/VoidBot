@@ -108,6 +108,18 @@ export interface VoidSelfStateContext {
   sourcePath: string;
   loadedAt: string;
   summary: string;
+  projection?: VoidSelfStateProjection;
+}
+
+export interface VoidSelfStateProjection {
+  mode: "awake" | "napping";
+  effortCeiling: "normal" | "minimal";
+  napStartedAt?: string;
+  napEndsAt?: string;
+  nextNapAt?: string;
+  activeDreamThemes: string[];
+  recentDreamSummaries: string[];
+  replyDirective?: string;
 }
 
 export const interactionMemorySentiments = [

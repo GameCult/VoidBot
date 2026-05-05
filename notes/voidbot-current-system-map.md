@@ -41,7 +41,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/core/src/interaction-memory-profile.ts`
   - Profile synthesis, disposition, psychological read, inferred traits, interaction dimensions, and response-guidance construction.
 - `packages/core/src/context-builder.ts`
-  - request context assembly, including interaction-memory/profile attachment plus any precomputed situational social read.
+  - request context assembly, including interaction-memory/profile attachment, shared Void self-state projection, and any precomputed situational social read.
 - `packages/core/src/situational-social-read.ts`
   - quick Ollama sidecar inferer for ephemeral room-reading scaffolding built from the current prompt, recent room transcript, and longer-horizon interaction memory.
 - `packages/providers/src/owner-codex-provider.ts`
@@ -76,9 +76,9 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 3. Void usage limits are applied through `packages/core/src/void-usage-rate-limiter.ts` backed by `packages/core/src/state-storage.ts`.
 4. `apps/bot/src/discord-bot-support.ts` adapts Discord message/interaction shapes, ambient-memory events, and source-grounding hints.
 5. `packages/core/src/interaction-memory-analysis.ts` turns direct prompts or ambient mentions into normalized remembered events; `packages/core/src/interaction-memory-profile.ts` distills remembered events into a reusable longer-horizon social read.
-6. `apps/bot/src/discord-bot-handlers.ts` runs a quick `think=false` local Ollama sidecar pass over the prompt and recent room transcript to infer an ephemeral situational social read, then records that read as an audit event for later aggregation.
-7. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile, the situational social read, and any retrieval hints.
-8. Provider selection goes through `packages/providers/src/index.ts`.
+6. `apps/bot/src/discord-bot-handlers.ts` usually runs a quick `think=false` local Ollama sidecar pass over the prompt and recent room transcript to infer an ephemeral situational social read, then records that read as an audit event for later aggregation. If the shared self-state says Void is napping, the handler skips that extra room-read pass and keeps the request deliberately cheap.
+7. `packages/core/src/context-builder.ts` assembles request context, including recent interaction profile, the situational social read, the shared Void self-state projection, and any retrieval hints.
+8. Provider selection goes through `packages/providers/src/index.ts`, but the handler can downshift owner traffic into the cheaper local lane when the shared self-state says Void is napping.
 9. The bot either:
    - answers directly through `local_llm`, or
    - queues an owner job for the worker / `owner_codex` path.
@@ -115,7 +115,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - `scripts/simulate-void-mood.mjs`
-  - plain Node mood-drift organ that nudges the shared personality-vector activations with Perlin-shaped noise, damps them back toward their means using plasticity, and updates the speak/confession/novelty pressure meter in the shared self-state.
+  - plain Node mood-drift organ that nudges the shared personality-vector activations with Perlin-shaped noise, damps them back toward their means using plasticity, updates the speak/confession/novelty pressure meter in the shared self-state, and maintains the nap-cycle clock plus sleep-state vector bias.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`
@@ -172,5 +172,6 @@ Within the Postgres path, the implementation is split on purpose now too:
 1. The Windows scheduled task `Void Mood Drift` starts `scripts/run-void-mood-drift.ps1` every 5 minutes.
 2. That wrapper calls `node scripts/simulate-void-mood.mjs`, which reads `.voidbot/private/moderation-agent-state.json`.
 3. The script nudges each canonical-state `current_activation` toward a Perlin-shaped target centered on the vector mean, with excursion size and drift rate governed by plasticity and category-specific tempo.
-4. It also reads `.voidbot/status/void-last-speech.json` so recent actual speech damps `needToSpeak` instead of letting the herald impulse climb forever like a busted pressure gauge.
-5. The updated `speaking_bias` block and shifted activations are written back into the shared self-state, and a pulse lands in `.voidbot/status/void-mood-drift.json`.
+4. The same script also maintains `moderation_runtime.sleep_cycle`: every four hours it opens a one-hour nap window, marks the shared self-state as napping or awake, and adds a small sleep-bias push toward exhaustion, figurative language, self-disclosure, and reduced technical density while the nap is active.
+5. It also reads `.voidbot/status/void-last-speech.json` so recent actual speech damps `needToSpeak` instead of letting the herald impulse climb forever like a busted pressure gauge.
+6. The updated `speaking_bias` block, sleep-cycle projection, and shifted activations are written back into the shared self-state, and a pulse lands in `.voidbot/status/void-mood-drift.json`.

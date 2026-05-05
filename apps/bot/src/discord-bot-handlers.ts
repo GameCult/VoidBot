@@ -153,8 +153,21 @@ export interface PromptHandlerOptions {
 }
 
 export async function handlePrompt(options: PromptHandlerOptions): Promise<void> {
-  const providerName =
+  const voidSelfState = await loadVoidSelfState(
+    options.config.moderationAgentStatePath,
+  );
+  const sleepModeActive = voidSelfState?.projection?.mode === "napping";
+  const requestedProviderName =
     options.forceProvider ?? pickProvider(options.actor, options.guildContext, options.providerRegistry);
+  const providerName =
+    sleepModeActive &&
+    !options.forceProvider &&
+    options.command !== "queue-codex"
+      ? requestedProviderName === "owner_codex"
+        ? pickSleepProvider(options.actor, options.guildContext, options.providerRegistry) ??
+          requestedProviderName
+        : requestedProviderName
+      : requestedProviderName;
 
   if (!providerName) {
     await options.respond(
@@ -218,10 +231,12 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
   let interactionMemory = await options.interactionMemory.getProfile(options.actor.id);
 
   const recentMessages = await getRecentMessages(options.channel, 10);
-  const situationalSocialRead = await inferSituationalSocialRead(options, {
-    recentMessages,
-    interactionMemory,
-  });
+  const situationalSocialRead = sleepModeActive
+    ? undefined
+    : await inferSituationalSocialRead(options, {
+        recentMessages,
+        interactionMemory,
+      });
   const socialReadObservedAt = new Date().toISOString();
   const socialReadEvidence = (situationalSocialRead?.participantReads ?? []).map(
     ({ situationalState: _situationalState, ...entry }) => ({
@@ -266,14 +281,12 @@ export async function handlePrompt(options: PromptHandlerOptions): Promise<void>
     options.prompt,
     await options.sourceArchiveRepository.listRepoSummaries(),
   );
-  const voidSelfState = await loadVoidSelfState(
-    options.config.moderationAgentStatePath,
-  );
   const shouldAttachInitialRetrieval =
-    providerName === "local_llm" ||
+    !sleepModeActive &&
+    (providerName === "local_llm" ||
     (!provider.getCapabilities().includes("tool_driven_retrieval") &&
       (shouldIndexChannel(options.config.channelIndexing, buildChannelIndexingTarget(options.channel)) ||
-        providerName !== "owner_codex"));
+        providerName !== "owner_codex")));
   const initialRetrievalLimit = providerName === "local_llm" ? 3 : 5;
   const retrieval = shouldAttachInitialRetrieval
     ? filterPromptEchoHistoryResults(
@@ -737,6 +750,20 @@ function pickProvider(
     return "openai_api";
   }
 
+  const local = providerRegistry.get("local_llm");
+
+  if (local?.isAllowedForActor(actor, guildContext)) {
+    return "local_llm";
+  }
+
+  return undefined;
+}
+
+function pickSleepProvider(
+  actor: Actor,
+  guildContext: GuildContext,
+  providerRegistry: ProviderRegistry,
+): ProviderName | undefined {
   const local = providerRegistry.get("local_llm");
 
   if (local?.isAllowedForActor(actor, guildContext)) {

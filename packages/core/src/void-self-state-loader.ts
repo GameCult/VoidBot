@@ -23,11 +23,13 @@ export async function loadVoidSelfState(
   }
 
   const parsed = JSON.parse(raw) as JsonObject;
+  const projection = buildVoidSelfStateProjection(parsed);
 
   return {
     sourcePath: statePath,
     loadedAt: new Date().toISOString(),
     summary: renderVoidSelfStateSummary(parsed),
+    projection,
   };
 }
 
@@ -124,6 +126,7 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
     });
   const lastRun = getObject(runtime, "last_run");
   const lastRunSummary = readString(lastRun, "summary");
+  const sleepCycleSummary = renderSleepCycleSummary(runtime, memories);
 
   return [
     `- Identity: ${readString(identity, "name") ?? "Void"}${readString(identity, "public_description") ? ` - ${readString(identity, "public_description")}` : ""}`,
@@ -142,6 +145,7 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
     behavioralSummary
       ? `- Current behavioral activations: ${behavioralSummary}`
       : "- Current behavioral activations: none highlighted.",
+    sleepCycleSummary,
     lastRunSummary ? `- Last moderation run: ${lastRunSummary}` : "- Last moderation run: none recorded.",
     semanticMemories.length > 0
       ? ["- Recent semantic memories:", ...semanticMemories].join("\n")
@@ -317,6 +321,79 @@ function renderSpeakingBiasSummary(speakingBias: JsonObject | undefined): string
   }
 
   return `- Speaking bias: ${parts.join(", ")}${recency.length > 0 ? ` (${recency})` : ""}`;
+}
+
+function buildVoidSelfStateProjection(state: JsonObject): VoidSelfStateContext["projection"] {
+  const memories = getObject(state, "memories");
+  const runtime = getObject(state, "moderation_runtime");
+  const sleepCycle = getObject(runtime, "sleep_cycle");
+  const dreamEntries = getArray(memories, "dreams")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(-3)
+    .reverse();
+  const dreamSummaries = dreamEntries
+    .map((entry) => readString(entry, "summary"))
+    .filter((entry): entry is string => Boolean(entry));
+  const activeDreamThemes = getStringArray(sleepCycle, "activeDreamThemes");
+  const isNapping = sleepCycle?.["isNapping"] === true;
+  const napStartedAt = readString(sleepCycle, "currentNapStartedAt") ?? readString(sleepCycle, "lastNapStartedAt");
+  const napEndsAt = readString(sleepCycle, "currentNapEndsAt");
+  const nextNapAt = readString(sleepCycle, "nextNapStartsAt");
+
+  return {
+    mode: isNapping ? "napping" : "awake",
+    effortCeiling: isNapping ? "minimal" : "normal",
+    napStartedAt: isNapping ? napStartedAt : undefined,
+    napEndsAt: isNapping ? napEndsAt : undefined,
+    nextNapAt,
+    activeDreamThemes,
+    recentDreamSummaries: dreamSummaries,
+    replyDirective: isNapping
+      ? "You are in a scheduled nap. Reply in brief, low-effort, half-dreaming mutters instead of doing full attentive service-work."
+      : undefined,
+  };
+}
+
+function renderSleepCycleSummary(
+  runtime: JsonObject | undefined,
+  memories: JsonObject | undefined,
+): string {
+  const sleepCycle = getObject(runtime, "sleep_cycle");
+
+  if (!sleepCycle) {
+    return "- Sleep cycle: none recorded.";
+  }
+
+  const activeDreamThemes = getStringArray(sleepCycle, "activeDreamThemes").slice(0, 4);
+  const dreams = getArray(memories, "dreams")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(-2)
+    .reverse()
+    .map((dream) => {
+      const theme = readString(dream, "theme") ?? "untitled";
+      const summary = readString(dream, "summary") ?? "(no summary)";
+      return `${theme}: ${summary}`;
+    });
+  const isNapping = sleepCycle?.["isNapping"] === true;
+  const currentNapEndsAt = readString(sleepCycle, "currentNapEndsAt");
+  const nextNapStartsAt = readString(sleepCycle, "nextNapStartsAt");
+  const dreamCount = readNumber(sleepCycle, "dreamCountInCurrentNap");
+  const replyMode = readString(sleepCycle, "replyMode");
+  const headline = isNapping
+    ? `- Sleep cycle: napping${currentNapEndsAt ? ` until ${currentNapEndsAt}` : ""}${replyMode ? ` (${replyMode})` : ""}${dreamCount !== undefined ? `; dreams this nap=${dreamCount}` : ""}.`
+    : `- Sleep cycle: awake${nextNapStartsAt ? `; next nap ${nextNapStartsAt}` : ""}.`;
+  const themeLine =
+    activeDreamThemes.length > 0
+      ? `- Active dream themes: ${activeDreamThemes.join(" | ")}`
+      : "- Active dream themes: none recorded.";
+  const dreamLine =
+    dreams.length > 0
+      ? `- Recent dream residue: ${dreams.join(" | ")}`
+      : "- Recent dream residue: none recorded.";
+
+  return [headline, themeLine, dreamLine].join("\n");
 }
 
 function getObject(value: JsonObject | undefined, key: string): JsonObject | undefined {

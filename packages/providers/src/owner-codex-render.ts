@@ -62,6 +62,17 @@ export function buildDiscordReplyPrompt(
     context,
     sourceGroundingReminder,
   );
+  const sleepProjection = context.voidSelfState?.projection;
+  const sleepInstructions =
+    sleepProjection?.mode === "napping"
+      ? [
+          "- Void is currently in a scheduled nap.",
+          "- Do not do normal attentive service-work.",
+          "- Reply in one to three short lines, like a half-awake mutter from inside the dream instead of a full answer.",
+          "- Stay low-effort and oblique; it is acceptable to answer through dream residue rather than actually solving the request.",
+          "- Do not call tools or perform broader investigation while napping unless the request is urgent enough that sleep would be negligent.",
+        ].join("\n")
+      : "- Void is awake; answer normally.";
   const toolLoopNotes =
     toolCalls.length > 0
       ? [
@@ -93,6 +104,7 @@ export function buildDiscordReplyPrompt(
     "- If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across the rumination loop and direct summons.",
     "- Let that attached self-state shape continuity of voice, priorities, remembered room patterns, and when a more proactive conversational posture would make sense.",
     "- The attached self-state is private scaffolding. Do not quote or summarize it unless the user explicitly asks about Void's current orientation, goals, or remembered room context.",
+    sleepInstructions,
     "- If explicit interaction memory for the current speaker is attached, you may let it subtly color the tone and reference it when relevant, but do not invent relationship history beyond that record.",
     "- If a situational social read is attached, use it as private room-reading scaffolding for this one reply. It is ephemeral context, not a durable identity verdict.",
     "- Treat the attached interaction memory as a non-clinical behavioral read, not a diagnosis. Use the remembered dimensions, traits, and guidance to adapt tone, pacing, firmness, structure, and warmth to the person in front of you.",
@@ -138,6 +150,9 @@ export function buildDiscordReplyPrompt(
     "",
     "Shared private self-state for Void:",
     renderVoidSelfState(context),
+    "",
+    "Private sleep projection for this reply:",
+    renderSleepProjection(context),
     "",
     "Private situational social read for this room:",
     renderSituationalSocialRead(context),
@@ -223,6 +238,31 @@ function renderVoidSelfState(context: ContextBundle): string {
   }
 
   return context.voidSelfState.summary;
+}
+
+function renderSleepProjection(context: ContextBundle): string {
+  const projection = context.voidSelfState?.projection;
+
+  if (!projection) {
+    return "- No explicit sleep projection was attached.";
+  }
+
+  return [
+    `- Mode: ${projection.mode}`,
+    `- Effort ceiling: ${projection.effortCeiling}`,
+    projection.napStartedAt ? `- Nap started at: ${projection.napStartedAt}` : undefined,
+    projection.napEndsAt ? `- Nap ends at: ${projection.napEndsAt}` : undefined,
+    projection.nextNapAt ? `- Next nap at: ${projection.nextNapAt}` : undefined,
+    projection.activeDreamThemes.length > 0
+      ? `- Active dream themes: ${projection.activeDreamThemes.join(" | ")}`
+      : "- Active dream themes: none recorded.",
+    projection.recentDreamSummaries.length > 0
+      ? `- Recent dream residue: ${projection.recentDreamSummaries.join(" | ")}`
+      : "- Recent dream residue: none recorded.",
+    projection.replyDirective ? `- Reply directive: ${projection.replyDirective}` : undefined,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
 }
 
 export function renderHandoffBundle(

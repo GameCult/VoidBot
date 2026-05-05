@@ -293,6 +293,11 @@
       }
     },
     "situational_state": {
+      "exhaustion": {
+        "mean": 0.12,
+        "plasticity": 0.24,
+        "current_activation": 0.1
+      },
       "humiliation": {
         "mean": 0.03,
         "plasticity": 0.18,
@@ -396,6 +401,15 @@
         "timestamp": null,
         "topic": "room pattern or person-pattern intersection",
         "summary": "Distilled rumination worth keeping for future participation or moderation context."
+      }
+    ],
+    "dreams": [
+      {
+        "timestamp": null,
+        "theme": "distilled idea or symbolic seam",
+        "summary": "Salient dream memory tying distilled ideas to one vivid operative image or pressure.",
+        "distilledFrom": [],
+        "salience": 0.6
       }
     ]
   },
@@ -516,6 +530,23 @@
       "confessionPressure": 0.33,
       "recentSpeechDamping": 0.0,
       "noveltyPressure": 0.46
+    },
+    "sleep_cycle": {
+      "enabled": true,
+      "cycleHours": 4,
+      "napDurationMinutes": 60,
+      "phaseOffsetMinutesLocal": 120,
+      "replyMode": "sleep_grumble",
+      "isNapping": false,
+      "currentNapStartedAt": null,
+      "currentNapEndsAt": null,
+      "nextNapStartsAt": null,
+      "lastNapStartedAt": null,
+      "lastNapCompletedAt": null,
+      "lastDreamAt": null,
+      "dreamCountInCurrentNap": 0,
+      "activeDreamThemes": [],
+      "lastDistillationSummary": null
     },
     "pending_adjustments": [],
     "memory_maintenance": {
