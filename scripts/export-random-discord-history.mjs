@@ -201,16 +201,33 @@ function readArchiveStore(archivePath) {
 }
 
 function filterMessages(messages, options) {
+  const beforeMs = options.before !== undefined ? parseTimestampToMs(options.before) : undefined;
+  const afterMs = options.after !== undefined ? parseTimestampToMs(options.after) : undefined;
+
   return messages
     .filter((message) => !message.deletedAt)
     .filter((message) =>
       options.includeBotPrompts ? true : readMessageKind(message) !== "bot_prompt",
     )
     .filter((message) => (options.channelId ? message.channelId === options.channelId : true))
-    .filter((message) => (options.before ? message.timestamp < options.before : true))
-    .filter((message) => (options.after ? message.timestamp > options.after : true))
+    .filter((message) => {
+      if (beforeMs === undefined) {
+        return true;
+      }
+
+      const messageMs = parseTimestampToMs(message.timestamp);
+      return messageMs !== undefined && messageMs < beforeMs;
+    })
+    .filter((message) => {
+      if (afterMs === undefined) {
+        return true;
+      }
+
+      const messageMs = parseTimestampToMs(message.timestamp);
+      return messageMs !== undefined && messageMs > afterMs;
+    })
     .filter((message) => normalizeContent(message.content).length >= (options.minContentLength ?? 0))
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+    .sort(compareMessagesByTimestamp);
 }
 
 function normalizeContent(content) {
@@ -267,6 +284,30 @@ function hashSeed(seed) {
   }
 
   return hash >>> 0;
+}
+
+function compareMessagesByTimestamp(left, right) {
+  const leftMs = parseTimestampToMs(left.timestamp);
+  const rightMs = parseTimestampToMs(right.timestamp);
+
+  if (leftMs !== undefined && rightMs !== undefined && leftMs !== rightMs) {
+    return leftMs - rightMs;
+  }
+
+  if (left.timestamp !== right.timestamp) {
+    return left.timestamp.localeCompare(right.timestamp);
+  }
+
+  return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+}
+
+function parseTimestampToMs(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function stripLeadingBom(input) {

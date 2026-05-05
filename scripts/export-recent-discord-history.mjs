@@ -158,11 +158,12 @@ function readArchiveStore(archivePath) {
 }
 
 function filterMessages(messages, options) {
-  const lowerBound =
-    options.after ??
-    (options.hours !== undefined
-      ? new Date(Date.now() - options.hours * 60 * 60 * 1000).toISOString()
-      : undefined);
+  const lowerBoundMs =
+    options.after !== undefined
+      ? parseTimestampToMs(options.after)
+      : options.hours !== undefined
+        ? Date.now() - options.hours * 60 * 60 * 1000
+        : undefined;
 
   return messages
     .filter((message) => !message.deletedAt)
@@ -170,8 +171,15 @@ function filterMessages(messages, options) {
       options.includeBotPrompts ? true : readMessageKind(message) !== "bot_prompt",
     )
     .filter((message) => (options.channelId ? message.channelId === options.channelId : true))
-    .filter((message) => (lowerBound ? message.timestamp > lowerBound : true))
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+    .filter((message) => {
+      if (lowerBoundMs === undefined) {
+        return true;
+      }
+
+      const messageMs = parseTimestampToMs(message.timestamp);
+      return messageMs !== undefined && messageMs > lowerBoundMs;
+    })
+    .sort(compareMessagesByTimestamp);
 }
 
 function readMessageKind(message) {
@@ -199,6 +207,30 @@ function formatTranscriptLine(message) {
       ? ` [attachments: ${message.attachments.join(", ")}]`
       : "";
   return `[${message.timestamp}] ${message.authorName} (${message.authorId}) channel=${message.channelId}${threadSuffix}: ${message.content}${attachmentSuffix}`;
+}
+
+function compareMessagesByTimestamp(left, right) {
+  const leftMs = parseTimestampToMs(left.timestamp);
+  const rightMs = parseTimestampToMs(right.timestamp);
+
+  if (leftMs !== undefined && rightMs !== undefined && leftMs !== rightMs) {
+    return leftMs - rightMs;
+  }
+
+  if (left.timestamp !== right.timestamp) {
+    return left.timestamp.localeCompare(right.timestamp);
+  }
+
+  return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+}
+
+function parseTimestampToMs(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function stripLeadingBom(input) {

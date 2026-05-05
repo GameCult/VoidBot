@@ -23,7 +23,9 @@ function Write-JsonFile {
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
   }
 
-  $Data | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding UTF8
+  $json = $Data | ConvertTo-Json -Depth 10
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
 }
 
 function Append-RunLog {

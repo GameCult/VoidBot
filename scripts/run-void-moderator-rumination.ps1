@@ -68,7 +68,9 @@ function Write-JsonFile {
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
   }
 
-  $Data | ConvertTo-Json -Depth 12 | Set-Content -Path $Path -Encoding UTF8
+  $json = $Data | ConvertTo-Json -Depth 12
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
 }
 
 function Append-RunLog {
@@ -92,6 +94,46 @@ function Ensure-ModerationState {
 
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stateFilePath) | Out-Null
   Copy-Item -Path $stateTemplatePath -Destination $stateFilePath -Force
+}
+
+function Read-JsonFile {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Path
+  )
+
+  if (-not (Test-Path $Path)) {
+    return $null
+  }
+
+  $raw = Get-Content -Path $Path -Raw -Encoding UTF8
+
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    return $null
+  }
+
+  return $raw | ConvertFrom-Json
+}
+
+function Set-ModerationCursor {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Path,
+    [AllowNull()] $Cursor
+  )
+
+  $state = Read-JsonFile -Path $Path
+
+  if ($null -eq $state) {
+    return
+  }
+
+  if ($null -eq $state.moderation_runtime) {
+    $state | Add-Member -NotePropertyName moderation_runtime -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+
+  $state.moderation_runtime.cursor = $Cursor
+  Write-JsonFile -Path $Path -Data $state
 }
 
 function Split-CommandArgs {
@@ -227,6 +269,36 @@ if (-not (Test-Path $mcpServerPath)) {
   throw "Missing built MCP server at $mcpServerPath. Run npm run build first."
 }
 
+$preRunState = Read-JsonFile -Path $stateFilePath
+$priorCursor = if ($null -ne $preRunState -and $null -ne $preRunState.moderation_runtime) {
+  $preRunState.moderation_runtime.cursor
+} else {
+  $null
+}
+
+$historyArgs = @("scripts/export-recent-discord-history.mjs")
+if ($null -ne $priorCursor -and -not [string]::IsNullOrWhiteSpace($priorCursor.lastReviewedTimestamp)) {
+  $historyArgs += @("--after", [string]$priorCursor.lastReviewedTimestamp, "--limit", "120")
+} else {
+  $historyArgs += @("--hours", "6", "--limit", "120")
+}
+
+$preRunHistoryJson = & node @historyArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to poll recent Discord history before moderation run."
+}
+
+$preRunHistory = $preRunHistoryJson | ConvertFrom-Json
+$observedCursor = $priorCursor
+
+if ($null -ne $preRunHistory.messages -and $preRunHistory.messages.Count -gt 0) {
+  $latestObservedMessage = $preRunHistory.messages[$preRunHistory.messages.Count - 1]
+  $observedCursor = [pscustomobject]@{
+    lastReviewedMessageId = $latestObservedMessage.id
+    lastReviewedTimestamp = $latestObservedMessage.timestamp
+  }
+}
+
 Write-JsonFile -Path $lockPath -Data @{
   pid = $PID
   startedAt = $startedAtUtc.ToString("o")
@@ -328,7 +400,14 @@ try {
 $combinedText | Set-Content -Path $tracePath -Encoding UTF8
 
 $finishedAtUtc = [DateTime]::UtcNow
+$stateUpdated = $false
+
+if ($exitCode -eq 0) {
+  Set-ModerationCursor -Path $stateFilePath -Cursor $observedCursor
+}
+
 $stateWriteAfter = (Get-Item $stateFilePath).LastWriteTimeUtc
+$stateUpdated = ($stateWriteAfter -gt $stateWriteBefore)
 $lastMessage = if (Test-Path $lastMessagePath) { Get-Content -Path $lastMessagePath -Raw } else { "" }
 
 Write-JsonFile -Path $statusPath -Data @{
@@ -342,13 +421,13 @@ Write-JsonFile -Path $statusPath -Data @{
   stateFile = $stateFilePath
   stateWriteBeforeUtc = $stateWriteBefore.ToString("o")
   stateWriteAfterUtc = $stateWriteAfter.ToString("o")
-  stateUpdated = ($stateWriteAfter -gt $stateWriteBefore)
+  stateUpdated = $stateUpdated
   tracePath = $tracePath
   lastMessagePath = $lastMessagePath
   lastMessage = $lastMessage.Trim()
 }
 
-Append-RunLog ("exit={0} stateUpdated={1} summary={2}" -f $exitCode, ($stateWriteAfter -gt $stateWriteBefore), ($lastMessage.Trim()))
+Append-RunLog ("exit={0} stateUpdated={1} summary={2}" -f $exitCode, $stateUpdated, ($lastMessage.Trim()))
 
 Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
 
