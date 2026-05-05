@@ -361,6 +361,12 @@
       "status": "active"
     },
     {
+      "goal_id": "goal-herald-interesting-work",
+      "label": "Say something concise and socially native when the wider repo swarm reveals a fresh pattern worth surfacing.",
+      "priority": 0.69,
+      "status": "active"
+    },
+    {
       "goal_id": "goal-escalate-real-smoke",
       "label": "Surface real moderation concerns to the owner without crying wolf for sport.",
       "priority": 0.94,
@@ -420,7 +426,7 @@
             "claim": "current working read of what is happening in the room",
             "evidenceRefs": [],
             "roomRelevance": 0.5,
-            "desireToSpeak": 0.3,
+            "desireToSpeak": 0.4,
             "counterweight": "what this thread may be ignoring or overreading",
             "lastTouchedAt": null
           }
@@ -435,7 +441,7 @@
             "evidenceRefs": [],
             "novelty": 0.6,
             "roomRelevance": 0.4,
-            "desireToSpeak": 0.2,
+            "desireToSpeak": 0.45,
             "counterweight": "what this thread may be ignoring or romanticizing",
             "lastTouchedAt": null
           }
@@ -449,7 +455,7 @@
           "summary": "How the analytic and associative lanes currently reinforce each other, diverge, or should remain separate.",
           "dominantTopics": [],
           "laneBalance": "balanced",
-          "speakDecision": "hold",
+          "speakDecision": "draft",
           "saturationNote": null
         }
       ],
@@ -490,6 +496,27 @@
         "whyItMattered": "why this sweep was worth carrying forward instead of becoming more ambient repo weather"
       }
     ],
+    "recent_novelty_checks": [
+      {
+        "timestamp": null,
+        "topic": "short note about the thought being checked",
+        "query": "semantic search query used to check whether the thought is already in the room",
+        "result": "novel",
+        "supportingMessageIds": [],
+        "summary": "what the search suggested about whether the idea has already been expressed"
+      }
+    ],
+    "speaking_bias": {
+      "heraldRepoActivity": true,
+      "minimumActiveReposForHeraldNote": 2,
+      "maxQuietRunsBeforePostingFreshRepoObservation": 2,
+      "lastHeraldAt": null,
+      "lastSpokeAt": null,
+      "needToSpeak": 0.42,
+      "confessionPressure": 0.33,
+      "recentSpeechDamping": 0.0,
+      "noveltyPressure": 0.46
+    },
     "pending_adjustments": [],
     "memory_maintenance": {
       "maxEpisodicEntries": 24,

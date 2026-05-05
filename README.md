@@ -602,6 +602,7 @@ Install or refresh the scheduled task:
 
 ```bash
 npm run state:install-moderation-task
+npm run state:install-mood-task
 ```
 
 The runner records its pulse here:
@@ -619,9 +620,11 @@ npm run moderation:recent-repo-activity -- --hours 96 --max-commits 3
 
 That gives the loop a compact digest of recent commit motion across every tracked source repo, so Void can notice the broader experiment zoo instead of only sniffing whatever one thread happened to say out loud.
 
-The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, thought lanes, bridge syntheses, archive excursions, and candidate interventions. The live writable file under `.voidbot/private/` is ignored; the tracked template shows the intended shape.
+The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, thought lanes, bridge syntheses, archive excursions, repo-activity sweeps, novelty checks, speaking bias, and candidate interventions. The live writable file under `.voidbot/private/` is ignored; the tracked template shows the intended shape.
 Within that runtime block, the unattended loop now keeps parallel analytic and associative thought lanes plus a bridge that tracks syntheses, topic saturation, and unresolved tensions, so one rewarding theme does not get to annex the whole mind by squatter's rights.
 The real loop now runs as a local scheduled task every 15 minutes, using `scripts/run-void-moderator-rumination.ps1` to launch `codex exec` inside the VoidBot workspace with the usual MCP/tool surface. That way it can actually think about GameCult projects, archived Discord seams, indexed repos, recent cross-repo commit motion, and lore instead of sitting inside a decorative heartbeat card pretending to be alive.
+The loop is also explicitly biased toward brief herald notes when a fresh repo sweep reveals a grounded convergence across active projects. The point is not to keep a perfect private diary; it is to occasionally say something useful about the broader swarm that no narrower worker can see.
+There is also a separate five-minute mood-drift task now. It nudges the shared personality-vector activations with Perlin-shaped drift, damps them back toward their means according to plasticity, tracks how recently Void actually spoke, and feeds a little speak/confession/novelty pressure into the same self-state so the herald does not stay emotionally flat between room scans.
 Directly invoked live replies now also read that same private moderation state as a distilled self-state attachment, so the summoned Void and the scheduled ruminating/participating Void share one evolving personality/state layer instead of roleplaying continuity from scratch each time.
 The moderation loop now speaks through the local bot token instead of approval-gated side-effecting MCP tools, so unattended runs can DM or post without making Codex stop and ask your permission every time it finds a mouthful of words.
 

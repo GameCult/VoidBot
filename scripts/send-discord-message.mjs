@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,14 @@ async function main() {
 
     const channelId = await openOwnerDmChannel(botToken, ownerId);
     await postChunkedDiscordMessage(botToken, channelId, content);
+    writeLastSpeechStatus({
+      sentAt: new Date().toISOString(),
+      mode: "owner_dm",
+      channelId,
+      contentLength: content.length,
+      chunkCount: splitDiscordContent(content).length,
+      preview: content.slice(0, 280),
+    });
     process.stdout.write(`${JSON.stringify({ ok: true, mode: "owner_dm", channelId })}\n`);
     return;
   }
@@ -42,6 +50,15 @@ async function main() {
     content,
     options.replyToMessageId,
   );
+  writeLastSpeechStatus({
+    sentAt: new Date().toISOString(),
+    mode: "channel",
+    channelId: options.channelId,
+    replyToMessageId: options.replyToMessageId ?? null,
+    contentLength: content.length,
+    chunkCount: splitDiscordContent(content).length,
+    preview: content.slice(0, 280),
+  });
 
   process.stdout.write(
     `${JSON.stringify({
@@ -278,6 +295,12 @@ function findSplitIndex(input, limit) {
   }
 
   return limit;
+}
+
+function writeLastSpeechStatus(payload) {
+  const statusPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
+  mkdirSync(dirname(statusPath), { recursive: true });
+  writeFileSync(statusPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 function stripLeadingBom(input) {

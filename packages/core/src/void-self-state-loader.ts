@@ -100,6 +100,28 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
       const draft = readString(intervention, "draft") ?? "(no draft)";
       return `- ${summary}: ${draft}`;
     });
+  const speakingBias = getObject(runtime, "speaking_bias");
+  const recentRepoSweeps = getArray(runtime, "recent_repo_activity_sweeps")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(-2)
+    .reverse()
+    .map((sweep) => {
+      const summary = readString(sweep, "summary") ?? "(no summary)";
+      const repoNames = getStringArray(sweep, "repoNames");
+      return `- ${summary}${repoNames.length > 0 ? ` [${repoNames.join(", ")}]` : ""}`;
+    });
+  const recentNoveltyChecks = getArray(runtime, "recent_novelty_checks")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(-3)
+    .reverse()
+    .map((check) => {
+      const topic = readString(check, "topic") ?? "untitled";
+      const result = readString(check, "result") ?? "unknown";
+      const summary = readString(check, "summary") ?? "(no summary)";
+      return `- ${topic} [${result}]: ${summary}`;
+    });
   const lastRun = getObject(runtime, "last_run");
   const lastRunSummary = readString(lastRun, "summary");
 
@@ -139,6 +161,13 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
     unresolvedTensions.length > 0
       ? ["- Unresolved tensions:", ...unresolvedTensions].join("\n")
       : "- Unresolved tensions: none recorded.",
+    renderSpeakingBiasSummary(speakingBias),
+    recentRepoSweeps.length > 0
+      ? ["- Recent repo activity sweeps:", ...recentRepoSweeps].join("\n")
+      : "- Recent repo activity sweeps: none recorded.",
+    recentNoveltyChecks.length > 0
+      ? ["- Recent novelty checks:", ...recentNoveltyChecks].join("\n")
+      : "- Recent novelty checks: none recorded.",
     musings.length > 0
       ? ["- Stored musings:", ...musings].join("\n")
       : "- Stored musings: none recorded.",
@@ -259,6 +288,35 @@ function summarizeCurrentActivations(
   return entries
     .map(({ key, activation }) => `${key}=${activation.toFixed(2)}`)
     .join(", ");
+}
+
+function renderSpeakingBiasSummary(speakingBias: JsonObject | undefined): string {
+  if (!speakingBias) {
+    return "- Speaking bias: none recorded.";
+  }
+
+  const needToSpeak = readNumber(speakingBias, "needToSpeak");
+  const confessionPressure = readNumber(speakingBias, "confessionPressure");
+  const noveltyPressure = readNumber(speakingBias, "noveltyPressure");
+  const recentSpeechDamping = readNumber(speakingBias, "recentSpeechDamping");
+  const lastHeraldAt = readString(speakingBias, "lastHeraldAt");
+  const lastSpokeAt = readString(speakingBias, "lastSpokeAt");
+  const parts = [
+    needToSpeak !== undefined ? `needToSpeak=${needToSpeak.toFixed(2)}` : undefined,
+    confessionPressure !== undefined ? `confession=${confessionPressure.toFixed(2)}` : undefined,
+    noveltyPressure !== undefined ? `novelty=${noveltyPressure.toFixed(2)}` : undefined,
+    recentSpeechDamping !== undefined ? `speechDamping=${recentSpeechDamping.toFixed(2)}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+
+  const recency = [lastHeraldAt ? `lastHerald=${lastHeraldAt}` : undefined, lastSpokeAt ? `lastSpoke=${lastSpokeAt}` : undefined]
+    .filter((value): value is string => Boolean(value))
+    .join(" | ");
+
+  if (parts.length === 0 && recency.length === 0) {
+    return "- Speaking bias: none recorded.";
+  }
+
+  return `- Speaking bias: ${parts.join(", ")}${recency.length > 0 ? ` (${recency})` : ""}`;
 }
 
 function getObject(value: JsonObject | undefined, key: string): JsonObject | undefined {

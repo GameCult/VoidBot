@@ -114,6 +114,12 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - scheduled moderation/participation runner that launches `codex exec` from the VoidBot workspace with the usual MCP/tool surface, writes status/log pulse files, and lets the unattended loop persist only `.voidbot/private/moderation-agent-state.json`.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
+- `scripts/simulate-void-mood.mjs`
+  - plain Node mood-drift organ that nudges the shared personality-vector activations with Perlin-shaped noise, damps them back toward their means using plasticity, and updates the speak/confession/novelty pressure meter in the shared self-state.
+- `scripts/run-void-mood-drift.ps1`
+  - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
+- `scripts/install-void-mood-drift-task.ps1`
+  - installs the local 5-minute scheduled task that keeps the shared self-state emotionally non-flat between moderation passes.
 - `scripts/export-random-discord-history.mjs`
   - plain Node helper for novelty excursions that samples one random archived Discord seam, returns a local context window around the anchor message, and skips bot-directed prompt rows by default.
 - `scripts/backup-voidbot-state.ps1`
@@ -157,6 +163,14 @@ Within the Postgres path, the implementation is split on purpose now too:
 1. The Windows scheduled task `Void Moderator Rumination` starts `scripts/run-void-moderator-rumination.ps1` every 15 minutes.
 2. The runner launches `codex exec` from `E:\Projects\VoidBot` with full local workspace/tool access so the child agent sees the same project rules, `.codex/config.toml`, and `voidbot` MCP server as a normal VoidBot workspace session.
 3. The child agent reads `config/discord-server-rules.md`, `config/moderation-review-agent.md`, `styles/void-default.md`, and `.voidbot/private/moderation-agent-state.json`.
-4. For chronological heartbeat duty, it polls `node scripts/export-recent-discord-history.mjs`; when the room is quiet or a fresh hook deserves a wider branch, it also uses `node scripts/export-random-discord-history.mjs` to force at least one novelty excursion before settling into theory. It also uses `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3` to inspect cross-repo commit motion across the tracked GameCult zoo. For deeper social or project context, it can use the usual retrieval tools (`search_history`, `get_message_context`, `list_indexed_repos`, `search_sources`, `get_source_context`).
-5. If speaking would genuinely help, it posts through `node scripts/send-discord-message.mjs`; otherwise it updates only the ignored moderation state file with cursors, memories, analytic/associative thought lanes, bridge syntheses and saturation notes, recent archive excursions, recent repo-activity sweeps, and candidate interventions.
+4. For chronological heartbeat duty, it polls `node scripts/export-recent-discord-history.mjs`; when the room is quiet or a fresh hook deserves a wider branch, it also uses `node scripts/export-random-discord-history.mjs` to force at least one novelty excursion before settling into theory. It also uses `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3` to inspect cross-repo commit motion across the tracked GameCult zoo, and semantic `search_history` to novelty-check candidate thoughts before deciding whether they are already in the room.
+5. If speaking would genuinely help, it posts through `node scripts/send-discord-message.mjs`; otherwise it updates only the ignored moderation state file with cursors, memories, analytic/associative thought lanes, bridge syntheses and saturation notes, recent archive excursions, recent repo-activity sweeps, novelty checks, speaking-bias hints, and candidate interventions. Fresh multi-repo convergences are supposed to bias toward brief herald notes instead of always dying as private diary matter.
 6. The runner writes pulse files under `.voidbot/status/moderation-rumination.json` plus `.voidbot/logs/moderation-rumination*`, so the loop can be observed without pretending an app heartbeat card is a real workstation daemon.
+
+## Flow 6: Mood Drift
+
+1. The Windows scheduled task `Void Mood Drift` starts `scripts/run-void-mood-drift.ps1` every 5 minutes.
+2. That wrapper calls `node scripts/simulate-void-mood.mjs`, which reads `.voidbot/private/moderation-agent-state.json`.
+3. The script nudges each canonical-state `current_activation` toward a Perlin-shaped target centered on the vector mean, with excursion size and drift rate governed by plasticity and category-specific tempo.
+4. It also reads `.voidbot/status/void-last-speech.json` so recent actual speech damps `needToSpeak` instead of letting the herald impulse climb forever like a busted pressure gauge.
+5. The updated `speaking_bias` block and shifted activations are written back into the shared self-state, and a pulse lands in `.voidbot/status/void-mood-drift.json`.
