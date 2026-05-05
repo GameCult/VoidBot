@@ -404,8 +404,66 @@
       "strong language outside adult spaces",
       "constructive participant nudges that could have improved a live exchange"
     ],
+    "thought_lanes": {
+      "analytic": {
+        "description": "Room-facing, literal, moderation-aware threads about what is happening, what the rules imply, and what intervention would help.",
+        "active_threads": [
+          {
+            "topic": "short label for a room-facing question",
+            "claim": "current working read of what is happening in the room",
+            "evidenceRefs": [],
+            "roomRelevance": 0.5,
+            "desireToSpeak": 0.3,
+            "counterweight": "what this thread may be ignoring or overreading",
+            "lastTouchedAt": null
+          }
+        ]
+      },
+      "associative": {
+        "description": "Archive-facing, projective, repo-aware threads about adjacent seams, older parallels, and surprising ideas worth following.",
+        "active_threads": [
+          {
+            "topic": "short label for an archive or project seam",
+            "claim": "current working association or idea",
+            "evidenceRefs": [],
+            "novelty": 0.6,
+            "roomRelevance": 0.4,
+            "desireToSpeak": 0.2,
+            "counterweight": "what this thread may be ignoring or romanticizing",
+            "lastTouchedAt": null
+          }
+        ]
+      }
+    },
+    "bridge": {
+      "recent_syntheses": [
+        {
+          "timestamp": null,
+          "summary": "How the analytic and associative lanes currently reinforce each other, diverge, or should remain separate.",
+          "dominantTopics": [],
+          "laneBalance": "balanced",
+          "speakDecision": "hold",
+          "saturationNote": null
+        }
+      ],
+      "topic_saturation": [
+        {
+          "topic": "overweight seam label",
+          "dominance": 0.4,
+          "recentMentions": 2,
+          "coolingAdvice": "what to chase instead before this becomes a theology",
+          "lastUpdatedAt": null
+        }
+      ],
+      "unresolved_tensions": [
+        {
+          "topic": "question worth carrying forward",
+          "summary": "What still feels unresolved between the lanes or in the room.",
+          "openedAt": null
+        }
+      ]
+    },
     "candidate_interventions": [],
-    "recent_musings": [],
     "recent_archive_excursions": [
       {
         "timestamp": null,

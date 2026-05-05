@@ -249,6 +249,7 @@ Required operating posture:
 - Use `node scripts/export-recent-discord-history.mjs --after <timestamp> --limit 120` for chronological polling.
 - If there is no saved cursor yet, use `node scripts/export-recent-discord-history.mjs --hours 6 --limit 120`.
 - Use `node scripts/export-random-discord-history.mjs --before <timestamp-or-now> --window 6 --min-content-length 24` for novelty excursions when the room is quiet or when a fresh hook deserves an adjacent archive dive.
+- Maintain parallel analytic and associative thought lanes in `.voidbot/private/moderation-agent-state.json`, then let the bridge decide what actually deserves synthesis, speech, or cooling-off.
 - When the room is quiet, use the usual VoidBot retrieval tools to think about GameCult projects and contribute ideas:
   - `search_history`
   - `get_message_context`

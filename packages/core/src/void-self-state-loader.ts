@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { type VoidSelfStateContext } from "@voidbot/shared";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonObject = { [key: string]: JsonValue };
 
 export async function loadVoidSelfState(
   statePath: string,
@@ -30,14 +31,14 @@ export async function loadVoidSelfState(
   };
 }
 
-type JsonObject = { [key: string]: JsonValue };
-
 function renderVoidSelfStateSummary(state: JsonObject): string {
   const identity = getObject(state, "identity");
   const goals = getArray(state, "goals");
   const memories = getObject(state, "memories");
   const runtime = getObject(state, "moderation_runtime");
   const canonicalState = getObject(state, "canonical_state");
+  const thoughtLanes = getObject(runtime, "thought_lanes");
+  const bridge = getObject(runtime, "bridge");
 
   const privateNotes = getStringArray(identity, "private_notes").slice(0, 4);
   const activeGoals = goals
@@ -85,6 +86,11 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
     .filter((value): value is string => Boolean(value))
     .slice(-4)
     .map((value) => `- ${value}`);
+  const analyticThreads = summarizeThoughtLane(getObject(thoughtLanes, "analytic"), 3);
+  const associativeThreads = summarizeThoughtLane(getObject(thoughtLanes, "associative"), 3);
+  const bridgeSyntheses = summarizeBridgeSyntheses(bridge, 3);
+  const topicSaturation = summarizeTopicSaturation(bridge, 3);
+  const unresolvedTensions = summarizeUnresolvedTensions(bridge, 3);
   const candidateInterventions = getArray(runtime, "candidate_interventions")
     .map((value) => (isObject(value) ? value : undefined))
     .filter((value): value is JsonObject => Boolean(value))
@@ -98,7 +104,7 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
   const lastRunSummary = readString(lastRun, "summary");
 
   return [
-    `- Identity: ${readString(identity, "name") ?? "Void"}${readString(identity, "public_description") ? ` — ${readString(identity, "public_description")}` : ""}`,
+    `- Identity: ${readString(identity, "name") ?? "Void"}${readString(identity, "public_description") ? ` - ${readString(identity, "public_description")}` : ""}`,
     privateNotes.length > 0
       ? `- Private notes: ${privateNotes.join(" | ")}`
       : "- Private notes: none recorded.",
@@ -118,6 +124,21 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
     semanticMemories.length > 0
       ? ["- Recent semantic memories:", ...semanticMemories].join("\n")
       : "- Recent semantic memories: none recorded.",
+    analyticThreads.length > 0
+      ? ["- Analytic active threads:", ...analyticThreads].join("\n")
+      : "- Analytic active threads: none recorded.",
+    associativeThreads.length > 0
+      ? ["- Associative active threads:", ...associativeThreads].join("\n")
+      : "- Associative active threads: none recorded.",
+    bridgeSyntheses.length > 0
+      ? ["- Bridge syntheses:", ...bridgeSyntheses].join("\n")
+      : "- Bridge syntheses: none recorded.",
+    topicSaturation.length > 0
+      ? ["- Topic saturation warnings:", ...topicSaturation].join("\n")
+      : "- Topic saturation warnings: none recorded.",
+    unresolvedTensions.length > 0
+      ? ["- Unresolved tensions:", ...unresolvedTensions].join("\n")
+      : "- Unresolved tensions: none recorded.",
     musings.length > 0
       ? ["- Stored musings:", ...musings].join("\n")
       : "- Stored musings: none recorded.",
@@ -128,6 +149,78 @@ function renderVoidSelfStateSummary(state: JsonObject): string {
       ? ["- Draft conversation/intervention seeds:", ...candidateInterventions].join("\n")
       : "- Draft conversation/intervention seeds: none recorded.",
   ].join("\n");
+}
+
+function summarizeThoughtLane(lane: JsonObject | undefined, limit: number): string[] {
+  return getArray(lane, "active_threads")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(0, limit)
+    .map((thread) => {
+      const topic = readString(thread, "topic") ?? "untitled";
+      const claim = readString(thread, "claim") ?? "(no claim)";
+      const roomRelevance = readNumber(thread, "roomRelevance");
+      const novelty = readNumber(thread, "novelty");
+      const desireToSpeak = readNumber(thread, "desireToSpeak");
+      const counterweight = readString(thread, "counterweight");
+      const metrics = [
+        roomRelevance !== undefined ? `room=${roomRelevance.toFixed(2)}` : undefined,
+        novelty !== undefined ? `novelty=${novelty.toFixed(2)}` : undefined,
+        desireToSpeak !== undefined ? `speak=${desireToSpeak.toFixed(2)}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      const counterweightText = counterweight ? ` Counterweight: ${counterweight}` : "";
+
+      return `- ${topic}: ${claim}${metrics.length > 0 ? ` (${metrics.join(", ")})` : ""}${counterweightText}`;
+    });
+}
+
+function summarizeBridgeSyntheses(bridge: JsonObject | undefined, limit: number): string[] {
+  return getArray(bridge, "recent_syntheses")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(-limit)
+    .reverse()
+    .map((synthesis) => {
+      const summary = readString(synthesis, "summary") ?? "(no summary)";
+      const laneBalance = readString(synthesis, "laneBalance");
+      const speakDecision = readString(synthesis, "speakDecision");
+      const tags = [laneBalance, speakDecision].filter((value): value is string => Boolean(value));
+      return `- ${summary}${tags.length > 0 ? ` [${tags.join("; ")}]` : ""}`;
+    });
+}
+
+function summarizeTopicSaturation(bridge: JsonObject | undefined, limit: number): string[] {
+  return getArray(bridge, "topic_saturation")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .sort(
+      (left, right) =>
+        (readNumber(right, "dominance") ?? 0) - (readNumber(left, "dominance") ?? 0),
+    )
+    .slice(0, limit)
+    .map((entry) => {
+      const topic = readString(entry, "topic") ?? "untitled";
+      const dominance = readNumber(entry, "dominance");
+      const recentMentions = readNumber(entry, "recentMentions");
+      const coolingAdvice = readString(entry, "coolingAdvice");
+      const metrics = [
+        dominance !== undefined ? `dominance=${dominance.toFixed(2)}` : undefined,
+        recentMentions !== undefined ? `recent=${recentMentions}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${topic}${metrics.length > 0 ? ` (${metrics.join(", ")})` : ""}${coolingAdvice ? ` - ${coolingAdvice}` : ""}`;
+    });
+}
+
+function summarizeUnresolvedTensions(bridge: JsonObject | undefined, limit: number): string[] {
+  return getArray(bridge, "unresolved_tensions")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(0, limit)
+    .map((tension) => {
+      const topic = readString(tension, "topic") ?? "untitled";
+      const summary = readString(tension, "summary") ?? "(no summary)";
+      return `- ${topic}: ${summary}`;
+    });
 }
 
 function summarizeCurrentActivations(

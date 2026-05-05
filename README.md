@@ -580,6 +580,12 @@ Chronological recent-history helper:
 node scripts/export-recent-discord-history.mjs --hours 6 --limit 120
 ```
 
+Random archive-dive helper for novelty pressure:
+
+```bash
+node scripts/export-random-discord-history.mjs --window 6 --min-content-length 24
+```
+
 Direct bot-voice send helper for unattended moderation runs:
 
 ```bash
@@ -606,7 +612,8 @@ The runner records its pulse here:
 
 That helper exists because semantic `search_history` is good at recall and bad at simple heartbeat duty. The moderator loop can use it to see what changed since its last cursor, then fall back to `search_history`, `get_message_context`, `list_indexed_repos`, `search_sources`, and `get_source_context` when it wants deeper social or project context.
 
-The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, cases, musings, and candidate interventions. The live writable file under `.voidbot/private/` is ignored; the tracked template shows the intended shape.
+The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, thought lanes, bridge syntheses, archive excursions, and candidate interventions. The live writable file under `.voidbot/private/` is ignored; the tracked template shows the intended shape.
+Within that runtime block, the unattended loop now keeps parallel analytic and associative thought lanes plus a bridge that tracks syntheses, topic saturation, and unresolved tensions, so one rewarding theme does not get to annex the whole mind by squatter's rights.
 The real loop now runs as a local scheduled task every 15 minutes, using `scripts/run-void-moderator-rumination.ps1` to launch `codex exec` inside the VoidBot workspace with the usual MCP/tool surface. That way it can actually think about GameCult projects, archived Discord seams, indexed repos, and lore instead of sitting inside a decorative heartbeat card pretending to be alive.
 Directly invoked live replies now also read that same private moderation state as a distilled self-state attachment, so the summoned Void and the scheduled ruminating/participating Void share one evolving personality/state layer instead of roleplaying continuity from scratch each time.
 The moderation loop now speaks through the local bot token instead of approval-gated side-effecting MCP tools, so unattended runs can DM or post without making Codex stop and ask your permission every time it finds a mouthful of words.
