@@ -69,7 +69,7 @@ if ($intervalMinutesValue -lt 15) {
 }
 
 $startAt = (Get-Date).AddMinutes(2)
-$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runnerScript`""
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runnerScript`"" -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutesValue) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 14) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
@@ -82,6 +82,7 @@ Write-Host "Schedule: every $intervalMinutesValue minute(s), starting at $($star
 Write-Host "Task runs as: $($env:USERDOMAIN)\$($env:USERNAME)"
 Write-Host "Logon mode: Interactive"
 Write-Host "Launcher: wscript.exe hidden PowerShell shim"
+Write-Host "Working directory: $repoRoot"
 Write-Host "Execution time limit: 14 minutes"
 Write-Host "Runner script: $runnerScript"
 

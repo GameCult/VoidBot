@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location -LiteralPath $repoRoot
 $envFile = Join-Path $repoRoot ".env"
 $stateTemplatePath = Join-Path $repoRoot "config\moderation-agent-state-template.json"
 $stateFilePath = Join-Path $repoRoot ".voidbot\private\moderation-agent-state.json"
@@ -18,6 +19,7 @@ $tracePath = Join-Path $logDir "moderation-rumination-last.jsonl"
 $lastMessagePath = Join-Path $statusDir "moderation-rumination-last-message.txt"
 $lockPath = Join-Path $statusDir "moderation-rumination.lock"
 $mcpServerPath = Join-Path $repoRoot "apps\worker\dist\mcp-server.js"
+$recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 
 function Read-DotEnv {
   param(
@@ -269,6 +271,16 @@ if (-not (Test-Path $mcpServerPath)) {
   throw "Missing built MCP server at $mcpServerPath. Run npm run build first."
 }
 
+$scriptPreflight = @(
+  $recentHistoryScriptPath
+)
+
+foreach ($requiredPath in $scriptPreflight) {
+  if (-not (Test-Path $requiredPath)) {
+    throw "Missing required moderation helper at $requiredPath"
+  }
+}
+
 $preRunState = Read-JsonFile -Path $stateFilePath
 $priorCursor = if ($null -ne $preRunState -and $null -ne $preRunState.moderation_runtime) {
   $preRunState.moderation_runtime.cursor
@@ -276,7 +288,7 @@ $priorCursor = if ($null -ne $preRunState -and $null -ne $preRunState.moderation
   $null
 }
 
-$historyArgs = @("scripts/export-recent-discord-history.mjs")
+$historyArgs = @($recentHistoryScriptPath)
 if ($null -ne $priorCursor -and -not [string]::IsNullOrWhiteSpace($priorCursor.lastReviewedTimestamp)) {
   $historyArgs += @("--after", [string]$priorCursor.lastReviewedTimestamp, "--limit", "120")
 } else {
