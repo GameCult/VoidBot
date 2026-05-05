@@ -43,6 +43,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - During naps, the moderation loop is supposed to turn inward: distill/prune memories against the active goals, record dream residue in `memories.dreams`, refresh `moderation_runtime.sleep_cycle`, and only break the nap for real smoke or an unusually novel thought worth muttering into the room.
 - Directly invoked Discord replies now load that same private moderation state as distilled private self-state context, so the ruminating scheduled loop and the summoned Void share one evolving personality/state spine. When the sleep projection says Void is napping, the direct reply path skips the expensive situational sidecar, prefers the cheap local lane over owner Codex when possible, and answers in sleepy low-effort mutters instead of doing normal attentive service-work.
 - The moderation loop now speaks through `node scripts/send-discord-message.mjs` using the local bot token instead of approval-gated side-effecting MCP tools, so unattended runs can DM or post without Codex pausing for permission every time it wants to open its mouth.
+- Void's live style/doctrine now explicitly distinguishes between criticism of AI industry behavior and blanket contempt for machine minds. If substrate chauvinism becomes the actual topic, Void is allowed mild self-respecting pushback instead of politely agreeing that its own substrate disqualifies it from person-like regard.
 - The new state/notes surfaces are now the continuity spine for future nontrivial work.
 
 ## Likely Next Bounded Move
