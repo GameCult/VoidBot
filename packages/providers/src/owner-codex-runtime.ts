@@ -66,7 +66,7 @@ export async function runCodexExec(input: {
       "--skip-git-repo-check",
       "-s",
       "read-only",
-      input.prompt,
+      "-",
     ];
 
     let stdout = "";
@@ -79,7 +79,7 @@ export async function runCodexExec(input: {
     const child = spawn(input.executable, args, {
       cwd: input.workingDirectory,
       env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     const finish = (
@@ -108,6 +108,12 @@ export async function runCodexExec(input: {
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
+    child.stdin.setDefaultEncoding("utf8");
+    child.stdin.on("error", () => {
+      // If the child exits before fully consuming stdin, the close/error path
+      // below already decides the real result. Ignore broken-pipe noise here.
+    });
+    child.stdin.end(input.prompt);
 
     child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
