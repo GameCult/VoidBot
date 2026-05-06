@@ -207,9 +207,9 @@ function renderTransientRoomLog(options: LoadVoidSelfStateOptions): string {
 
   if (recentMessages.length === 0) {
     return [
-      "- Temporary invocation room log:",
+      "- Current room snapshot:",
       `- Current room: guild=${guildName}; channel=${channelName}`,
-      "- No recent chat messages were attached to this invocation.",
+      "- No recent chat messages were captured in this snapshot.",
     ].join("\n");
   }
 
@@ -219,8 +219,7 @@ function renderTransientRoomLog(options: LoadVoidSelfStateOptions): string {
   );
 
   return [
-    "- Temporary invocation room log:",
-    "- Treat this as live working memory for the current summon, not durable canon.",
+    "- Current room snapshot:",
     `- Current room: guild=${guildName}; channel=${channelName}`,
     ...lines,
   ].join("\n");
