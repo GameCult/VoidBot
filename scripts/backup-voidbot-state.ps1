@@ -82,10 +82,12 @@ function Parse-DatabaseDsn {
 function Invoke-CurlJson {
   param(
     [Parameter(Mandatory = $true)]
-    [string[]] $Arguments
+    [string[]] $Arguments,
+    [int] $ConnectTimeoutSeconds = 5,
+    [int] $MaxTimeSeconds = 30
   )
 
-  $response = & curl.exe --connect-timeout 5 --max-time 30 @Arguments
+  $response = & curl.exe --connect-timeout $ConnectTimeoutSeconds --max-time $MaxTimeSeconds @Arguments
 
   if ($LASTEXITCODE -ne 0) {
     throw "curl.exe failed: $($Arguments -join ' ')"
@@ -473,7 +475,7 @@ function Backup-QdrantCollections {
       "-X",
       "POST",
       "$($QdrantUrl.TrimEnd('/'))/collections/$escapedCollection/snapshots"
-    )
+    ) -MaxTimeSeconds 180
     $snapshotName = [string]$createResponse.result.name
 
     Wait-Until -Condition {
@@ -602,6 +604,7 @@ $manifestPath = Join-Path $backupDir "manifest.json"
 $stoppedRuntime = @()
 $shouldRestart = $false
 $pendingError = $null
+$backupCompleted = $false
 
 try {
   New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
@@ -646,6 +649,7 @@ try {
   Write-Host "Copying RAG archives..."
   $manifest.archives = Backup-RagArchives -StorageRoot $storageRoot -OutputDir $archiveDir
   $manifest | ConvertTo-Json -Depth 8 | Set-Content -Path $manifestPath -Encoding utf8
+  $backupCompleted = $true
 
   Write-Host "VoidBot state backup complete."
   Write-Host "Backup: $backupDir"
@@ -671,6 +675,15 @@ try {
 }
 
 if ($null -ne $pendingError) {
+  if (-not $backupCompleted -and (Test-Path -LiteralPath $backupDir)) {
+    try {
+      Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction Stop
+      Write-Warning "Removed incomplete backup directory $backupDir after failure."
+    } catch {
+      Write-Warning ("Failed to remove incomplete backup directory {0}: {1}" -f $backupDir, $_.Exception.Message)
+    }
+  }
+
   if ($pendingError.Exception) {
     throw $pendingError.Exception
   }

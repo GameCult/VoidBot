@@ -280,6 +280,26 @@ function Invoke-SourceRepoReconcile {
   return $stdout | ConvertFrom-Json
 }
 
+function Get-LatestCompleteBackupDirectory {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $BackupRoot
+  )
+
+  $directories = @(Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending)
+
+  $latestDirectory = $directories | Select-Object -First 1
+  $latestCompleteDirectory = $directories |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json") } |
+    Select-Object -First 1
+
+  return @{
+    latest = $latestDirectory
+    latestComplete = $latestCompleteDirectory
+  }
+}
+
 function Ensure-DockerCliOnPath {
   $dockerCliDir = "C:\Program Files\Docker\Docker\resources\bin"
 
@@ -955,28 +975,39 @@ try {
     Add-Check -Name "discord.bot_token" -Status "warning" -Detail "DISCORD_BOT_TOKEN is blank; bot identity could not be checked."
   }
 
-  $latestBackup = Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending |
-    Select-Object -First 1
+  $backupSelection = Get-LatestCompleteBackupDirectory -BackupRoot $backupRoot
+  $latestBackup = $backupSelection.latest
+  $latestCompleteBackup = $backupSelection.latestComplete
 
   Set-WatchdogStep -CurrentStep "backup_checks" -Detail "Verifying the latest local backup and freshness thresholds."
   if ($null -eq $latestBackup) {
     Add-Check -Name "backup.latest" -Status "failed" -Detail "No local backup directory exists under $backupRoot."
+  } elseif ($null -eq $latestCompleteBackup) {
+    Add-Check -Name "backup.latest" -Status "failed" -Detail "No complete local backup with a manifest exists under $backupRoot." -Data @{
+      latestPath = $latestBackup.FullName
+    }
   } else {
+    if ($latestBackup.FullName -ne $latestCompleteBackup.FullName) {
+      Add-Check -Name "backup.incomplete_latest" -Status "warning" -Detail "Newest backup directory is incomplete and was ignored until a manifest exists." -Data @{
+        incompletePath = $latestBackup.FullName
+        latestCompletePath = $latestCompleteBackup.FullName
+      }
+    }
+
     try {
-      $verificationJson = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BackupPath $latestBackup.FullName -AsJson -Quiet
+      $verificationJson = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BackupPath $latestCompleteBackup.FullName -AsJson -Quiet
       $verificationReport = $verificationJson | ConvertFrom-Json
       $createdAtCheck = $verificationReport.checks | Where-Object { $_.name -eq "backup.created_at" } | Select-Object -First 1
-      $backupAgeHours = if ($createdAtCheck -and $createdAtCheck.data -and $createdAtCheck.data.ageHours) { [double]$createdAtCheck.data.ageHours } else { [Math]::Round(((Get-Date) - $latestBackup.LastWriteTime).TotalHours, 2) }
+      $backupAgeHours = if ($createdAtCheck -and $createdAtCheck.data -and $createdAtCheck.data.ageHours) { [double]$createdAtCheck.data.ageHours } else { [Math]::Round(((Get-Date) - $latestCompleteBackup.LastWriteTime).TotalHours, 2) }
 
       if ([string]$verificationReport.status -eq "failed") {
         Add-Check -Name "backup.latest" -Status "failed" -Detail "Latest local backup failed verification." -Data @{
-          path = $latestBackup.FullName
+          path = $latestCompleteBackup.FullName
           verification = $verificationReport
         }
       } else {
         Add-Check -Name "backup.latest" -Status "passed" -Detail "Latest local backup passed verification." -Data @{
-          path = $latestBackup.FullName
+          path = $latestCompleteBackup.FullName
           verificationStatus = [string]$verificationReport.status
           ageHours = $backupAgeHours
         }
@@ -985,17 +1016,17 @@ try {
       if ($backupAgeHours -le $backupMaxAgeHours) {
         Add-Check -Name "backup.freshness" -Status "passed" -Detail "Latest local backup is $backupAgeHours hours old." -Data @{
           thresholdHours = $backupMaxAgeHours
-          path = $latestBackup.FullName
+          path = $latestCompleteBackup.FullName
         }
       } else {
         Add-Check -Name "backup.freshness" -Status "failed" -Detail "Latest local backup is $backupAgeHours hours old, which exceeds the $backupMaxAgeHours hour threshold." -Data @{
           thresholdHours = $backupMaxAgeHours
-          path = $latestBackup.FullName
+          path = $latestCompleteBackup.FullName
         }
       }
     } catch {
       Add-Check -Name "backup.latest" -Status "failed" -Detail "Failed to verify the latest local backup: $($_.Exception.Message)" -Data @{
-        path = $latestBackup.FullName
+        path = $latestCompleteBackup.FullName
       }
     }
   }
