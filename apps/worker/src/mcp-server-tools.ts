@@ -301,7 +301,7 @@ export function registerVoidbotTools(
     {
       title: "Post Discord Message",
       description:
-        "Post a message to a Discord channel or thread as Void. Use this for constructive proactive participation, moderation nudges, or replies when speaking in-channel would genuinely help. Set replyToMessageId to reply to a specific message; omit it for a fresh post.",
+        "Post a message to a Discord channel or thread. Use this for constructive proactive participation, moderation nudges, or replies when speaking in-channel would genuinely help. Set replyToMessageId to reply to a specific message; omit it for a fresh post. Supply personaName and optional personaAvatarUrl when an agent should speak through the shared webhook pipe as itself instead of the base bot identity.",
       inputSchema: postDiscordMessageInputSchema,
       annotations: {
         readOnlyHint: false,
@@ -311,7 +311,7 @@ export function registerVoidbotTools(
       },
     },
     async (input: PostDiscordMessageArgs): Promise<CallToolResult> => {
-      const { channelId, content, replyToMessageId } = input;
+      const { channelId, content, replyToMessageId, personaName, personaAvatarUrl } = input;
 
       if (!context.config.botToken) {
         return {
@@ -335,21 +335,29 @@ export function registerVoidbotTools(
         channelId,
         content,
         replyToMessageId,
+        {
+          personaName,
+          personaAvatarUrl,
+        },
       );
 
       return {
         content: [
           {
             type: "text",
-            text: replyToMessageId
-              ? `Posted a reply in Discord channel ${channelId} as message ${posted.id}.`
-              : `Posted a message in Discord channel ${channelId} as message ${posted.id}.`,
+            text:
+              replyToMessageId
+                ? `Posted a reply in Discord channel ${channelId} as message ${posted.id} via ${posted.transport}.`
+                : `Posted a message in Discord channel ${channelId} as message ${posted.id} via ${posted.transport}.`,
           },
         ],
         structuredContent: {
           sent: true,
           channelId,
           messageId: posted.id,
+          transport: posted.transport,
+          personaName: personaName ?? null,
+          personaAvatarUrl: personaAvatarUrl ?? null,
           replyToMessageId: replyToMessageId ?? null,
         },
       };

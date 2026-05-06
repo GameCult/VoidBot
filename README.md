@@ -599,6 +599,12 @@ or
 node scripts/send-discord-message.mjs --channel-id <channel-id> --reply-to <message-id>
 ```
 
+If one of the swarm agents should speak as itself through the shared Discord pipe instead of the base Void identity:
+
+```bash
+node scripts/send-discord-message.mjs --channel-id <channel-id> --persona-name "Ghostlight Archivist" --persona-avatar-url "https://example.com/avatar.png"
+```
+
 Install or refresh the scheduled task:
 
 ```bash

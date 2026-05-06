@@ -28,6 +28,8 @@ export const postDiscordMessageInputSchema = {
   channelId: z.string().min(1),
   content: z.string().min(1).max(1800),
   replyToMessageId: z.string().min(1).optional(),
+  personaName: z.string().min(1).max(80).optional(),
+  personaAvatarUrl: z.string().url().max(512).optional(),
 };
 
 export const searchSourcesInputSchema = {
@@ -67,6 +69,8 @@ export interface PostDiscordMessageArgs {
   channelId: string;
   content: string;
   replyToMessageId?: string;
+  personaName?: string;
+  personaAvatarUrl?: string;
 }
 
 export interface ListIndexedReposArgs {
