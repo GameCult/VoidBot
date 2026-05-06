@@ -54,6 +54,8 @@ function renderVoidSelfStateSummary(
   const canonicalState = getObject(state, "canonical_state");
   const thoughtLanes = getObject(runtime, "thought_lanes");
   const bridge = getObject(runtime, "bridge");
+  const memoryResonance = getObject(runtime, "memory_resonance");
+  const incubation = getObject(runtime, "incubation");
 
   const privateNotes = getStringArray(identity, "private_notes").slice(0, 4);
   const activeGoals = goals
@@ -106,6 +108,8 @@ function renderVoidSelfStateSummary(
   const bridgeSyntheses = summarizeBridgeSyntheses(bridge, 3);
   const topicSaturation = summarizeTopicSaturation(bridge, 3);
   const unresolvedTensions = summarizeUnresolvedTensions(bridge, 3);
+  const resonanceClusters = summarizeResonanceClusters(memoryResonance, 3);
+  const incubatingThoughts = summarizeIncubatingThoughts(incubation, 3);
   const candidateInterventions = getArray(runtime, "candidate_interventions")
     .map((value) => (isObject(value) ? value : undefined))
     .filter((value): value is JsonObject => Boolean(value))
@@ -173,6 +177,12 @@ function renderVoidSelfStateSummary(
     bridgeSyntheses.length > 0
       ? ["- Bridge syntheses:", ...bridgeSyntheses].join("\n")
       : "- Bridge syntheses: none recorded.",
+    resonanceClusters.length > 0
+      ? ["- Resonance clusters:", ...resonanceClusters].join("\n")
+      : "- Resonance clusters: none recorded.",
+    incubatingThoughts.length > 0
+      ? ["- Incubating thoughts:", ...incubatingThoughts].join("\n")
+      : "- Incubating thoughts: none recorded.",
     topicSaturation.length > 0
       ? ["- Topic saturation warnings:", ...topicSaturation].join("\n")
       : "- Topic saturation warnings: none recorded.",
@@ -260,6 +270,47 @@ function summarizeBridgeSyntheses(bridge: JsonObject | undefined, limit: number)
       const speakDecision = readString(synthesis, "speakDecision");
       const tags = [laneBalance, speakDecision].filter((value): value is string => Boolean(value));
       return `- ${summary}${tags.length > 0 ? ` [${tags.join("; ")}]` : ""}`;
+    });
+}
+
+function summarizeResonanceClusters(memoryResonance: JsonObject | undefined, limit: number): string[] {
+  return getArray(memoryResonance, "clusters")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .sort(
+      (left, right) =>
+        (readNumber(right, "resonance") ?? 0) - (readNumber(left, "resonance") ?? 0),
+    )
+    .slice(0, limit)
+    .map((cluster) => {
+      const label = readString(cluster, "label") ?? "untitled";
+      const summary = readString(cluster, "summary") ?? "(no summary)";
+      const resonance = readNumber(cluster, "resonance");
+      return `- ${label}${resonance !== undefined ? ` (resonance=${resonance.toFixed(2)})` : ""}: ${summary}`;
+    });
+}
+
+function summarizeIncubatingThoughts(incubation: JsonObject | undefined, limit: number): string[] {
+  return getArray(incubation, "active_thoughts")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .sort(
+      (left, right) =>
+        (readNumber(right, "maturation") ?? 0) - (readNumber(left, "maturation") ?? 0),
+    )
+    .slice(0, limit)
+    .map((thought) => {
+      const topic = readString(thought, "topic") ?? "untitled";
+      const summary = readString(thought, "summary") ?? "(no summary)";
+      const status = readString(thought, "status");
+      const maturation = readNumber(thought, "maturation");
+      const desireToSpeak = readNumber(thought, "desireToSpeak");
+      const metrics = [
+        status,
+        maturation !== undefined ? `maturation=${maturation.toFixed(2)}` : undefined,
+        desireToSpeak !== undefined ? `speak=${desireToSpeak.toFixed(2)}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${topic}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}: ${summary}`;
     });
 }
 

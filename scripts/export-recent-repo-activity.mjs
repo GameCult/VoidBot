@@ -228,7 +228,7 @@ function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits }) {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
-      .map(parseCommitLine)
+      .map((line) => enrichCommit(repoPath, parseCommitLine(line)))
       .filter(Boolean);
 
     return {
@@ -277,6 +277,56 @@ function parseCommitLine(line) {
   };
 }
 
+function enrichCommit(repoPath, commit) {
+  if (!commit?.hash) {
+    return commit;
+  }
+
+  try {
+    const statLines = execGit(repoPath, [
+      "show",
+      "--shortstat",
+      "--format=",
+      "--name-only",
+      commit.hash,
+    ])
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const summaryLine = statLines.find((line) => /files? changed|insertions?|deletions?/.test(line));
+    const changedPaths = statLines.filter((line) => !/files? changed|insertions?|deletions?/.test(line)).slice(0, 8);
+
+    return {
+      ...commit,
+      diffstat: parseDiffstat(summaryLine),
+      changedPaths,
+    };
+  } catch {
+    return {
+      ...commit,
+      diffstat: null,
+      changedPaths: [],
+    };
+  }
+}
+
+function parseDiffstat(summaryLine) {
+  if (!summaryLine) {
+    return null;
+  }
+
+  return {
+    filesChanged: readFirstInt(summaryLine, /(\d+)\s+files?\s+changed/i),
+    insertions: readFirstInt(summaryLine, /(\d+)\s+insertions?\(\+\)/i),
+    deletions: readFirstInt(summaryLine, /(\d+)\s+deletions?\(-\)/i),
+  };
+}
+
+function readFirstInt(input, pattern) {
+  const match = input.match(pattern);
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
 function compareRepoActivity(left, right) {
   const leftRecent = left.recentCommitCount ?? 0;
   const rightRecent = right.recentCommitCount ?? 0;
@@ -313,7 +363,23 @@ function renderDigest(repos, sinceIso) {
 
     if (repo.commits.length > 0) {
       for (const commit of repo.commits) {
-        lines.push(`  - ${commit.committedAt} ${commit.author}: ${commit.subject}`);
+        const statBits = [];
+        if (commit.diffstat?.filesChanged) {
+          statBits.push(`${commit.diffstat.filesChanged} files`);
+        }
+        if (commit.diffstat?.insertions) {
+          statBits.push(`+${commit.diffstat.insertions}`);
+        }
+        if (commit.diffstat?.deletions) {
+          statBits.push(`-${commit.diffstat.deletions}`);
+        }
+
+        lines.push(
+          `  - ${commit.committedAt} ${commit.author}: ${commit.subject}${statBits.length > 0 ? ` (${statBits.join(", ")})` : ""}`,
+        );
+        if (Array.isArray(commit.changedPaths) && commit.changedPaths.length > 0) {
+          lines.push(`    paths: ${commit.changedPaths.join(", ")}`);
+        }
       }
     } else if (repo.latestCommit) {
       lines.push(

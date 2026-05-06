@@ -388,35 +388,75 @@
   "memories": {
     "episodic": [
       {
+        "memoryId": "episodic-memory-id",
         "timestamp": null,
-        "summary": "Short run-level memory of what happened recently."
+        "summary": "Short run-level memory of what happened recently.",
+        "semanticVector": {
+          "version": 1,
+          "backend": "ollama",
+          "model": "qwen3-embedding:0.6b",
+          "compactDimensions": 96,
+          "sourceHash": "sha1-of-normalized-memory-text",
+          "embeddedAt": null,
+          "values": []
+        }
       }
     ],
     "semantic": [
       {
+        "memoryId": "semantic-memory-id",
         "subjectId": "discord-user-id-or-pattern-id",
         "subjectLabel": "Display name or pattern label",
         "kind": "recent-preoccupation",
         "summary": "Compact memory of something they recently cared about, asked for, kept returning to, or signaled about themselves.",
         "evidenceMessageIds": [],
         "lastObservedAt": null,
-        "confidence": 0.5
+        "confidence": 0.5,
+        "semanticVector": {
+          "version": 1,
+          "backend": "ollama",
+          "model": "qwen3-embedding:0.6b",
+          "compactDimensions": 96,
+          "sourceHash": "sha1-of-normalized-memory-text",
+          "embeddedAt": null,
+          "values": []
+        }
       }
     ],
     "musings": [
       {
+        "memoryId": "musing-memory-id",
         "timestamp": null,
         "topic": "room pattern or person-pattern intersection",
-        "summary": "Distilled rumination worth keeping for future participation or moderation context."
+        "summary": "Distilled rumination worth keeping for future participation or moderation context.",
+        "semanticVector": {
+          "version": 1,
+          "backend": "ollama",
+          "model": "qwen3-embedding:0.6b",
+          "compactDimensions": 96,
+          "sourceHash": "sha1-of-normalized-memory-text",
+          "embeddedAt": null,
+          "values": []
+        }
       }
     ],
     "dreams": [
       {
+        "memoryId": "dream-memory-id",
         "timestamp": null,
         "theme": "distilled idea or symbolic seam",
         "summary": "Salient dream memory tying distilled ideas to one vivid operative image or pressure.",
         "distilledFrom": [],
-        "salience": 0.6
+        "salience": 0.6,
+        "semanticVector": {
+          "version": 1,
+          "backend": "ollama",
+          "model": "qwen3-embedding:0.6b",
+          "compactDimensions": 96,
+          "sourceHash": "sha1-of-normalized-memory-text",
+          "embeddedAt": null,
+          "values": []
+        }
       }
     ]
   },
@@ -497,24 +537,97 @@
         }
       ]
     },
+    "memory_resonance": {
+      "updatedAt": null,
+      "embeddingBackend": "ollama",
+      "embeddingModel": "qwen3-embedding:0.6b",
+      "compactDimensions": 96,
+      "recent_edges": [
+        {
+          "leftMemoryId": "semantic-memory-id",
+          "leftLabel": "short memory label",
+          "rightMemoryId": "repo-sweep-memory-id",
+          "rightLabel": "another short memory label",
+          "similarity": 0.71,
+          "summary": "Why these two things keep rhyming in embedding space.",
+          "observedAt": null
+        }
+      ],
+      "clusters": [
+        {
+          "clusterId": "cluster-id",
+          "label": "first-contact / visible proof / carried interface",
+          "summary": "Recurring seam across different memory kinds that keeps trying to become a coherent thought.",
+          "resonance": 0.73,
+          "memoryIds": [],
+          "sourceKinds": [],
+          "topKeywords": [],
+          "lastStrengthenedAt": null
+        }
+      ]
+    },
+    "incubation": {
+      "lastUpdatedAt": null,
+      "lastIncubationSummary": "Which thought currently has the most connective tissue and why it is still being held or ripening.",
+      "active_thoughts": [
+        {
+          "thoughtId": "cluster-id",
+          "topic": "visible proof surfaces",
+          "summary": "Current working seam being deepened across multiple runs.",
+          "sourceMemoryIds": [],
+          "sourceKinds": [],
+          "resonance": 0.73,
+          "novelty": 0.61,
+          "maturation": 0.58,
+          "desireToSpeak": 0.54,
+          "deepDiveCount": 3,
+          "status": "incubating",
+          "latentQuestion": "What is this seam actually trying to become if it survives another pass?",
+          "whyItPulls": "Why this thought keeps returning instead of dying quietly.",
+          "holdingCloseBecause": "Why it is still incubating rather than being spoken immediately.",
+          "lastDeepenedAt": null,
+          "lastStatusChangeAt": null
+        }
+      ]
+    },
     "candidate_interventions": [],
     "recent_archive_excursions": [
       {
+        "memoryId": "archive-excursion-memory-id",
         "timestamp": null,
         "anchorMessageId": null,
         "anchorTimestamp": null,
         "channelId": null,
         "topicHint": "short label for the archive seam that got explored",
-        "whyItWasFresh": "why this branch was worth taking instead of repeating an older favorite"
+        "whyItWasFresh": "why this branch was worth taking instead of repeating an older favorite",
+        "semanticVector": {
+          "version": 1,
+          "backend": "ollama",
+          "model": "qwen3-embedding:0.6b",
+          "compactDimensions": 96,
+          "sourceHash": "sha1-of-normalized-memory-text",
+          "embeddedAt": null,
+          "values": []
+        }
       }
     ],
     "recent_repo_activity_sweeps": [
       {
+        "memoryId": "repo-sweep-memory-id",
         "timestamp": null,
         "hours": 96,
         "repoNames": [],
         "summary": "short note about the cross-repo motion, asymmetry, or convergence that stood out",
-        "whyItMattered": "why this sweep was worth carrying forward instead of becoming more ambient repo weather"
+        "whyItMattered": "why this sweep was worth carrying forward instead of becoming more ambient repo weather",
+        "semanticVector": {
+          "version": 1,
+          "backend": "ollama",
+          "model": "qwen3-embedding:0.6b",
+          "compactDimensions": 96,
+          "sourceHash": "sha1-of-normalized-memory-text",
+          "embeddedAt": null,
+          "values": []
+        }
       }
     ],
     "recent_novelty_checks": [

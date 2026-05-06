@@ -2,6 +2,8 @@ import { mkdirSync, openSync, closeSync, readFileSync, rmSync, statSync, writeFi
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { reconcileSemanticMemoryState } from "./void-memory-organ.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const statePath = resolve(repoRoot, ".voidbot/private/moderation-agent-state.json");
 const statusPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.json");
@@ -9,9 +11,9 @@ const lockPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.lock");
 const lastSpeechPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
 const moderationLockPath = resolve(repoRoot, ".voidbot/status/moderation-rumination.lock");
 
-function main() {
+async function main() {
   const now = new Date();
-  withLock(() => {
+  await withLock(async () => {
     if (isRecentLockPresent(moderationLockPath, 20 * 60 * 1000)) {
       writeStatus({
         status: "skipped",
@@ -25,6 +27,11 @@ function main() {
     const canonicalState = ensureObject(state.canonical_state);
     const runtime = ensureObject(state.moderation_runtime);
     const sleepCycle = updateSleepCycle(runtime, now);
+    const memoryOrgan = await reconcileSemanticMemoryState({
+      state,
+      now,
+      repoRootPath: repoRoot,
+    });
     const touchedVectors = [];
 
     for (const [categoryName, categoryValue] of Object.entries(canonicalState)) {
@@ -184,6 +191,7 @@ function main() {
         noveltyPressure: speakingBias.noveltyPressure,
         recentSpeechDamping: speakingBias.recentSpeechDamping,
       },
+      memoryOrgan,
       sleepCycle: {
         isNapping: sleepCycle.isNapping,
         currentNapStartedAt: sleepCycle.currentNapStartedAt ?? null,
@@ -577,7 +585,7 @@ function stripBom(input) {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
 }
 
-function withLock(fn) {
+async function withLock(fn) {
   mkdirSync(dirname(lockPath), { recursive: true });
 
   try {
@@ -607,7 +615,7 @@ function withLock(fn) {
   }
 
   try {
-    fn();
+    await fn();
   } finally {
     rmSync(lockPath, { force: true });
   }
@@ -626,7 +634,7 @@ function isRecentLockPresent(path, thresholdMs) {
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   writeStatus({
     status: "failed",
