@@ -6,6 +6,8 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "@voidbot/shared": "0.1.0",
-    "pg": "^8.20.0"
+    "cultcache-ts": "file:../../vendor/cultcache-ts",
+    "pg": "^8.20.0",
+    "zod": "^3.25.76"
   }
 }

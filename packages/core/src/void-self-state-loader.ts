@@ -1,10 +1,10 @@
-import { readFile } from "node:fs/promises";
-
 import {
   type GuildContext,
   type SourceMessage,
   type VoidSelfStateContext,
 } from "@voidbot/shared";
+
+import { loadModerationState } from "./moderation-state-store";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
@@ -18,10 +18,10 @@ export async function loadVoidSelfState(
   statePath: string,
   options: LoadVoidSelfStateOptions = {},
 ): Promise<VoidSelfStateContext | undefined> {
-  let raw: string;
+  let parsed: JsonObject;
 
   try {
-    raw = await readFile(statePath, "utf8");
+    parsed = (await loadModerationState(statePath)) as unknown as JsonObject;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
 
@@ -32,7 +32,6 @@ export async function loadVoidSelfState(
     throw error;
   }
 
-  const parsed = JSON.parse(raw) as JsonObject;
   const projection = buildVoidSelfStateProjection(parsed);
 
   return {

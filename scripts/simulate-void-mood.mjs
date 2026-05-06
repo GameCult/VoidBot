@@ -1,11 +1,21 @@
 import { mkdirSync, openSync, closeSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import { reconcileSemanticMemoryState } from "./void-memory-organ.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const statePath = resolve(repoRoot, ".voidbot/private/moderation-agent-state.json");
+const require = createRequire(import.meta.url);
+const {
+  ensureModerationStateStore,
+  getModerationStateWorkingPath,
+  materializeModerationStateWorkingView,
+  saveModerationState,
+} = require(resolve(repoRoot, "packages/core/dist/moderation-state-store.js"));
+const statePath = resolve(repoRoot, ".voidbot/private/moderation-agent-state.msgpack");
+const stateWorkingPath = getModerationStateWorkingPath(statePath);
+const stateTemplatePath = resolve(repoRoot, "config/moderation-agent-state-template.json");
 const statusPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.json");
 const lockPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.lock");
 const lastSpeechPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
@@ -23,7 +33,12 @@ async function main() {
       return;
     }
 
-    const state = readJson(statePath);
+    const { state } = await ensureModerationStateStore({
+      canonicalPath: statePath,
+      workingPath: stateWorkingPath,
+      legacyJsonPath: stateWorkingPath,
+      templatePath: stateTemplatePath,
+    });
     const canonicalState = ensureObject(state.canonical_state);
     const runtime = ensureObject(state.moderation_runtime);
     const sleepCycle = updateSleepCycle(runtime, now);
@@ -167,7 +182,11 @@ async function main() {
     );
 
     state.moderation_runtime = runtime;
-    writeJson(statePath, state);
+    await saveModerationState(statePath, state);
+    await materializeModerationStateWorkingView({
+      state,
+      workingPath: stateWorkingPath,
+    });
 
     const strongestShifts = touchedVectors
       .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))

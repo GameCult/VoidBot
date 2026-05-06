@@ -10,7 +10,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
 $envFile = Join-Path $repoRoot ".env"
 $stateTemplatePath = Join-Path $repoRoot "config\moderation-agent-state-template.json"
-$stateFilePath = Join-Path $repoRoot ".voidbot\private\moderation-agent-state.json"
+$stateFilePath = Join-Path $repoRoot ".voidbot\private\moderation-agent-state.msgpack"
+$stateWorkingPath = Join-Path $repoRoot ".voidbot\private\moderation-agent-state.json"
 $statusDir = Join-Path $repoRoot ".voidbot\status"
 $logDir = Join-Path $repoRoot ".voidbot\logs"
 $statusPath = Join-Path $statusDir "moderation-rumination.json"
@@ -20,6 +21,7 @@ $lastMessagePath = Join-Path $statusDir "moderation-rumination-last-message.txt"
 $lockPath = Join-Path $statusDir "moderation-rumination.lock"
 $mcpServerPath = Join-Path $repoRoot "apps\worker\dist\mcp-server.js"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
+$stateStoreScriptPath = Join-Path $repoRoot "scripts\moderation-state-store.mjs"
 
 function Read-DotEnv {
   param(
@@ -85,19 +87,6 @@ function Append-RunLog {
   Add-Content -Path $summaryLogPath -Value $timestamped -Encoding UTF8
 }
 
-function Ensure-ModerationState {
-  if (Test-Path $stateFilePath) {
-    return
-  }
-
-  if (-not (Test-Path $stateTemplatePath)) {
-    throw "Missing moderation state template at $stateTemplatePath"
-  }
-
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stateFilePath) | Out-Null
-  Copy-Item -Path $stateTemplatePath -Destination $stateFilePath -Force
-}
-
 function Read-JsonFile {
   param(
     [Parameter(Mandatory = $true)]
@@ -115,27 +104,6 @@ function Read-JsonFile {
   }
 
   return $raw | ConvertFrom-Json
-}
-
-function Set-ModerationCursor {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string] $Path,
-    [AllowNull()] $Cursor
-  )
-
-  $state = Read-JsonFile -Path $Path
-
-  if ($null -eq $state) {
-    return
-  }
-
-  if ($null -eq $state.moderation_runtime) {
-    $state | Add-Member -NotePropertyName moderation_runtime -NotePropertyValue ([pscustomobject]@{}) -Force
-  }
-
-  $state.moderation_runtime.cursor = $Cursor
-  Write-JsonFile -Path $Path -Data $state
 }
 
 function Split-CommandArgs {
@@ -215,6 +183,25 @@ function Invoke-CodexExec {
   }
 }
 
+function Invoke-NodeJson {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]] $Arguments
+  )
+
+  $output = & node @Arguments
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Node helper failed: node $($Arguments -join ' ')"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($output)) {
+    return $null
+  }
+
+  return $output | ConvertFrom-Json
+}
+
 if (Test-Path $lockPath) {
   $lock = Get-Content -Path $lockPath -Raw | ConvertFrom-Json
   $startedAt = $null
@@ -264,7 +251,6 @@ $codexExecArgs = if ($envValues.ContainsKey("CODEX_EXEC_ARGS")) {
   @()
 }
 
-Ensure-ModerationState
 New-Item -ItemType Directory -Force -Path $statusDir, $logDir | Out-Null
 
 if (-not (Test-Path $mcpServerPath)) {
@@ -272,7 +258,8 @@ if (-not (Test-Path $mcpServerPath)) {
 }
 
 $scriptPreflight = @(
-  $recentHistoryScriptPath
+  $recentHistoryScriptPath,
+  $stateStoreScriptPath
 )
 
 foreach ($requiredPath in $scriptPreflight) {
@@ -281,12 +268,15 @@ foreach ($requiredPath in $scriptPreflight) {
   }
 }
 
-$preRunState = Read-JsonFile -Path $stateFilePath
-$priorCursor = if ($null -ne $preRunState -and $null -ne $preRunState.moderation_runtime) {
-  $preRunState.moderation_runtime.cursor
-} else {
-  $null
-}
+$stateEnsureResult = Invoke-NodeJson -Arguments @(
+  $stateStoreScriptPath,
+  "ensure",
+  "--canonical", $stateFilePath,
+  "--working", $stateWorkingPath,
+  "--legacy", $stateWorkingPath,
+  "--template", $stateTemplatePath
+)
+$priorCursor = $stateEnsureResult.cursor
 
 $historyArgs = @($recentHistoryScriptPath)
 if ($null -ne $priorCursor -and -not [string]::IsNullOrWhiteSpace($priorCursor.lastReviewedTimestamp)) {
@@ -418,7 +408,31 @@ $finishedAtUtc = [DateTime]::UtcNow
 $stateUpdated = $false
 
 if ($exitCode -eq 0) {
-  Set-ModerationCursor -Path $stateFilePath -Cursor $observedCursor
+  [void](Invoke-NodeJson -Arguments @(
+    $stateStoreScriptPath,
+    "commit-working-view",
+    "--canonical", $stateFilePath,
+    "--working", $stateWorkingPath
+  ))
+
+  if ($null -ne $observedCursor) {
+    $cursorArgs = @(
+      $stateStoreScriptPath,
+      "set-cursor",
+      "--canonical", $stateFilePath,
+      "--working", $stateWorkingPath
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$observedCursor.lastReviewedMessageId)) {
+      $cursorArgs += @("--message-id", [string]$observedCursor.lastReviewedMessageId)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$observedCursor.lastReviewedTimestamp)) {
+      $cursorArgs += @("--timestamp", [string]$observedCursor.lastReviewedTimestamp)
+    }
+
+    [void](Invoke-NodeJson -Arguments $cursorArgs)
+  }
 }
 
 $stateWriteAfter = (Get-Item $stateFilePath).LastWriteTimeUtc
@@ -434,6 +448,7 @@ Write-JsonFile -Path $statusPath -Data @{
   failureMessage = $failureMessage
   noPost = [bool]$NoPost
   stateFile = $stateFilePath
+  stateWorkingFile = $stateWorkingPath
   stateWriteBeforeUtc = $stateWriteBefore.ToString("o")
   stateWriteAfterUtc = $stateWriteAfter.ToString("o")
   stateUpdated = $stateUpdated

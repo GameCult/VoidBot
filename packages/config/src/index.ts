@@ -96,7 +96,7 @@ const envSchema = z.object({
   MODERATION_AGENT_STATE_PATH: z
     .string()
     .min(1)
-    .default(".voidbot/private/moderation-agent-state.json"),
+    .default(".voidbot/private/moderation-agent-state.msgpack"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
   EXCLUDED_CHANNEL_IDS: z.string().default(""),

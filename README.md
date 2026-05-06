@@ -570,9 +570,10 @@ Tracked prompt surfaces:
 - `config/moderation-agent-state-template.json`
 - `styles/void-default.md`
 
-Local writable state:
+Local moderation-state surfaces:
 
-- `.voidbot/private/moderation-agent-state.json`
+- `.voidbot/private/moderation-agent-state.msgpack`: canonical typed cache state
+- `.voidbot/private/moderation-agent-state.json`: editable working projection for unattended Codex runs
 
 Chronological recent-history helper:
 
@@ -620,7 +621,7 @@ npm run moderation:recent-repo-activity -- --hours 96 --max-commits 3
 
 That gives the loop a compact digest of recent commit motion across every tracked source repo, so Void can notice the broader experiment zoo instead of only sniffing whatever one thread happened to say out loud.
 
-The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, thought lanes, bridge syntheses, archive excursions, repo-activity sweeps, novelty checks, speaking bias, and candidate interventions. The live writable file under `.voidbot/private/` is ignored; the tracked template shows the intended shape.
+The moderator state is now Ghostlight-shaped on purpose: identity, canonical state, goals, memories, perceived overlays, and then a `moderation_runtime` block for cursors, thought lanes, bridge syntheses, archive excursions, repo-activity sweeps, novelty checks, speaking bias, and candidate interventions. The canonical store now rides through the local `vendor/cultcache-ts` submodule using schema-backed MessagePack, while the ignored JSON file under `.voidbot/private/` is only the editable working projection the unattended Codex loop sees.
 Within that runtime block, the unattended loop now keeps parallel analytic and associative thought lanes plus a bridge that tracks syntheses, topic saturation, and unresolved tensions, so one rewarding theme does not get to annex the whole mind by squatter's rights.
 The real loop now runs as a local scheduled task every 15 minutes, using `scripts/run-void-moderator-rumination.ps1` to launch `codex exec` inside the VoidBot workspace with the usual MCP/tool surface. That way it can actually think about GameCult projects, archived Discord seams, indexed repos, recent cross-repo commit motion, and lore instead of sitting inside a decorative heartbeat card pretending to be alive.
 The loop is also explicitly biased toward brief herald notes when a fresh repo sweep reveals a grounded convergence across active projects. The point is not to keep a perfect private diary; it is to occasionally say something useful about the broader swarm that no narrower worker can see.
