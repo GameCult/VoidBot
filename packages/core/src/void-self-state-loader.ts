@@ -109,6 +109,7 @@ function renderVoidSelfStateSummary(
   const unresolvedTensions = summarizeUnresolvedTensions(bridge, 3);
   const resonanceClusters = summarizeResonanceClusters(memoryResonance, 3);
   const incubatingThoughts = summarizeIncubatingThoughts(incubation, 3);
+  const openCases = summarizeOpenCases(runtime, 3);
   const candidateInterventions = getArray(runtime, "candidate_interventions")
     .map((value) => (isObject(value) ? value : undefined))
     .filter((value): value is JsonObject => Boolean(value))
@@ -164,6 +165,9 @@ function renderVoidSelfStateSummary(
       : "- Current behavioral activations: none highlighted.",
     sleepCycleSummary,
     lastRunSummary ? `- Last moderation run: ${lastRunSummary}` : "- Last moderation run: none recorded.",
+    openCases.length > 0
+      ? ["- Outstanding room obligations:", ...openCases].join("\n")
+      : "- Outstanding room obligations: none recorded.",
     semanticMemories.length > 0
       ? ["- Recent semantic memories:", ...semanticMemories].join("\n")
       : "- Recent semantic memories: none recorded.",
@@ -232,6 +236,34 @@ function renderTransientRoomLog(options: LoadVoidSelfStateOptions): string {
     `- Current room: guild=${guildName}; channel=${channelName}`,
     ...lines,
   ].join("\n");
+}
+
+function summarizeOpenCases(runtime: JsonObject | undefined, limit: number): string[] {
+  const terminalStatuses = new Set(["answered", "resolved", "closed", "retired", "dropped"]);
+
+  return getArray(runtime, "open_cases")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .filter((openCase) => {
+      const status = readString(openCase, "status");
+      return !status || !terminalStatuses.has(status);
+    })
+    .slice(-limit)
+    .reverse()
+    .map((openCase) => {
+      const summary =
+        readString(openCase, "summary") ??
+        readString(openCase, "question") ??
+        "unlabeled room obligation";
+      const authorName = readString(openCase, "authorName");
+      const status = readString(openCase, "status");
+      const whyItMatters = readString(openCase, "whyItMatters");
+      const tags = [status, authorName ? `from ${authorName}` : undefined].filter(
+        (value): value is string => Boolean(value),
+      );
+
+      return `- ${summary}${tags.length > 0 ? ` [${tags.join("; ")}]` : ""}${whyItMatters ? ` - ${whyItMatters}` : ""}`;
+    });
 }
 
 function summarizeThoughtLane(lane: JsonObject | undefined, limit: number): string[] {

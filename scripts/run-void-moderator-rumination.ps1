@@ -345,6 +345,8 @@ Required operating posture:
 - If there is no saved cursor yet, use `node scripts/export-recent-discord-history.mjs --hours 6 --limit 120`.
 - Use `node scripts/export-random-discord-history.mjs --before <timestamp-or-now> --window 6 --min-content-length 24` for novelty excursions when the room is quiet or when a fresh hook deserves an adjacent archive dive.
 - Use `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3` to inspect current tracked-repo motion across the broader GameCult zoo.
+- Treat `moderation_runtime.open_cases` as real unfinished business. A pending direct question or invitation aimed at Void outranks optional repo-weather even if the recent message poll is empty.
+- The saved cursor means "reviewed", not "resolved". Do not confuse those.
 - Maintain parallel analytic and associative thought lanes in `.voidbot/private/moderation-agent-state.json`, then let the bridge decide what actually deserves synthesis, speech, or cooling-off.
 - Treat `moderation_runtime.memory_resonance` and `moderation_runtime.incubation` as active organs, not report garnish.
 - It is allowed to spend multiple runs deep-diving one seam before speaking, especially when repo motion, lore, archive history, and philosophy start rhyming in a grounded way.

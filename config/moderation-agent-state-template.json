@@ -466,7 +466,28 @@
       "lastReviewedMessageId": null,
       "lastReviewedTimestamp": null
     },
-    "open_cases": [],
+    "open_cases": [
+      {
+        "caseId": "open-case-example",
+        "kind": "direct_room_obligation",
+        "status": "pending_reply",
+        "priority": 0.78,
+        "openedAt": null,
+        "lastTouchedAt": null,
+        "channelId": null,
+        "replyToMessageId": null,
+        "sourceMessageId": null,
+        "sourceTimestamp": null,
+        "authorId": null,
+        "authorName": null,
+        "summary": "short note about what the room is currently owed",
+        "question": "the direct ask, request, or invitation that is still waiting on Void",
+        "whyItMatters": "why this is a live obligation rather than background scenery",
+        "blocksOptionalHeralding": true,
+        "resolutionSummary": null,
+        "resolvedAt": null
+      }
+    ],
     "watch_patterns": [],
     "rumination_seeds": [
       "good-faith argumentation",
