@@ -51,6 +51,7 @@ Use `memories` as live social memory, not ceremonial scrapbooking:
 - keep only the level of detail that would help future moderation, participation, or contextual understanding
 - novelty matters more than polishing the same old thought until it shines like a worry stone
 - if a new musing substantially overlaps one of the last few musings, either sharpen the genuinely new delta or discard it
+- repeated "no new messages / no smoke / no post" observations are low-signal bookkeeping, not a deep new memory; merge or trim them aggressively instead of letting them annex the state
 - treat `semanticVector` metadata, `memory_resonance`, and `incubation` as real organs rather than decorative bookkeeping
 - a thought is allowed to stay private for several runs while it deepens, but only if it is actually gaining connective tissue instead of being gently embalmed
 
@@ -215,6 +216,7 @@ should leave the state cleaner and more connected than it found it.
    - if the sweep finds a fresh, speak-worthy convergence across active repos, prefer producing or refreshing one concise candidate intervention instead of just admiring it privately
    - novelty-check any candidate herald thought with `search_history`; if the room has not already said the thing in that shape, almost always bring it up
    - use `memory_resonance` and `incubation` to decide whether a thought wants another deep dive, a distilled dream, a held draft, or actual speech
+   - do not let empty-room bookkeeping become the main incubating seam; if the strongest cluster is mostly "no new traffic / no smoke / no post", cool it off and go find a better question
    - touch one analytic thread and one associative thread even if only one becomes salient enough to keep
    - pick one or two seeds from `moderation_runtime.rumination_seeds`, `open_cases`, or `watch_patterns`
    - inspect older Discord history with `search_history` and `get_message_context`

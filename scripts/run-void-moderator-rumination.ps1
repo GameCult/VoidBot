@@ -22,6 +22,7 @@ $lockPath = Join-Path $statusDir "moderation-rumination.lock"
 $mcpServerPath = Join-Path $repoRoot "apps\worker\dist\mcp-server.js"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $stateStoreScriptPath = Join-Path $repoRoot "scripts\moderation-state-store.mjs"
+$startedAtUtc = [DateTime]::UtcNow
 
 function Read-DotEnv {
   param(
@@ -202,6 +203,28 @@ function Invoke-NodeJson {
   return $output | ConvertFrom-Json
 }
 
+trap {
+  $finishedAtUtc = [DateTime]::UtcNow
+  $failureMessage = $_.Exception.Message
+
+  Write-JsonFile -Path $statusPath -Data @{
+    status = "failed"
+    startedAt = $startedAtUtc.ToString("o")
+    finishedAt = $finishedAtUtc.ToString("o")
+    durationSeconds = [Math]::Round(($finishedAtUtc - $startedAtUtc).TotalSeconds, 2)
+    failureMessage = $failureMessage
+    noPost = [bool]$NoPost
+    repoRoot = $repoRoot
+    stateFile = $stateFilePath
+    stateWorkingFile = $stateWorkingPath
+    tracePath = $tracePath
+    lastMessagePath = $lastMessagePath
+  }
+
+  Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
+  throw
+}
+
 if (Test-Path $lockPath) {
   $lock = Get-Content -Path $lockPath -Raw | ConvertFrom-Json
   $startedAt = $null
@@ -227,8 +250,6 @@ if (Test-Path $lockPath) {
     }
   }
 }
-
-$startedAtUtc = [DateTime]::UtcNow
 $envValues = Read-DotEnv -Path $envFile
 $codexExecutable = if ($envValues.ContainsKey("CODEX_EXECUTABLE") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_EXECUTABLE"])) {
   $envValues["CODEX_EXECUTABLE"]

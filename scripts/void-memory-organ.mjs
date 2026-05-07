@@ -9,6 +9,10 @@ const DEFAULT_VECTOR_DIMENSIONS = 96;
 const MAX_EDGE_COUNT = 24;
 const MAX_CLUSTER_COUNT = 8;
 const MAX_INCUBATING_THOUGHTS = 8;
+const MAX_RECENT_EPISODIC_RECORDS = 10;
+const MAX_RECENT_QUIET_EPISODIC_RECORDS = 2;
+const MAX_RECENT_ANALYTIC_THREADS = 6;
+const MAX_RECENT_QUIET_ANALYTIC_THREADS = 1;
 const EDGE_SIMILARITY_THRESHOLD = 0.56;
 const CLUSTER_SIMILARITY_THRESHOLD = 0.64;
 const stopwords = new Set([
@@ -35,6 +39,7 @@ const stopwords = new Set([
   "can",
   "current",
   "did",
+  "discord",
   "do",
   "does",
   "doing",
@@ -63,6 +68,8 @@ const stopwords = new Set([
   "made",
   "make",
   "means",
+  "message",
+  "messages",
   "more",
   "most",
   "new",
@@ -72,17 +79,20 @@ const stopwords = new Set([
   "of",
   "on",
   "one",
+  "owner",
   "or",
   "other",
   "our",
   "out",
   "over",
   "own",
+  "post",
   "posted",
   "quiet",
   "recent",
   "run",
   "same",
+  "saved",
   "seam",
   "should",
   "small",
@@ -98,6 +108,7 @@ const stopwords = new Set([
   "thing",
   "this",
   "thought",
+  "traffic",
   "through",
   "to",
   "too",
@@ -120,6 +131,7 @@ const stopwords = new Set([
   "would",
   "yet",
   "you",
+  "smoke",
 ]);
 
 export async function reconcileSemanticMemoryState({
@@ -196,7 +208,10 @@ export async function reconcileSemanticMemoryState({
 function collectMemoryRecords({ memories, runtime }) {
   const records = [];
 
-  pushArrayRecords(records, ensureArray(memories.episodic).slice(-10), "episodic", (entry) => ({
+  pushArrayRecords(records, selectRecentRecords(ensureArray(memories.episodic), {
+    limit: MAX_RECENT_EPISODIC_RECORDS,
+    quietLimit: MAX_RECENT_QUIET_EPISODIC_RECORDS,
+  }), "episodic", (entry) => ({
     text: readString(entry, "summary"),
     label: readString(entry, "summary") ?? "episodic memory",
     timestamp: readString(entry, "timestamp"),
@@ -230,7 +245,10 @@ function collectMemoryRecords({ memories, runtime }) {
   }));
   pushArrayRecords(
     records,
-    ensureArray(ensureObject(runtime.thought_lanes).analytic?.active_threads).slice(-6),
+    selectRecentRecords(ensureArray(ensureObject(runtime.thought_lanes).analytic?.active_threads), {
+      limit: MAX_RECENT_ANALYTIC_THREADS,
+      quietLimit: MAX_RECENT_QUIET_ANALYTIC_THREADS,
+    }),
     "analytic_thread",
     (entry) => ({
       text: [readString(entry, "topic"), readString(entry, "claim"), readString(entry, "counterweight")]
@@ -287,6 +305,7 @@ function pushArrayRecords(target, entries, kind, toRecord) {
       text,
       label: record.label ?? kind,
       timestamp: record.timestamp ?? null,
+      lowSignalQuietRoom: isLowSignalQuietRoomText(text),
     });
   }
 }
@@ -326,6 +345,9 @@ function buildAssociationEdges(records) {
     for (let rightIndex = leftIndex + 1; rightIndex < records.length; rightIndex += 1) {
       const left = records[leftIndex];
       const right = records[rightIndex];
+      if (left.lowSignalQuietRoom && right.lowSignalQuietRoom) {
+        continue;
+      }
       const threshold = edgeThresholdForKinds(left.kind, right.kind);
       const similarity = cosineSimilarity(
         left.entry.semanticVector.values,
@@ -413,6 +435,8 @@ function buildClusters(records, edges) {
     if (sourceKinds.length < 2) {
       continue;
     }
+    const quietSignalCount = items.filter((item) => item.lowSignalQuietRoom).length;
+    const quietSignalRatio = quietSignalCount / items.length;
     const resonance = averagePairwiseSimilarity(items);
     const keywords = topKeywords(items.map((item) => item.text).join(" "), 4);
     const label = keywords.length > 0 ? keywords.join(" / ") : `${sourceKinds.join(" + ")} seam`;
@@ -426,6 +450,7 @@ function buildClusters(records, edges) {
       memoryIds: items.map((item) => item.memoryId),
       sourceKinds,
       topKeywords: keywords,
+      quietSignalRatio: round3(quietSignalRatio),
       lastStrengthenedAt: new Date().toISOString(),
     });
   }
@@ -461,21 +486,24 @@ function reconcileIncubation({ previous, clusters, runtime, now }) {
         overlapRatio(ensureStringArray(thought.sourceMemoryIds), cluster.memoryIds) >= 0.45,
     );
     const sourceDiversity = Math.min(1, cluster.sourceKinds.length / 4);
+    const quietSignalRatio = readNumber(cluster, "quietSignalRatio") ?? 0;
     const priorMaturation = readNumber(previousThought, "maturation") ?? 0.32;
     const deepDiveCount = (readNumber(previousThought, "deepDiveCount") ?? 0) + 1;
     const maturation = clamp(
-      priorMaturation * 0.56 + cluster.resonance * 0.26 + sourceDiversity * 0.18,
+      priorMaturation * 0.56 + cluster.resonance * 0.26 + sourceDiversity * 0.18 - quietSignalRatio * 0.24,
       0,
       1,
     );
-    const novelty = clamp(0.35 + sourceDiversity * 0.28 + quietNovelty * 0.42, 0, 1);
+    const novelty = clamp(0.35 + sourceDiversity * 0.28 + quietNovelty * 0.42 - quietSignalRatio * 0.18, 0, 1);
     const desireToSpeak = clamp(
-      cluster.resonance * 0.38 + maturation * 0.34 + novelty * 0.22 + needToSpeak * 0.14 - recentSpeechDamping * 0.22,
+      cluster.resonance * 0.38 + maturation * 0.34 + novelty * 0.22 + needToSpeak * 0.14 - recentSpeechDamping * 0.22 - quietSignalRatio * 0.26,
       0,
       1,
     );
     const status =
-      desireToSpeak >= 0.72 || maturation >= 0.78
+      quietSignalRatio >= 0.55 && desireToSpeak < 0.68
+        ? "cooling"
+        : desireToSpeak >= 0.72 || maturation >= 0.78
         ? "ripe"
         : maturation <= 0.28 && recentSpeechDamping >= 0.55
           ? "cooling"
@@ -488,6 +516,7 @@ function reconcileIncubation({ previous, clusters, runtime, now }) {
       sourceMemoryIds: cluster.memoryIds,
       sourceKinds: cluster.sourceKinds,
       resonance: cluster.resonance,
+      quietSignalRatio: round3(quietSignalRatio),
       novelty: round3(novelty),
       maturation: round3(maturation),
       desireToSpeak: round3(desireToSpeak),
@@ -591,6 +620,12 @@ function buildAttractionLine(cluster) {
 }
 
 function buildHoldingLine({ cluster, status, recentSpeechDamping }) {
+  const quietSignalRatio = readNumber(cluster, "quietSignalRatio") ?? 0;
+
+  if (quietSignalRatio >= 0.55) {
+    return "This seam is mostly empty-room bookkeeping; keep at most a trace of it and go find a better question.";
+  }
+
   if (status === "ripe") {
     return "This seam has enough connective tissue that silence should be a choice, not a reflex.";
   }
@@ -783,6 +818,70 @@ function normalizeText(value) {
     return "";
   }
   return value.replace(/\s+/g, " ").trim();
+}
+
+function selectRecentRecords(entries, { limit, quietLimit }) {
+  const recent = ensureArray(entries).slice(-Math.max(limit * 3, limit));
+  const quiet = [];
+  const active = [];
+
+  for (let index = recent.length - 1; index >= 0; index -= 1) {
+    const entry = recent[index];
+    if (!isObject(entry)) {
+      continue;
+    }
+
+    const text = normalizeText([
+      readString(entry, "summary"),
+      readString(entry, "claim"),
+      readString(entry, "topic"),
+      readString(entry, "counterweight"),
+    ].filter(Boolean).join(" | "));
+
+    if (isLowSignalQuietRoomText(text)) {
+      if (quiet.length < quietLimit) {
+        quiet.unshift(entry);
+      }
+      continue;
+    }
+
+    if (active.length < limit - quietLimit) {
+      active.unshift(entry);
+    }
+  }
+
+  return [...active, ...quiet].slice(-limit);
+}
+
+function isLowSignalQuietRoomText(text) {
+  const normalized = normalizeText(text).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const quietSignals = [
+    "no new discord",
+    "no fresh discord",
+    "no new messages",
+    "no fresh live traffic",
+    "no live moderation",
+    "no moderation smoke",
+    "no owner escalation",
+    "room was empty",
+    "room is idle",
+    "there was no live moderation pressure",
+    "nothing got posted",
+    "no discord post",
+  ];
+
+  let matches = 0;
+  for (const signal of quietSignals) {
+    if (normalized.includes(signal)) {
+      matches += 1;
+    }
+  }
+
+  return matches >= 2;
 }
 
 function overlapRatio(left, right) {
