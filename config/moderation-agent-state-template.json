@@ -550,6 +550,36 @@
           "lastUpdatedAt": null
         }
       ],
+      "refractory_topics": [
+        {
+          "topic": "theme that needs cooling",
+          "penalty": 0.22,
+          "coolsUntil": null,
+          "reason": "why this seam should not keep winning just because it already won",
+          "lastTriggeredAt": null
+        }
+      ],
+      "source_coverage": {
+        "lastUpdatedAt": null,
+        "repos": [
+          {
+            "name": "repo-name",
+            "count": 2
+          }
+        ],
+        "archiveYears": [
+          {
+            "year": "2021",
+            "count": 1
+          }
+        ],
+        "channels": [
+          {
+            "channelId": "discord-channel-id",
+            "count": 1
+          }
+        ]
+      },
       "unresolved_tensions": [
         {
           "topic": "question worth carrying forward",
@@ -583,6 +613,11 @@
           "memoryIds": [],
           "sourceKinds": [],
           "topKeywords": [],
+          "repoNames": [],
+          "archiveYears": [],
+          "channelIds": [],
+          "evidenceRefs": [],
+          "evidenceDiversity": 0.46,
           "lastStrengthenedAt": null
         }
       ]
@@ -599,9 +634,18 @@
           "sourceKinds": [],
           "resonance": 0.73,
           "novelty": 0.61,
+          "noveltyToSelf": 0.52,
+          "noveltyToRoom": 0.68,
           "maturation": 0.58,
           "desireToSpeak": 0.54,
           "deepDiveCount": 3,
+          "supportCount": 4,
+          "evidenceDiversity": 0.44,
+          "explorationBonus": 0.31,
+          "saturationScore": 0.22,
+          "recentMatchCount": 1,
+          "refractoryPenalty": 0.0,
+          "priorityScore": 0.57,
           "status": "incubating",
           "latentQuestion": "What is this seam actually trying to become if it survives another pass?",
           "whyItPulls": "Why this thought keeps returning instead of dying quietly.",

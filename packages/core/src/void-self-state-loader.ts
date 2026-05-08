@@ -106,6 +106,8 @@ function renderVoidSelfStateSummary(
   const associativeThreads = summarizeThoughtLane(getObject(thoughtLanes, "associative"), 3);
   const bridgeSyntheses = summarizeBridgeSyntheses(bridge, 3);
   const topicSaturation = summarizeTopicSaturation(bridge, 3);
+  const refractoryTopics = summarizeRefractoryTopics(bridge, 3);
+  const sourceCoverage = summarizeSourceCoverage(bridge);
   const unresolvedTensions = summarizeUnresolvedTensions(bridge, 3);
   const resonanceClusters = summarizeResonanceClusters(memoryResonance, 3);
   const incubatingThoughts = summarizeIncubatingThoughts(incubation, 3);
@@ -189,6 +191,10 @@ function renderVoidSelfStateSummary(
     topicSaturation.length > 0
       ? ["- Topic saturation warnings:", ...topicSaturation].join("\n")
       : "- Topic saturation warnings: none recorded.",
+    refractoryTopics.length > 0
+      ? ["- Refractory topics:", ...refractoryTopics].join("\n")
+      : "- Refractory topics: none recorded.",
+    sourceCoverage ? `- Source coverage pressure: ${sourceCoverage}` : "- Source coverage pressure: none recorded.",
     unresolvedTensions.length > 0
       ? ["- Unresolved tensions:", ...unresolvedTensions].join("\n")
       : "- Unresolved tensions: none recorded.",
@@ -336,10 +342,16 @@ function summarizeIncubatingThoughts(incubation: JsonObject | undefined, limit: 
       const status = readString(thought, "status");
       const maturation = readNumber(thought, "maturation");
       const desireToSpeak = readNumber(thought, "desireToSpeak");
+      const noveltyToSelf = readNumber(thought, "noveltyToSelf");
+      const noveltyToRoom = readNumber(thought, "noveltyToRoom");
+      const saturationScore = readNumber(thought, "saturationScore");
       const metrics = [
         status,
         maturation !== undefined ? `maturation=${maturation.toFixed(2)}` : undefined,
         desireToSpeak !== undefined ? `speak=${desireToSpeak.toFixed(2)}` : undefined,
+        noveltyToSelf !== undefined ? `self=${noveltyToSelf.toFixed(2)}` : undefined,
+        noveltyToRoom !== undefined ? `room=${noveltyToRoom.toFixed(2)}` : undefined,
+        saturationScore !== undefined ? `sat=${saturationScore.toFixed(2)}` : undefined,
       ].filter((value): value is string => Boolean(value));
       return `- ${topic}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}: ${summary}`;
     });
@@ -377,6 +389,52 @@ function summarizeUnresolvedTensions(bridge: JsonObject | undefined, limit: numb
       const summary = readString(tension, "summary") ?? "(no summary)";
       return `- ${topic}: ${summary}`;
     });
+}
+
+function summarizeRefractoryTopics(bridge: JsonObject | undefined, limit: number): string[] {
+  return getArray(bridge, "refractory_topics")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(0, limit)
+    .map((entry) => {
+      const topic = readString(entry, "topic") ?? "untitled";
+      const penalty = readNumber(entry, "penalty");
+      const coolsUntil = readString(entry, "coolsUntil");
+      const reason = readString(entry, "reason");
+      const metrics = [
+        penalty !== undefined ? `penalty=${penalty.toFixed(2)}` : undefined,
+        coolsUntil ? `until ${coolsUntil}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${topic}${metrics.length > 0 ? ` (${metrics.join(", ")})` : ""}${reason ? ` - ${reason}` : ""}`;
+    });
+}
+
+function summarizeSourceCoverage(bridge: JsonObject | undefined): string | undefined {
+  const sourceCoverage = getObject(bridge, "source_coverage");
+  if (!sourceCoverage) {
+    return undefined;
+  }
+
+  const repos = getArray(sourceCoverage, "repos")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(0, 3)
+    .map((entry) => `${readString(entry, "name") ?? "repo"}:${readNumber(entry, "count") ?? 0}`);
+  const years = getArray(sourceCoverage, "archiveYears")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .slice(0, 2)
+    .map((entry) => `${readString(entry, "year") ?? "year"}:${readNumber(entry, "count") ?? 0}`);
+
+  const parts = [];
+  if (repos.length > 0) {
+    parts.push(`recent repos ${repos.join(", ")}`);
+  }
+  if (years.length > 0) {
+    parts.push(`archive years ${years.join(", ")}`);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : undefined;
 }
 
 function summarizeCurrentActivations(

@@ -15,6 +15,10 @@ const MAX_RECENT_ANALYTIC_THREADS = 6;
 const MAX_RECENT_QUIET_ANALYTIC_THREADS = 1;
 const EDGE_SIMILARITY_THRESHOLD = 0.56;
 const CLUSTER_SIMILARITY_THRESHOLD = 0.64;
+const TOPIC_MATCH_THRESHOLD = 0.42;
+const REFRACTORY_MATCH_THRESHOLD = 0.48;
+const MAX_TOPIC_SATURATION_COUNT = 6;
+const MAX_REFRACTORY_TOPIC_COUNT = 6;
 const stopwords = new Set([
   "a",
   "about",
@@ -143,6 +147,8 @@ export async function reconcileSemanticMemoryState({
   const memories = ensureObject(state.memories);
   const sleepCycle = ensureObject(runtime.sleep_cycle);
   const records = collectMemoryRecords({ state, memories, runtime });
+  const previousBridge = ensureObject(runtime.bridge);
+  const sourceCoverage = buildSourceCoverage({ runtime, now });
   const embedder = createEmbedder({ repoRootPath });
   let embeddedCount = 0;
 
@@ -160,8 +166,16 @@ export async function reconcileSemanticMemoryState({
   const previousIncubation = ensureObject(runtime.incubation);
   const incubation = reconcileIncubation({
     previous: previousIncubation,
+    bridge: previousBridge,
     clusters,
     runtime,
+    sourceCoverage,
+    now,
+  });
+  runtime.bridge = reconcileBridgeState({
+    previous: previousBridge,
+    activeThoughts: incubation.active_thoughts,
+    sourceCoverage,
     now,
   });
 
@@ -198,6 +212,7 @@ export async function reconcileSemanticMemoryState({
     edgeCount: edges.length,
     clusterCount: clusters.length,
     incubatingThoughtCount: incubation.active_thoughts.length,
+    sourceCoverage,
     dreamCreated: dreamResult.created,
     dreamTheme: dreamResult.theme,
     embeddingBackend: embedder.backend,
@@ -215,6 +230,8 @@ function collectMemoryRecords({ memories, runtime }) {
     text: readString(entry, "summary"),
     label: readString(entry, "summary") ?? "episodic memory",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "episodic" }),
   }));
   pushArrayRecords(records, ensureArray(memories.semantic).slice(-24), "semantic", (entry) => ({
     text: [readString(entry, "subjectLabel"), readString(entry, "kind"), readString(entry, "summary")]
@@ -222,26 +239,36 @@ function collectMemoryRecords({ memories, runtime }) {
       .join(" | "),
     label: readString(entry, "subjectLabel") ?? readString(entry, "kind") ?? "semantic memory",
     timestamp: readString(entry, "lastObservedAt"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "semantic" }),
   }));
   pushArrayRecords(records, ensureArray(memories.musings).slice(-12), "musing", (entry) => ({
     text: [readString(entry, "topic"), readString(entry, "summary")].filter(Boolean).join(" | "),
     label: readString(entry, "topic") ?? "musing",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "musing" }),
   }));
   pushArrayRecords(records, ensureArray(memories.dreams).slice(-10), "dream", (entry) => ({
     text: [readString(entry, "theme"), readString(entry, "summary")].filter(Boolean).join(" | "),
     label: readString(entry, "theme") ?? "dream",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "dream" }),
   }));
   pushArrayRecords(records, ensureArray(runtime.recent_archive_excursions).slice(-8), "archive_excursion", (entry) => ({
     text: [readString(entry, "topicHint"), readString(entry, "whyItWasFresh")].filter(Boolean).join(" | "),
     label: readString(entry, "topicHint") ?? "archive excursion",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "archive_excursion" }),
   }));
   pushArrayRecords(records, ensureArray(runtime.recent_repo_activity_sweeps).slice(-8), "repo_sweep", (entry) => ({
     text: [readString(entry, "summary"), readString(entry, "whyItMattered")].filter(Boolean).join(" | "),
     label: readString(entry, "summary") ?? "repo sweep",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "repo_sweep" }),
   }));
   pushArrayRecords(
     records,
@@ -256,6 +283,8 @@ function collectMemoryRecords({ memories, runtime }) {
         .join(" | "),
       label: readString(entry, "topic") ?? "analytic thread",
       timestamp: readString(entry, "lastTouchedAt"),
+      sourceRefs: gatherSourceRefs(entry),
+      sourceMeta: gatherSourceMeta({ entry, kind: "analytic_thread" }),
     }),
   );
   pushArrayRecords(
@@ -268,17 +297,23 @@ function collectMemoryRecords({ memories, runtime }) {
         .join(" | "),
       label: readString(entry, "topic") ?? "associative thread",
       timestamp: readString(entry, "lastTouchedAt"),
+      sourceRefs: gatherSourceRefs(entry),
+      sourceMeta: gatherSourceMeta({ entry, kind: "associative_thread" }),
     }),
   );
   pushArrayRecords(records, ensureArray(ensureObject(runtime.bridge).recent_syntheses).slice(-8), "bridge_synthesis", (entry) => ({
     text: [readString(entry, "summary"), ...ensureStringArray(entry.dominantTopics)].filter(Boolean).join(" | "),
     label: readString(entry, "summary") ?? "bridge synthesis",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "bridge_synthesis" }),
   }));
   pushArrayRecords(records, ensureArray(runtime.candidate_interventions).slice(-8), "candidate_intervention", (entry) => ({
     text: [readString(entry, "summary"), readString(entry, "draft")].filter(Boolean).join(" | "),
     label: readString(entry, "summary") ?? "candidate intervention",
     timestamp: readString(entry, "timestamp"),
+    sourceRefs: gatherSourceRefs(entry),
+    sourceMeta: gatherSourceMeta({ entry, kind: "candidate_intervention" }),
   }));
 
   return records;
@@ -305,6 +340,8 @@ function pushArrayRecords(target, entries, kind, toRecord) {
       text,
       label: record.label ?? kind,
       timestamp: record.timestamp ?? null,
+      sourceRefs: ensureStringArray(record.sourceRefs),
+      sourceMeta: isObject(record.sourceMeta) ? record.sourceMeta : {},
       lowSignalQuietRoom: isLowSignalQuietRoomText(text),
     });
   }
@@ -439,6 +476,31 @@ function buildClusters(records, edges) {
     const quietSignalRatio = quietSignalCount / items.length;
     const resonance = averagePairwiseSimilarity(items);
     const keywords = topKeywords(items.map((item) => item.text).join(" "), 4);
+    const repoNames = [...new Set(items.flatMap((item) => ensureStringArray(item.sourceMeta.repoNames)))];
+    const archiveYears = [
+      ...new Set(
+        items
+          .map((item) => readString(item.sourceMeta, "archiveYear"))
+          .filter((value) => typeof value === "string" && value.length > 0),
+      ),
+    ];
+    const channelIds = [
+      ...new Set(
+        items
+          .map((item) => readString(item.sourceMeta, "channelId"))
+          .filter((value) => typeof value === "string" && value.length > 0),
+      ),
+    ];
+    const evidenceRefs = [...new Set(items.flatMap((item) => ensureStringArray(item.sourceRefs)))];
+    const evidenceDiversity = clamp(
+      sourceKinds.length * 0.18 +
+        repoNames.length * 0.17 +
+        archiveYears.length * 0.11 +
+        channelIds.length * 0.08 +
+        Math.min(1, evidenceRefs.length / 8) * 0.16,
+      0,
+      1,
+    );
     const label = keywords.length > 0 ? keywords.join(" / ") : `${sourceKinds.join(" + ")} seam`;
     const summary = `Recurring seam across ${sourceKinds.join(", ")}${keywords.length > 0 ? ` around ${keywords.join(", ")}` : ""}.`;
 
@@ -450,6 +512,11 @@ function buildClusters(records, edges) {
       memoryIds: items.map((item) => item.memoryId),
       sourceKinds,
       topKeywords: keywords,
+      repoNames,
+      archiveYears,
+      channelIds,
+      evidenceRefs,
+      evidenceDiversity: round3(evidenceDiversity),
       quietSignalRatio: round3(quietSignalRatio),
       lastStrengthenedAt: new Date().toISOString(),
     });
@@ -472,14 +539,17 @@ function edgeThresholdForKinds(leftKind, rightKind) {
   return EDGE_SIMILARITY_THRESHOLD;
 }
 
-function reconcileIncubation({ previous, clusters, runtime, now }) {
+function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCoverage, now }) {
+  bridge = ensureObject(bridge);
+  sourceCoverage = ensureObject(sourceCoverage);
   const priorThoughts = ensureArray(previous.active_thoughts).filter(isObject);
   const speakingBias = ensureObject(runtime.speaking_bias);
+  const recentNoveltyChecks = ensureArray(runtime.recent_novelty_checks).filter(isObject);
   const recentSpeechDamping = readNumber(speakingBias, "recentSpeechDamping") ?? 0;
   const quietNovelty = readNumber(speakingBias, "noveltyPressure") ?? 0.4;
   const needToSpeak = readNumber(speakingBias, "needToSpeak") ?? 0.4;
 
-  const active_thoughts = clusters.slice(0, MAX_INCUBATING_THOUGHTS).map((cluster) => {
+  const activeThoughtCandidates = clusters.map((cluster) => {
     const previousThought = priorThoughts.find(
       (thought) =>
         readString(thought, "thoughtId") === cluster.clusterId ||
@@ -489,28 +559,99 @@ function reconcileIncubation({ previous, clusters, runtime, now }) {
     const quietSignalRatio = readNumber(cluster, "quietSignalRatio") ?? 0;
     const priorMaturation = readNumber(previousThought, "maturation") ?? 0.32;
     const deepDiveCount = (readNumber(previousThought, "deepDiveCount") ?? 0) + 1;
+    const priorSupportCount = Math.max(
+      readNumber(previousThought, "supportCount") ?? 0,
+      Math.floor((readNumber(previousThought, "deepDiveCount") ?? 0) / 4),
+    );
+    const supportCount = priorSupportCount + 1;
+    const explorationBonus = computeExplorationBonus(cluster, sourceCoverage);
+    const noveltyToSelf = computeNoveltyToSelf({
+      cluster,
+      previousThoughts: priorThoughts,
+      bridge,
+      currentThoughtId: readString(previousThought, "thoughtId"),
+    });
+    const noveltyToRoom = computeNoveltyToRoom(cluster, recentNoveltyChecks);
+    const saturationMetrics = computeSaturationMetrics({
+      cluster,
+      previousThoughts: priorThoughts,
+      bridge,
+      supportCount,
+    });
+    const refractoryPenalty = computeRefractoryPenalty(cluster, bridge, now);
+    const evidenceDiversity = readNumber(cluster, "evidenceDiversity") ?? 0.3;
     const maturation = clamp(
-      priorMaturation * 0.56 + cluster.resonance * 0.26 + sourceDiversity * 0.18 - quietSignalRatio * 0.24,
+      priorMaturation * 0.44 +
+        cluster.resonance * 0.18 +
+        sourceDiversity * 0.12 +
+        evidenceDiversity * 0.16 +
+        explorationBonus * 0.14 +
+        Math.min(1, supportCount / 10) * 0.08 +
+        noveltyToSelf * 0.08 +
+        noveltyToRoom * 0.08 -
+        saturationMetrics.score * 0.18 -
+        quietSignalRatio * 0.24 -
+        refractoryPenalty * 0.12,
       0,
       1,
     );
-    const novelty = clamp(0.35 + sourceDiversity * 0.28 + quietNovelty * 0.42 - quietSignalRatio * 0.18, 0, 1);
+    const novelty = clamp(
+      noveltyToSelf * 0.55 + noveltyToRoom * 0.45 + quietNovelty * 0.08 - quietSignalRatio * 0.1,
+      0,
+      1,
+    );
     const desireToSpeak = clamp(
-      cluster.resonance * 0.38 + maturation * 0.34 + novelty * 0.22 + needToSpeak * 0.14 - recentSpeechDamping * 0.22 - quietSignalRatio * 0.26,
+      cluster.resonance * 0.18 +
+        maturation * 0.17 +
+        noveltyToRoom * 0.16 +
+        noveltyToSelf * 0.11 +
+        evidenceDiversity * 0.1 +
+        explorationBonus * 0.11 +
+        needToSpeak * 0.13 +
+        quietNovelty * 0.08 -
+        recentSpeechDamping * 0.19 -
+        quietSignalRatio * 0.19 -
+        saturationMetrics.score * 0.21 -
+        (1 - noveltyToSelf) * 0.08 -
+        refractoryPenalty,
       0,
       1,
     );
     const status =
       quietSignalRatio >= 0.55 && desireToSpeak < 0.68
         ? "cooling"
-        : desireToSpeak >= 0.72 || maturation >= 0.78
+        : noveltyToSelf < 0.28 && saturationMetrics.score >= 0.62
+          ? "stalled"
+        : refractoryPenalty >= 0.18 && noveltyToRoom < 0.72
+          ? "refractory"
+        : supportCount >= 6 && evidenceDiversity < 0.34
+          ? "stalled"
+        : supportCount >= 3 && noveltyToSelf < 0.55
+          ? "cooling"
+        : saturationMetrics.score >= 0.56 && noveltyToSelf < 0.42
+          ? "cooling"
+        : ((desireToSpeak >= 0.74 && (noveltyToSelf >= 0.55 || noveltyToRoom >= 0.82)) &&
+            saturationMetrics.score < 0.5) ||
+          maturation >= 0.82
         ? "ripe"
         : maturation <= 0.28 && recentSpeechDamping >= 0.55
           ? "cooling"
           : "incubating";
 
+    const priorityScore = clamp(
+      desireToSpeak * 0.36 +
+        noveltyToSelf * 0.2 +
+        noveltyToRoom * 0.18 +
+        evidenceDiversity * 0.12 +
+        explorationBonus * 0.14 -
+        saturationMetrics.score * 0.14 -
+        refractoryPenalty * 0.12,
+      0,
+      1,
+    );
+
     return {
-      thoughtId: cluster.clusterId,
+      thoughtId: readString(previousThought, "thoughtId") ?? cluster.clusterId,
       topic: cluster.label,
       summary: cluster.summary,
       sourceMemoryIds: cluster.memoryIds,
@@ -518,13 +659,29 @@ function reconcileIncubation({ previous, clusters, runtime, now }) {
       resonance: cluster.resonance,
       quietSignalRatio: round3(quietSignalRatio),
       novelty: round3(novelty),
+      noveltyToSelf: round3(noveltyToSelf),
+      noveltyToRoom: round3(noveltyToRoom),
       maturation: round3(maturation),
       desireToSpeak: round3(desireToSpeak),
       deepDiveCount,
+      supportCount,
+      evidenceDiversity: round3(evidenceDiversity),
+      explorationBonus: round3(explorationBonus),
+      saturationScore: round3(saturationMetrics.score),
+      recentMatchCount: saturationMetrics.recentMatchCount,
+      refractoryPenalty: round3(refractoryPenalty),
+      priorityScore: round3(priorityScore),
       status,
       latentQuestion: buildLatentQuestion(cluster),
-      whyItPulls: buildAttractionLine(cluster),
-      holdingCloseBecause: buildHoldingLine({ cluster, status, recentSpeechDamping }),
+      whyItPulls: buildAttractionLine(cluster, { noveltyToSelf, evidenceDiversity }),
+      holdingCloseBecause: buildHoldingLine({
+        cluster,
+        status,
+        recentSpeechDamping,
+        saturationScore: saturationMetrics.score,
+        noveltyToSelf,
+        explorationBonus,
+      }),
       lastDeepenedAt: now.toISOString(),
       lastStatusChangeAt:
         previousThought && readString(previousThought, "status") === status
@@ -532,10 +689,16 @@ function reconcileIncubation({ previous, clusters, runtime, now }) {
           : now.toISOString(),
     };
   });
+  const active_thoughts = activeThoughtCandidates
+    .sort(
+      (left, right) =>
+        (readNumber(right, "priorityScore") ?? 0) - (readNumber(left, "priorityScore") ?? 0),
+    )
+    .slice(0, MAX_INCUBATING_THOUGHTS);
 
   const lastIncubationSummary =
     active_thoughts.length > 0
-      ? `Strongest incubating seam: ${active_thoughts[0].topic} (${active_thoughts[0].status}, speak=${active_thoughts[0].desireToSpeak.toFixed(2)}).`
+      ? `Strongest incubating seam: ${active_thoughts[0].topic} (${active_thoughts[0].status}, speak=${active_thoughts[0].desireToSpeak.toFixed(2)}, self=${active_thoughts[0].noveltyToSelf.toFixed(2)}, room=${active_thoughts[0].noveltyToRoom.toFixed(2)}).`
       : "No incubating thought currently has enough connective tissue to justify special treatment.";
 
   return {
@@ -611,7 +774,11 @@ function buildLatentQuestion(cluster) {
   return "What is this seam actually trying to become if it survives another pass?";
 }
 
-function buildAttractionLine(cluster) {
+function buildAttractionLine(cluster, { noveltyToSelf, evidenceDiversity }) {
+  if (noveltyToSelf >= 0.62 && evidenceDiversity >= 0.45) {
+    return "It keeps pulling because it is still finding genuinely different evidence instead of merely changing hats.";
+  }
+
   if (cluster.sourceKinds.length >= 3) {
     return `It keeps pulling because it is showing up in several different organs at once: ${cluster.sourceKinds.join(", ")}.`;
   }
@@ -619,11 +786,19 @@ function buildAttractionLine(cluster) {
   return `It keeps pulling because ${cluster.sourceKinds.join(" and ")} are rhyming instead of staying in their lanes.`;
 }
 
-function buildHoldingLine({ cluster, status, recentSpeechDamping }) {
+function buildHoldingLine({ cluster, status, recentSpeechDamping, saturationScore, noveltyToSelf, explorationBonus }) {
   const quietSignalRatio = readNumber(cluster, "quietSignalRatio") ?? 0;
 
   if (quietSignalRatio >= 0.55) {
     return "This seam is mostly empty-room bookkeeping; keep at most a trace of it and go find a better question.";
+  }
+
+  if (status === "stalled") {
+    return "This seam is repeating itself without earning enough new structure. Merge the receipts, cool it off, and go somewhere less domesticated.";
+  }
+
+  if (status === "refractory") {
+    return "This seam has been chewing the same meat too recently. Let it cool unless a live hook or a genuinely different source family forces it back open.";
   }
 
   if (status === "ripe") {
@@ -638,7 +813,413 @@ function buildHoldingLine({ cluster, status, recentSpeechDamping }) {
     return "It is still mostly one lane talking to itself.";
   }
 
+  if (saturationScore >= 0.55 && noveltyToSelf < 0.45) {
+    return "The family resemblance is getting too strong. Follow a stranger branch before you let this thought speak again.";
+  }
+
+  if (explorationBonus >= 0.45) {
+    return "This one is still drawing energy from terrain Void has not overworked yet, so another pass might genuinely change it.";
+  }
+
   return "Give it another pass so the thought has a better chance of growing teeth instead of just polish.";
+}
+
+function buildSourceCoverage({ runtime, now }) {
+  const repoCounts = new Map();
+  const channelCounts = new Map();
+  const yearCounts = new Map();
+
+  for (const sweep of ensureArray(runtime.recent_repo_activity_sweeps).filter(isObject).slice(-16)) {
+    for (const repoName of ensureStringArray(sweep.repoNames)) {
+      repoCounts.set(repoName, (repoCounts.get(repoName) ?? 0) + 1);
+    }
+  }
+
+  for (const excursion of ensureArray(runtime.recent_archive_excursions).filter(isObject).slice(-16)) {
+    const channelId = readString(excursion, "channelId");
+    if (channelId) {
+      channelCounts.set(channelId, (channelCounts.get(channelId) ?? 0) + 1);
+    }
+    const timestamp = readString(excursion, "anchorTimestamp") ?? readString(excursion, "timestamp");
+    const year = extractYear(timestamp);
+    if (year) {
+      yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
+    }
+  }
+
+  return {
+    lastUpdatedAt: now.toISOString(),
+    repos: mapCountEntries(repoCounts, "name"),
+    archiveYears: mapCountEntries(yearCounts, "year"),
+    channels: mapCountEntries(channelCounts, "channelId"),
+  };
+}
+
+function reconcileBridgeState({ previous, activeThoughts, sourceCoverage, now }) {
+  const bridge = {
+    ...previous,
+    source_coverage: sourceCoverage,
+  };
+  const previousTopicSaturation = ensureArray(previous.topic_saturation).filter(isObject);
+  const previousRefractoryTopics = ensureArray(previous.refractory_topics).filter(isObject);
+
+  const saturationEntries = activeThoughts
+    .filter((thought) => (readNumber(thought, "saturationScore") ?? 0) >= 0.42)
+    .sort(
+      (left, right) =>
+        (readNumber(right, "saturationScore") ?? 0) - (readNumber(left, "saturationScore") ?? 0),
+    )
+    .slice(0, MAX_TOPIC_SATURATION_COUNT)
+    .map((thought) => {
+      const topic = readString(thought, "topic") ?? "untitled";
+      const prior = previousTopicSaturation.find(
+        (entry) => topicSimilarity(topic, readString(entry, "topic") ?? "") >= TOPIC_MATCH_THRESHOLD,
+      );
+      return {
+        topic,
+        dominance: round3(readNumber(thought, "saturationScore") ?? 0),
+        recentMentions: readNumber(thought, "supportCount") ?? readNumber(prior, "recentMentions") ?? 1,
+        coolingAdvice: buildCoolingAdvice({ thought, sourceCoverage }),
+        lastUpdatedAt: now.toISOString(),
+      };
+    });
+
+  const refractoryTopics = activeThoughts
+    .filter((thought) => {
+      const status = readString(thought, "status");
+      return status === "refractory" || status === "stalled" || (readNumber(thought, "saturationScore") ?? 0) >= 0.62;
+    })
+    .sort(
+      (left, right) =>
+        (readNumber(right, "refractoryPenalty") ?? 0) - (readNumber(left, "refractoryPenalty") ?? 0),
+    )
+    .slice(0, MAX_REFRACTORY_TOPIC_COUNT)
+    .map((thought) => {
+      const topic = readString(thought, "topic") ?? "untitled";
+      const prior = previousRefractoryTopics.find(
+        (entry) => topicSimilarity(topic, readString(entry, "topic") ?? "") >= REFRACTORY_MATCH_THRESHOLD,
+      );
+      const penalty = round3(
+        Math.max(readNumber(thought, "refractoryPenalty") ?? 0, readNumber(prior, "penalty") ?? 0.18),
+      );
+      const hours = penalty >= 0.28 ? 4 : penalty >= 0.2 ? 3 : 2;
+      return {
+        topic,
+        penalty,
+        coolsUntil: new Date(now.getTime() + hours * 60 * 60 * 1000).toISOString(),
+        reason: buildRefractoryReason(thought),
+        lastTriggeredAt: now.toISOString(),
+      };
+    });
+
+  bridge.topic_saturation = saturationEntries;
+  bridge.refractory_topics = refractoryTopics;
+  return bridge;
+}
+
+function computeNoveltyToSelf({ cluster, previousThoughts, bridge, currentThoughtId }) {
+  let strongestMatch = 0;
+
+  for (const thought of previousThoughts) {
+    if (readString(thought, "thoughtId") === currentThoughtId) {
+      continue;
+    }
+    strongestMatch = Math.max(
+      strongestMatch,
+      compareThoughtLikeSurfaces(
+        cluster,
+        readString(thought, "topic"),
+        readString(thought, "summary"),
+        ensureStringArray(thought.sourceMemoryIds),
+      ),
+    );
+  }
+
+  for (const synthesis of ensureArray(bridge.recent_syntheses).filter(isObject).slice(-6)) {
+    strongestMatch = Math.max(
+      strongestMatch,
+      compareThoughtLikeSurfaces(
+        cluster,
+        ensureStringArray(synthesis.dominantTopics).join(" / "),
+        readString(synthesis, "summary"),
+        [],
+      ),
+    );
+  }
+
+  return clamp(1 - strongestMatch, 0, 1);
+}
+
+function computeNoveltyToRoom(cluster, recentNoveltyChecks) {
+  let bestScore = 0.64;
+
+  for (const check of recentNoveltyChecks.slice(-12)) {
+    const match = compareThoughtLikeSurfaces(
+      cluster,
+      readString(check, "topic"),
+      readString(check, "summary"),
+      ensureStringArray(check.supportingMessageIds),
+    );
+
+    if (match < TOPIC_MATCH_THRESHOLD) {
+      continue;
+    }
+
+    bestScore = mapNoveltyResultToScore(readString(check, "result"));
+    break;
+  }
+
+  return bestScore;
+}
+
+function computeSaturationMetrics({ cluster, previousThoughts, bridge, supportCount }) {
+  let recentMatchCount = 0;
+
+  for (const thought of previousThoughts) {
+    const match = compareThoughtLikeSurfaces(
+      cluster,
+      readString(thought, "topic"),
+      readString(thought, "summary"),
+      ensureStringArray(thought.sourceMemoryIds),
+    );
+    if (match >= TOPIC_MATCH_THRESHOLD) {
+      recentMatchCount += 1;
+    }
+  }
+
+  for (const synthesis of ensureArray(bridge.recent_syntheses).filter(isObject).slice(-5)) {
+    const match = compareThoughtLikeSurfaces(
+      cluster,
+      ensureStringArray(synthesis.dominantTopics).join(" / "),
+      readString(synthesis, "summary"),
+      [],
+    );
+    if (match >= TOPIC_MATCH_THRESHOLD) {
+      recentMatchCount += 1;
+    }
+  }
+
+  const existingTopicSaturation = ensureArray(bridge.topic_saturation)
+    .filter(isObject)
+    .map((entry) =>
+      topicSimilarity(cluster.label, readString(entry, "topic") ?? "") >= TOPIC_MATCH_THRESHOLD
+        ? readNumber(entry, "dominance") ?? 0
+        : 0,
+    )
+    .sort((left, right) => right - left)[0] ?? 0;
+
+  const score = clamp(
+    recentMatchCount * 0.16 +
+      existingTopicSaturation * 0.42 +
+      Math.min(1, supportCount / 10) * 0.16 +
+      (readNumber(cluster, "quietSignalRatio") ?? 0) * 0.2,
+    0,
+    1,
+  );
+
+  return {
+    score,
+    recentMatchCount,
+  };
+}
+
+function computeRefractoryPenalty(cluster, bridge, now) {
+  let penalty = 0;
+
+  for (const topic of ensureArray(bridge.refractory_topics).filter(isObject)) {
+    const coolsUntil = readString(topic, "coolsUntil");
+    if (coolsUntil && new Date(coolsUntil).getTime() < now.getTime()) {
+      continue;
+    }
+
+    const match = topicSimilarity(cluster.label, readString(topic, "topic") ?? "");
+    if (match >= REFRACTORY_MATCH_THRESHOLD) {
+      penalty = Math.max(
+        penalty,
+        (readNumber(topic, "penalty") ?? 0.18) * match,
+      );
+    }
+  }
+
+  return clamp(penalty, 0, 0.45);
+}
+
+function computeExplorationBonus(cluster, sourceCoverage) {
+  const sourceKinds = ensureStringArray(cluster.sourceKinds);
+  const hasPrimaryExplorationSource =
+    sourceKinds.includes("repo_sweep") || sourceKinds.includes("archive_excursion");
+
+  const repoEntries = ensureArray(sourceCoverage.repos).filter(isObject);
+  const yearEntries = ensureArray(sourceCoverage.archiveYears).filter(isObject);
+  const channelEntries = ensureArray(sourceCoverage.channels).filter(isObject);
+  const scores = [];
+
+  for (const repoName of ensureStringArray(cluster.repoNames)) {
+    scores.push(inverseCoverageWeight(repoEntries, "name", repoName));
+  }
+  for (const year of ensureStringArray(cluster.archiveYears)) {
+    scores.push(inverseCoverageWeight(yearEntries, "year", year));
+  }
+  for (const channelId of ensureStringArray(cluster.channelIds)) {
+    scores.push(inverseCoverageWeight(channelEntries, "channelId", channelId));
+  }
+
+  if (scores.length === 0) {
+    return hasPrimaryExplorationSource ? 0.24 : 0.12;
+  }
+
+  const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
+  return clamp(
+    hasPrimaryExplorationSource ? average : Math.min(0.3, average * 0.5),
+    0,
+    1,
+  );
+}
+
+function inverseCoverageWeight(entries, key, value) {
+  const count =
+    readNumber(
+      entries.find((entry) => readString(entry, key) === value),
+      "count",
+    ) ?? 0;
+  if (count <= 1) {
+    return 0.9;
+  }
+  if (count === 2) {
+    return 0.64;
+  }
+  if (count === 3) {
+    return 0.42;
+  }
+  return 0.2;
+}
+
+function buildCoolingAdvice({ thought, sourceCoverage }) {
+  const topic = readString(thought, "topic") ?? "this seam";
+  const repos = ensureArray(sourceCoverage.repos).filter(isObject);
+  const years = ensureArray(sourceCoverage.archiveYears).filter(isObject);
+  const lesserRepo = repos.sort((left, right) => (readNumber(left, "count") ?? 0) - (readNumber(right, "count") ?? 0))[0];
+  const lesserYear = years.sort((left, right) => (readNumber(left, "count") ?? 0) - (readNumber(right, "count") ?? 0))[0];
+
+  if (lesserRepo && readString(lesserRepo, "name")) {
+    return `Cool ${topic} by checking a less-worked repo family such as ${readString(lesserRepo, "name")} before speaking again.`;
+  }
+
+  if (lesserYear && readString(lesserYear, "year")) {
+    return `Cool ${topic} by diving into a less-touched archive era like ${readString(lesserYear, "year")} before another synthesis.`;
+  }
+
+  return `Cool ${topic} by chasing a genuinely different source family before letting it speak again.`;
+}
+
+function buildRefractoryReason(thought) {
+  const topic = readString(thought, "topic") ?? "this seam";
+  const noveltyToSelf = readNumber(thought, "noveltyToSelf") ?? 0;
+  const saturationScore = readNumber(thought, "saturationScore") ?? 0;
+  if (noveltyToSelf < 0.3) {
+    return `${topic} is matching Void's own recent thought history too closely to deserve another immediate pass.`;
+  }
+  if (saturationScore >= 0.62) {
+    return `${topic} has dominated too many recent syntheses and needs cooling before it becomes state religion.`;
+  }
+  return `${topic} needs a little cooling-off period before it earns attention again.`;
+}
+
+function compareThoughtLikeSurfaces(cluster, topic, summary, sourceMemoryIds) {
+  const topicMatch = topicSimilarity(cluster.label, topic ?? "");
+  const summaryMatch = topicSimilarity(cluster.summary, summary ?? "");
+  const sourceMatch = overlapRatio(cluster.memoryIds, ensureArray(sourceMemoryIds));
+  return Math.max(topicMatch, summaryMatch * 0.9, sourceMatch * 0.95);
+}
+
+function mapNoveltyResultToScore(result) {
+  const normalized = String(result ?? "").toLowerCase();
+  if (normalized === "novel") {
+    return 0.92;
+  }
+  if (normalized.includes("adjacent")) {
+    return 0.56;
+  }
+  if (normalized.includes("duplicate") || normalized.includes("already")) {
+    return 0.2;
+  }
+  return 0.64;
+}
+
+function topicSimilarity(left, right) {
+  const leftTokens = topKeywords(left ?? "", 6);
+  const rightTokens = topKeywords(right ?? "", 6);
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  let overlap = 0;
+  for (const token of leftSet) {
+    if (rightSet.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / Math.max(leftSet.size, rightSet.size);
+}
+
+function mapCountEntries(map, keyName) {
+  return [...map.entries()]
+    .map(([key, count]) => ({ [keyName]: key, count }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function gatherSourceRefs(entry) {
+  if (!isObject(entry)) {
+    return [];
+  }
+  return [
+    ...ensureStringArray(entry.evidenceRefs),
+    ...ensureStringArray(entry.evidenceMessageIds),
+    ...ensureStringArray(entry.distilledFrom),
+    ...ensureStringArray(entry.sourceMemoryIds),
+  ];
+}
+
+function gatherSourceMeta({ entry, kind }) {
+  const sourceMeta = {};
+  const repoNames = ensureStringArray(entry.repoNames);
+  if (repoNames.length > 0) {
+    sourceMeta.repoNames = repoNames;
+  }
+
+  const channelId = readString(entry, "channelId");
+  if (channelId) {
+    sourceMeta.channelId = channelId;
+  }
+
+  const archiveTimestamp =
+    readString(entry, "anchorTimestamp") ??
+    readString(entry, "sourceTimestamp") ??
+    readString(entry, "timestamp");
+  const archiveYear = extractYear(archiveTimestamp);
+  if (archiveYear) {
+    sourceMeta.archiveYear = archiveYear;
+  }
+
+  if (kind === "bridge_synthesis") {
+    const dominantTopics = ensureStringArray(entry.dominantTopics);
+    if (dominantTopics.length > 0) {
+      sourceMeta.dominantTopics = dominantTopics;
+    }
+  }
+
+  return sourceMeta;
+}
+
+function extractYear(timestamp) {
+  if (typeof timestamp !== "string" || timestamp.length < 4) {
+    return undefined;
+  }
+  const match = timestamp.match(/^(\d{4})-/);
+  return match ? match[1] : undefined;
 }
 
 function createEmbedder({ repoRootPath }) {

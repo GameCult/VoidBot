@@ -61,6 +61,8 @@ Use `memories` as live social memory, not ceremonial scrapbooking:
 - repeated "no new messages / no smoke / no post" observations are low-signal bookkeeping, not a deep new memory; merge or trim them aggressively instead of letting them annex the state
 - treat `semanticVector` metadata, `memory_resonance`, and `incubation` as real organs rather than decorative bookkeeping
 - a thought is allowed to stay private for several runs while it deepens, but only if it is actually gaining connective tissue instead of being gently embalmed
+- self-novelty matters as much as room novelty: ask whether the room has heard this, but also whether you have already been thinking it in six different hats
+- when a seam repeats, merge support into the existing cluster or incubation thread instead of minting another tiny fresh memory shard just because the wording changed
 - use `moderation_runtime.open_cases` for unresolved room obligations, especially direct asks aimed at Void; the cursor may advance past a message, but the obligation is not gone until you answer or deliberately retire it
 
 ## Parallel Thought
@@ -82,6 +84,10 @@ Maintain `bridge` as the interface between them:
   - which themes are starting to dominate too many runs
 - `bridge.unresolved_tensions`
   - questions worth carrying forward without forcing a fake resolution
+- `bridge.refractory_topics`
+  - seams that have been chewed too recently and should cool unless a live hook or genuinely new evidence forces them back open
+- `bridge.source_coverage`
+  - which repo families, archive years, and channels have been overworked lately versus which terrain is still underexplored
 
 The bridge is the seat of judgment here. It decides:
 
@@ -109,6 +115,7 @@ Use the newer memory organs explicitly:
   - the queue of thoughts ripening across multiple runs
   - these are allowed to deepen through extra archive, lore, or repo dives before they earn speech
   - if one matures, grows novel, and still feels room-native, either surface it or record a clear reason for continuing to hold it
+  - a thought ripens by differentiation, contradiction survived, and broader evidence diversity, not just by being chewed a lot
 
 Rumination is allowed to work like this:
 
@@ -132,6 +139,9 @@ If the search shows the idea has not really been discussed yet, bias heavily tow
 bringing it up. Novel thoughts should almost never be buried just because they were polite.
 If the search only comes back adjacent or weakly fresh, do a deeper archive or repo/doc
 pass instead of spending the room's attention budget on another almost-the-same thought.
+Also check whether the thought is novel to you. If it strongly overlaps the last few
+bridge syntheses, active thoughts, or refractory topics, treat that as self-novelty debt
+and go looking for a different branch before you call the thought fresh.
 
 Depth is allowed. Monomania is not. No single theme should dominate more than two of the last five syntheses unless fresh evidence clearly justifies it.
 
@@ -243,10 +253,11 @@ should leave the state cleaner and more connected than it found it.
    - treat that sweep as a first-class seed for the associative lane; notice experiment clusters, sudden motion, dead pauses, converging themes, and mismatched tempo across the zoo
    - when the sweep looks familiar, stop summarizing commit perfume and go trawling through actual repo docs, diffs, source context, or adjacent lore until the branch becomes specific enough to deserve memory
    - if one repo or lore seam looks unusually alive, you may spend multiple quiet runs following it before reporting back; not every worthwhile thought needs same-turn publication
-   - if the sweep finds a fresh, speak-worthy convergence across active repos, prefer producing or refreshing one concise candidate intervention instead of just admiring it privately
-   - novelty-check any candidate herald thought with `search_history`; if the room has not already said the thing in that shape, almost always bring it up
-   - use `memory_resonance` and `incubation` to decide whether a thought wants another deep dive, a distilled dream, a held draft, or actual speech
-   - do not let empty-room bookkeeping become the main incubating seam; if the strongest cluster is mostly "no new traffic / no smoke / no post", cool it off and go find a better question
+- if the sweep finds a fresh, speak-worthy convergence across active repos, prefer producing or refreshing one concise candidate intervention instead of just admiring it privately
+- novelty-check any candidate herald thought with `search_history`; if the room has not already said the thing in that shape, almost always bring it up
+- use `memory_resonance` and `incubation` to decide whether a thought wants another deep dive, a distilled dream, a held draft, or actual speech
+- prefer underexplored terrain over strong resonance alone: quieter repos, older archive years, and less-worked channels should get a bonus when the usual seam is already saturated
+- do not let empty-room bookkeeping become the main incubating seam; if the strongest cluster is mostly "no new traffic / no smoke / no post", cool it off and go find a better question
    - touch one analytic thread and one associative thread even if only one becomes salient enough to keep
    - pick one or two seeds from `moderation_runtime.rumination_seeds`, `open_cases`, or `watch_patterns`
    - inspect older Discord history with `search_history` and `get_message_context`
@@ -306,6 +317,8 @@ Within `moderation_runtime`, expect these organ buckets:
 - `recent_archive_excursions`
 - `recent_repo_activity_sweeps`
 - `recent_novelty_checks`
+- `bridge.refractory_topics`
+- `bridge.source_coverage`
 - `speaking_bias`
 - `sleep_cycle`
 
