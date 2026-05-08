@@ -185,6 +185,82 @@ function Get-Json {
   return $response | ConvertFrom-Json
 }
 
+function Invoke-JsonRequestDetailed {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Url,
+    [string[]] $Headers = @()
+  )
+
+  $headerPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+
+  try {
+    $args = @(
+      "-sS",
+      "--connect-timeout", "5",
+      "--max-time", "20",
+      "-D", $headerPath,
+      $Url
+    )
+
+    foreach ($header in $Headers) {
+      $args = @("-H", $header) + $args
+    }
+
+    $responseBody = & curl.exe @args
+    $exitCode = $LASTEXITCODE
+    $headerLines = if (Test-Path -LiteralPath $headerPath) {
+      Get-Content -LiteralPath $headerPath
+    } else {
+      @()
+    }
+
+    $statusCode = $null
+    $statusLine = @($headerLines | Where-Object { $_ -match "^HTTP/" } | Select-Object -Last 1)
+    if ($statusLine.Count -gt 0 -and $statusLine[0] -match "^HTTP/\S+\s+(\d{3})") {
+      $statusCode = [int]$Matches[1]
+    }
+
+    $parsedHeaders = @{}
+    foreach ($line in $headerLines) {
+      if ([string]::IsNullOrWhiteSpace($line) -or $line -match "^HTTP/") {
+        continue
+      }
+
+      $separatorIndex = $line.IndexOf(":")
+      if ($separatorIndex -lt 1) {
+        continue
+      }
+
+      $name = $line.Substring(0, $separatorIndex).Trim()
+      $value = $line.Substring($separatorIndex + 1).Trim()
+      $parsedHeaders[$name] = $value
+    }
+
+    if ($exitCode -ne 0 -and $null -eq $statusCode) {
+      throw "Request failed for $Url"
+    }
+
+    $json = $null
+    if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
+      try {
+        $json = $responseBody | ConvertFrom-Json
+      } catch {
+      }
+    }
+
+    return @{
+      statusCode = $statusCode
+      headers = $parsedHeaders
+      body = $responseBody
+      json = $json
+      exitCode = $exitCode
+    }
+  } finally {
+    Remove-Item -LiteralPath $headerPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Invoke-CommandWithTimeout {
   param(
     [Parameter(Mandatory = $true)]
@@ -963,10 +1039,41 @@ try {
   if ($config.ContainsKey("DISCORD_BOT_TOKEN") -and -not [string]::IsNullOrWhiteSpace($config["DISCORD_BOT_TOKEN"])) {
     Set-WatchdogStep -CurrentStep "discord_checks" -Detail "Validating Discord bot credentials."
     try {
-      $botIdentity = Get-Json -Url "https://discord.com/api/v10/users/@me" -Headers @("Authorization: Bot $($config["DISCORD_BOT_TOKEN"])")
-      Add-Check -Name "discord.bot_token" -Status "passed" -Detail "Discord bot token is valid for $([string]$botIdentity.username)." -Data @{
-        id = [string]$botIdentity.id
-        username = [string]$botIdentity.username
+      $discordIdentityResponse = Invoke-JsonRequestDetailed -Url "https://discord.com/api/v10/users/@me" -Headers @("Authorization: Bot $($config["DISCORD_BOT_TOKEN"])")
+      $statusCode = $discordIdentityResponse.statusCode
+
+      if ($statusCode -eq 200 -and $null -ne $discordIdentityResponse.json) {
+        $botIdentity = $discordIdentityResponse.json
+        Add-Check -Name "discord.bot_token" -Status "passed" -Detail "Discord bot token is valid for $([string]$botIdentity.username)." -Data @{
+          id = [string]$botIdentity.id
+          username = [string]$botIdentity.username
+        }
+      } elseif ($statusCode -eq 429) {
+        $retryAfterSeconds = $null
+        if ($discordIdentityResponse.headers.ContainsKey("Retry-After")) {
+          [double]::TryParse([string]$discordIdentityResponse.headers["Retry-After"], [ref]$retryAfterSeconds) | Out-Null
+        }
+
+        $detail = if ($null -ne $retryAfterSeconds) {
+          "Discord bot token check was rate-limited by Discord (429). Retry after about $retryAfterSeconds second(s); the token is not necessarily bad."
+        } else {
+          "Discord bot token check was rate-limited by Discord (429). The token is not necessarily bad."
+        }
+
+        Add-Check -Name "discord.bot_token" -Status "warning" -Detail $detail -Data @{
+          statusCode = $statusCode
+          retryAfterSeconds = $retryAfterSeconds
+        }
+      } else {
+        $message = if ($null -ne $discordIdentityResponse.json -and $discordIdentityResponse.json.PSObject.Properties.Name -contains "message") {
+          [string]$discordIdentityResponse.json.message
+        } else {
+          "Request failed for https://discord.com/api/v10/users/@me"
+        }
+
+        Add-Check -Name "discord.bot_token" -Status "failed" -Detail "Discord bot token check failed ($statusCode): $message" -Data @{
+          statusCode = $statusCode
+        }
       }
     } catch {
       Add-Check -Name "discord.bot_token" -Status "failed" -Detail "Discord bot token check failed: $($_.Exception.Message)"
