@@ -36,7 +36,7 @@ function Read-DotEnv {
     return $values
   }
 
-  foreach ($line in Get-Content -Path $Path) {
+  foreach ($line in Get-Content -Path $Path -Encoding UTF8) {
     if ([string]::IsNullOrWhiteSpace($line)) {
       continue
     }
@@ -157,6 +157,9 @@ function Invoke-CodexExec {
   $startInfo.RedirectStandardOutput = $true
   $startInfo.RedirectStandardError = $true
   $startInfo.CreateNoWindow = $true
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  $startInfo.StandardOutputEncoding = $utf8NoBom
+  $startInfo.StandardErrorEncoding = $utf8NoBom
   $startInfo.Arguments = [string]::Join(" ", ($Arguments | ForEach-Object { Quote-ProcessArgument -Value $_ }))
 
   $process = [System.Diagnostics.Process]::new()
@@ -164,8 +167,15 @@ function Invoke-CodexExec {
 
   try {
     [void]$process.Start()
-    $process.StandardInput.Write($InputText)
-    $process.StandardInput.Close()
+    $inputWriter = [System.IO.StreamWriter]::new($process.StandardInput.BaseStream, $utf8NoBom, 4096, $true)
+
+    try {
+      $inputWriter.Write($InputText)
+      $inputWriter.Flush()
+    } finally {
+      $inputWriter.Dispose()
+      $process.StandardInput.Close()
+    }
 
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
@@ -226,7 +236,7 @@ trap {
 }
 
 if (Test-Path $lockPath) {
-  $lock = Get-Content -Path $lockPath -Raw | ConvertFrom-Json
+  $lock = Get-Content -Path $lockPath -Raw -Encoding UTF8 | ConvertFrom-Json
   $startedAt = $null
 
   if ($lock.startedAt) {
@@ -462,7 +472,7 @@ if ($exitCode -eq 0) {
 
 $stateWriteAfter = (Get-Item $stateFilePath).LastWriteTimeUtc
 $stateUpdated = ($stateWriteAfter -gt $stateWriteBefore)
-$lastMessage = if (Test-Path $lastMessagePath) { Get-Content -Path $lastMessagePath -Raw } else { "" }
+$lastMessage = if (Test-Path $lastMessagePath) { Get-Content -Path $lastMessagePath -Raw -Encoding UTF8 } else { "" }
 
 Write-JsonFile -Path $statusPath -Data @{
   status = if ($exitCode -eq 0) { "ok" } else { "failed" }
