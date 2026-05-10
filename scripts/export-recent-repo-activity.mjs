@@ -1,16 +1,25 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const defaultRepoActivityCursorPath = resolve(
+  repoRoot,
+  ".voidbot/private/moderation-agent-state.json",
+);
+const moderationStateStoreScriptPath = resolve(repoRoot, "scripts/moderation-state-store.mjs");
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const config = readConfig();
   const trackedRepoNames = readTrackedRepoNames(config.archivePath, options.repoNames);
   const availableRepos = readAvailableRepos(config.sourceRepoRoot);
+  const cursorFilePath = options.cursorFile ? resolve(repoRoot, options.cursorFile) : null;
+  const moderationState = cursorFilePath ? readJsonFileSafe(cursorFilePath) : null;
+  const repoActivityCursor = readRepoActivityCursor(moderationState);
   const sinceIso = new Date(Date.now() - options.hours * 60 * 60 * 1000).toISOString();
+  const generatedAt = new Date().toISOString();
 
   const repos = trackedRepoNames.map((repoName) =>
     inspectRepoActivity({
@@ -18,23 +27,37 @@ function main() {
       repoPath: availableRepos.get(repoName.toLowerCase()),
       sinceIso,
       maxCommits: options.maxCommits,
+      cursorEntry: repoActivityCursor.get(repoName.toLowerCase()) ?? null,
     }),
   );
 
   repos.sort(compareRepoActivity);
+  const cursorUpdate = cursorFilePath
+    ? writeRepoActivityCursor({
+        state: moderationState,
+        cursorFilePath,
+        repos,
+        hours: options.hours,
+        generatedAt,
+      })
+    : { mode: "stateless", updated: false, repoCount: 0 };
 
   process.stdout.write(
     `${JSON.stringify(
       {
-        generatedAt: new Date().toISOString(),
+        generatedAt,
         sourceRepoRoot: config.sourceRepoRoot,
         archivePath: config.archivePath,
         since: sinceIso,
         hours: options.hours,
         maxCommits: options.maxCommits,
+        cursorMode: cursorUpdate.mode,
+        cursorFile: cursorFilePath,
+        cursorUpdated: cursorUpdate.updated,
+        cursorRepoCount: cursorUpdate.repoCount,
         totalTrackedRepos: trackedRepoNames.length,
         repos,
-        digest: renderDigest(repos, sinceIso),
+        digest: renderDigest(repos, sinceIso, cursorUpdate.mode),
       },
       null,
       2,
@@ -47,6 +70,7 @@ function parseArgs(args) {
     hours: 72,
     maxCommits: 3,
     repoNames: undefined,
+    cursorFile: defaultRepoActivityCursorPath,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -65,6 +89,13 @@ function parseArgs(args) {
         options.repoNames = parseRepoList(args[index + 1] ?? "");
         index += 1;
         break;
+      case "--cursor-file":
+        options.cursorFile = args[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--stateless":
+        options.cursorFile = null;
+        break;
       default:
         throw new Error(`Unknown argument: ${argument}`);
     }
@@ -79,6 +110,18 @@ function parseArgs(args) {
   }
 
   return options;
+}
+
+function readJsonFileSafe(path) {
+  try {
+    return JSON.parse(stripLeadingBom(readFileSync(path, "utf8")));
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 function parseRepoList(value) {
@@ -197,7 +240,7 @@ function readAvailableRepos(sourceRepoRoot) {
   return lookup;
 }
 
-function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits }) {
+function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits, cursorEntry }) {
   if (!repoPath) {
     return {
       repoName,
@@ -207,6 +250,8 @@ function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits }) {
       recentCommitCount: 0,
       latestCommit: null,
       commits: [],
+      windowRecentCommitCount: 0,
+      suppressedRecentCommitCount: 0,
     };
   }
 
@@ -230,15 +275,21 @@ function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits }) {
       .filter(Boolean)
       .map((line) => enrichCommit(repoPath, parseCommitLine(line)))
       .filter(Boolean);
+    const freshCommits = filterCommitsSinceCursor(commits, cursorEntry);
+    const freshCommitCount = freshCommits.length;
+    const windowRecentCommitCount = Number.isFinite(recentCommitCount) ? recentCommitCount : commits.length;
 
     return {
       repoName,
       repoPath,
       status: "ok",
       branch,
-      recentCommitCount: Number.isFinite(recentCommitCount) ? recentCommitCount : commits.length,
+      recentCommitCount: freshCommitCount,
+      windowRecentCommitCount,
+      suppressedRecentCommitCount: Math.max(0, windowRecentCommitCount - freshCommitCount),
       latestCommit,
-      commits,
+      commits: freshCommits,
+      cursorEntry,
     };
   } catch (error) {
     return {
@@ -249,9 +300,34 @@ function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits }) {
       recentCommitCount: 0,
       latestCommit: null,
       commits: [],
+      windowRecentCommitCount: 0,
+      suppressedRecentCommitCount: 0,
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function filterCommitsSinceCursor(commits, cursorEntry) {
+  if (!Array.isArray(commits) || commits.length === 0 || !cursorEntry || typeof cursorEntry !== "object") {
+    return commits;
+  }
+
+  const lastSeenHash = typeof cursorEntry.lastSeenHash === "string" ? cursorEntry.lastSeenHash.trim() : "";
+  if (lastSeenHash) {
+    const seenIndex = commits.findIndex((commit) => commit?.hash === lastSeenHash);
+    if (seenIndex !== -1) {
+      return commits.slice(0, seenIndex);
+    }
+  }
+
+  const lastSeenCommittedAt =
+    typeof cursorEntry.lastSeenCommittedAt === "string" ? cursorEntry.lastSeenCommittedAt.trim() : "";
+  const lastSeenMs = lastSeenCommittedAt ? Date.parse(lastSeenCommittedAt) : Number.NaN;
+  if (Number.isFinite(lastSeenMs)) {
+    return commits.filter((commit) => Date.parse(commit.committedAt) > lastSeenMs);
+  }
+
+  return commits;
 }
 
 function execGit(repoPath, args) {
@@ -341,25 +417,38 @@ function compareRepoActivity(left, right) {
   return rightTimestamp.localeCompare(leftTimestamp);
 }
 
-function renderDigest(repos, sinceIso) {
-  const lines = [`Recent tracked repo activity since ${sinceIso}:`];
+function renderDigest(repos, sinceIso, cursorMode) {
+  const isIncremental = cursorMode === "incremental";
+  const lines = [
+    isIncremental
+      ? `New tracked repo activity since the saved repo cursor (bounded to ${sinceIso}):`
+      : `Recent tracked repo activity since ${sinceIso}:`,
+  ];
+  let mentionedRepoCount = 0;
 
   for (const repo of repos) {
     if (repo.status === "missing") {
       lines.push(`- ${repo.repoName}: missing locally under SOURCE_REPO_ROOT`);
+      mentionedRepoCount += 1;
       continue;
     }
 
     if (repo.status === "error") {
       lines.push(`- ${repo.repoName}: failed to read git activity (${repo.error})`);
+      mentionedRepoCount += 1;
+      continue;
+    }
+
+    if (isIncremental && repo.recentCommitCount <= 0) {
       continue;
     }
 
     const header =
       repo.recentCommitCount > 0
-        ? `- ${repo.repoName} [${repo.branch}]: ${repo.recentCommitCount} recent commit${repo.recentCommitCount === 1 ? "" : "s"}`
+        ? `- ${repo.repoName} [${repo.branch}]: ${repo.recentCommitCount} ${isIncremental ? "new" : "recent"} commit${repo.recentCommitCount === 1 ? "" : "s"}`
         : `- ${repo.repoName} [${repo.branch}]: no recent commits`;
     lines.push(header);
+    mentionedRepoCount += 1;
 
     if (repo.commits.length > 0) {
       for (const commit of repo.commits) {
@@ -381,14 +470,114 @@ function renderDigest(repos, sinceIso) {
           lines.push(`    paths: ${commit.changedPaths.join(", ")}`);
         }
       }
-    } else if (repo.latestCommit) {
+    } else if (!isIncremental && repo.latestCommit) {
       lines.push(
         `  - latest overall ${repo.latestCommit.committedAt} ${repo.latestCommit.author}: ${repo.latestCommit.subject}`,
       );
     }
   }
 
+  if (mentionedRepoCount === 0) {
+    lines.push(
+      isIncremental
+        ? "- No new tracked repo commits crossed the saved repo-activity cursor."
+        : "- No recent tracked repo commits.",
+    );
+  }
+
   return lines.join("\n");
+}
+
+function readRepoActivityCursor(state) {
+  const lookup = new Map();
+  const rawCursor = state?.moderation_runtime?.repo_activity_cursor;
+  if (!rawCursor || typeof rawCursor !== "object" || Array.isArray(rawCursor)) {
+    return lookup;
+  }
+
+  for (const [repoName, cursorEntry] of Object.entries(rawCursor)) {
+    if (!repoName || !cursorEntry || typeof cursorEntry !== "object" || Array.isArray(cursorEntry)) {
+      continue;
+    }
+
+    lookup.set(repoName.toLowerCase(), cursorEntry);
+  }
+
+  return lookup;
+}
+
+function writeRepoActivityCursor({ state, cursorFilePath, repos, hours, generatedAt }) {
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    return { mode: "incremental", updated: false, repoCount: 0 };
+  }
+
+  if (!state.moderation_runtime || typeof state.moderation_runtime !== "object" || Array.isArray(state.moderation_runtime)) {
+    state.moderation_runtime = {};
+  }
+
+  const currentCursor = state.moderation_runtime.repo_activity_cursor;
+  const nextCursor =
+    currentCursor && typeof currentCursor === "object" && !Array.isArray(currentCursor) ? { ...currentCursor } : {};
+
+  let updated = false;
+  let repoCount = 0;
+
+  for (const repo of repos) {
+    if (repo.status !== "ok" || !repo.latestCommit?.hash || repo.recentCommitCount <= 0) {
+      continue;
+    }
+
+    const nextEntry = {
+      lastSeenHash: repo.latestCommit.hash,
+      lastSeenCommittedAt: repo.latestCommit.committedAt ?? null,
+      lastInjectedAt: generatedAt,
+      hoursWindow: hours,
+      branch: repo.branch ?? null,
+    };
+    const previousEntry = nextCursor[repo.repoName];
+
+    if (JSON.stringify(previousEntry) !== JSON.stringify(nextEntry)) {
+      nextCursor[repo.repoName] = nextEntry;
+      updated = true;
+    }
+
+    repoCount += 1;
+  }
+
+  if (updated) {
+    state.moderation_runtime.repo_activity_cursor = nextCursor;
+    writeFileSync(cursorFilePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    const canonicalPath = deriveCanonicalModerationStatePath(cursorFilePath);
+    if (canonicalPath && existsSync(moderationStateStoreScriptPath)) {
+      execFileSync(
+        process.execPath,
+        [
+          moderationStateStoreScriptPath,
+          "commit-working-view",
+          "--canonical",
+          canonicalPath,
+          "--working",
+          cursorFilePath,
+        ],
+        {
+          cwd: repoRoot,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+    }
+  }
+
+  return { mode: "incremental", updated, repoCount };
+}
+
+function deriveCanonicalModerationStatePath(cursorFilePath) {
+  if (typeof cursorFilePath !== "string" || !cursorFilePath.toLowerCase().endsWith(".json")) {
+    return null;
+  }
+
+  const candidate = `${cursorFilePath.slice(0, -".json".length)}.msgpack`;
+  return existsSync(candidate) ? candidate : null;
 }
 
 function stripLeadingBom(input) {

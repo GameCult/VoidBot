@@ -695,6 +695,15 @@
         }
       }
     ],
+    "repo_activity_cursor": {
+      "CultLib": {
+        "lastSeenHash": null,
+        "lastSeenCommittedAt": null,
+        "lastInjectedAt": null,
+        "hoursWindow": 96,
+        "branch": "main"
+      }
+    },
     "recent_novelty_checks": [
       {
         "timestamp": null,

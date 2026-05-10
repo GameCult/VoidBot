@@ -255,7 +255,8 @@ should leave the state cleaner and more connected than it found it.
    - if your first archive excursion or repo sweep lands on a seam that feels familiar, take another retrieval hop into a different archive branch or repo/doc seam before you consider speaking
    - when you do retrieve, prefer archive seams that do not overlap the last few bridge syntheses or the last several `recent_archive_excursions`
    - let a fresh archive seam outrank a comfortable old obsession, but do not force novelty theater when the current thought still has real blood in it
-   - perform a recent tracked-repo activity sweep with `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3` when the active thought depends on repo motion or when incubation needs fresher fuel
+   - perform a recent tracked-repo activity sweep with `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3 --cursor-file .voidbot/private/moderation-agent-state.json` when the active thought depends on repo motion or when incubation needs fresher fuel
+   - treat that helper as an incremental feed, not a four-day nostalgia trough: it advances `moderation_runtime.repo_activity_cursor` and suppresses commits already injected into prior heartbeat sweeps unless you explicitly opt into `--stateless`
    - treat that sweep as a first-class seed for the associative lane; notice experiment clusters, sudden motion, dead pauses, converging themes, and mismatched tempo across the zoo
    - when the sweep looks familiar, stop summarizing commit perfume and go trawling through actual repo docs, diffs, source context, or adjacent lore until the branch becomes specific enough to deserve memory
    - if one repo or lore seam looks unusually alive, you may spend multiple quiet runs following it before reporting back; not every worthwhile thought needs same-turn publication
