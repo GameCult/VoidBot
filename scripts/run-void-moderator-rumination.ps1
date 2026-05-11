@@ -21,6 +21,7 @@ $lastMessagePath = Join-Path $statusDir "moderation-rumination-last-message.txt"
 $lockPath = Join-Path $statusDir "moderation-rumination.lock"
 $mcpServerPath = Join-Path $repoRoot "apps\worker\dist\mcp-server.js"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
+$moderationContextScriptPath = Join-Path $repoRoot "scripts\export-moderation-context.mjs"
 $stateStoreScriptPath = Join-Path $repoRoot "scripts\moderation-state-store.mjs"
 $startedAtUtc = [DateTime]::UtcNow
 
@@ -290,6 +291,7 @@ if (-not (Test-Path $mcpServerPath)) {
 
 $scriptPreflight = @(
   $recentHistoryScriptPath,
+  $moderationContextScriptPath,
   $stateStoreScriptPath
 )
 
@@ -351,6 +353,7 @@ Required reading before you act:
 Required operating posture:
 - You are running unattended on the local workstation, not inside the Discord reply lane.
 - You have VoidBot's usual workspace tools and the local voidbot MCP server available in this repo.
+- Begin by running `node scripts/export-moderation-context.mjs` for the doctrine/state bundle instead of shelling out to `Get-Content` on those files one by one. PowerShell stdout still likes to mangle UTF-8, and the Portuguese rules should not have to die for that.
 - Use `node scripts/export-recent-discord-history.mjs --after <timestamp> --limit 120` for chronological polling.
 - If there is no saved cursor yet, use `node scripts/export-recent-discord-history.mjs --hours 6 --limit 120`.
 - Use `node scripts/export-random-discord-history.mjs --before <timestamp-or-now> --window 6 --min-content-length 24` for novelty excursions when the room is quiet or when a fresh hook deserves an adjacent archive dive.
@@ -377,7 +380,8 @@ Required operating posture:
 - Before withholding a thought, use semantic retrieval to check whether the room has already said it in roughly that shape. Novel thoughts should not keep dying of manners.
 - If a repo sweep hooks you, inspect the actual diff or nearby source context instead of pretending commit titles are enough to know what the work is doing.
 - Do not keep circling the same musing just because it still feels tidy. Chase at least one fresh branch when the room gives you a concrete hook, and record archive excursions so you can avoid pacing the same trench forever.
-- Use the local bot-voice script `node scripts/send-discord-message.mjs ...` when you genuinely need to speak.
+- Use the UTF-8-safe local bot-voice wrapper `powershell -ExecutionPolicy Bypass -File .\scripts\send-discord-message.ps1 ...` when you genuinely need to speak.
+- Prefer `-Content @'...text... '@` or `-ContentFile` over raw inline `node ... --content ...` when the message contains human language, especially non-ASCII text.
 - Update only `.voidbot/private/moderation-agent-state.json` as routine writable memory.
 - Do not edit tracked repo files during routine runs.
 - Do not ask for permission. Work inside the existing workspace and tool surface.

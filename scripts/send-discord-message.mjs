@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { TextDecoder } from "node:util";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PERSONA_WEBHOOK_NAME = "VoidBot Persona Pipe";
@@ -143,7 +144,7 @@ function readLocalEnv() {
   const parsed = { ...process.env };
 
   try {
-    const raw = stripLeadingBom(readFileSync(envPath, "utf8"));
+    const raw = stripLeadingBom(readTextFileFlexible(envPath));
     Object.assign(parsed, parseDotEnv(raw));
   } catch (error) {
     if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
@@ -193,7 +194,7 @@ async function readContent(options) {
   }
 
   if (typeof options.contentFile === "string") {
-    return stripLeadingBom(readFileSync(resolve(repoRoot, options.contentFile), "utf8"));
+    return stripLeadingBom(readTextFileFlexible(resolve(repoRoot, options.contentFile)));
   }
 
   return new Promise((resolveContent, reject) => {
@@ -476,7 +477,7 @@ function clearCachedPersonaWebhook(channelId) {
 
 function readPersonaWebhookCache() {
   try {
-    const raw = stripLeadingBom(readFileSync(PERSONA_WEBHOOK_CACHE_PATH, "utf8"));
+    const raw = stripLeadingBom(readTextFileFlexible(PERSONA_WEBHOOK_CACHE_PATH));
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (error) {
@@ -566,6 +567,24 @@ function writeLastSpeechStatus(payload) {
 
 function stripLeadingBom(input) {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+function readTextFileFlexible(path) {
+  const buffer = readFileSync(path);
+
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    return new TextDecoder("utf-8").decode(buffer.subarray(3));
+  }
+
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(buffer.subarray(2));
+  }
+
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(buffer.subarray(2));
+  }
+
+  return new TextDecoder("utf-8").decode(buffer);
 }
 
 try {

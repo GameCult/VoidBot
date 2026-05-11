@@ -176,10 +176,12 @@ If a message, pattern, repo thread, or lore seam needs more context, use the `vo
 
 When you need to speak without Codex approval theater, use the local bot-voice script directly:
 
-- `node scripts/send-discord-message.mjs --owner-dm`
-- `node scripts/send-discord-message.mjs --channel-id <channelId> --reply-to <messageId>`
+- `powershell -ExecutionPolicy Bypass -File .\scripts\send-discord-message.ps1 -OwnerDm -Content @'...text... '@`
+- `powershell -ExecutionPolicy Bypass -File .\scripts\send-discord-message.ps1 -ChannelId <channelId> -ReplyToMessageId <messageId> -Content @'...text... '@`
 
-Pass message content through stdin unless a tiny inline `--content` string is genuinely easier.
+Prefer the PowerShell wrapper over raw `node ... --content ...` when you are sending human text.
+It writes a UTF-8 temp file first, which keeps Portuguese and other non-ASCII text from being mulched by Windows shell weirdness.
+If you already have a real UTF-8 or UTF-16 text file, `-ContentFile` is also acceptable.
 Use owner DM when there is a credible moderation concern or a genuinely useful moderation insight worth interrupting the owner with.
 You can now speak directly in-channel through the local bot voice when a
 constructive intervention, clarification, question, or spontaneous thought would
