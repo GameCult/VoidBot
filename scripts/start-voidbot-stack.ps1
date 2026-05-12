@@ -3,8 +3,26 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
+$startupLogDir = Join-Path $repoRoot ".voidbot\logs"
+$startupLogPath = Join-Path $startupLogDir "start-voidbot-stack.log"
 . (Join-Path $PSScriptRoot "voidbot-operations-dashboard-lib.ps1")
 Set-Location -LiteralPath $repoRoot
+
+New-Item -ItemType Directory -Force -Path $startupLogDir | Out-Null
+
+try {
+  Start-Transcript -Path $startupLogPath -Append | Out-Null
+} catch {
+}
+
+trap {
+  try {
+    Stop-Transcript | Out-Null
+  } catch {
+  }
+
+  throw
+}
 
 function Read-DotEnv {
   param(
@@ -215,11 +233,10 @@ function Ensure-DockerOnPath {
     throw "Docker CLI is not available on PATH."
   }
 
-  & docker version *> $null
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "Docker is installed but the daemon is not ready."
-  }
+  Wait-Until -Condition {
+    & docker version *> $null
+    return ($LASTEXITCODE -eq 0)
+  } -FailureMessage "Docker is installed but the daemon is not ready." -Attempts 45 -SleepSeconds 2
 }
 
 function Ensure-Qdrant {
@@ -617,3 +634,8 @@ Write-Host "VoidBot stack is up."
 Write-Host "Status: $statusPath"
 Write-Host "Bot log: $botOut"
 Write-Host "Worker log: $workerOut"
+
+try {
+  Stop-Transcript | Out-Null
+} catch {
+}
