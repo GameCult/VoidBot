@@ -112,6 +112,24 @@ function ConvertTo-VoidBotDashboardFileUri {
   return ([System.Uri]::new($Path)).AbsoluteUri
 }
 
+function Write-VoidBotDashboardUtf8File {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Path,
+    [Parameter(Mandatory = $true)]
+    [AllowEmptyString()]
+    [string] $Content
+  )
+
+  $directory = Split-Path -Parent $Path
+  if (-not [string]::IsNullOrWhiteSpace($directory)) {
+    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+  }
+
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
 function New-VoidBotDashboardFileLink {
   param(
     [Parameter(Mandatory = $true)]
@@ -1452,7 +1470,8 @@ $($checkRows -join [Environment]::NewLine)
       importState = $importStatePath
     }
   }
-  $snapshot | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $snapshotPath -Encoding utf8
+  $snapshotJson = $snapshot | ConvertTo-Json -Depth 10
+  Write-VoidBotDashboardUtf8File -Path $snapshotPath -Content $snapshotJson
 
   $html = @"
 <!doctype html>
@@ -1769,7 +1788,7 @@ $checksSection
 </html>
 "@
 
-  Set-Content -LiteralPath $dashboardPath -Value $html -Encoding utf8
+  Write-VoidBotDashboardUtf8File -Path $dashboardPath -Content $html
 
   return [PSCustomObject]@{
     DashboardPath = $dashboardPath

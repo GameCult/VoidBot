@@ -102,9 +102,9 @@ async function main(): Promise<void> {
   );
   providerRegistry = await buildProviderRegistry(systemMessages);
   console.log(`VoidBot worker polling every ${config.workerPollIntervalMs}ms.`);
-  await processPendingJobs();
+  await pollPendingJobs();
   setInterval(() => {
-    void processPendingJobs();
+    void pollPendingJobs();
   }, config.workerPollIntervalMs);
 }
 
@@ -128,6 +128,16 @@ async function processPendingJobs(): Promise<void> {
     }
   } finally {
     isProcessing = false;
+  }
+}
+
+async function pollPendingJobs(): Promise<void> {
+  try {
+    await processPendingJobs();
+  } catch (error) {
+    const message =
+      error instanceof Error ? `${error.name}: ${error.message}` : "Unexpected worker poll failure.";
+    console.error(`Worker poll failed: ${message}`);
   }
 }
 
