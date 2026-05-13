@@ -86,22 +86,9 @@ function renderVoidSelfStateSummary(
     .map((memory) => {
       const subject = readString(memory, "subjectLabel") ?? readString(memory, "subjectId") ?? "unknown";
       const summary = readString(memory, "summary") ?? "(no summary)";
-      return `- ${subject}: ${summary}`;
+      const kind = readString(memory, "kind");
+      return `- ${subject}${kind === "distilled_seam" ? " [distilled seam]" : ""}: ${summary}`;
     });
-  const musings = getArray(memories, "musings")
-    .map((value) => (isObject(value) ? value : undefined))
-    .filter((value): value is JsonObject => Boolean(value))
-    .slice(-4)
-    .map((musing) => {
-      const topic = readString(musing, "topic") ?? "untitled";
-      const summary = readString(musing, "summary") ?? "(no summary)";
-      return `- ${topic}: ${summary}`;
-    });
-  const recentMusings = getArray(runtime, "recent_musings")
-    .map((value) => (typeof value === "string" ? value : undefined))
-    .filter((value): value is string => Boolean(value))
-    .slice(-4)
-    .map((value) => `- ${value}`);
   const analyticThreads = summarizeThoughtLane(getObject(thoughtLanes, "analytic"), 3);
   const associativeThreads = summarizeThoughtLane(getObject(thoughtLanes, "associative"), 3);
   const bridgeSyntheses = summarizeBridgeSyntheses(bridge, 3);
@@ -122,27 +109,6 @@ function renderVoidSelfStateSummary(
       return `- ${summary}: ${draft}`;
     });
   const speakingBias = getObject(runtime, "speaking_bias");
-  const recentRepoSweeps = getArray(runtime, "recent_repo_activity_sweeps")
-    .map((value) => (isObject(value) ? value : undefined))
-    .filter((value): value is JsonObject => Boolean(value))
-    .slice(-2)
-    .reverse()
-    .map((sweep) => {
-      const summary = readString(sweep, "summary") ?? "(no summary)";
-      const repoNames = getStringArray(sweep, "repoNames");
-      return `- ${summary}${repoNames.length > 0 ? ` [${repoNames.join(", ")}]` : ""}`;
-    });
-  const recentNoveltyChecks = getArray(runtime, "recent_novelty_checks")
-    .map((value) => (isObject(value) ? value : undefined))
-    .filter((value): value is JsonObject => Boolean(value))
-    .slice(-3)
-    .reverse()
-    .map((check) => {
-      const topic = readString(check, "topic") ?? "untitled";
-      const result = readString(check, "result") ?? "unknown";
-      const summary = readString(check, "summary") ?? "(no summary)";
-      return `- ${topic} [${result}]: ${summary}`;
-    });
   const lastRun = getObject(runtime, "last_run");
   const lastRunSummary = readString(lastRun, "summary");
   const sleepCycleSummary = renderSleepCycleSummary(runtime, memories);
@@ -171,8 +137,8 @@ function renderVoidSelfStateSummary(
       ? ["- Outstanding room obligations:", ...openCases].join("\n")
       : "- Outstanding room obligations: none recorded.",
     semanticMemories.length > 0
-      ? ["- Recent semantic memories:", ...semanticMemories].join("\n")
-      : "- Recent semantic memories: none recorded.",
+      ? ["- Distilled seam memory:", ...semanticMemories].join("\n")
+      : "- Distilled seam memory: none recorded.",
     analyticThreads.length > 0
       ? ["- Analytic active threads:", ...analyticThreads].join("\n")
       : "- Analytic active threads: none recorded.",
@@ -199,18 +165,6 @@ function renderVoidSelfStateSummary(
       ? ["- Unresolved tensions:", ...unresolvedTensions].join("\n")
       : "- Unresolved tensions: none recorded.",
     renderSpeakingBiasSummary(speakingBias),
-    recentRepoSweeps.length > 0
-      ? ["- Recent repo activity sweeps:", ...recentRepoSweeps].join("\n")
-      : "- Recent repo activity sweeps: none recorded.",
-    recentNoveltyChecks.length > 0
-      ? ["- Recent novelty checks:", ...recentNoveltyChecks].join("\n")
-      : "- Recent novelty checks: none recorded.",
-    musings.length > 0
-      ? ["- Stored musings:", ...musings].join("\n")
-      : "- Stored musings: none recorded.",
-    recentMusings.length > 0
-      ? ["- Recent moderation musings:", ...recentMusings].join("\n")
-      : "- Recent moderation musings: none recorded.",
     candidateInterventions.length > 0
       ? ["- Draft conversation/intervention seeds:", ...candidateInterventions].join("\n")
       : "- Draft conversation/intervention seeds: none recorded.",

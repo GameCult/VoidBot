@@ -747,7 +747,7 @@
       "maxEpisodicEntries": 24,
       "maxSemanticEntries": 40,
       "maxMusings": 20,
-      "distillationPolicy": "When memory starts bloating, merge repeated anecdotes into shorter summaries, keep the newest evidence, and cut stale trivia."
+      "distillationPolicy": "During naps, collapse yesterday's receipts into a few seam-shaped semantic memories, keep only a thin trace of raw episodes, and wake up with structure instead of a scrapbook."
     },
     "last_run": {
       "startedAt": null,

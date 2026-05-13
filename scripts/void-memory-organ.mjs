@@ -11,6 +11,15 @@ const MAX_CLUSTER_COUNT = 8;
 const MAX_INCUBATING_THOUGHTS = 8;
 const MAX_RECENT_EPISODIC_RECORDS = 10;
 const MAX_RECENT_QUIET_EPISODIC_RECORDS = 2;
+const MAX_POST_NAP_EPISODIC_RECORDS = 4;
+const MAX_POST_NAP_QUIET_EPISODIC_RECORDS = 1;
+const MAX_POST_NAP_ARCHIVE_EXCURSIONS = 3;
+const MAX_POST_NAP_REPO_SWEEPS = 3;
+const MAX_POST_NAP_NOVELTY_CHECKS = 3;
+const MAX_POST_NAP_MUSINGS = 6;
+const MAX_POST_NAP_RECENT_MUSINGS = 2;
+const MAX_POST_NAP_CANDIDATE_INTERVENTIONS = 4;
+const MAX_POST_NAP_SEAM_PROMOTIONS = 3;
 const MAX_RECENT_ANALYTIC_THREADS = 6;
 const MAX_RECENT_QUIET_ANALYTIC_THREADS = 1;
 const EDGE_SIMILARITY_THRESHOLD = 0.56;
@@ -203,6 +212,14 @@ export async function reconcileSemanticMemoryState({
     incubation,
     now,
   });
+  const consolidationResult = consolidateSleepMemory({
+    memories,
+    runtime,
+    sleepCycle,
+    incubation,
+    memoryResonance: runtime.memory_resonance,
+    now,
+  });
 
   state.moderation_runtime = runtime;
   state.memories = memories;
@@ -215,6 +232,8 @@ export async function reconcileSemanticMemoryState({
     sourceCoverage,
     dreamCreated: dreamResult.created,
     dreamTheme: dreamResult.theme,
+    sleepConsolidated: consolidationResult.consolidated,
+    promotedSeamCount: consolidationResult.promotedSeamCount,
     embeddingBackend: embedder.backend,
     embeddingModel: embedder.model,
   };
@@ -760,6 +779,145 @@ function distillDreams({ memories, sleepCycle, incubation, now }) {
   sleepCycle.lastDistillationSummary = `Dreamed a tighter seam: ${theme}.`;
 
   return { created: true, theme };
+}
+
+function consolidateSleepMemory({ memories, runtime, sleepCycle, incubation, memoryResonance, now }) {
+  if (sleepCycle.isNapping !== true) {
+    return { consolidated: false, promotedSeamCount: 0 };
+  }
+
+  const promotedSeamCount = promoteDistilledSeams({
+    memories,
+    incubation,
+    memoryResonance,
+    now,
+  });
+
+  memories.episodic = selectRecentRecords(ensureArray(memories.episodic), {
+    limit: MAX_POST_NAP_EPISODIC_RECORDS,
+    quietLimit: MAX_POST_NAP_QUIET_EPISODIC_RECORDS,
+  });
+  memories.musings = ensureArray(memories.musings)
+    .filter(isObject)
+    .slice(-MAX_POST_NAP_MUSINGS);
+  runtime.recent_archive_excursions = ensureArray(runtime.recent_archive_excursions)
+    .filter(isObject)
+    .slice(-MAX_POST_NAP_ARCHIVE_EXCURSIONS);
+  runtime.recent_repo_activity_sweeps = ensureArray(runtime.recent_repo_activity_sweeps)
+    .filter(isObject)
+    .slice(-MAX_POST_NAP_REPO_SWEEPS);
+  runtime.recent_novelty_checks = ensureArray(runtime.recent_novelty_checks)
+    .filter(isObject)
+    .slice(-MAX_POST_NAP_NOVELTY_CHECKS);
+  runtime.recent_musings = ensureArray(runtime.recent_musings)
+    .filter((value) => typeof value === "string")
+    .slice(-MAX_POST_NAP_RECENT_MUSINGS);
+  runtime.candidate_interventions = ensureArray(runtime.candidate_interventions)
+    .filter(isObject)
+    .slice(-MAX_POST_NAP_CANDIDATE_INTERVENTIONS);
+
+  sleepCycle.lastDistillationSummary = appendClause(
+    sleepCycle.lastDistillationSummary,
+    promotedSeamCount > 0
+      ? `Compressed yesterday's specimens into ${promotedSeamCount} seam-shaped memory${promotedSeamCount === 1 ? "" : " seams"} and cut the loose scraps back down.`
+      : "Compressed yesterday's specimens back into a smaller seam-shaped memory surface.",
+  );
+
+  return { consolidated: true, promotedSeamCount };
+}
+
+function promoteDistilledSeams({ memories, incubation, memoryResonance, now }) {
+  const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+  const thoughtCandidates = ensureArray(incubation.active_thoughts)
+    .filter(isObject)
+    .sort(
+      (left, right) =>
+        (readNumber(right, "maturation") ?? 0) - (readNumber(left, "maturation") ?? 0),
+    )
+    .slice(0, MAX_POST_NAP_SEAM_PROMOTIONS);
+  const clusterByLabel = new Map(
+    ensureArray(memoryResonance?.clusters)
+      .filter(isObject)
+      .map((cluster) => [readString(cluster, "label") ?? "", cluster]),
+  );
+
+  let promoted = 0;
+
+  for (const thought of thoughtCandidates) {
+    const topic = readString(thought, "topic");
+    const summary = readString(thought, "summary");
+    if (!topic || !summary) {
+      continue;
+    }
+
+    const cluster = clusterByLabel.get(topic);
+    const distilledSummary = buildDistilledSeamSummary({ thought, cluster });
+    const subjectId = `seam:${hashString(topic).slice(0, 12)}`;
+    const sourceRefs = [
+      ...ensureStringArray(thought.sourceMemoryIds),
+      ...(cluster ? ensureStringArray(cluster.memoryIds) : []),
+    ];
+    const existing = semanticMemories.find((memory) => {
+      const existingSubjectId = readString(memory, "subjectId");
+      const existingSubjectLabel = readString(memory, "subjectLabel");
+      return (
+        existingSubjectId === subjectId ||
+        topicSimilarity(existingSubjectLabel ?? "", topic) >= TOPIC_MATCH_THRESHOLD
+      );
+    });
+
+    if (existing) {
+      existing.kind = "distilled_seam";
+      existing.subjectId = subjectId;
+      existing.subjectLabel = topic;
+      existing.summary = distilledSummary;
+      existing.lastObservedAt = now.toISOString();
+      existing.evidenceRefs = sourceRefs;
+      existing.sleepDistilledAt = now.toISOString();
+      existing.lastDistilledQuestion = readString(thought, "latentQuestion") ?? null;
+    } else {
+      semanticMemories.push({
+        memoryId: `semantic-seam-${hashString(`${topic}|${now.toISOString()}`).slice(0, 12)}`,
+        kind: "distilled_seam",
+        subjectId,
+        subjectLabel: topic,
+        summary: distilledSummary,
+        evidenceRefs: sourceRefs,
+        lastObservedAt: now.toISOString(),
+        sleepDistilledAt: now.toISOString(),
+        lastDistilledQuestion: readString(thought, "latentQuestion") ?? null,
+      });
+    }
+
+    promoted += 1;
+  }
+
+  memories.semantic = semanticMemories.slice(-40);
+  return promoted;
+}
+
+function buildDistilledSeamSummary({ thought, cluster }) {
+  const summary = readString(thought, "summary") ?? "Unlabeled seam.";
+  const latentQuestion = readString(thought, "latentQuestion");
+  const sourceKinds = cluster ? ensureStringArray(cluster.sourceKinds) : [];
+  const sourceLine =
+    sourceKinds.length >= 2
+      ? ` Built from ${sourceKinds.join(", ")} rather than a single lane talking to itself.`
+      : "";
+
+  return `${summary}${latentQuestion ? ` ${latentQuestion}` : ""}${sourceLine}`.trim();
+}
+
+function appendClause(existing, clause) {
+  const left = normalizeText(existing);
+  const right = normalizeText(clause);
+  if (!left) {
+    return right;
+  }
+  if (!right || left.includes(right)) {
+    return left;
+  }
+  return `${left} ${right}`;
 }
 
 function buildLatentQuestion(cluster) {
