@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { type ArchivedSourceDocument } from "./source-document-archive";
 
@@ -63,6 +65,7 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 const DEFAULT_MAX_FILE_BYTES = 512 * 1024;
+const execFileAsync = promisify(execFile);
 
 export interface RepoCrawlerOptions {
   maxFileBytes?: number;
@@ -85,45 +88,62 @@ export async function crawlRepositoryDocuments(
   const skippedFiles: string[] = [];
   const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
   const includePathPrefixes = normalizePathPrefixes(options.includePathPrefixes);
+  const candidatePaths = await listRepositoryFiles(repoPath);
 
-  await walkDirectory(repoPath, async (absolutePath) => {
-    const fileStat = await stat(absolutePath);
+  for (const relativePath of candidatePaths) {
+    const normalizedPath = relativePath.replace(/\\/g, "/");
+
+    if (!shouldIndexFile(normalizedPath, includePathPrefixes)) {
+      continue;
+    }
+
+    const absolutePath = resolve(repoPath, normalizedPath);
+
+    if (!isPathInside(repoPath, absolutePath)) {
+      continue;
+    }
+
+    const fileStat = await stat(absolutePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") {
+        return undefined;
+      }
+
+      throw error;
+    });
+
+    if (!fileStat) {
+      continue;
+    }
 
     if (!fileStat.isFile()) {
-      return;
+      continue;
     }
 
     if (fileStat.size > maxFileBytes) {
-      skippedFiles.push(relative(repoPath, absolutePath));
-      return;
-    }
-
-    const relativePath = relative(repoPath, absolutePath).replace(/\\/g, "/");
-
-    if (!shouldIndexFile(relativePath, includePathPrefixes)) {
-      return;
+      skippedFiles.push(normalizedPath);
+      continue;
     }
 
     const content = await readTextFile(absolutePath);
 
     if (!content) {
-      return;
+      continue;
     }
 
     documents.push({
-      id: `${repoName}:${relativePath}`,
+      id: `${repoName}:${normalizedPath}`,
       repoName,
-      path: relativePath,
-      language: inferLanguage(relativePath),
-      title: relativePath,
+      path: normalizedPath,
+      language: inferLanguage(normalizedPath),
+      title: normalizedPath,
       content,
       lastModifiedAt: fileStat.mtime.toISOString(),
       metadata: {
         repoName,
-        path: relativePath,
+        path: normalizedPath,
       },
     });
-  });
+  }
 
   documents.sort((left, right) => left.path.localeCompare(right.path));
 
@@ -133,6 +153,39 @@ export async function crawlRepositoryDocuments(
     documents,
     skippedFiles,
   };
+}
+
+async function listRepositoryFiles(repoPath: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", repoPath, "ls-files", "--cached", "-z"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+    return stdout
+      .split("\0")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  } catch {
+    const files: string[] = [];
+
+    await walkDirectory(repoPath, async (absolutePath) => {
+      files.push(relative(repoPath, absolutePath).replace(/\\/g, "/"));
+    });
+
+    return files;
+  }
+}
+
+function isPathInside(rootPath: string, candidatePath: string): boolean {
+  const root = resolve(rootPath);
+  const candidate = resolve(candidatePath);
+  const relativePath = relative(root, candidate);
+
+  return (
+    relativePath.length === 0 ||
+    (!relativePath.startsWith("..") && !relativePath.startsWith("/") && !relativePath.startsWith("\\"))
+  );
 }
 
 async function walkDirectory(
