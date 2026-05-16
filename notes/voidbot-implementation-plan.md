@@ -4,9 +4,9 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The current implementation reaches that goal through JSON projection edits, legacy mirrors, and a swollen memory organ. That is architectural debt wearing a little paper crown.
+Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The current implementation reaches that goal through JSON projection edits, legacy mirrors, and a swollen memory organ. Most of the deterministic cleanup code is recent compensator cruft: it accumulated because the live state had exploded into nonsense, and repeated "clean this file" passes preserved the mess by adding machinery around it.
 
-The next priority is to remove JSON from the mutation loop entirely. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy.
+The next priority is to remove JSON from the mutation loop entirely and rebuild the state model so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/evidence/tensions instead of collapsing them into generic slogan paste.
 
 ## Smallest Coherent Architecture
 
@@ -75,6 +75,8 @@ Runtime context dies at the end of the pass unless an explicit typed mutation pr
   - `retire_candidate_intervention`
   - `update_sleep_cycle`
   - `update_speaking_pressure`
+  - `propose_memory_distillation`
+  - `apply_memory_distillation`
 - Model/agent output crosses the boundary as proposed operations, not as rewritten state.
 - The state service validates, normalizes, dedupes, and writes.
 
@@ -122,6 +124,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - Any helper that mutates the JSON projection and commits it back.
 - Prompt doctrine that tells the child agent how to manually preserve state shape.
 - Regex/template police that try to repair semantic sludge after the store allowed sludge to become durable.
+- Deterministic cleanup passes whose real job is compensating for whole-state JSON edits, permissive schemas, or sleep distillation that destroyed meaning.
 
 ### Impossible By Construction
 
@@ -143,7 +146,9 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
   - helpers mutate projection files and then commit whole-state changes
   - legacy mirrors keep reintroducing stale truth surfaces
   - `scripts/void-memory-organ.mjs` owns storage cleanup, semantic interpretation, vectors, incubation, sleep consolidation, identity crystallization, agency, and speech candidates in one file
-  - the scheduled moderation runner owns lifecycle through a huge prompt instead of a typed runner contract
+- the scheduled moderation runner owns lifecycle through a huge prompt instead of a typed runner contract
+- deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted as the new state boundary makes it unnecessary
+- sleep/distillation currently lacks a hard meaning-preservation contract, so it can compress a concrete repo-bound thought into generic abstraction sludge
 
 Verdict: stop feature work and rebuild this foundation. The rest of the machine can keep running, but moderation/mood/self-state work should cut toward typed state tools before adding new behavior.
 
@@ -195,12 +200,18 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Delete mirror fields from canonical state.
 - Verification: projection summaries still contain required information; no code references mirror keys.
 
-### Commit 8: Split The Memory Organ
+### Commit 8: Replace Compensating Cleanup With Meaning-Preserving Sleep
 
-- Split deterministic cleanup from semantic interpretation.
-- Keep vector/resonance/incubation maintenance behind typed state operations.
-- Move speech-candidate queuing into a candidate intervention service.
-- Verification: existing fixture state produces bounded, typed operations and no whole-state rewrite.
+- Delete cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue.
+- Redesign sleep/distillation around an explicit contract:
+  - preserve the claim/question/fascination target
+  - preserve the concrete subject, such as repo, room, lore seam, person, or system
+  - preserve evidence refs or admit when evidence is missing
+  - preserve the live tension/counterweight
+  - preserve why the memory should affect future action
+  - never replace a concrete thought with a prettier generic principle unless the operation records what was lost and why that loss is acceptable
+- Make distillation emit typed candidate memories first; the state service applies only candidates that satisfy the contract.
+- Verification: fixture memories such as `AquariumSynthCSharp: Workflow cannot own the body` survive sleep with their subject, claim, evidence, and tension intact.
 
 ### Commit 9: Rebuild Scheduled Runner As A Phase Machine
 

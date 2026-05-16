@@ -10,3 +10,5 @@ Design and execute the private self-state teardown: replace editable JSON projec
 - First cut should be state-boundary design and typed mutation tools, not another behavior patch.
 - JSON can remain a debug export or operation payload format, but not an editable whole-state working copy.
 - Cut early: repo cursor JSON writes, commit-working-view authority, legacy top-level mirrors, and semantic cleanup code that only exists because invalid durable state was allowed through.
+- Treat most deterministic cleanup as recent compensator cruft, not machinery to preserve.
+- Redesign sleep/distillation so compression preserves concrete subject, claim/question, evidence refs, live tension, and future-action implication instead of collapsing meaning into generic slogan paste.
