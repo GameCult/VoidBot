@@ -15,13 +15,19 @@ const timestampSchema = nonEmptyStringSchema;
 
 const boundedTextSchema = z.string().trim().min(1).max(4000);
 
-const taggedScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
-
 const evidenceRefSchema = z.object({
   ref: nonEmptyStringSchema,
   kind: z.string().trim().min(1).max(64).optional(),
   summary: z.string().trim().max(1000).optional(),
 }).strict();
+
+const activationVectorSchema = z.object({
+  mean: z.number().min(0).max(1),
+  plasticity: z.number().min(0).max(1),
+  current_activation: z.number().min(0).max(1),
+}).strict();
+
+const activationCategorySchema = z.record(nonEmptyStringSchema, activationVectorSchema);
 
 const thoughtTargetSchema = z.object({
   kind: z.enum(["archive", "lore", "person", "repo", "room", "self", "system"]),
@@ -135,7 +141,14 @@ export const voidSelfProfileSchema = z.object({
     priority: z.number().min(0).max(1),
     summary: z.string().trim().max(1000).optional(),
   }).strict()).default([]),
-  voice: z.record(nonEmptyStringSchema, taggedScalarSchema).default({}),
+  activationProfile: z.object({
+    underlyingOrganization: activationCategorySchema.default({}),
+    stableDispositions: activationCategorySchema.default({}),
+    behavioralDimensions: activationCategorySchema.default({}),
+    presentationStrategy: activationCategorySchema.default({}),
+    voiceStyle: activationCategorySchema.default({}),
+    situationalState: activationCategorySchema.default({}),
+  }).strict(),
   updatedAt: timestampSchema,
 }).strict();
 

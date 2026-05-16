@@ -4,7 +4,11 @@ import {
   type VoidSelfStateContext,
 } from "@voidbot/shared";
 
-import { loadModerationState } from "./moderation-state-store";
+import { loadModerationState, type ModerationState } from "./moderation-state-store";
+import {
+  projectModerationStateToTypedSelfState,
+  type VoidSelfStateTypedProjection,
+} from "./void-self-state-projection";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
@@ -18,10 +22,10 @@ export async function loadVoidSelfState(
   statePath: string,
   options: LoadVoidSelfStateOptions = {},
 ): Promise<VoidSelfStateContext | undefined> {
-  let parsed: JsonObject;
+  let parsed: ModerationState;
 
   try {
-    parsed = (await loadModerationState(statePath)) as unknown as JsonObject;
+    parsed = await loadModerationState(statePath);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
 
@@ -32,12 +36,14 @@ export async function loadVoidSelfState(
     throw error;
   }
 
-  const projection = buildVoidSelfStateProjection(parsed);
+  const legacyProjection = parsed as unknown as JsonObject;
+  const typedProjection = projectModerationStateToTypedSelfState(parsed);
+  const projection = buildVoidSelfStateProjection(typedProjection);
 
   return {
     sourcePath: statePath,
     loadedAt: new Date().toISOString(),
-    summary: renderVoidSelfStateSummary(parsed, options),
+    summary: renderVoidSelfStateSummary(legacyProjection, options),
     projection,
   };
 }
@@ -582,23 +588,19 @@ function renderSpeakingBiasSummary(speakingBias: JsonObject | undefined): string
   return `- Speaking bias: ${parts.join(", ")}${recency.length > 0 ? ` (${recency})` : ""}`;
 }
 
-function buildVoidSelfStateProjection(state: JsonObject): VoidSelfStateContext["projection"] {
-  const memories = getObject(state, "memories");
-  const runtime = getObject(state, "moderation_runtime");
-  const sleepCycle = getObject(runtime, "sleep_cycle");
-  const dreamEntries = getArray(memories, "dreams")
-    .map((value) => (isObject(value) ? value : undefined))
-    .filter((value): value is JsonObject => Boolean(value))
+function buildVoidSelfStateProjection(
+  typedState: VoidSelfStateTypedProjection,
+): VoidSelfStateContext["projection"] {
+  const sleepCycle = typedState.scheduledRuntime.sleepCycle;
+  const dreamSummaries = typedState.thoughtMemory.memories
+    .filter((memory) => memory.kind === "dream_residue")
     .slice(-3)
-    .reverse();
-  const dreamSummaries = dreamEntries
-    .map((entry) => readString(entry, "summary"))
-    .filter((entry): entry is string => Boolean(entry));
-  const activeDreamThemes = getStringArray(sleepCycle, "activeDreamThemes");
-  const isNapping = sleepCycle?.["isNapping"] === true;
-  const napStartedAt = readString(sleepCycle, "currentNapStartedAt") ?? readString(sleepCycle, "lastNapStartedAt");
-  const napEndsAt = readString(sleepCycle, "currentNapEndsAt");
-  const nextNapAt = readString(sleepCycle, "nextNapStartsAt");
+    .reverse()
+    .map((memory) => memory.summary);
+  const isNapping = sleepCycle.isNapping === true;
+  const napStartedAt = sleepCycle.currentNapStartedAt;
+  const napEndsAt = sleepCycle.currentNapEndsAt;
+  const nextNapAt = sleepCycle.nextNapStartsAt;
 
   return {
     mode: isNapping ? "napping" : "awake",
@@ -606,7 +608,7 @@ function buildVoidSelfStateProjection(state: JsonObject): VoidSelfStateContext["
     napStartedAt: isNapping ? napStartedAt : undefined,
     napEndsAt: isNapping ? napEndsAt : undefined,
     nextNapAt,
-    activeDreamThemes,
+    activeDreamThemes: sleepCycle.activeDreamThemes,
     recentDreamSummaries: dreamSummaries,
     replyDirective: isNapping
       ? "You are in a scheduled nap. Reply in brief, low-effort, half-dreaming mutters instead of doing full attentive service-work."
