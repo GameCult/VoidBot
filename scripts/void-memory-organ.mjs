@@ -20,6 +20,16 @@ const MAX_POST_NAP_MUSINGS = 6;
 const MAX_POST_NAP_RECENT_MUSINGS = 2;
 const MAX_POST_NAP_CANDIDATE_INTERVENTIONS = 4;
 const MAX_POST_NAP_SEAM_PROMOTIONS = 3;
+const MAX_POST_NAP_RESONANCE_EDGES = 12;
+const MAX_ARCHIVE_EXCURSION_MEMORIES = 6;
+const MAX_REPO_SWEEP_MEMORIES = 8;
+const MAX_SEMANTIC_MEMORIES = 18;
+const MAX_DREAM_MEMORIES = 6;
+const MAX_RUNTIME_REPO_SWEEPS = 4;
+const MAX_RUNTIME_REPO_ACTIVITY_MEMORIES = 4;
+const MAX_RUNTIME_ARCHIVE_EXCURSIONS = 4;
+const MAX_RUNTIME_RUMINATION_SEEDS = 4;
+const MAX_RECENT_SYNTHESIS_COUNT = 4;
 const MAX_DISCOMFORT_COUNT = 6;
 const MAX_ACTIVE_TENSION_COUNT = 6;
 const MAX_ADVOCACY_REQUEST_COUNT = 4;
@@ -347,23 +357,24 @@ function normalizeHistoricalMemorySurfaces({ memories, runtime, now }) {
   dedupeSemanticMemories({ memories });
   dedupeDreamMemories({ memories });
   pruneHistoricalSeamMemories({ memories });
+  pruneDreamMemories({ memories });
+  trimHistoricalMemoryResidue({ memories, runtime });
   trimLegacyRuntimeResidue({ runtime });
 }
 
 function normalizeSemanticMemories({ memories, now }) {
   const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+  const kept = [];
 
   for (const memory of semanticMemories) {
     if (readString(memory, "kind") === "identity_seam") {
+      kept.push(memory);
       continue;
     }
 
+    const preferredLabel = choosePreferredThoughtLabel(memory);
     const normalized = translateLegacyThoughtLikeEntry({
-      label:
-        readString(memory, "subjectLabel") ??
-        readString(memory, "subjectId") ??
-        readString(memory, "kind") ??
-        "semantic seam",
+      label: preferredLabel ?? readString(memory, "kind") ?? "semantic seam",
       summary: readString(memory, "summary") ?? "",
       fallbackTargetKind: "self",
       fallbackFocusKind: "question",
@@ -372,6 +383,10 @@ function normalizeSemanticMemories({ memories, now }) {
     });
 
     if (!normalized) {
+      continue;
+    }
+
+    if (shouldPurgeThoughtLikeMemory({ entry: memory, normalized, preferredLabel })) {
       continue;
     }
 
@@ -385,15 +400,19 @@ function normalizeSemanticMemories({ memories, now }) {
     memory.fascinationTarget = normalized.fascinationTarget;
     memory.worldFacing = normalized.worldFacing;
     memory.lastTranslatedAt = now.toISOString();
+    kept.push(memory);
   }
+
+  memories.semantic = kept.slice(-MAX_SEMANTIC_MEMORIES);
 }
 
 function normalizeDreamMemories({ memories, now }) {
   const dreams = ensureArray(memories.dreams).filter(isObject);
+  const kept = [];
 
   for (const dream of dreams) {
     const normalized = translateLegacyThoughtLikeEntry({
-      label: readString(dream, "theme") ?? "dream seam",
+      label: choosePreferredDreamTheme(dream) ?? "dream seam",
       summary: readString(dream, "summary") ?? "",
       fallbackTargetKind: "self",
       fallbackFocusKind: "question",
@@ -405,8 +424,18 @@ function normalizeDreamMemories({ memories, now }) {
       continue;
     }
 
+    if (
+      shouldPurgeThoughtLikeMemory({
+        entry: dream,
+        normalized,
+        preferredLabel: choosePreferredDreamTheme(dream),
+      })
+    ) {
+      continue;
+    }
+
     dream.theme = normalized.label;
-    dream.summary = `Dream-compressed ${normalized.summary}`;
+    dream.summary = buildDreamSummary(normalized);
     dream.focusKind = normalized.focusKind;
     dream.targetKind = normalized.targetKind;
     dream.focusPhrase = normalized.focusPhrase;
@@ -414,7 +443,10 @@ function normalizeDreamMemories({ memories, now }) {
     dream.claim = normalized.claim;
     dream.worldFacing = normalized.worldFacing;
     dream.lastTranslatedAt = now.toISOString();
+    kept.push(dream);
   }
+
+  memories.dreams = kept.slice(-MAX_DREAM_MEMORIES);
 }
 
 function translateLegacyThoughtLikeEntry({
@@ -430,6 +462,8 @@ function translateLegacyThoughtLikeEntry({
   if (!rawLabel && !rawSummary) {
     return null;
   }
+
+  const preferredLabel = sanitizePreferredThoughtLabel(rawLabel);
 
   const sourceKinds = inferSourceKindsFromThoughtText(rawSummary, rawLabel, evidenceRefs);
   const synthesized = synthesizeThoughtSurface({
@@ -448,14 +482,21 @@ function translateLegacyThoughtLikeEntry({
       evidenceDiversity: inferLegacyEvidenceDiversity(sourceKinds, evidenceRefs, repoNames),
     }),
   });
+  const preferredFocusPhrase = preferredLabel ? normalizeText(preferredLabel).toLowerCase() : synthesized.focusPhrase;
+  const stabilized = {
+    ...synthesized,
+    label: preferredLabel ?? synthesized.label,
+    focusPhrase: preferredFocusPhrase,
+    fascinationTarget: preferredFocusPhrase,
+  };
 
   if (!looksLegacyThoughtSurface(rawLabel, rawSummary)) {
     return {
-      ...synthesized,
-      label: rawLabel || synthesized.label,
+      ...stabilized,
+      label: preferredLabel ?? rawLabel ?? stabilized.label,
       summary: rewriteLegacySummaryToModernShape({
         summary: rawSummary,
-        synthesized,
+        synthesized: stabilized,
         fallbackFocusKind,
         fallbackTargetKind,
       }),
@@ -463,12 +504,12 @@ function translateLegacyThoughtLikeEntry({
   }
 
   return {
-    ...synthesized,
-    focusKind: synthesized.focusKind ?? fallbackFocusKind,
-    targetKind: synthesized.targetKind ?? fallbackTargetKind,
+    ...stabilized,
+    focusKind: stabilized.focusKind ?? fallbackFocusKind,
+    targetKind: stabilized.targetKind ?? fallbackTargetKind,
     summary: rewriteLegacySummaryToModernShape({
       summary: rawSummary,
-      synthesized,
+      synthesized: stabilized,
       fallbackFocusKind,
       fallbackTargetKind,
     }),
@@ -486,6 +527,41 @@ function looksLegacyThoughtSurface(label, summary) {
   );
 }
 
+function choosePreferredThoughtLabel(entry) {
+  return (
+    sanitizePreferredThoughtLabel(readString(entry, "subjectLabel") ?? "") ??
+    sanitizePreferredThoughtLabel(readString(entry, "subjectId") ?? "") ??
+    null
+  );
+}
+
+function choosePreferredDreamTheme(entry) {
+  return sanitizePreferredThoughtLabel(readString(entry, "theme") ?? "") ?? null;
+}
+
+function sanitizePreferredThoughtLabel(label) {
+  const normalized = normalizeText(label)
+    .replace(/^Why\s+/i, "")
+    .replace(/\s+keeps\s+resurfacing$/i, "")
+    .replace(/^What\s+/i, "")
+    .replace(/\s+is\s+trying\s+to\s+become$/i, "")
+    .trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (looksKeywordSalad(normalized)) {
+    return null;
+  }
+
+  if (/\b(still matters|current room need|change a real machine)\b/i.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
 function rewriteLegacySummaryToModernShape({ summary, synthesized, fallbackFocusKind, fallbackTargetKind }) {
   const cleanSummary = normalizeText(summary)
     .replace(/^Recurring seam across .*?\.\s*/i, "")
@@ -500,21 +576,11 @@ function rewriteLegacySummaryToModernShape({ summary, synthesized, fallbackFocus
   const focusKind = synthesized.focusKind ?? fallbackFocusKind;
   const targetKind = synthesized.targetKind ?? fallbackTargetKind;
 
-  if (focusKind === "fascination") {
-    return `Fascination with ${synthesized.fascinationTarget}. ${synthesized.question}`;
+  if (cleanSummary && !hasThoughtSurfaceTemplateSmell(cleanSummary)) {
+    return cleanSummary;
   }
-  if (targetKind === "self") {
-    return `Self-facing seam around ${synthesized.focusPhrase}. ${synthesized.claim}`;
-  }
-  if (targetKind === "archive") {
-    return `Archive-facing seam around ${synthesized.focusPhrase}. ${synthesized.question}`;
-  }
-  if (focusKind === "claim") {
-    return `Working claim around ${synthesized.focusPhrase}. ${synthesized.claim}`;
-  }
-  return cleanSummary
-    ? `${capitalizePhrase(synthesized.focusPhrase)} still matters. ${synthesized.question}`
-    : synthesized.summary;
+
+  return buildConciseThoughtSummary({ focusKind, targetKind, synthesized });
 }
 
 function inferSourceKindsFromThoughtText(summary, label, evidenceRefs) {
@@ -581,6 +647,35 @@ function inferLegacyEvidenceDiversity(sourceKinds, evidenceRefs, repoNames) {
   );
 }
 
+function buildConciseThoughtSummary({ focusKind, targetKind, synthesized }) {
+  const focus = capitalizePhrase(synthesized.focusPhrase);
+  const repoTarget = capitalizePhrase(synthesized.fascinationTarget ?? synthesized.focusPhrase);
+  if (focusKind === "fascination" && targetKind === "repo") {
+    return `${repoTarget} keeps pulling as a concrete repo seam.`;
+  }
+  if (targetKind === "archive") {
+    return `${focus} keeps showing up in the archive strongly enough to deserve a cleaner read.`;
+  }
+  if (targetKind === "self") {
+    return `${focus} keeps surviving compression as a self-seam.`;
+  }
+  if (focusKind === "claim") {
+    return `${focus} looks like a live claim rather than ambient noise.`;
+  }
+  return `${focus} still looks like a live seam.`;
+}
+
+function buildDreamSummary(normalized) {
+  const focus = capitalizePhrase(normalized.focusPhrase ?? normalized.label ?? "this seam");
+  if ((normalized.targetKind ?? "") === "archive") {
+    return `Dream residue around ${focus} from older archive pressure.`;
+  }
+  if ((normalized.targetKind ?? "") === "self") {
+    return `Dream residue around ${focus} as a self-seam.`;
+  }
+  return `Dream residue around ${focus}.`;
+}
+
 function dedupeSemanticMemories({ memories }) {
   const semanticMemories = ensureArray(memories.semantic).filter(isObject);
   const bySignature = new Map();
@@ -608,7 +703,7 @@ function dedupeSemanticMemories({ memories }) {
     }
   }
 
-  memories.semantic = [...bySignature.values()].slice(-40);
+  memories.semantic = [...bySignature.values()].slice(-MAX_SEMANTIC_MEMORIES);
 }
 
 function dedupeDreamMemories({ memories }) {
@@ -633,7 +728,7 @@ function dedupeDreamMemories({ memories }) {
       readString(dream, "timestamp");
   }
 
-  memories.dreams = [...byTheme.values()].slice(-12);
+  memories.dreams = [...byTheme.values()].slice(-MAX_DREAM_MEMORIES);
 }
 
 function pruneHistoricalSeamMemories({ memories }) {
@@ -649,6 +744,17 @@ function pruneHistoricalSeamMemories({ memories }) {
       continue;
     }
     if (kind !== "distilled_seam") {
+      const subjectLabel = readString(memory, "subjectLabel") ?? "";
+      const subjectId = readString(memory, "subjectId") ?? "";
+      if (
+        (!subjectLabel || subjectLabel.startsWith("seam:")) &&
+        (subjectId.startsWith("seam:") || subjectId.startsWith("pattern-"))
+      ) {
+        continue;
+      }
+      if (hasThoughtSurfaceTemplateSmell(readString(memory, "summary") ?? "")) {
+        continue;
+      }
       nonSeams.push(memory);
       continue;
     }
@@ -672,13 +778,14 @@ function pruneHistoricalSeamMemories({ memories }) {
   for (const [targetKind, entries] of groupedDistilled.entries()) {
     const sorted = entries
       .filter((entry) => !isLowCoherenceDistilledSeam(entry))
+      .filter((entry) => !hasThoughtSurfaceTemplateSmell(readString(entry, "summary") ?? ""))
       .sort(compareMemoryFreshness);
     keptDistilled.push(...sorted.slice(0, limits.get(targetKind) ?? 4));
   }
 
   memories.semantic = [...nonSeams, ...keptDistilled, ...identitySeams]
     .sort(compareMemoryFreshness)
-    .slice(-40);
+    .slice(0, MAX_SEMANTIC_MEMORIES);
 }
 
 function isLowCoherenceDistilledSeam(entry) {
@@ -692,10 +799,132 @@ function isLowCoherenceDistilledSeam(entry) {
   if (targetKind === "self" && keywords.length < 3) {
     return true;
   }
+  if (!label || label.startsWith("seam:")) {
+    return true;
+  }
+  if (looksKeywordSalad(label)) {
+    return true;
+  }
   if (/still matters\./i.test(summary) && !/^[A-Z][A-Za-z0-9]+: /.test(label)) {
     return true;
   }
   return false;
+}
+
+function shouldPurgeThoughtLikeMemory({ entry, normalized, preferredLabel }) {
+  const rawSummary = readString(entry, "summary") ?? "";
+  const rawQuestion = readString(entry, "question") ?? "";
+  const rawClaim = readString(entry, "claim") ?? "";
+  const label =
+    preferredLabel ??
+    readString(entry, "subjectLabel") ??
+    readString(entry, "theme") ??
+    normalized.label ??
+    "";
+
+  if (!hasThoughtSurfaceTemplateSmell(rawSummary) && !hasThoughtSurfaceTemplateSmell(rawQuestion)) {
+    return false;
+  }
+
+  if (sanitizePreferredThoughtLabel(label)) {
+    return false;
+  }
+
+  if (normalizeText(rawClaim).length > 0 && !hasThoughtSurfaceTemplateSmell(rawClaim)) {
+    return false;
+  }
+
+  return true;
+}
+
+function hasThoughtSurfaceTemplateSmell(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.includes("what does the current room need from it") ||
+    normalized.includes("if it had to change a real machine") ||
+    normalized.includes("keeps returning with enough structure to deserve another honest pass") ||
+    normalized.includes("still matters. what would") ||
+    normalized.includes("archive-facing seam around") ||
+    normalized.includes("self-facing seam around") ||
+    normalized.includes("dream-compressed a seam around")
+  );
+}
+
+function looksKeywordSalad(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (normalized.split(",").length >= 3) {
+    return true;
+  }
+  const tokens = tokenize(normalized).filter((token) => !stopwords.has(token));
+  if (tokens.length === 0) {
+    return true;
+  }
+  const longTokens = tokens.filter((token) => token.length >= 5);
+  return tokens.length >= 3 && longTokens.length === 0;
+}
+
+function pruneDreamMemories({ memories }) {
+  const dreams = ensureArray(memories.dreams)
+    .filter(isObject)
+    .filter((dream) => !hasThoughtSurfaceTemplateSmell(readString(dream, "summary") ?? ""))
+    .filter((dream) => !looksKeywordSalad(readString(dream, "theme") ?? ""))
+    .sort(compareMemoryFreshness);
+
+  memories.dreams = dreams.slice(0, MAX_DREAM_MEMORIES);
+}
+
+function trimHistoricalMemoryResidue({ memories, runtime }) {
+  memories.archive_excursions = trimRecentObjectRecords(
+    memories.archive_excursions,
+    MAX_ARCHIVE_EXCURSION_MEMORIES,
+  );
+  memories.repo_sweeps = trimRecentObjectRecords(memories.repo_sweeps, MAX_REPO_SWEEP_MEMORIES);
+  memories.musings = trimRecentObjectRecords(memories.musings, MAX_POST_NAP_MUSINGS);
+  memories.candidate_interventions = trimCandidateInterventions(memories.candidate_interventions);
+
+  runtime.recent_archive_excursions = trimRecentObjectRecords(
+    runtime.recent_archive_excursions,
+    MAX_POST_NAP_ARCHIVE_EXCURSIONS,
+  );
+  runtime.archive_excursions = trimRecentObjectRecords(runtime.archive_excursions, MAX_RUNTIME_ARCHIVE_EXCURSIONS);
+  runtime.recent_repo_activity_sweeps = trimRecentObjectRecords(
+    runtime.recent_repo_activity_sweeps,
+    MAX_POST_NAP_REPO_SWEEPS,
+  );
+  runtime.repo_sweeps = trimRecentObjectRecords(runtime.repo_sweeps, MAX_RUNTIME_REPO_SWEEPS);
+  runtime.repo_activity_memories = trimRecentObjectRecords(
+    runtime.repo_activity_memories,
+    MAX_RUNTIME_REPO_ACTIVITY_MEMORIES,
+  );
+  runtime.recent_novelty_checks = trimRecentObjectRecords(
+    runtime.recent_novelty_checks,
+    MAX_POST_NAP_NOVELTY_CHECKS,
+  );
+  runtime.rumination_seeds = trimRecentObjectRecords(runtime.rumination_seeds, MAX_RUNTIME_RUMINATION_SEEDS);
+  runtime.candidate_interventions = trimCandidateInterventions(runtime.candidate_interventions);
+
+  const bridge = ensureObject(runtime.bridge);
+  bridge.recent_syntheses = trimRecentObjectRecords(bridge.recent_syntheses, MAX_RECENT_SYNTHESIS_COUNT);
+  bridge.unresolved_tensions = trimRecentObjectRecords(bridge.unresolved_tensions, 3);
+  runtime.bridge = bridge;
+
+  const memoryResonance = ensureObject(runtime.memory_resonance);
+  memoryResonance.recent_edges = trimRecentObjectRecords(
+    memoryResonance.recent_edges,
+    MAX_POST_NAP_RESONANCE_EDGES,
+  );
+  runtime.memory_resonance = memoryResonance;
+}
+
+function trimRecentObjectRecords(entries, limit) {
+  return ensureArray(entries).filter(isObject).sort(compareMemoryFreshness).slice(0, limit);
 }
 
 function compareMemoryFreshness(left, right) {
@@ -1011,17 +1240,20 @@ function buildClusters(records, edges) {
       evidenceDiversity,
       curiosityProfile,
     });
+    const cleanedLabel = sanitizePreferredThoughtLabel(thoughtSurface.label) ?? thoughtSurface.label;
+    const cleanedFocusPhrase =
+      sanitizePreferredThoughtLabel(thoughtSurface.focusPhrase) ?? thoughtSurface.focusPhrase;
 
     clusters.push({
       clusterId: `cluster-${hashString(componentIds.sort().join("|")).slice(0, 12)}`,
-      label: thoughtSurface.label,
+      label: cleanedLabel,
       summary: thoughtSurface.summary,
       focusKind: thoughtSurface.focusKind,
       targetKind: thoughtSurface.targetKind,
-      focusPhrase: thoughtSurface.focusPhrase,
+      focusPhrase: cleanedFocusPhrase,
       question: thoughtSurface.question,
       claim: thoughtSurface.claim,
-      fascinationTarget: thoughtSurface.fascinationTarget,
+      fascinationTarget: cleanedFocusPhrase,
       worldFacing: thoughtSurface.worldFacing,
       resonance: round3(resonance),
       memoryIds: items.map((item) => item.memoryId),
@@ -1224,7 +1456,7 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
 
     return {
       thoughtId: readString(previousThought, "thoughtId") ?? cluster.clusterId,
-      topic: cluster.label,
+      topic: sanitizePreferredThoughtLabel(cluster.label) ?? cluster.label,
       summary: cluster.summary,
       focusKind: cluster.focusKind,
       targetKind: cluster.targetKind,
@@ -1308,8 +1540,19 @@ function distillDreams({ memories, sleepCycle, incubation, now }) {
     return { created: false, theme: null };
   }
 
-  const theme = readString(strongestThought, "topic") ?? "unlabeled seam";
-  const summary = `Dream-compressed a seam around ${theme}. ${readString(strongestThought, "latentQuestion") ?? "It still wants another pass before speech."}`;
+  const theme =
+    sanitizePreferredThoughtLabel(readString(strongestThought, "topic") ?? "") ??
+    readString(strongestThought, "focusPhrase") ??
+    "unlabeled seam";
+  if (looksKeywordSalad(theme)) {
+    return { created: false, theme: null };
+  }
+
+  const summary = buildDreamSummary({
+    label: theme,
+    focusPhrase: theme,
+    targetKind: readString(strongestThought, "targetKind") ?? "self",
+  });
   const latestDream = dreams.length > 0 && isObject(dreams[dreams.length - 1]) ? dreams[dreams.length - 1] : null;
 
   if (
@@ -1339,7 +1582,7 @@ function distillDreams({ memories, sleepCycle, incubation, now }) {
     ),
   });
 
-  memories.dreams = dreams.slice(-12);
+  memories.dreams = dreams.slice(-MAX_DREAM_MEMORIES);
   sleepCycle.activeDreamThemes = [theme];
   sleepCycle.lastDreamAt = now.toISOString();
   sleepCycle.dreamCountInCurrentNap = Number(sleepCycle.dreamCountInCurrentNap ?? 0) + 1;
@@ -1379,7 +1622,11 @@ function consolidateSleepMemory({ memories, runtime, sleepCycle, incubation, mem
   runtime.recent_musings = ensureArray(runtime.recent_musings)
     .filter((value) => typeof value === "string")
     .slice(-MAX_POST_NAP_RECENT_MUSINGS);
+  trimHistoricalMemoryResidue({ memories, runtime });
   runtime.candidate_interventions = trimCandidateInterventions(runtime.candidate_interventions);
+  memoryResonance.recent_edges = trimRecentObjectRecords(memoryResonance.recent_edges, MAX_POST_NAP_RESONANCE_EDGES);
+  memoryResonance.clusters = trimRecentObjectRecords(memoryResonance.clusters, MAX_CLUSTER_COUNT);
+  incubation.active_thoughts = trimRecentObjectRecords(incubation.active_thoughts, 3);
 
   sleepCycle.lastDistillationSummary = appendClause(
     sleepCycle.lastDistillationSummary,
@@ -1436,7 +1683,7 @@ function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now
 
   identity.private_notes = privateNotes;
   canonicalState.values = values;
-  memories.semantic = semanticMemories.slice(-40);
+  memories.semantic = semanticMemories.slice(-MAX_SEMANTIC_MEMORIES);
   state.identity = identity;
   state.canonical_state = canonicalState;
   incubation.active_thoughts = retained;
@@ -2103,9 +2350,12 @@ function promoteDistilledSeams({ memories, incubation, memoryResonance, now }) {
   let promoted = 0;
 
   for (const thought of thoughtCandidates) {
-    const topic = readString(thought, "topic");
+    const topic =
+      sanitizePreferredThoughtLabel(readString(thought, "topic") ?? "") ??
+      readString(thought, "focusPhrase") ??
+      readString(thought, "fascinationTarget");
     const summary = readString(thought, "summary");
-    if (!topic || !summary) {
+    if (!topic || !summary || looksKeywordSalad(topic)) {
       continue;
     }
 
@@ -2151,21 +2401,29 @@ function promoteDistilledSeams({ memories, incubation, memoryResonance, now }) {
     promoted += 1;
   }
 
-  memories.semantic = semanticMemories.slice(-40);
+  memories.semantic = semanticMemories.slice(-MAX_SEMANTIC_MEMORIES);
   return promoted;
 }
 
 function buildDistilledSeamSummary({ thought, cluster }) {
-  const summary = readString(thought, "summary") ?? "Unlabeled seam.";
-  const claim = readString(thought, "claim");
-  const latentQuestion = readString(thought, "latentQuestion");
-  const sourceKinds = cluster ? ensureStringArray(cluster.sourceKinds) : [];
+  const targetKind = readString(thought, "targetKind") ?? "system";
+  const focusKind = readString(thought, "focusKind") ?? "question";
+  const focusPhrase =
+    readString(thought, "focusPhrase") ??
+    readString(thought, "topic") ??
+    readString(thought, "fascinationTarget") ??
+    "this seam";
+  const synthesized = {
+    focusPhrase,
+    fascinationTarget: readString(thought, "fascinationTarget") ?? focusPhrase,
+  };
+  const summary = buildConciseThoughtSummary({ focusKind, targetKind, synthesized });
+  const sourceKinds = cluster ? ensureStringArray(cluster.sourceKinds) : ensureStringArray(thought.sourceKinds);
+  const shortSourceKinds = sourceKinds.filter(Boolean).slice(0, 3);
   const sourceLine =
-    sourceKinds.length >= 2
-      ? ` Built from ${sourceKinds.join(", ")} rather than a single lane talking to itself.`
-      : "";
+    shortSourceKinds.length >= 2 ? ` Built from ${shortSourceKinds.join(", ")}.` : "";
 
-  return `${summary}${claim ? ` ${claim}` : latentQuestion ? ` ${latentQuestion}` : ""}${sourceLine}`.trim();
+  return `${summary}${sourceLine}`.trim();
 }
 
 function appendClause(existing, clause) {
@@ -2186,14 +2444,14 @@ function buildLatentQuestion(cluster) {
   }
 
   if (cluster.sourceKinds.includes("repo_sweep") && cluster.sourceKinds.includes("archive_excursion")) {
-    return "Which old seam is the current work rediscovering, and does the room need that connection yet?";
+    return "Which older pattern is the current work rediscovering?";
   }
 
   if (cluster.sourceKinds.includes("dream") || cluster.sourceKinds.includes("musing")) {
-    return "What part of this thought wants embodiment instead of another backstage note?";
+    return "What concrete body would stop this thought from staying backstage?";
   }
 
-  return "What is this seam actually trying to become if it survives another pass?";
+  return "What concrete claim survives another pass?";
 }
 
 function buildAttractionLine(cluster, { noveltyToSelf, evidenceDiversity }) {
@@ -2240,7 +2498,7 @@ function buildHoldingLine({ cluster, status, recentSpeechDamping, saturationScor
   }
 
   if (cluster.worldFacing !== true && concreteness < 0.42) {
-    return "This seam is still too inward and abstract to deserve the whole room. Cash it out in a real machine or let something sharper take the floor.";
+    return "This seam is still too inward and abstract to deserve the whole room. Tie it to a concrete system or let something sharper take the floor.";
   }
 
   if (recentSpeechDamping >= 0.45) {
@@ -2977,11 +3235,8 @@ function buildThoughtLabel({ focusKind, targetKind, focusPhrase, repoNames }) {
   if (focusKind === "fascination" && repoName) {
     return `${repoName}: ${capitalizePhrase(focusPhrase)}`;
   }
-  if (targetKind === "self") {
-    return `What ${focusPhrase} is trying to become`;
-  }
-  if (targetKind === "archive") {
-    return `Why ${focusPhrase} keeps resurfacing`;
+  if (targetKind === "self" || targetKind === "archive") {
+    return capitalizePhrase(focusPhrase);
   }
   if (focusKind === "claim") {
     return `${capitalizePhrase(focusPhrase)} deserves a cleaner shape`;
@@ -2992,32 +3247,32 @@ function buildThoughtLabel({ focusKind, targetKind, focusPhrase, repoNames }) {
 function buildThoughtQuestion({ targetKind, focusPhrase, repoNames, sourceKinds }) {
   const repoName = repoNames[0];
   if (targetKind === "repo" && repoName) {
-    return `What is ${repoName} actually trying to become around ${focusPhrase}, and what would make that visible?`;
+    return `How should ${repoName} embody ${focusPhrase} concretely?`;
   }
   if (targetKind === "self") {
-    return `What about ${focusPhrase} keeps surviving compression instead of dying with the raw receipts?`;
+    return `Why does ${focusPhrase} keep surviving compression?`;
   }
   if (targetKind === "archive") {
-    return `Why does ${focusPhrase} keep resurfacing across the archive, and what does the current room need from it?`;
+    return `What older pattern keeps pulling around ${focusPhrase}?`;
   }
   if (sourceKinds.includes("analytic_thread") && sourceKinds.includes("associative_thread")) {
     return `What does ${focusPhrase} imply once the room-facing and associative lanes are forced to agree?`;
   }
-  return `What would ${focusPhrase} cash out into if it had to change a real machine?`;
+  return `Where does ${focusPhrase} bite concretely?`;
 }
 
 function buildThoughtClaim({ targetKind, focusPhrase, repoNames, sourceKinds, curiosityProfile }) {
   const repoName = repoNames[0];
   if (targetKind === "repo" && repoName) {
-    return `${repoName} seems to have a live seam around ${focusPhrase}, not just another passing implementation scratch.`;
+    return `${repoName} is accumulating a concrete decision around ${focusPhrase}.`;
   }
   if (targetKind === "self") {
-    return `${capitalizePhrase(focusPhrase)} is behaving more like doctrine than like a fresh curiosity.`;
+    return `${capitalizePhrase(focusPhrase)} is behaving like a persistent self-seam, not a passing thought.`;
   }
   if (curiosityProfile.crossDomainPotential >= 0.55 && sourceKinds.includes("repo_sweep") && sourceKinds.includes("archive_excursion")) {
-    return `${capitalizePhrase(focusPhrase)} is showing up as both current work and older room weather, which means it may actually change the map.`;
+    return `${capitalizePhrase(focusPhrase)} links current work to older patterns strongly enough to deserve a concrete read.`;
   }
-  return `${capitalizePhrase(focusPhrase)} keeps returning with enough structure to deserve another honest pass.`;
+  return `${capitalizePhrase(focusPhrase)} looks like a live seam, not just ambient noise.`;
 }
 
 function buildFascinationTarget({ targetKind, focusPhrase, repoNames }) {
@@ -3029,20 +3284,21 @@ function buildFascinationTarget({ targetKind, focusPhrase, repoNames }) {
 }
 
 function buildThoughtSummary({ focusKind, targetKind, focusPhrase, repoNames, sourceKinds, claim, question }) {
-  const sourceLine = sourceKinds.length > 0 ? ` Built from ${sourceKinds.join(", ")}.` : "";
+  const sourceLine =
+    sourceKinds.length > 0 && sourceKinds.length <= 3 ? ` Built from ${sourceKinds.join(", ")}.` : "";
   if (focusKind === "fascination" && repoNames.length > 0) {
-    return `Fascination with ${repoNames[0]} around ${focusPhrase}.${sourceLine} ${question}`.trim();
+    return `${repoNames[0]} keeps pulling around ${focusPhrase}.${sourceLine}`.trim();
   }
   if (targetKind === "self") {
-    return `Self-facing seam around ${focusPhrase}.${sourceLine} ${claim}`.trim();
+    return `${capitalizePhrase(focusPhrase)} keeps surviving as a self-seam.${sourceLine}`.trim();
   }
   if (targetKind === "archive") {
-    return `Archive-facing seam around ${focusPhrase}.${sourceLine} ${question}`.trim();
+    return `${capitalizePhrase(focusPhrase)} keeps pulling in the archive.${sourceLine}`.trim();
   }
   if (focusKind === "claim") {
-    return `Working claim around ${focusPhrase}.${sourceLine} ${claim}`.trim();
+    return `${capitalizePhrase(focusPhrase)} looks like a live claim.${sourceLine}`.trim();
   }
-  return `Working question around ${focusPhrase}.${sourceLine} ${question}`.trim();
+  return `${capitalizePhrase(focusPhrase)} still looks like a live question.${sourceLine}`.trim();
 }
 
 function topConceptKeywords(text, limit) {
