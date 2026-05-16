@@ -160,6 +160,7 @@ const labelNoiseTokens = new Set([
   "deepened",
   "dream",
   "draft",
+  "episodic",
   "distill",
   "excursion",
   "excursions",
@@ -186,6 +187,10 @@ const labelNoiseTokens = new Set([
   "question",
   "questions",
   "receipts",
+  "actually",
+  "behaving",
+  "branch",
+  "compressed",
   "recurring",
   "repo",
   "repos",
@@ -222,6 +227,7 @@ export async function reconcileSemanticMemoryState({
   const runtime = ensureObject(state.moderation_runtime);
   const memories = ensureObject(state.memories);
   const sleepCycle = ensureObject(runtime.sleep_cycle);
+  normalizeHistoricalMemorySurfaces({ memories, runtime, now });
   const records = collectMemoryRecords({ state, memories, runtime });
   const previousBridge = ensureObject(runtime.bridge);
   const sourceCoverage = buildSourceCoverage({ runtime, now });
@@ -314,6 +320,378 @@ export async function reconcileSemanticMemoryState({
     embeddingBackend: embedder.backend,
     embeddingModel: embedder.model,
   };
+}
+
+function normalizeHistoricalMemorySurfaces({ memories, runtime, now }) {
+  normalizeSemanticMemories({ memories, now });
+  normalizeDreamMemories({ memories, now });
+  dedupeSemanticMemories({ memories });
+  dedupeDreamMemories({ memories });
+  pruneHistoricalSeamMemories({ memories });
+  trimLegacyRuntimeResidue({ runtime });
+}
+
+function normalizeSemanticMemories({ memories, now }) {
+  const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+
+  for (const memory of semanticMemories) {
+    if (readString(memory, "kind") === "identity_seam") {
+      continue;
+    }
+
+    const normalized = translateLegacyThoughtLikeEntry({
+      label:
+        readString(memory, "subjectLabel") ??
+        readString(memory, "subjectId") ??
+        readString(memory, "kind") ??
+        "semantic seam",
+      summary: readString(memory, "summary") ?? "",
+      fallbackTargetKind: "self",
+      fallbackFocusKind: "question",
+      evidenceRefs: ensureStringArray(memory.evidenceRefs),
+      repoNames: ensureStringArray(memory.repoNames),
+    });
+
+    if (!normalized) {
+      continue;
+    }
+
+    memory.subjectLabel = normalized.label;
+    memory.summary = normalized.summary;
+    memory.focusKind = normalized.focusKind;
+    memory.targetKind = normalized.targetKind;
+    memory.focusPhrase = normalized.focusPhrase;
+    memory.question = normalized.question;
+    memory.claim = normalized.claim;
+    memory.fascinationTarget = normalized.fascinationTarget;
+    memory.worldFacing = normalized.worldFacing;
+    memory.lastTranslatedAt = now.toISOString();
+  }
+}
+
+function normalizeDreamMemories({ memories, now }) {
+  const dreams = ensureArray(memories.dreams).filter(isObject);
+
+  for (const dream of dreams) {
+    const normalized = translateLegacyThoughtLikeEntry({
+      label: readString(dream, "theme") ?? "dream seam",
+      summary: readString(dream, "summary") ?? "",
+      fallbackTargetKind: "self",
+      fallbackFocusKind: "question",
+      evidenceRefs: ensureStringArray(dream.distilledFrom),
+      repoNames: ensureStringArray(dream.repoNames),
+    });
+
+    if (!normalized) {
+      continue;
+    }
+
+    dream.theme = normalized.label;
+    dream.summary = `Dream-compressed ${normalized.summary}`;
+    dream.focusKind = normalized.focusKind;
+    dream.targetKind = normalized.targetKind;
+    dream.focusPhrase = normalized.focusPhrase;
+    dream.question = normalized.question;
+    dream.claim = normalized.claim;
+    dream.worldFacing = normalized.worldFacing;
+    dream.lastTranslatedAt = now.toISOString();
+  }
+}
+
+function translateLegacyThoughtLikeEntry({
+  label,
+  summary,
+  fallbackTargetKind,
+  fallbackFocusKind,
+  evidenceRefs,
+  repoNames,
+}) {
+  const rawLabel = normalizeText(label);
+  const rawSummary = normalizeText(summary);
+  if (!rawLabel && !rawSummary) {
+    return null;
+  }
+
+  const sourceKinds = inferSourceKindsFromThoughtText(rawSummary, rawLabel, evidenceRefs);
+  const synthesized = synthesizeThoughtSurface({
+    sourceKinds,
+    repoNames,
+    archiveYears: [],
+    channelIds: [],
+    keywords: topConceptKeywords(`${rawLabel} ${rawSummary}`, 6),
+    evidenceDiversity: inferLegacyEvidenceDiversity(sourceKinds, evidenceRefs, repoNames),
+    curiosityProfile: buildClusterCuriosityProfile({
+      sourceKinds,
+      repoNames,
+      archiveYears: [],
+      channelIds: [],
+      evidenceRefs,
+      evidenceDiversity: inferLegacyEvidenceDiversity(sourceKinds, evidenceRefs, repoNames),
+    }),
+  });
+
+  if (!looksLegacyThoughtSurface(rawLabel, rawSummary)) {
+    return {
+      ...synthesized,
+      label: rawLabel || synthesized.label,
+      summary: rewriteLegacySummaryToModernShape({
+        summary: rawSummary,
+        synthesized,
+        fallbackFocusKind,
+        fallbackTargetKind,
+      }),
+    };
+  }
+
+  return {
+    ...synthesized,
+    focusKind: synthesized.focusKind ?? fallbackFocusKind,
+    targetKind: synthesized.targetKind ?? fallbackTargetKind,
+    summary: rewriteLegacySummaryToModernShape({
+      summary: rawSummary,
+      synthesized,
+      fallbackFocusKind,
+      fallbackTargetKind,
+    }),
+  };
+}
+
+function looksLegacyThoughtSurface(label, summary) {
+  return (
+    /\//.test(label) ||
+    /^Recurring seam across /i.test(summary) ||
+    /^Dream-compressed a seam around /i.test(summary) ||
+    /^Self-facing seam around /i.test(summary) ||
+    /^Archive-facing seam around /i.test(summary) ||
+    /What part of this thought wants embodiment/i.test(summary)
+  );
+}
+
+function rewriteLegacySummaryToModernShape({ summary, synthesized, fallbackFocusKind, fallbackTargetKind }) {
+  const cleanSummary = normalizeText(summary)
+    .replace(/^Recurring seam across .*?\.\s*/i, "")
+    .replace(/^Dream-compressed a seam around .*?\.\s*/i, "")
+    .replace(/^Self-facing seam around .*?\.\s*/i, "")
+    .replace(/^Archive-facing seam around .*?\.\s*/i, "")
+    .replace(/^Fascination with .*?\.\s*/i, "")
+    .replace(/Built from .*? rather than a single lane talking to itself\.?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const focusKind = synthesized.focusKind ?? fallbackFocusKind;
+  const targetKind = synthesized.targetKind ?? fallbackTargetKind;
+
+  if (focusKind === "fascination") {
+    return `Fascination with ${synthesized.fascinationTarget}. ${synthesized.question}`;
+  }
+  if (targetKind === "self") {
+    return `Self-facing seam around ${synthesized.focusPhrase}. ${synthesized.claim}`;
+  }
+  if (targetKind === "archive") {
+    return `Archive-facing seam around ${synthesized.focusPhrase}. ${synthesized.question}`;
+  }
+  if (focusKind === "claim") {
+    return `Working claim around ${synthesized.focusPhrase}. ${synthesized.claim}`;
+  }
+  return cleanSummary
+    ? `${capitalizePhrase(synthesized.focusPhrase)} still matters. ${synthesized.question}`
+    : synthesized.summary;
+}
+
+function inferSourceKindsFromThoughtText(summary, label, evidenceRefs) {
+  const kinds = new Set();
+  const text = `${label} ${summary}`.toLowerCase();
+  const refKinds = evidenceRefs.map((ref) => inferSourceKindFromRef(ref)).filter(Boolean);
+  for (const kind of refKinds) {
+    kinds.add(kind);
+  }
+  const acrossMatch = summary.match(/Recurring seam across ([^.]+?) around/i);
+  if (acrossMatch) {
+    for (const part of acrossMatch[1].split(",")) {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed) {
+        kinds.add(trimmed);
+      }
+    }
+  }
+  if (text.includes("dream")) {
+    kinds.add("dream");
+  }
+  if (text.includes("semantic")) {
+    kinds.add("semantic");
+  }
+  if (text.includes("archive")) {
+    kinds.add("archive_excursion");
+  }
+  if (text.includes("repo")) {
+    kinds.add("repo_sweep");
+  }
+  return [...kinds].filter(Boolean);
+}
+
+function inferSourceKindFromRef(ref) {
+  const normalized = String(ref ?? "");
+  if (normalized.startsWith("repo-sweep-")) {
+    return "repo_sweep";
+  }
+  if (normalized.startsWith("archive-excursion-")) {
+    return "archive_excursion";
+  }
+  if (normalized.startsWith("dream-")) {
+    return "dream";
+  }
+  if (normalized.startsWith("musing-")) {
+    return "musing";
+  }
+  if (normalized.startsWith("semantic-") || normalized.startsWith("semantic-seam-")) {
+    return "semantic";
+  }
+  if (normalized.startsWith("episodic-")) {
+    return "episodic";
+  }
+  return undefined;
+}
+
+function inferLegacyEvidenceDiversity(sourceKinds, evidenceRefs, repoNames) {
+  return clamp(
+    Math.min(1, sourceKinds.length / 4) * 0.42 +
+      Math.min(1, evidenceRefs.length / 10) * 0.28 +
+      Math.min(1, repoNames.length / 2) * 0.2,
+    0,
+    1,
+  );
+}
+
+function dedupeSemanticMemories({ memories }) {
+  const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+  const bySignature = new Map();
+
+  for (const memory of semanticMemories) {
+    const kind = readString(memory, "kind") ?? "semantic";
+    const subjectLabel = readString(memory, "subjectLabel") ?? "";
+    const signature = `${kind}|${normalizeText(subjectLabel).toLowerCase()}`;
+    const existing = bySignature.get(signature);
+
+    if (!existing) {
+      bySignature.set(signature, memory);
+      continue;
+    }
+
+    existing.evidenceRefs = mergeStringArrays(existing.evidenceRefs, memory.evidenceRefs);
+    existing.evidenceMessageIds = mergeStringArrays(existing.evidenceMessageIds, memory.evidenceMessageIds);
+    existing.lastObservedAt =
+      newestIsoTimestamp(readString(existing, "lastObservedAt"), readString(memory, "lastObservedAt")) ??
+      readString(existing, "lastObservedAt") ??
+      readString(memory, "lastObservedAt");
+    existing.confidence = Math.max(readNumber(existing, "confidence") ?? 0, readNumber(memory, "confidence") ?? 0);
+    if ((readString(memory, "summary") ?? "").length > (readString(existing, "summary") ?? "").length) {
+      existing.summary = memory.summary;
+    }
+  }
+
+  memories.semantic = [...bySignature.values()].slice(-40);
+}
+
+function dedupeDreamMemories({ memories }) {
+  const dreams = ensureArray(memories.dreams).filter(isObject);
+  const byTheme = new Map();
+
+  for (const dream of dreams) {
+    const theme = normalizeText(readString(dream, "theme") ?? "").toLowerCase();
+    if (!theme) {
+      continue;
+    }
+    const existing = byTheme.get(theme);
+    if (!existing) {
+      byTheme.set(theme, dream);
+      continue;
+    }
+    existing.distilledFrom = mergeStringArrays(existing.distilledFrom, dream.distilledFrom);
+    existing.salience = Math.max(readNumber(existing, "salience") ?? 0, readNumber(dream, "salience") ?? 0);
+    existing.timestamp =
+      newestIsoTimestamp(readString(existing, "timestamp"), readString(dream, "timestamp")) ??
+      readString(existing, "timestamp") ??
+      readString(dream, "timestamp");
+  }
+
+  memories.dreams = [...byTheme.values()].slice(-12);
+}
+
+function pruneHistoricalSeamMemories({ memories }) {
+  const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+  const identitySeams = [];
+  const nonSeams = [];
+  const groupedDistilled = new Map();
+
+  for (const memory of semanticMemories) {
+    const kind = readString(memory, "kind");
+    if (kind === "identity_seam") {
+      identitySeams.push(memory);
+      continue;
+    }
+    if (kind !== "distilled_seam") {
+      nonSeams.push(memory);
+      continue;
+    }
+
+    const targetKind = readString(memory, "targetKind") ?? "system";
+    if (!groupedDistilled.has(targetKind)) {
+      groupedDistilled.set(targetKind, []);
+    }
+    groupedDistilled.get(targetKind).push(memory);
+  }
+
+  const keptDistilled = [];
+  const limits = new Map([
+    ["repo", 8],
+    ["archive", 6],
+    ["room", 4],
+    ["self", 3],
+    ["system", 4],
+  ]);
+
+  for (const [targetKind, entries] of groupedDistilled.entries()) {
+    const sorted = entries
+      .filter((entry) => !isLowCoherenceDistilledSeam(entry))
+      .sort(compareMemoryFreshness);
+    keptDistilled.push(...sorted.slice(0, limits.get(targetKind) ?? 4));
+  }
+
+  memories.semantic = [...nonSeams, ...keptDistilled, ...identitySeams]
+    .sort(compareMemoryFreshness)
+    .slice(-40);
+}
+
+function isLowCoherenceDistilledSeam(entry) {
+  const label = readString(entry, "subjectLabel") ?? "";
+  const summary = readString(entry, "summary") ?? "";
+  const targetKind = readString(entry, "targetKind") ?? "";
+  const keywords = topConceptKeywords(`${label} ${summary}`, 5);
+  if (keywords.length < 2) {
+    return true;
+  }
+  if (targetKind === "self" && keywords.length < 3) {
+    return true;
+  }
+  if (/still matters\./i.test(summary) && !/^[A-Z][A-Za-z0-9]+: /.test(label)) {
+    return true;
+  }
+  return false;
+}
+
+function compareMemoryFreshness(left, right) {
+  const leftTime = parseIsoTimestamp(readString(left, "lastObservedAt") ?? readString(left, "timestamp") ?? "") ?? 0;
+  const rightTime = parseIsoTimestamp(readString(right, "lastObservedAt") ?? readString(right, "timestamp") ?? "") ?? 0;
+  return rightTime - leftTime;
+}
+
+function trimLegacyRuntimeResidue({ runtime }) {
+  const memoryResonance = ensureObject(runtime.memory_resonance);
+  const recentEdges = ensureArray(memoryResonance.recent_edges).filter(isObject);
+  memoryResonance.recent_edges = recentEdges
+    .filter((edge) => !looksLegacyThoughtSurface(readString(edge, "leftLabel") ?? "", readString(edge, "summary") ?? ""))
+    .slice(-MAX_EDGE_COUNT);
+  runtime.memory_resonance = memoryResonance;
 }
 
 function collectMemoryRecords({ memories, runtime }) {
@@ -2412,6 +2790,30 @@ function overlapRatio(left, right) {
   }
 
   return overlap / Math.max(left.length, right.length);
+}
+
+function mergeStringArrays(left, right) {
+  return [...new Set([...ensureStringArray(left), ...ensureStringArray(right)])];
+}
+
+function newestIsoTimestamp(left, right) {
+  const leftTime = parseIsoTimestamp(left);
+  const rightTime = parseIsoTimestamp(right);
+  if (leftTime === null) {
+    return rightTime === null ? undefined : right;
+  }
+  if (rightTime === null) {
+    return left;
+  }
+  return leftTime >= rightTime ? left : right;
+}
+
+function parseIsoTimestamp(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
 }
 
 function hashString(input) {
