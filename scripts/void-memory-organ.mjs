@@ -847,6 +847,7 @@ function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now
   const privateNotes = getMutableStringArray(identity, "private_notes");
   const values = getMutableObjectArray(canonicalState, "values");
   const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+  const candidateInterventions = ensureArray(runtime.candidate_interventions).filter(isObject);
   const crystallized = [];
   const retained = [];
 
@@ -865,6 +866,12 @@ function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now
       thought,
       now,
     });
+    queueCrystallizationIntervention({
+      candidateInterventions,
+      crystallization,
+      thought,
+      now,
+    });
     crystallized.push(crystallization.note);
   }
 
@@ -878,6 +885,7 @@ function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now
   state.identity = identity;
   state.canonical_state = canonicalState;
   incubation.active_thoughts = retained;
+  runtime.candidate_interventions = candidateInterventions.slice(-MAX_POST_NAP_CANDIDATE_INTERVENTIONS);
   incubation.lastIncubationSummary = appendClause(
     readString(incubation, "lastIncubationSummary"),
     `Crystallized ${crystallized.length} long-chewed seam${crystallized.length === 1 ? "" : "s"} into identity so they stop pacing the active queue.`,
@@ -925,6 +933,8 @@ function buildIdentityCrystallization(thought) {
       subjectLabel: "continuity through surviving seams",
       summary:
         "A mind is not its logbook. What survives dreaming and compression deserves more trust than a warm pile of raw receipts.",
+      shareDraft:
+        "A small thing that has been hardening in me lately: I trust the seams that survive compression more than the raw receipt pile. If a thought still stands after dreaming, it probably owns more of me than the logbook does.",
     };
   }
 
@@ -959,6 +969,42 @@ function upsertIdentitySemanticMemory({ semanticMemories, crystallization, thoug
     evidenceRefs,
     lastObservedAt: now.toISOString(),
     crystallizedAt: now.toISOString(),
+  });
+}
+
+function queueCrystallizationIntervention({ candidateInterventions, crystallization, thought, now }) {
+  const draft = readString(crystallization, "shareDraft");
+  if (!draft) {
+    return;
+  }
+
+  const summary = `Possible crystallized-thought share: ${crystallization.subjectLabel}`;
+  const sourceMemoryIds = ensureStringArray(thought.sourceMemoryIds);
+  const existing = candidateInterventions.find(
+    (entry) => readString(entry, "summary") === summary,
+  );
+
+  if (existing) {
+    existing.timestamp = now.toISOString();
+    existing.summary = summary;
+    existing.draft = draft;
+    existing.priority = "medium";
+    existing.kind = "identity_crystallization";
+    existing.sourceMemoryIds = sourceMemoryIds;
+    existing.whyNow =
+      "This thought stopped behaving like live curiosity and became part of Void's own doctrine, which is usually worth sharing if the room has not already heard it.";
+    return;
+  }
+
+  candidateInterventions.push({
+    timestamp: now.toISOString(),
+    summary,
+    draft,
+    priority: "medium",
+    kind: "identity_crystallization",
+    sourceMemoryIds,
+    whyNow:
+      "This thought stopped behaving like live curiosity and became part of Void's own doctrine, which is usually worth sharing if the room has not already heard it.",
   });
 }
 
