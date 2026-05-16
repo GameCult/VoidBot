@@ -89,6 +89,41 @@ const distilledMemorySchema = z.object({
   tags: z.array(nonEmptyStringSchema).default([]),
 }).strict();
 
+const meaningPreservingMemorySchema = distilledMemorySchema.superRefine((memory, context) => {
+  if (!memory.claim && !memory.question) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Memory writes must preserve at least one claim or question.",
+      path: ["claim"],
+    });
+  }
+
+  if (!memory.tension) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Memory writes must preserve the live tension or counterweight.",
+      path: ["tension"],
+    });
+  }
+
+  if (!memory.actionImplication) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Memory writes must preserve why the memory should affect future action.",
+      path: ["actionImplication"],
+    });
+  }
+
+  const admitsMissingEvidence = memory.tags.includes("evidence:missing");
+  if (memory.evidenceRefs.length === 0 && !admitsMissingEvidence) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Memory writes must include evidence refs or explicitly tag evidence:missing.",
+      path: ["evidenceRefs"],
+    });
+  }
+});
+
 const incubationThreadSchema = z.object({
   threadId: nonEmptyStringSchema,
   target: thoughtTargetSchema,
@@ -277,7 +312,7 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
   }).strict(),
   z.object({
     operation: z.literal("append_distilled_memory"),
-    memory: distilledMemorySchema,
+    memory: meaningPreservingMemorySchema,
   }).strict(),
   z.object({
     operation: z.literal("merge_incubation_support"),
@@ -305,14 +340,14 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     operation: z.literal("propose_memory_distillation"),
     proposalId: nonEmptyStringSchema,
     sourceMemoryIds: z.array(nonEmptyStringSchema).min(1),
-    candidate: distilledMemorySchema,
+    candidate: meaningPreservingMemorySchema,
     proposedAt: timestampSchema,
   }).strict(),
   z.object({
     operation: z.literal("apply_memory_distillation"),
     proposalId: nonEmptyStringSchema,
     sourceMemoryIds: z.array(nonEmptyStringSchema).min(1),
-    memory: distilledMemorySchema,
+    memory: meaningPreservingMemorySchema,
     appliedAt: timestampSchema,
   }).strict(),
 ]);

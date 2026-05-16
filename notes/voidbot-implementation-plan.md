@@ -8,6 +8,8 @@ Stop feature work on moderation, mood, and self-state until the state boundary i
 
 The next priority is to remove JSON from the mutation loop entirely and rebuild the state model so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/evidence/tensions instead of collapsing them into generic slogan paste.
 
+The center of the next pass is prevention, not legacy repair. The old brain can be treated as evidence of a failed boundary. The new brain should reject malformed memory at ingress so the runtime never needs a permanent cleanup bureaucracy to recover basic meaning.
+
 ## Smallest Coherent Architecture
 
 ### Durable State Model
@@ -93,6 +95,17 @@ The clean crossing surface is small JSON command payloads, not a whole JSON stat
   "lastTouchedAt": "2026-05-16T00:00:00.000Z"
 }
 ```
+
+Memory-bearing operations have a stricter contract than historical projections. A new distilled memory must carry:
+
+- a concrete target
+- a summary
+- at least one claim or question
+- a tension or counterweight
+- an action implication
+- evidence refs, or an explicit `evidence:missing` tag
+
+If those fields are missing, the operation is invalid. This is the wall that keeps the next iteration from turning into topic sludge and asking cleanup to be its personality.
 
 ```json
 {
@@ -205,6 +218,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 - Delete cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue.
 - Delete or demote hard-wired agency paths whose real job is turning current heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract.
+- Treat legacy brain mush as a migration problem, not the design center. New memory writes must cross the meaning-preserving typed operation schema before they reach CultCache.
 - Redesign sleep/distillation around an explicit contract:
   - preserve the claim/question/fascination target
   - preserve the concrete subject, such as repo, room, lore seam, person, or system
