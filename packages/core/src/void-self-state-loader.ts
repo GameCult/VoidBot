@@ -87,7 +87,13 @@ function renderVoidSelfStateSummary(
       const subject = readString(memory, "subjectLabel") ?? readString(memory, "subjectId") ?? "unknown";
       const summary = readString(memory, "summary") ?? "(no summary)";
       const kind = readString(memory, "kind");
-      return `- ${subject}${kind === "distilled_seam" ? " [distilled seam]" : ""}: ${summary}`;
+      const suffix =
+        kind === "identity_seam"
+          ? " [identity seam]"
+          : kind === "distilled_seam"
+            ? " [distilled seam]"
+            : "";
+      return `- ${subject}${suffix}: ${summary}`;
     });
   const analyticThreads = summarizeThoughtLane(getObject(thoughtLanes, "analytic"), 3);
   const associativeThreads = summarizeThoughtLane(getObject(thoughtLanes, "associative"), 3);

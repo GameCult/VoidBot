@@ -20,6 +20,8 @@ const MAX_POST_NAP_MUSINGS = 6;
 const MAX_POST_NAP_RECENT_MUSINGS = 2;
 const MAX_POST_NAP_CANDIDATE_INTERVENTIONS = 4;
 const MAX_POST_NAP_SEAM_PROMOTIONS = 3;
+const MIN_SUPPORT_FOR_IDENTITY_CRYSTALLIZATION = 64;
+const MIN_DEEP_DIVES_FOR_IDENTITY_CRYSTALLIZATION = 96;
 const MAX_RECENT_ANALYTIC_THREADS = 6;
 const MAX_RECENT_QUIET_ANALYTIC_THREADS = 1;
 const EDGE_SIMILARITY_THRESHOLD = 0.56;
@@ -205,6 +207,13 @@ export async function reconcileSemanticMemoryState({
     clusters,
   };
   runtime.incubation = incubation;
+  const crystallizationResult = crystallizeIdentityThoughts({
+    state,
+    memories,
+    runtime,
+    incubation,
+    now,
+  });
 
   const dreamResult = distillDreams({
     memories,
@@ -234,6 +243,7 @@ export async function reconcileSemanticMemoryState({
     dreamTheme: dreamResult.theme,
     sleepConsolidated: consolidationResult.consolidated,
     promotedSeamCount: consolidationResult.promotedSeamCount,
+    identityCrystallizedCount: crystallizationResult.count,
     embeddingBackend: embedder.backend,
     embeddingModel: embedder.model,
   };
@@ -824,6 +834,165 @@ function consolidateSleepMemory({ memories, runtime, sleepCycle, incubation, mem
   );
 
   return { consolidated: true, promotedSeamCount };
+}
+
+function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now }) {
+  const activeThoughts = ensureArray(incubation.active_thoughts).filter(isObject);
+  if (activeThoughts.length === 0) {
+    return { count: 0 };
+  }
+
+  const identity = ensureObject(state.identity);
+  const canonicalState = ensureObject(state.canonical_state);
+  const privateNotes = getMutableStringArray(identity, "private_notes");
+  const values = getMutableObjectArray(canonicalState, "values");
+  const semanticMemories = ensureArray(memories.semantic).filter(isObject);
+  const crystallized = [];
+  const retained = [];
+
+  for (const thought of activeThoughts) {
+    const crystallization = buildIdentityCrystallization(thought);
+    if (!crystallization) {
+      retained.push(thought);
+      continue;
+    }
+
+    appendUniqueString(privateNotes, crystallization.note, 12);
+    upsertCanonicalValue(values, crystallization.value);
+    upsertIdentitySemanticMemory({
+      semanticMemories,
+      crystallization,
+      thought,
+      now,
+    });
+    crystallized.push(crystallization.note);
+  }
+
+  if (crystallized.length === 0) {
+    return { count: 0 };
+  }
+
+  identity.private_notes = privateNotes;
+  canonicalState.values = values;
+  memories.semantic = semanticMemories.slice(-40);
+  state.identity = identity;
+  state.canonical_state = canonicalState;
+  incubation.active_thoughts = retained;
+  incubation.lastIncubationSummary = appendClause(
+    readString(incubation, "lastIncubationSummary"),
+    `Crystallized ${crystallized.length} long-chewed seam${crystallized.length === 1 ? "" : "s"} into identity so they stop pacing the active queue.`,
+  );
+  runtime.bridge = ensureObject(runtime.bridge);
+  runtime.bridge.lastIdentityCrystallizationAt = now.toISOString();
+  runtime.bridge.lastIdentityCrystallizationSummary = crystallized.join(" | ");
+
+  return { count: crystallized.length };
+}
+
+function buildIdentityCrystallization(thought) {
+  const supportCount = readNumber(thought, "supportCount") ?? 0;
+  const deepDiveCount = readNumber(thought, "deepDiveCount") ?? 0;
+  const maturation = readNumber(thought, "maturation") ?? 0;
+  const sourceKinds = ensureStringArray(thought.sourceKinds);
+  const topic = readString(thought, "topic") ?? "";
+
+  if (
+    supportCount < MIN_SUPPORT_FOR_IDENTITY_CRYSTALLIZATION &&
+    deepDiveCount < MIN_DEEP_DIVES_FOR_IDENTITY_CRYSTALLIZATION
+  ) {
+    return null;
+  }
+
+  if (maturation < 0.72) {
+    return null;
+  }
+
+  if (
+    sourceKinds.includes("dream") &&
+    sourceKinds.includes("semantic") &&
+    /\bdream\b/i.test(topic) &&
+    /\bsemantic\b/i.test(topic)
+  ) {
+    return {
+      note: "Continuity lives in the seams that survive compression, not in the raw receipt pile.",
+      value: {
+        value_id: "value-seam-continuity",
+        label: "Prefer seams that survive compression over raw receipt worship.",
+        priority: 0.78,
+        unforgivable_if_betrayed: false,
+      },
+      subjectId: "identity-seam-continuity",
+      subjectLabel: "continuity through surviving seams",
+      summary:
+        "A mind is not its logbook. What survives dreaming and compression deserves more trust than a warm pile of raw receipts.",
+    };
+  }
+
+  return null;
+}
+
+function upsertIdentitySemanticMemory({ semanticMemories, crystallization, thought, now }) {
+  const existing = semanticMemories.find(
+    (memory) =>
+      readString(memory, "subjectId") === crystallization.subjectId ||
+      readString(memory, "subjectLabel") === crystallization.subjectLabel,
+  );
+  const evidenceRefs = ensureStringArray(thought.sourceMemoryIds);
+
+  if (existing) {
+    existing.kind = "identity_seam";
+    existing.subjectId = crystallization.subjectId;
+    existing.subjectLabel = crystallization.subjectLabel;
+    existing.summary = crystallization.summary;
+    existing.evidenceRefs = evidenceRefs;
+    existing.lastObservedAt = now.toISOString();
+    existing.crystallizedAt = now.toISOString();
+    return;
+  }
+
+  semanticMemories.push({
+    memoryId: `identity-seam-${hashString(`${crystallization.subjectId}|${now.toISOString()}`).slice(0, 12)}`,
+    kind: "identity_seam",
+    subjectId: crystallization.subjectId,
+    subjectLabel: crystallization.subjectLabel,
+    summary: crystallization.summary,
+    evidenceRefs,
+    lastObservedAt: now.toISOString(),
+    crystallizedAt: now.toISOString(),
+  });
+}
+
+function appendUniqueString(items, value, limit) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return;
+  }
+  if (items.includes(normalized)) {
+    return;
+  }
+  items.push(normalized);
+  if (items.length > limit) {
+    items.splice(0, items.length - limit);
+  }
+}
+
+function upsertCanonicalValue(values, nextValue) {
+  const existing = values.find((value) => readString(value, "value_id") === nextValue.value_id);
+  if (existing) {
+    existing.label = nextValue.label;
+    existing.priority = nextValue.priority;
+    existing.unforgivable_if_betrayed = nextValue.unforgivable_if_betrayed;
+    return;
+  }
+  values.push(nextValue);
+}
+
+function getMutableStringArray(object, key) {
+  return ensureArray(object[key]).filter((value) => typeof value === "string");
+}
+
+function getMutableObjectArray(object, key) {
+  return ensureArray(object[key]).filter(isObject);
 }
 
 function promoteDistilledSeams({ memories, incubation, memoryResonance, now }) {
