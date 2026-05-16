@@ -14,9 +14,11 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the persistent state spine honest while shifting back toward
-    higher-priority public-lane and ops hardening now that the obvious
-    runtime-file monarchies have been cut into clearer seams.
+    Stop feature work on moderation, mood, and self-state until the private
+    state boundary is rebuilt around typed CultCache mutations. The immediate
+    priority is to remove JSON projection authority, cut legacy mirrors, and
+    make unattended agents mutate state through explicit tools instead of
+    rewriting whole state files.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -54,6 +56,8 @@ data_flow:
 
 active_subgoals:
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
+  - Rebuild the moderation/self-state foundation so canonical CultCache documents are mutated only through typed operations, never through an editable JSON working projection.
+  - Cut legacy moderation mirrors and whole-state projection commits before adding more moderation, mood, agency, or public-lane behavior.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
   - Preserve boring observability and startup discipline around Postgres, Qdrant, Ollama, Docker, backups, scheduled tasks, watchdogs, and any private local fire-signal extensions.
   - Keep the runtime organs legible and only spend more refactor budget when a file clearly earns it.
@@ -61,6 +65,9 @@ active_subgoals:
 accepted_design:
   - Bot, worker, providers, and RAG remain the main structural seams.
   - State storage stays intentionally split: Postgres for operational state, Qdrant for vectors, `.voidbot/` for archives, artifacts, logs, and backup material.
+  - Private Void self-state should be split into typed CultCache document authorities: self profile, moderation cursor/open obligations, speech receipts, thought memory/incubation, scheduled runtime, and candidate interventions.
+  - Agents and scheduled runners should cross the private-state boundary with small typed mutation operations such as cursor updates, open-case upserts, receipt records, memory appends, incubation merges, and candidate-intervention changes.
+  - JSON may be used for operation payloads or debug exports, but not as an editable working projection of canonical self-state.
   - `owner_codex` and `local_llm` remain distinct lanes with different tool-execution and safety posture.
   - Ephemeral room-reading should come from an explicit local-LLM sidecar inference pass plus raw recent-message evidence, not from a rules bucket pretending to understand natural language.
   - The VoidBot MCP server is the preferred search plane for archived Discord, indexed GameCult repos, Aetheria lore, and owner notifications.
@@ -71,7 +78,7 @@ accepted_design:
   - Unattended moderation speech should use a local bot-token script instead of approval-gated side-effecting MCP tools, otherwise the loop keeps stopping to ask permission before it can talk.
   - Quiet moderation runs should not force novelty theater. If incubation already holds a live, grounded, low-saturation thought, the loop may deepen it directly; random archive excursions and repo sweeps are for hungry, stale, or oversaturated queues, not mandatory throat-clearing before every private thought.
   - The moderation loop is also Void's only standing cross-project perch. Quiet runs should sweep recent tracked-repo commit activity, record repo-activity passes in state, and treat the broader experiment zoo as fair game for grounded commentary when that wider view would help the room.
-  - The moderation self-state now lives behind a typed cache seam: canonical state in MessagePack, editable unattended working view in JSON, consumer code talking to the persistence layer instead of pawing raw files directly.
+  - The current moderation self-state cache seam is only a half-measure: canonical MessagePack is good, but the editable JSON working projection is now rejected as a mutation authority and must be replaced with typed CultCache operations.
   - The repo-weather lane should not be pathologically timid: a fresh, grounded convergence across active repos should bias the bridge toward a concise herald note or at least a stronger draft instead of being buried as private diary sludge by default.
   - Quiet-room thought sharing should also stop treating "no live hook" as a sacred veto. When a world-facing seam is concrete, ripe, and still reasonably novel, the default question should become how to say it cleanly, and the memory organ should queue a durable candidate share instead of relying on prompt bravery alone.
   - The moderation loop cannot trust archive polling alone to remember that it already spoke. Recent delivered replies belong in canonical moderation state as `moderation_runtime.recent_delivery_receipts`, and direct-question dedupe should consult those receipts instead of assuming Discord history will reliably echo the bot's own sends back into view.
@@ -132,7 +139,11 @@ rejected_paths:
     reason: giant shared files for unrelated state hide costs and rot the next rehydrate
   - name: source_answers_without_retrieval
     reason: vibes produce plausible slop that sounds smart and lies with a straight face
+  - name: json_projection_as_state
+    reason: editable whole-state JSON lets unattended agents, helpers, and legacy mirrors bypass typed ownership while pretending the projection is not authoritative
+  - name: semantic_cleanup_as_ownership
+    reason: a giant cleanup organ that repairs bad labels, mirrors, and stale runtime residue is proof the state boundary admitted sludge in the first place
 
 current_status:
-  summary: VoidBot now has a real project-memory spine plus six legibility-hardening passes on major runtime organs. The owner Codex lane, local Ollama lane, Discord bot lane, worker MCP surface, interaction-memory logic, and state-storage persistence layer were all split into smaller seams, and the ops spine includes both ignored local watchdog extensions for adjacent fire signals and a dedicated logon startup task path for stack resurrection after reboot. The stack is still dense, but it no longer depends purely on transcript memory or one-file monarchies to stay coherent. Recent moderation cuts taught the heartbeat to remember what it actually said via delivery receipts, to stop forcing repo weather into one grand law when the concrete diffs do not earn it, to let values and activations harden into real discomforts/tensions/advocacy requests, and to stop preserving stale memory residue just because it already lived in the file.
-  next_action: Keep using the canonical state files for re-entry, then watch whether the new discomfort/advocacy organs produce useful outward opinions and self-directed objections without turning into performative angst. Also watch the cleaned moderation state surface: if labels slide back into slogan-slop or the file starts hoarding stale repo/archive/runtime residue again, cut the retention or labeler path instead of adding another compensator.
+  summary: VoidBot's ordinary bot/worker/provider/RAG/Postgres/Qdrant structure is still conceptually sound, but the moderation/mood/private-self-state foundation has become architectural Jenga. It currently depends on canonical MessagePack plus an editable JSON projection, broad passthrough schemas, legacy mirror fields, a giant memory-organ cleanup pass, and a prompt-owned scheduled runner. That is not a stable foundation for more behavior.
+  next_action: Make the typed CultCache state boundary the top priority. First define the smallest coherent self-state document model and mutation operations, then move repo cursor/open-case/receipt/candidate/memory updates behind those tools. Delete JSON projection authority and legacy mirrors early instead of adding adapters around them.

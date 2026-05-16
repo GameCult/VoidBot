@@ -4,39 +4,223 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-Use the persistent project-state surfaces to keep future work source-grounded and rehydratable while returning from the cleanup pass to higher-priority hardening work.
+Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The current implementation reaches that goal through JSON projection edits, legacy mirrors, and a swollen memory organ. That is architectural debt wearing a little paper crown.
 
-## Near-Term Organs
+The next priority is to remove JSON from the mutation loop entirely. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy.
 
-### 1. Public-Lane Hardening
+## Smallest Coherent Architecture
 
-- tighten moderation and abuse handling for non-owner traffic
-- make budgets and rate-limit policy easier to inspect/administer
-- preserve the current owner/public provider boundaries instead of letting them blur
+### Durable State Model
 
-### 2. Recovery That Is More Adult Than Hope
+- Postgres owns operational bot state:
+  - jobs
+  - audit events
+  - interaction memory
+  - provider runs
+  - public usage/rate limits
+- Qdrant owns semantic vectors:
+  - Discord history vectors
+  - source/lore vectors
+- `.voidbot/` owns operational files:
+  - raw Discord archive
+  - source archive manifest and repo shards
+  - provider artifacts/traces
+  - logs/status/backups
+- CultCache owns private Void self-state, split by document type:
+  - `void.self_profile`: identity, stable values, voice/personality configuration
+  - `void.moderation_cursor`: reviewed Discord cursor, open room obligations
+  - `void.speech_receipts`: recent delivered replies and dedupe keys
+  - `void.thought_memory`: distilled memories, incubation threads, resonance summaries
+  - `void.scheduled_runtime`: sleep cycle, speaking pressure, last run summaries
+  - `void.candidate_interventions`: drafts or requests that may become speech
 
-- add a real restore-drill cadence instead of stopping at backup verification
-- reduce dependence on interactive workstation logon where practical
-- keep the stack startup task installed and visible so reboots do not quietly leave runtime dead
-- keep watchdog signals and dashboard diagnostics honest when dependencies are degraded
-- keep adjacent-service checks behind private local extensions so VoidBot does not quietly mutate into a generic infra panic funnel
+Each durable fact has one owner. No top-level mirrors. No editable shadow copy pretending to be a harmless view.
 
-### 3. Admin And Forensics Surfaces
+### Runtime State Model
 
-- richer inspection around jobs, provider runs, tool usage, interaction memory, and rate-limit denials
-- better "what happened?" answers without spelunking raw artifacts by candlelight
+- Discord request runtime is an immutable request context:
+  - prompt/message
+  - actor/guild/channel
+  - recent room transcript
+  - interaction profile
+  - optional situational read
+  - retrieval hints/results
+  - self-state summary projection
+- Scheduled moderation runtime is a bounded pass context:
+  - current cursor window
+  - outstanding obligations
+  - selected memory/thought summaries
+  - selected repo/archive evidence
+  - proposed state mutations
+  - optional speech request
+- Mood drift runtime is deterministic maintenance:
+  - read stable self profile
+  - update scheduled runtime pressure/sleep fields
+  - request memory maintenance through typed operations
 
-### 4. Legibility Hardening
+Runtime context dies at the end of the pass unless an explicit typed mutation preserves a durable fact.
 
-- the obvious runtime-file monarchies have already been cut into cleaner seams
-- keep behavior stable and only do more structural surgery when a specific file clearly earns it
-- do not keep petting the line-count graph once the actual design risk has dropped
+### Authoritative Boundaries
 
-### 5. The Still-Scaffolded Paths
+- Bot/worker/provider/RAG boundaries survive.
+- CultCache self-state has one mutation authority: a typed state service.
+- Agents do not edit state files. They call tools such as:
+  - `record_reviewed_messages`
+  - `upsert_open_case`
+  - `close_open_case`
+  - `record_delivery_receipt`
+  - `append_distilled_memory`
+  - `merge_incubation_support`
+  - `queue_candidate_intervention`
+  - `retire_candidate_intervention`
+  - `update_sleep_cycle`
+  - `update_speaking_pressure`
+- Model/agent output crosses the boundary as proposed operations, not as rewritten state.
+- The state service validates, normalizes, dedupes, and writes.
 
-- replace the remaining scaffolded provider paths with funded or production-grade implementations
-- move sandbox execution from policy theater to real constrained runners when the policy story is ready
+### Boundary Messages
+
+The clean crossing surface is small JSON command payloads, not a whole JSON state document:
+
+```json
+{
+  "operation": "upsert_open_case",
+  "sourceMessageId": "discord-message-id",
+  "status": "pending",
+  "summary": "What Void owes the room",
+  "lastTouchedAt": "2026-05-16T00:00:00.000Z"
+}
+```
+
+```json
+{
+  "operation": "append_distilled_memory",
+  "kind": "project_seam",
+  "subject": "AquariumSynthCSharp",
+  "summary": "Workflow cannot own the body.",
+  "evidenceRefs": ["source:..."],
+  "observedAt": "2026-05-16T00:00:00.000Z"
+}
+```
+
+The runner can hand these to a CLI/MCP tool. The store decides what survives.
+
+### Derived, Not Stored
+
+- Self-state prompt summaries are derived from typed documents.
+- Recent room context is derived from Discord archive and the current poll.
+- Topic saturation is derived from incubation/memory support, not separately stored as another truth.
+- Source coverage is derived from recent evidence refs and repo/archive metadata.
+- Need-to-speak can keep a small pressure field, but its inputs remain receipts, candidates, and time since last speech.
+- Legacy top-level mirrors are deleted. If a consumer needs a projection, render it on demand.
+
+### Delete Because It Compensates For Bad Ownership
+
+- `.voidbot/private/moderation-agent-state.json` as an editable working projection.
+- `legacyJsonPath`/working-path duality for canonical self-state.
+- Top-level mirror fields beside `moderation_runtime`.
+- Any helper that mutates the JSON projection and commits it back.
+- Prompt doctrine that tells the child agent how to manually preserve state shape.
+- Regex/template police that try to repair semantic sludge after the store allowed sludge to become durable.
+
+### Impossible By Construction
+
+- An unattended agent cannot corrupt the entire self-state by rewriting one JSON file.
+- Two fields cannot both claim to be the cursor.
+- Repo activity cannot advance by bypassing the state service.
+- Delivery receipts cannot exist only in a status file while state forgets the bot spoke.
+- A projection cannot become authoritative.
+- Unknown fields cannot silently become doctrine just because `.passthrough()` let them in.
+
+## Current VoidBot Compared To The Ideal
+
+- The bot/worker/provider/RAG/Postgres/Qdrant shape is basically sound.
+- Source archive sharding is sound.
+- Interaction memory being Postgres-backed is sound.
+- The private moderation/self-state foundation is not sound:
+  - canonical MessagePack exists, but JSON is still a mutation surface
+  - schema validation is too permissive to protect invariants
+  - helpers mutate projection files and then commit whole-state changes
+  - legacy mirrors keep reintroducing stale truth surfaces
+  - `scripts/void-memory-organ.mjs` owns storage cleanup, semantic interpretation, vectors, incubation, sleep consolidation, identity crystallization, agency, and speech candidates in one file
+  - the scheduled moderation runner owns lifecycle through a huge prompt instead of a typed runner contract
+
+Verdict: stop feature work and rebuild this foundation. The rest of the machine can keep running, but moderation/mood/self-state work should cut toward typed state tools before adding new behavior.
+
+## Migration Plan
+
+### Commit 1: Name The Boundary
+
+- Add typed self-state domain interfaces in core.
+- Define document types and operation payload types.
+- Keep current storage untouched.
+- Verification: typecheck only.
+
+### Commit 2: Add Read-Only Typed Projections
+
+- Build a self-state service that reads current canonical state and renders the same summaries used by direct replies.
+- Keep JSON projection for the old runner.
+- Verification: compare rendered summary against current loader output on a fixture.
+
+### Commit 3: Add Typed Mutation CLI
+
+- Extend `scripts/moderation-state-store.mjs` or replace it with a typed command surface for cursor, open cases, receipts, candidates, sleep, speaking pressure, and distilled memories.
+- The CLI writes CultCache directly.
+- Verification: fixture tests for each operation.
+
+### Commit 4: Move Repo Activity Cursor Behind The Store
+
+- Change `scripts/export-recent-repo-activity.mjs` so it never writes `.voidbot/private/moderation-agent-state.json`.
+- It should emit observed activity and call/store a typed `update_repo_activity_cursor` operation.
+- Verification: run with a temp fixture store; cursor advances without JSON projection writes.
+
+### Commit 5: Replace Agent Whole-State Editing With Operation Output
+
+- Scheduled moderation child may propose operations and speech, not edit state.
+- Runner applies operations through the typed store.
+- Keep old JSON runner behind a fallback flag for one commit only.
+- Verification: dry run with `-NoPost` applies only allowed operations.
+
+### Commit 6: Delete JSON Projection Authority
+
+- Remove routine materialization/commit of `.voidbot/private/moderation-agent-state.json`.
+- Keep an explicit debug export command if humans need to inspect state.
+- Remove `legacyJsonPath` from normal paths.
+- Verification: mood drift and moderation dry runs pass without touching JSON.
+
+### Commit 7: Cut Legacy Mirrors
+
+- Remove top-level mirror reconciliation.
+- Migrate any consumer to typed projections.
+- Delete mirror fields from canonical state.
+- Verification: projection summaries still contain required information; no code references mirror keys.
+
+### Commit 8: Split The Memory Organ
+
+- Split deterministic cleanup from semantic interpretation.
+- Keep vector/resonance/incubation maintenance behind typed state operations.
+- Move speech-candidate queuing into a candidate intervention service.
+- Verification: existing fixture state produces bounded, typed operations and no whole-state rewrite.
+
+### Commit 9: Rebuild Scheduled Runner As A Phase Machine
+
+- Replace prompt-owned lifecycle with explicit phases:
+  - poll chronology
+  - read typed state summary
+  - collect evidence
+  - ask model for decisions/operations
+  - validate/apply operations
+  - optionally send speech
+  - record receipts/cursor
+- Verification: durable logs show each phase and mutation count.
+
+### Commit 10: Resume Product Hardening
+
+- Only after JSON mutation and legacy mirrors are gone:
+  - public-lane moderation policy
+  - admin/forensics surfaces
+  - restore drills
+  - provider/sandbox scaffolding cleanup
 
 ## Rules For Editing This Plan
 

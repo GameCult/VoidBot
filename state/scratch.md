@@ -2,9 +2,11 @@
 
 ## Current Subgoal
 
-No active scratch subgoal.
+Design and execute the private self-state teardown: replace editable JSON projection authority with typed CultCache mutation tools, then delete legacy mirrors and compensating cleanup paths.
 
 ## Working Notes
 
-- Replace this file freely while working one bounded move.
-- Distill any lasting lesson into `state/map.yaml`, `state/evidence.jsonl`, or `notes/fresh-workspace-handoff.md` before clearing it.
+- Smallest coherent target: private Void self-state is a set of typed CultCache documents, and agents cross the boundary through explicit operation payloads.
+- First cut should be state-boundary design and typed mutation tools, not another behavior patch.
+- JSON can remain a debug export or operation payload format, but not an editable whole-state working copy.
+- Cut early: repo cursor JSON writes, commit-working-view authority, legacy top-level mirrors, and semantic cleanup code that only exists because invalid durable state was allowed through.
