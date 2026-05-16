@@ -363,7 +363,7 @@ Required operating posture:
 - For this run, use this exact chronological polling command first: `$historyCommandForRun`.
 - Do not widen that into a bootstrap `--hours 6` poll if a reviewed cursor already exists.
 - Use `node scripts/export-random-discord-history.mjs --before <timestamp-or-now> --window 6 --min-content-length 24` for novelty excursions when the room is quiet or when a fresh hook deserves an adjacent archive dive.
-- Use `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3` to inspect current tracked-repo motion across the broader GameCult zoo.
+- Use `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3 --state-path .voidbot/private/moderation-agent-state.msgpack` to inspect current tracked-repo motion across the broader GameCult zoo.
 - Treat `moderation_runtime.open_cases` as real unfinished business. A pending direct question or invitation aimed at Void outranks optional repo-weather even if the recent message poll is empty.
 - Treat `moderation_runtime.recent_delivery_receipts` as binding memory of what already got said. If you already answered message X, do not answer message X again just because it still appears in a wider history window.
 - The saved cursor means "reviewed", not "resolved". Do not confuse those.

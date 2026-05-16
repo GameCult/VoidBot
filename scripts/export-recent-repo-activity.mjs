@@ -1,23 +1,25 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const defaultRepoActivityCursorPath = resolve(
+const defaultModerationStatePath = resolve(
   repoRoot,
-  ".voidbot/private/moderation-agent-state.json",
+  ".voidbot/private/moderation-agent-state.msgpack",
 );
-const moderationStateStoreScriptPath = resolve(repoRoot, "scripts/moderation-state-store.mjs");
+const voidSelfStateScriptPath = resolve(repoRoot, "scripts/void-self-state.mjs");
+const coreDistPath = resolve(repoRoot, "packages/core/dist/index.js");
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const config = readConfig();
   const trackedRepoNames = readTrackedRepoNames(config.archivePath, options.repoNames);
   const availableRepos = readAvailableRepos(config.sourceRepoRoot);
-  const cursorFilePath = options.cursorFile ? resolve(repoRoot, options.cursorFile) : null;
-  const moderationState = cursorFilePath ? readJsonFileSafe(cursorFilePath) : null;
-  const repoActivityCursor = readRepoActivityCursor(moderationState);
+  const canonicalStatePath = resolveCanonicalStatePath(options);
+  const repoActivityCursor = canonicalStatePath
+    ? readRepoActivityCursorFromCanonicalState(canonicalStatePath)
+    : new Map();
   const sinceIso = new Date(Date.now() - options.hours * 60 * 60 * 1000).toISOString();
   const generatedAt = new Date().toISOString();
 
@@ -32,12 +34,10 @@ function main() {
   );
 
   repos.sort(compareRepoActivity);
-  const cursorUpdate = cursorFilePath
+  const cursorUpdate = canonicalStatePath
     ? writeRepoActivityCursor({
-        state: moderationState,
-        cursorFilePath,
+        canonicalStatePath,
         repos,
-        hours: options.hours,
         generatedAt,
       })
     : { mode: "stateless", updated: false, repoCount: 0 };
@@ -52,7 +52,7 @@ function main() {
         hours: options.hours,
         maxCommits: options.maxCommits,
         cursorMode: cursorUpdate.mode,
-        cursorFile: cursorFilePath,
+        statePath: canonicalStatePath,
         cursorUpdated: cursorUpdate.updated,
         cursorRepoCount: cursorUpdate.repoCount,
         totalTrackedRepos: trackedRepoNames.length,
@@ -70,7 +70,8 @@ function parseArgs(args) {
     hours: 72,
     maxCommits: 3,
     repoNames: undefined,
-    cursorFile: defaultRepoActivityCursorPath,
+    statePath: defaultModerationStatePath,
+    cursorFile: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -93,7 +94,12 @@ function parseArgs(args) {
         options.cursorFile = args[index + 1] ?? "";
         index += 1;
         break;
+      case "--state-path":
+        options.statePath = args[index + 1] ?? "";
+        index += 1;
+        break;
       case "--stateless":
+        options.statePath = null;
         options.cursorFile = null;
         break;
       default:
@@ -112,16 +118,21 @@ function parseArgs(args) {
   return options;
 }
 
-function readJsonFileSafe(path) {
-  try {
-    return JSON.parse(stripLeadingBom(readFileSync(path, "utf8")));
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return null;
-    }
-
-    throw error;
+function resolveCanonicalStatePath(options) {
+  if (options.statePath === null) {
+    return null;
   }
+
+  if (options.cursorFile) {
+    const cursorFilePath = resolve(repoRoot, options.cursorFile);
+    const derived = deriveCanonicalModerationStatePath(cursorFilePath);
+    if (derived) {
+      return derived;
+    }
+    return cursorFilePath.toLowerCase().endsWith(".msgpack") ? cursorFilePath : null;
+  }
+
+  return options.statePath ? resolve(repoRoot, options.statePath) : null;
 }
 
 function parseRepoList(value) {
@@ -488,37 +499,33 @@ function renderDigest(repos, sinceIso, cursorMode) {
   return lines.join("\n");
 }
 
-function readRepoActivityCursor(state) {
-  const lookup = new Map();
-  const rawCursor = state?.moderation_runtime?.repo_activity_cursor;
-  if (!rawCursor || typeof rawCursor !== "object" || Array.isArray(rawCursor)) {
-    return lookup;
+function readRepoActivityCursorFromCanonicalState(canonicalStatePath) {
+  if (!existsSync(canonicalStatePath)) {
+    return new Map();
   }
 
-  for (const [repoName, cursorEntry] of Object.entries(rawCursor)) {
-    if (!repoName || !cursorEntry || typeof cursorEntry !== "object" || Array.isArray(cursorEntry)) {
+  if (!existsSync(coreDistPath)) {
+    throw new Error(`Missing built core package at ${coreDistPath}. Run npm run build first.`);
+  }
+
+  const projectedCursor = readProjectedRepoActivityCursor(canonicalStatePath);
+  const lookup = new Map();
+
+  for (const cursorEntry of projectedCursor) {
+    if (!cursorEntry?.repo) {
       continue;
     }
 
-    lookup.set(repoName.toLowerCase(), cursorEntry);
+    lookup.set(cursorEntry.repo.toLowerCase(), {
+      lastSeenHash: cursorEntry.lastCommitSha ?? null,
+      lastSeenCommittedAt: cursorEntry.lastCommitAt ?? null,
+    });
   }
 
   return lookup;
 }
 
-function writeRepoActivityCursor({ state, cursorFilePath, repos, hours, generatedAt }) {
-  if (!state || typeof state !== "object" || Array.isArray(state)) {
-    return { mode: "incremental", updated: false, repoCount: 0 };
-  }
-
-  if (!state.moderation_runtime || typeof state.moderation_runtime !== "object" || Array.isArray(state.moderation_runtime)) {
-    state.moderation_runtime = {};
-  }
-
-  const currentCursor = state.moderation_runtime.repo_activity_cursor;
-  const nextCursor =
-    currentCursor && typeof currentCursor === "object" && !Array.isArray(currentCursor) ? { ...currentCursor } : {};
-
+function writeRepoActivityCursor({ canonicalStatePath, repos, generatedAt }) {
   let updated = false;
   let repoCount = 0;
 
@@ -531,44 +538,73 @@ function writeRepoActivityCursor({ state, cursorFilePath, repos, hours, generate
       lastSeenHash: repo.latestCommit.hash,
       lastSeenCommittedAt: repo.latestCommit.committedAt ?? null,
       lastInjectedAt: generatedAt,
-      hoursWindow: hours,
-      branch: repo.branch ?? null,
     };
-    const previousEntry = nextCursor[repo.repoName];
-
-    if (JSON.stringify(previousEntry) !== JSON.stringify(nextEntry)) {
-      nextCursor[repo.repoName] = nextEntry;
-      updated = true;
-    }
-
+    applyRepoActivityCursorOperation({
+      canonicalStatePath,
+      repoName: repo.repoName,
+      nextEntry,
+    });
+    updated = true;
     repoCount += 1;
   }
 
-  if (updated) {
-    state.moderation_runtime.repo_activity_cursor = nextCursor;
-    writeFileSync(cursorFilePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-    const canonicalPath = deriveCanonicalModerationStatePath(cursorFilePath);
-    if (canonicalPath && existsSync(moderationStateStoreScriptPath)) {
-      execFileSync(
-        process.execPath,
-        [
-          moderationStateStoreScriptPath,
-          "commit-working-view",
-          "--canonical",
-          canonicalPath,
-          "--working",
-          cursorFilePath,
-        ],
-        {
-          cwd: repoRoot,
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-    }
+  return { mode: "incremental", updated, repoCount };
+}
+
+function applyRepoActivityCursorOperation({ canonicalStatePath, repoName, nextEntry }) {
+  if (!existsSync(voidSelfStateScriptPath)) {
+    throw new Error(`Missing typed self-state CLI at ${voidSelfStateScriptPath}.`);
   }
 
-  return { mode: "incremental", updated, repoCount };
+  const operation = {
+    operation: "update_repo_activity_cursor",
+    cursor: {
+      repo: repoName,
+      lastCommitAt: nextEntry.lastSeenCommittedAt ?? undefined,
+      lastCommitSha: nextEntry.lastSeenHash ?? undefined,
+      updatedAt: nextEntry.lastInjectedAt,
+    },
+  };
+
+  execFileSync(
+    process.execPath,
+    [
+      voidSelfStateScriptPath,
+      "apply-operation",
+      "--canonical",
+      canonicalStatePath,
+      "--operation",
+      JSON.stringify(operation),
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+}
+
+function readProjectedRepoActivityCursor(canonicalStatePath) {
+  const marker = "__VOIDBOT_ASYNC_RESULT__";
+  const script = `
+    const core = require(${JSON.stringify(coreDistPath)});
+    core.loadModerationState(${JSON.stringify(canonicalStatePath)})
+      .then((state) => {
+        const projected = core.projectModerationStateToTypedSelfState(state);
+        console.log(${JSON.stringify(marker)} + JSON.stringify(projected.moderationCursor.repoActivityCursor ?? []));
+      })
+      .catch((error) => { console.error(error); process.exit(1); });
+  `;
+  const output = execFileSync(process.execPath, ["-e", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const line = output.split(/\r?\n/).find((entry) => entry.startsWith(marker));
+  if (!line) {
+    throw new Error("Failed to read moderation state through core loader.");
+  }
+  return JSON.parse(line.slice(marker.length));
 }
 
 function deriveCanonicalModerationStatePath(cursorFilePath) {
