@@ -8,11 +8,12 @@ import { reconcileSemanticMemoryState } from "./void-memory-organ.mjs";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const {
+  applyVoidSelfStateOperation,
   ensureModerationStateStore,
   getModerationStateWorkingPath,
   materializeModerationStateWorkingView,
   saveModerationState,
-} = require(resolve(repoRoot, "packages/core/dist/moderation-state-store.js"));
+} = require(resolve(repoRoot, "packages/core/dist/index.js"));
 const statePath = resolve(repoRoot, ".voidbot/private/moderation-agent-state.msgpack");
 const stateWorkingPath = getModerationStateWorkingPath(statePath);
 const stateTemplatePath = resolve(repoRoot, "config/moderation-agent-state-template.json");
@@ -183,6 +184,20 @@ async function main() {
 
     state.moderation_runtime = runtime;
     await saveModerationState(statePath, state);
+    await applyVoidSelfStateOperation(
+      { canonicalPath: statePath },
+      {
+        operation: "update_sleep_cycle",
+        sleepCycle: projectTypedSleepCycle(sleepCycle),
+      },
+    );
+    await applyVoidSelfStateOperation(
+      { canonicalPath: statePath },
+      {
+        operation: "update_speaking_pressure",
+        speakingPressure: projectTypedSpeakingPressure(speakingBias),
+      },
+    );
     await materializeModerationStateWorkingView({
       state,
       workingPath: stateWorkingPath,
@@ -222,6 +237,29 @@ async function main() {
       },
     });
   });
+}
+
+function projectTypedSleepCycle(sleepCycle) {
+  return {
+    isNapping: sleepCycle.isNapping === true,
+    currentNapStartedAt: typeof sleepCycle.currentNapStartedAt === "string" ? sleepCycle.currentNapStartedAt : undefined,
+    currentNapEndsAt: typeof sleepCycle.currentNapEndsAt === "string" ? sleepCycle.currentNapEndsAt : undefined,
+    nextNapStartsAt: typeof sleepCycle.nextNapStartsAt === "string" ? sleepCycle.nextNapStartsAt : undefined,
+    activeDreamThemes: Array.isArray(sleepCycle.activeDreamThemes)
+      ? sleepCycle.activeDreamThemes.filter((value) => typeof value === "string" && value.trim().length > 0)
+      : [],
+  };
+}
+
+function projectTypedSpeakingPressure(speakingBias) {
+  return {
+    needToSpeak: typeof speakingBias.needToSpeak === "number" ? speakingBias.needToSpeak : 0,
+    confessionPressure: typeof speakingBias.confessionPressure === "number" ? speakingBias.confessionPressure : undefined,
+    noveltyPressure: typeof speakingBias.noveltyPressure === "number" ? speakingBias.noveltyPressure : undefined,
+    recentSpeechDamping: typeof speakingBias.recentSpeechDamping === "number" ? speakingBias.recentSpeechDamping : undefined,
+    lastSpokeAt: typeof speakingBias.lastSpokeAt === "string" ? speakingBias.lastSpokeAt : undefined,
+    lastHeraldAt: typeof speakingBias.lastHeraldAt === "string" ? speakingBias.lastHeraldAt : undefined,
+  };
 }
 
 function topThreadDesire(runtime, limit) {

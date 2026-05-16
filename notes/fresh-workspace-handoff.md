@@ -30,6 +30,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - `scripts/export-recent-repo-activity.mjs` no longer writes the JSON working projection for cursor advancement. It applies `update_repo_activity_cursor` through `scripts/void-self-state.mjs`; old `--cursor-file .json` arguments are only translated to the sibling `.msgpack` path for compatibility.
 - `scripts/run-void-moderator-rumination.ps1` now records reviewed Discord cursors and speech delivery receipts through typed self-state operations. The old `set-cursor` and `record-delivery-receipt` commands were removed from `scripts/moderation-state-store.mjs`.
 - The unattended moderation child no longer gets to commit whole-state JSON edits. It reads `.voidbot/private/moderation-agent-state.json` as a compatibility projection, writes proposed operation payloads to `.voidbot/status/moderation-rumination-operations.json`, and the parent runner applies them through `scripts/void-self-state.mjs apply-operation`.
+- `scripts/simulate-void-mood.mjs` now sends sleep-cycle and speaking-pressure results through typed operations after its legacy save, so scheduled-runtime typed documents stay current. The memory organ itself still mutates the legacy monolith and remains the next major surgery.
 - Most of the deterministic cleanup in `scripts/void-memory-organ.mjs` is recent compensator cruft from failed attempts to manually clean an exploded state file. Do not preserve it as an earned organ. Architect the state boundary so that cleanup pile is unnecessary.
 - Sleep/distillation must be rewritten with a meaning-preservation contract: concrete subject, claim/question, evidence refs, live tension, and future-action implication survive compression. Bulk can die. Meaning does not get put through the office shredder and called a dream.
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
@@ -88,7 +89,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 ## Likely Next Bounded Move
 
 - Stop feature work on moderation, mood, agency, and public-lane behavior until the private-state boundary is rebuilt.
-- First bounded move after the current commit: move mood-drift, scheduled-runtime pressure/sleep updates, and memory-maintenance writes behind typed operations instead of direct canonical/working-projection writes.
+- First bounded move after the current commit: move memory-maintenance, incubation, and candidate-intervention outputs behind typed operations instead of direct canonical/working-projection writes.
 - Next cuts should delete unstable foundations early after concrete writers move: remove `legacyJsonPath`/working-projection authority, then cut top-level mirror fields and cleanup code that only compensated for those broken boundaries.
 - Rebuild sleep/distillation before trusting it again. Fixture check: a memory like `AquariumSynthCSharp: Workflow cannot own the body` must survive sleep with its concrete subject, claim, evidence, tension, and implication intact.
 - Do not build adapters around the JSON projection. That is how the heap learned to stand upright and ask for snacks.
