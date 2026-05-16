@@ -4,9 +4,9 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The current implementation reaches that goal through JSON projection edits, legacy mirrors, and a swollen memory organ. Most of the deterministic cleanup code is recent compensator cruft: it accumulated because the live state had exploded into nonsense, and repeated "clean this file" passes preserved the mess by adding machinery around it.
+Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The old implementation reached that goal through JSON projection edits, legacy mirrors, and a swollen memory organ; that path is now offline. Most of the deterministic cleanup code is recent compensator cruft: it accumulated because the live state had exploded into nonsense, and repeated "clean this file" passes preserved the mess by adding machinery around it.
 
-The next priority is to remove JSON from the mutation loop entirely and rebuild the state model so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/evidence/tensions instead of collapsing them into generic slogan paste.
+The next priority is to rebuild the scheduled loop and memory maintenance on the typed CultCache `.cc` state boundary so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/evidence/tensions instead of collapsing them into generic slogan paste.
 
 The center of the next pass is prevention, not legacy repair. The old brain can be treated as evidence of a failed boundary. The new brain should reject malformed memory at ingress so the runtime never needs a permanent cleanup bureaucracy to recover basic meaning.
 
@@ -28,7 +28,7 @@ The center of the next pass is prevention, not legacy repair. The old brain can 
   - source archive manifest and repo shards
   - provider artifacts/traces
   - logs/status/backups
-- One polymorphic CultCache-backed state authority owns private Void self-state through typed document kinds:
+- One polymorphic CultCache-backed `.cc` state authority owns private Void self-state through typed document kinds:
   - `void.self_profile`: identity, stable values, voice/personality configuration
   - `void.moderation_cursor`: reviewed Discord cursor, open room obligations
   - `void.speech_receipts`: recent delivered replies and dedupe keys
@@ -154,15 +154,14 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - Source archive sharding is sound.
 - Interaction memory being Postgres-backed is sound.
 - The private moderation/self-state foundation is not sound:
-  - canonical MessagePack exists, but JSON is still a mutation surface
-  - schema validation is too permissive to protect invariants
-  - helpers mutate projection files and then commit whole-state changes
-  - legacy mirrors keep reintroducing stale truth surfaces
-  - the memory organ is now split by concern, but legacy translation, retention/compaction, identity crystallization, candidate interventions, and value-pressure inference still mutate legacy state directly
-- the scheduled moderation runner owns lifecycle through a huge prompt instead of a typed runner contract
-- deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted as the new state boundary makes it unnecessary
+  - the active `.cc` store is typed, but the real phase machine is not rebuilt yet
+  - the old scheduled tasks are disabled instead of replaced with full typed behavior
+  - legacy projection/mirror state still exists on disk as failed-boundary residue and must not become source material for the rebuild
+  - the old memory organ is split by concern, but its legacy translation, retention/compaction, identity crystallization, candidate interventions, and value-pressure inference are offline scaffolding, not earned architecture
+- the scheduled moderation runner has been reduced to typed cursor advancement; lifecycle, evidence collection, decisioning, speech, receipts, and memory operations still need a typed runner contract
+- deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted rather than ported unless it protects a real invariant in the new model
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
-- sleep/distillation currently lacks a hard meaning-preservation contract, so it can compress a concrete repo-bound thought into generic abstraction sludge
+- sleep/distillation currently lacks a hard meaning-preservation implementation in the active runner, so it remains offline until rebuilt
 
 Verdict: stop feature work and rebuild this foundation. The rest of the machine can keep running, but moderation/mood/self-state work should cut toward typed state tools before adding new behavior.
 
@@ -191,6 +190,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 - Change `scripts/export-recent-repo-activity.mjs` so it never writes `.voidbot/private/moderation-agent-state.json`.
 - It should emit observed activity and call/store a typed `update_repo_activity_cursor` operation.
+- Landed path: it reads the typed cursor from `.voidbot/private/void-self-state.cc`; old `.json` cursor arguments map only to a sibling `.cc` path.
 - Verification: run with a temp fixture store; cursor advances without JSON projection writes.
 
 ### Commit 5: Replace Agent Whole-State Editing With Operation Output
@@ -202,19 +202,37 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 ### Commit 6: Delete JSON Projection Authority
 
-- Remove routine materialization/commit of `.voidbot/private/moderation-agent-state.json`.
-- Keep an explicit debug export command if humans need to inspect state.
-- Remove `legacyJsonPath` from normal paths.
-- Verification: mood drift and moderation dry runs pass without touching JSON.
+- Landed in the active path: routine self-state operations use `.voidbot/private/void-self-state.cc`, and the typed service no longer registers or mirrors the legacy moderation document.
+- `scripts/run-void-moderator-rumination.ps1` is typed cursor-only and does not materialize `.json`.
+- `scripts/simulate-void-mood.mjs` is typed-only sleep/speaking pressure and does not refresh a JSON projection.
+- Remaining work: keep any explicit human debug export separate from mutation authority, and delete stale references/invocations as they are found.
 
-### Commit 7: Cut Legacy Mirrors
+### Commit 6.5: Keep Old Scripts Offline
+
+- Confirm `Void Moderator Rumination` and `Void Mood Drift` remain disabled while their replacement behavior is rebuilt.
+- Do not reinstall or re-enable old scheduled scripts as compatibility surfaces.
+- Verification: scheduled-task query shows both disabled; direct dry runs of the rebuilt scripts operate only on `.voidbot/private/void-self-state.cc`.
+
+### Commit 7: Rebuild Scheduled Runner As A Phase Machine
+
+- Replace the cursor-only moderation stub with explicit phases:
+  - poll chronology
+  - read typed state summary
+  - collect evidence from Discord/source/lore only when a phase asks for it
+  - ask model for decisions and operation payloads
+  - validate/apply operations
+  - optionally send speech
+  - record receipts and cursor
+- Verification: durable logs show each phase and mutation count, and no phase reads legacy projection files.
+
+### Commit 8: Cut Legacy Mirrors
 
 - Remove top-level mirror reconciliation.
 - Migrate any consumer to typed projections.
-- Delete mirror fields from canonical state.
+- Delete mirror fields from canonical state or leave the old files offline as forensics only.
 - Verification: projection summaries still contain required information; no code references mirror keys.
 
-### Commit 8: Replace Compensating Cleanup With Meaning-Preserving Sleep
+### Commit 9: Replace Compensating Cleanup With Meaning-Preserving Sleep
 
 - Delete cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue.
 - Delete or demote hard-wired agency paths whose real job is turning current heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract.
@@ -228,18 +246,6 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
   - never replace a concrete thought with a prettier generic principle unless the operation records what was lost and why that loss is acceptable
 - Make distillation emit typed candidate memories first; the state service applies only candidates that satisfy the contract.
 - Verification: fixture memories such as `AquariumSynthCSharp: Workflow cannot own the body` survive sleep with their subject, claim, evidence, and tension intact.
-
-### Commit 9: Rebuild Scheduled Runner As A Phase Machine
-
-- Replace prompt-owned lifecycle with explicit phases:
-  - poll chronology
-  - read typed state summary
-  - collect evidence
-  - ask model for decisions/operations
-  - validate/apply operations
-  - optionally send speech
-  - record receipts/cursor
-- Verification: durable logs show each phase and mutation count.
 
 ### Commit 10: Resume Product Hardening
 

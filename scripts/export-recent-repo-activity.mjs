@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultModerationStatePath = resolve(
   repoRoot,
-  ".voidbot/private/moderation-agent-state.msgpack",
+  ".voidbot/private/void-self-state.cc",
 );
 const voidSelfStateScriptPath = resolve(repoRoot, "scripts/void-self-state.mjs");
 const coreDistPath = resolve(repoRoot, "packages/core/dist/index.js");
@@ -129,7 +129,7 @@ function resolveCanonicalStatePath(options) {
     if (derived) {
       return derived;
     }
-    return cursorFilePath.toLowerCase().endsWith(".msgpack") ? cursorFilePath : null;
+    return cursorFilePath.toLowerCase().endsWith(".cc") ? cursorFilePath : null;
   }
 
   return options.statePath ? resolve(repoRoot, options.statePath) : null;
@@ -508,10 +508,10 @@ function readRepoActivityCursorFromCanonicalState(canonicalStatePath) {
     throw new Error(`Missing built core package at ${coreDistPath}. Run npm run build first.`);
   }
 
-  const projectedCursor = readProjectedRepoActivityCursor(canonicalStatePath);
+  const typedCursor = readTypedRepoActivityCursor(canonicalStatePath);
   const lookup = new Map();
 
-  for (const cursorEntry of projectedCursor) {
+  for (const cursorEntry of typedCursor) {
     if (!cursorEntry?.repo) {
       continue;
     }
@@ -584,14 +584,13 @@ function applyRepoActivityCursorOperation({ canonicalStatePath, repoName, nextEn
   );
 }
 
-function readProjectedRepoActivityCursor(canonicalStatePath) {
+function readTypedRepoActivityCursor(canonicalStatePath) {
   const marker = "__VOIDBOT_ASYNC_RESULT__";
   const script = `
     const core = require(${JSON.stringify(coreDistPath)});
-    core.loadModerationState(${JSON.stringify(canonicalStatePath)})
+    core.loadVoidSelfStateTypedDocuments({ canonicalPath: ${JSON.stringify(canonicalStatePath)} })
       .then((state) => {
-        const projected = core.projectModerationStateToTypedSelfState(state);
-        console.log(${JSON.stringify(marker)} + JSON.stringify(projected.moderationCursor.repoActivityCursor ?? []));
+        console.log(${JSON.stringify(marker)} + JSON.stringify(state.moderationCursor.repoActivityCursor ?? []));
       })
       .catch((error) => { console.error(error); process.exit(1); });
   `;
@@ -612,7 +611,7 @@ function deriveCanonicalModerationStatePath(cursorFilePath) {
     return null;
   }
 
-  const candidate = `${cursorFilePath.slice(0, -".json".length)}.msgpack`;
+  const candidate = `${cursorFilePath.slice(0, -".json".length)}.cc`;
   return existsSync(candidate) ? candidate : null;
 }
 
