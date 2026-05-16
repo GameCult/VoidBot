@@ -6,30 +6,34 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const DEFAULT_VECTOR_DIMENSIONS = 96;
-const MAX_EDGE_COUNT = 24;
-const MAX_CLUSTER_COUNT = 8;
-const MAX_INCUBATING_THOUGHTS = 8;
+const MAX_EDGE_COUNT = 8;
+const MAX_CLUSTER_COUNT = 2;
+const MAX_INCUBATING_THOUGHTS = 2;
 const MAX_RECENT_EPISODIC_RECORDS = 10;
 const MAX_RECENT_QUIET_EPISODIC_RECORDS = 2;
 const MAX_POST_NAP_EPISODIC_RECORDS = 4;
 const MAX_POST_NAP_QUIET_EPISODIC_RECORDS = 1;
-const MAX_POST_NAP_ARCHIVE_EXCURSIONS = 3;
-const MAX_POST_NAP_REPO_SWEEPS = 3;
+const MAX_POST_NAP_ARCHIVE_EXCURSIONS = 2;
+const MAX_POST_NAP_REPO_SWEEPS = 2;
 const MAX_POST_NAP_NOVELTY_CHECKS = 3;
 const MAX_POST_NAP_MUSINGS = 6;
 const MAX_POST_NAP_RECENT_MUSINGS = 2;
 const MAX_POST_NAP_CANDIDATE_INTERVENTIONS = 4;
 const MAX_POST_NAP_SEAM_PROMOTIONS = 3;
-const MAX_POST_NAP_RESONANCE_EDGES = 12;
-const MAX_ARCHIVE_EXCURSION_MEMORIES = 6;
-const MAX_REPO_SWEEP_MEMORIES = 8;
+const MAX_POST_NAP_RESONANCE_EDGES = 4;
+const MAX_ARCHIVE_EXCURSION_MEMORIES = 4;
+const MAX_REPO_SWEEP_MEMORIES = 4;
 const MAX_SEMANTIC_MEMORIES = 14;
 const MAX_DREAM_MEMORIES = 5;
-const MAX_RUNTIME_REPO_SWEEPS = 4;
-const MAX_RUNTIME_REPO_ACTIVITY_MEMORIES = 4;
-const MAX_RUNTIME_ARCHIVE_EXCURSIONS = 4;
+const MAX_RUNTIME_REPO_SWEEPS = 1;
+const MAX_RUNTIME_REPO_ACTIVITY_MEMORIES = 1;
+const MAX_RUNTIME_ARCHIVE_EXCURSIONS = 2;
 const MAX_RUNTIME_RUMINATION_SEEDS = 4;
-const MAX_RECENT_SYNTHESIS_COUNT = 4;
+const MAX_RECENT_SYNTHESIS_COUNT = 1;
+const MAX_SUPPORTING_REFS = 4;
+const MAX_CLUSTER_MEMORY_IDS = 6;
+const MAX_INCUBATION_SOURCE_IDS = 5;
+const MAX_DREAM_SOURCE_IDS = 4;
 const MAX_DISCOMFORT_COUNT = 6;
 const MAX_ACTIVE_TENSION_COUNT = 6;
 const MAX_ADVOCACY_REQUEST_COUNT = 4;
@@ -240,7 +244,7 @@ export async function reconcileSemanticMemoryState({
   const runtime = ensureObject(state.moderation_runtime);
   const memories = ensureObject(state.memories);
   const sleepCycle = ensureObject(runtime.sleep_cycle);
-  normalizeHistoricalMemorySurfaces({ memories, runtime, now });
+  normalizeHistoricalMemorySurfaces({ state, memories, runtime, now });
   const records = collectMemoryRecords({ state, memories, runtime });
   const previousBridge = ensureObject(runtime.bridge);
   const sourceCoverage = buildSourceCoverage({ runtime, now });
@@ -351,7 +355,7 @@ export async function reconcileSemanticMemoryState({
   };
 }
 
-function normalizeHistoricalMemorySurfaces({ memories, runtime, now }) {
+function normalizeHistoricalMemorySurfaces({ state, memories, runtime, now }) {
   normalizeSemanticMemories({ memories, now });
   normalizeDreamMemories({ memories, now });
   dedupeSemanticMemories({ memories });
@@ -360,6 +364,7 @@ function normalizeHistoricalMemorySurfaces({ memories, runtime, now }) {
   pruneDreamMemories({ memories });
   trimHistoricalMemoryResidue({ memories, runtime });
   trimLegacyRuntimeResidue({ runtime });
+  reconcileLegacyStateMirrors({ state, memories, runtime, now });
 }
 
 function normalizeSemanticMemories({ memories, now }) {
@@ -372,6 +377,12 @@ function normalizeSemanticMemories({ memories, now }) {
     }
 
     if (readString(memory, "kind") === "identity_seam") {
+      kept.push(memory);
+      continue;
+    }
+
+    if (isStableSemanticMemory(memory)) {
+      memory.lastTranslatedAt = readString(memory, "lastTranslatedAt") ?? now.toISOString();
       kept.push(memory);
       continue;
     }
@@ -415,6 +426,12 @@ function normalizeDreamMemories({ memories, now }) {
   const kept = [];
 
   for (const dream of dreams) {
+    if (isStableDreamMemory(dream)) {
+      dream.lastTranslatedAt = readString(dream, "lastTranslatedAt") ?? now.toISOString();
+      kept.push(dream);
+      continue;
+    }
+
     const normalized = translateLegacyThoughtLikeEntry({
       label: choosePreferredDreamTheme(dream) ?? "dream seam",
       summary: readString(dream, "summary") ?? "",
@@ -451,6 +468,40 @@ function normalizeDreamMemories({ memories, now }) {
   }
 
   memories.dreams = kept.slice(-MAX_DREAM_MEMORIES);
+}
+
+function isStableSemanticMemory(memory) {
+  const label = readString(memory, "subjectLabel") ?? "";
+  const summary = readString(memory, "summary") ?? "";
+  const targetKind = readString(memory, "targetKind") ?? "";
+  const question = readString(memory, "question") ?? "";
+  const claim = readString(memory, "claim") ?? "";
+
+  if (!label || !summary || hasThoughtSurfaceTemplateSmell(summary)) {
+    return false;
+  }
+  if (looksKeywordSalad(label) || looksPersonLikeSingleton(label)) {
+    return false;
+  }
+  if (targetKind === "repo" && extractRepoNameFromLabel(label)) {
+    return true;
+  }
+  if (targetKind === "self" && /compression|continuity|receipt|dream/i.test(`${label} ${summary}`)) {
+    return true;
+  }
+  return normalizeText(question).length > 0 && normalizeText(claim).length > 0;
+}
+
+function isStableDreamMemory(dream) {
+  const theme = readString(dream, "theme") ?? "";
+  const summary = readString(dream, "summary") ?? "";
+  if (!theme || !summary || hasThoughtSurfaceTemplateSmell(summary)) {
+    return false;
+  }
+  if (looksKeywordSalad(theme) || looksPersonLikeSingleton(theme)) {
+    return false;
+  }
+  return true;
 }
 
 function translateLegacyThoughtLikeEntry({
@@ -997,6 +1048,7 @@ function trimHistoricalMemoryResidue({ memories, runtime }) {
   }
 
   scrubRuntimeThoughtResidue({ runtime });
+  distillStateSurface({ memories, runtime });
 }
 
 function trimRecentObjectRecords(entries, limit) {
@@ -1066,6 +1118,135 @@ function scrubThoughtSurfaceText(value) {
     .trim();
 }
 
+function distillStateSurface({ memories, runtime }) {
+  for (const entry of ensureArray(memories.episodic).filter(isObject)) {
+    if (typeof entry.summary === "string") {
+      entry.summary = compactNarrative(entry.summary);
+    }
+    if (typeof entry.significance === "string") {
+      entry.significance = compactNarrative(entry.significance);
+    }
+  }
+  for (const memory of ensureArray(memories.semantic).filter(isObject)) {
+    memory.evidenceRefs = capDistinctStrings(memory.evidenceRefs, MAX_SUPPORTING_REFS);
+    if (typeof memory.summary === "string") {
+      memory.summary = compactNarrative(memory.summary);
+    }
+  }
+  for (const dream of ensureArray(memories.dreams).filter(isObject)) {
+    dream.distilledFrom = capDistinctStrings(dream.distilledFrom, MAX_DREAM_SOURCE_IDS);
+    if (typeof dream.summary === "string") {
+      dream.summary = compactNarrative(dream.summary);
+    }
+  }
+  for (const thought of ensureArray(ensureObject(runtime.incubation).active_thoughts).filter(isObject)) {
+    thought.sourceMemoryIds = capDistinctStrings(thought.sourceMemoryIds, MAX_INCUBATION_SOURCE_IDS);
+  }
+  for (const entry of ensureArray(ensureObject(runtime.bridge).recent_syntheses).filter(isObject)) {
+    entry.dominantTopics = capDistinctStrings(entry.dominantTopics, 3);
+    if (typeof entry.analytic === "string") {
+      entry.analytic = compactNarrative(entry.analytic);
+    }
+    if (typeof entry.associative === "string") {
+      entry.associative = compactNarrative(entry.associative);
+    }
+  }
+  for (const entry of ensureArray(runtime.recent_repo_activity_sweeps).filter(isObject)) {
+    if (typeof entry.summary === "string") {
+      entry.summary = compactNarrative(entry.summary);
+    }
+  }
+  for (const entry of ensureArray(runtime.repo_sweeps).filter(isObject)) {
+    if (typeof entry.summary === "string") {
+      entry.summary = compactNarrative(entry.summary);
+    }
+  }
+  for (const entry of ensureArray(runtime.repo_activity_memories).filter(isObject)) {
+    if (typeof entry.summary === "string") {
+      entry.summary = compactNarrative(entry.summary);
+    }
+  }
+  for (const entry of ensureArray(memories.repo_sweeps).filter(isObject)) {
+    if (typeof entry.summary === "string") {
+      entry.summary = compactNarrative(entry.summary);
+    }
+  }
+  for (const entry of ensureArray(memories.musings).filter(isObject)) {
+    if (typeof entry.summary === "string") {
+      entry.summary = compactNarrative(entry.summary);
+    }
+  }
+  const recentActivity = ensureObject(runtime.recent_activity);
+  if (typeof recentActivity.summary === "string") {
+    recentActivity.summary = compactNarrative(recentActivity.summary);
+  }
+  if (typeof recentActivity.lastDecisionRationale === "string") {
+    recentActivity.lastDecisionRationale = compactNarrative(recentActivity.lastDecisionRationale);
+  }
+  runtime.recent_activity = recentActivity;
+  const thoughtLanes = ensureObject(runtime.thought_lanes);
+  if (typeof thoughtLanes.analytic === "string") {
+    thoughtLanes.analytic = compactNarrative(thoughtLanes.analytic);
+  }
+  if (typeof thoughtLanes.associative === "string") {
+    thoughtLanes.associative = compactNarrative(thoughtLanes.associative);
+  }
+  runtime.thought_lanes = thoughtLanes;
+  runtime.pending_adjustments = ensureArray(runtime.pending_adjustments)
+    .filter(isObject)
+    .map((entry) => {
+      if (typeof entry.summary !== "string") {
+        return entry;
+      }
+      return {
+        ...entry,
+        summary: compactNarrative(entry.summary),
+      };
+    });
+  const memoryResonance = ensureObject(runtime.memory_resonance);
+  for (const edge of ensureArray(memoryResonance.recent_edges).filter(isObject)) {
+    if (typeof edge.leftLabel === "string") {
+      edge.leftLabel = compactLabel(edge.leftLabel);
+    }
+    if (typeof edge.rightLabel === "string") {
+      edge.rightLabel = compactLabel(edge.rightLabel);
+    }
+    if (typeof edge.summary === "string") {
+      edge.summary = compactNarrative(edge.summary);
+    }
+  }
+}
+
+function compactNarrative(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return normalized;
+  }
+  const firstSentence = normalized.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim();
+  const candidate = firstSentence && firstSentence.length >= 24 ? firstSentence : normalized;
+  return candidate.length > 220 ? `${candidate.slice(0, 217).trimEnd()}...` : candidate;
+}
+
+function compactLabel(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return normalized;
+  }
+  if (/incremental sweep found/i.test(normalized)) {
+    const repoMatch = normalized.match(/`([^`]+)`/);
+    const repoName = repoMatch?.[1] ?? "repo";
+    return `${repoName} repo sweep`;
+  }
+  if (/no new discord traffic|one new discord message|no messages arrived/i.test(normalized)) {
+    return "room pass";
+  }
+  return normalized.length > 96 ? `${normalized.slice(0, 93).trimEnd()}...` : normalized;
+}
+
+function capDistinctStrings(entries, limit) {
+  return [...new Set(ensureStringArray(entries))].slice(0, limit);
+}
+
 function compareMemoryFreshness(left, right) {
   const leftTime = parseIsoTimestamp(readString(left, "lastObservedAt") ?? readString(left, "timestamp") ?? "") ?? 0;
   const rightTime = parseIsoTimestamp(readString(right, "lastObservedAt") ?? readString(right, "timestamp") ?? "") ?? 0;
@@ -1079,6 +1260,149 @@ function trimLegacyRuntimeResidue({ runtime }) {
     .filter((edge) => !looksLegacyThoughtSurface(readString(edge, "leftLabel") ?? "", readString(edge, "summary") ?? ""))
     .slice(-MAX_EDGE_COUNT);
   runtime.memory_resonance = memoryResonance;
+}
+
+function reconcileLegacyStateMirrors({ state, memories, runtime, now }) {
+  const timestamp = now.toISOString();
+  const bridge = ensureObject(runtime.bridge);
+  const runtimeThoughtLanes = ensureObject(runtime.thought_lanes);
+  const activeThoughts = ensureArray(ensureObject(runtime.incubation).active_thoughts).filter(isObject);
+  const activeTensions = ensureArray(runtime.active_tensions).filter(isObject);
+
+  state.archive_excursions = [];
+  state.repo_sweeps = ensureArray(memories.repo_sweeps)
+    .filter(isObject)
+    .map((entry) => compactRepoSweepMirror(entry))
+    .slice(0, MAX_REPO_SWEEP_MEMORIES);
+  state.repo_activity_memories = ensureArray(runtime.repo_activity_memories)
+    .filter(isObject)
+    .map((entry) => compactRepoSweepMirror(entry))
+    .slice(0, MAX_RUNTIME_REPO_ACTIVITY_MEMORIES);
+  state.recent_archive_excursions = ensureArray(runtime.recent_archive_excursions)
+    .filter(isObject)
+    .map((entry) => compactArchiveExcursionMirror(entry))
+    .slice(0, MAX_RUNTIME_ARCHIVE_EXCURSIONS);
+  state.recent_novelty_checks = ensureArray(runtime.recent_novelty_checks)
+    .filter(isObject)
+    .map((entry) => compactNoveltyCheckMirror(entry))
+    .slice(0, MAX_POST_NAP_NOVELTY_CHECKS);
+  state.recent_activity = compactRecentActivityMirror(runtime.recent_activity, runtime, timestamp);
+  state.source_coverage = cloneJson(ensureObject(runtime.source_coverage));
+  state.speaking_bias = cloneJson(ensureObject(runtime.speaking_bias));
+  state.lastReviewSummary = readString(runtime, "lastReviewSummary") ?? readString(runtime, "last_review_summary") ?? null;
+  state.lastReviewSummaryShort =
+    readString(runtime, "lastReviewSummaryShort") ?? readString(runtime, "last_review_summary_short") ?? null;
+  state.last_review_summary = state.lastReviewSummary;
+  state.last_review_summary_short = state.lastReviewSummaryShort;
+  state.thought_lanes = {
+    analytic: buildThoughtLaneMirror({
+      sourceValue: runtimeThoughtLanes.analytic,
+      fallback: activeTensions[0],
+      timestamp,
+    }),
+    associative: buildThoughtLaneMirror({
+      sourceValue: runtimeThoughtLanes.associative,
+      fallback: activeThoughts[0] ?? bridge,
+      timestamp,
+    }),
+  };
+}
+
+function compactRepoSweepMirror(entry) {
+  return {
+    timestamp: readString(entry, "timestamp") ?? null,
+    memoryId: readString(entry, "memoryId") ?? null,
+    summary: compactNarrative(readString(entry, "summary") ?? ""),
+    repoNames: ensureStringArray(entry.repoNames).slice(0, 3),
+    whyItMattered: compactNarrative(readString(entry, "whyItMattered") ?? ""),
+  };
+}
+
+function compactArchiveExcursionMirror(entry) {
+  return {
+    memoryId: readString(entry, "memoryId") ?? null,
+    timestamp: readString(entry, "timestamp") ?? null,
+    topicHint: compactNarrative(readString(entry, "topicHint") ?? ""),
+    whyItWasFresh: compactNarrative(readString(entry, "whyItWasFresh") ?? ""),
+  };
+}
+
+function compactNoveltyCheckMirror(entry) {
+  return {
+    timestamp: readString(entry, "timestamp") ?? null,
+    query: compactNarrative(readString(entry, "query") ?? ""),
+    candidate: compactNarrative(readString(entry, "candidate") ?? ""),
+    result: readString(entry, "result") ?? null,
+    note: compactNarrative(readString(entry, "note") ?? ""),
+  };
+}
+
+function compactRecentActivityMirror(value, runtime, timestamp) {
+  const recentActivity = isObject(value) ? cloneJson(value) : {};
+  recentActivity.checkedAt = readString(recentActivity, "checkedAt") ?? timestamp;
+  if (typeof recentActivity.summary === "string") {
+    recentActivity.summary = compactNarrative(recentActivity.summary);
+  }
+  if (typeof recentActivity.lastDecisionRationale === "string") {
+    recentActivity.lastDecisionRationale = compactNarrative(recentActivity.lastDecisionRationale);
+  }
+  if (!recentActivity.summary) {
+    recentActivity.summary =
+      compactNarrative(readString(runtime, "lastReviewSummary") ?? readString(runtime, "last_review_summary") ?? "") ??
+      "";
+  }
+  return recentActivity;
+}
+
+function buildThoughtLaneMirror({ sourceValue, fallback, timestamp }) {
+  const summary = summarizeThoughtLaneSource(sourceValue, fallback);
+  return summary
+    ? [
+        {
+          timestamp,
+          summary,
+        },
+      ]
+    : [];
+}
+
+function summarizeThoughtLaneSource(sourceValue, fallback) {
+  if (typeof sourceValue === "string") {
+    return compactNarrative(sourceValue);
+  }
+
+  if (isObject(sourceValue)) {
+    const threads = ensureArray(sourceValue.active_threads).filter(isObject);
+    if (threads.length > 0) {
+      const latest = threads
+        .slice()
+        .sort(compareMemoryFreshness)[0];
+      return compactNarrative(
+        [readString(latest, "topic"), readString(latest, "claim"), readString(latest, "counterweight")]
+          .filter(Boolean)
+          .join(". "),
+      );
+    }
+    const description = readString(sourceValue, "description");
+    if (description) {
+      return compactNarrative(description);
+    }
+  }
+
+  if (isObject(fallback)) {
+    return compactNarrative(
+      [
+        readString(fallback, "topic"),
+        readString(fallback, "summary"),
+        readString(fallback, "claim"),
+        readString(fallback, "opinion"),
+      ]
+        .filter(Boolean)
+        .join(". "),
+    );
+  }
+
+  return null;
 }
 
 function collectMemoryRecords({ memories, runtime }) {
@@ -1352,7 +1676,10 @@ function buildClusters(records, edges) {
           .filter((value) => typeof value === "string" && value.length > 0),
       ),
     ];
-    const evidenceRefs = [...new Set(items.flatMap((item) => ensureStringArray(item.sourceRefs)))];
+    const evidenceRefs = capDistinctStrings(
+      items.flatMap((item) => ensureStringArray(item.sourceRefs)),
+      MAX_SUPPORTING_REFS,
+    );
     const evidenceDiversity = clamp(
       sourceKinds.length * 0.18 +
         repoNames.length * 0.17 +
@@ -1370,7 +1697,8 @@ function buildClusters(records, edges) {
       evidenceRefs,
       evidenceDiversity,
     });
-    const thoughtSurface = synthesizeThoughtSurface({
+    const preferredThoughtSurface = readPreferredClusterThoughtSurface(items);
+    const thoughtSurface = preferredThoughtSurface ?? synthesizeThoughtSurface({
       sourceKinds,
       repoNames,
       archiveYears,
@@ -1395,7 +1723,7 @@ function buildClusters(records, edges) {
       fascinationTarget: cleanedFocusPhrase,
       worldFacing: thoughtSurface.worldFacing,
       resonance: round3(resonance),
-      memoryIds: items.map((item) => item.memoryId),
+      memoryIds: items.map((item) => item.memoryId).slice(0, MAX_CLUSTER_MEMORY_IDS),
       sourceKinds,
       topKeywords: keywords,
       repoNames,
@@ -1604,7 +1932,7 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
       claim: cluster.claim,
       fascinationTarget: cluster.fascinationTarget,
       worldFacing,
-      sourceMemoryIds: cluster.memoryIds,
+      sourceMemoryIds: cluster.memoryIds.slice(0, MAX_INCUBATION_SOURCE_IDS),
       sourceKinds: cluster.sourceKinds,
       resonance: cluster.resonance,
       quietSignalRatio: round3(quietSignalRatio),
@@ -1710,7 +2038,7 @@ function distillDreams({ memories, sleepCycle, incubation, now }) {
     timestamp: now.toISOString(),
     theme,
     summary,
-    distilledFrom: ensureStringArray(strongestThought.sourceMemoryIds),
+    distilledFrom: capDistinctStrings(strongestThought.sourceMemoryIds, MAX_DREAM_SOURCE_IDS),
     salience: round3(
       clamp(
         (readNumber(strongestThought, "maturation") ?? 0.4) * 0.55 +
@@ -2501,10 +2829,13 @@ function promoteDistilledSeams({ memories, incubation, memoryResonance, now }) {
     const cluster = clusterByLabel.get(topic);
     const distilledSummary = buildDistilledSeamSummary({ thought, cluster });
     const subjectId = `seam:${hashString(topic).slice(0, 12)}`;
-    const sourceRefs = [
-      ...ensureStringArray(thought.sourceMemoryIds),
-      ...(cluster ? ensureStringArray(cluster.memoryIds) : []),
-    ];
+    const sourceRefs = capDistinctStrings(
+      [
+        ...ensureStringArray(thought.sourceMemoryIds),
+        ...(cluster ? ensureStringArray(cluster.memoryIds) : []),
+      ],
+      MAX_SUPPORTING_REFS,
+    );
     const existing = semanticMemories.find((memory) => {
       const existingSubjectId = readString(memory, "subjectId");
       const existingSubjectLabel = readString(memory, "subjectLabel");
@@ -3253,6 +3584,65 @@ function buildClusterCuriosityProfile({
   };
 }
 
+function readPreferredClusterThoughtSurface(items) {
+  const preferredEntry = items
+    .filter((item) => item.kind === "semantic" && isObject(item.entry))
+    .map((item) => item.entry)
+    .find((entry) => readString(entry, "targetKind") === "repo" && readString(entry, "subjectLabel"));
+
+  if (!preferredEntry) {
+    return null;
+  }
+
+  const label = readString(preferredEntry, "subjectLabel");
+  const focusPhrase = extractFocusPhraseFromLabel(label);
+  if (!label || !focusPhrase) {
+    return null;
+  }
+
+  return {
+    focusKind: readString(preferredEntry, "focusKind") ?? "claim",
+    targetKind: "repo",
+    focusPhrase,
+    label,
+    summary:
+      compactNarrative(readString(preferredEntry, "summary") ?? "") ||
+      `${label} keeps pulling as a concrete repo seam.`,
+    question:
+      readString(preferredEntry, "question") ??
+      `How should ${extractRepoNameFromLabel(label) ?? "this repo"} embody ${focusPhrase} concretely?`,
+    claim:
+      readString(preferredEntry, "claim") ??
+      `${extractRepoNameFromLabel(label) ?? "This repo"} is accumulating a concrete decision around ${focusPhrase}.`,
+    fascinationTarget: readString(preferredEntry, "fascinationTarget") ?? label,
+    worldFacing: readBoolean(preferredEntry, "worldFacing") ?? true,
+  };
+}
+
+function extractFocusPhraseFromLabel(label) {
+  const normalized = normalizeText(label);
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.includes(":")) {
+    const [, rest] = normalized.split(/:\s*/, 2);
+    return rest ? rest.toLowerCase() : null;
+  }
+  return normalized.toLowerCase();
+}
+
+function extractRepoNameFromLabel(label) {
+  const normalized = normalizeText(label);
+  if (!normalized || !normalized.includes(":")) {
+    return null;
+  }
+  const [prefix] = normalized.split(/:\s*/, 1);
+  if (!prefix || !/[A-Z]/.test(prefix)) {
+    return null;
+  }
+  return prefix;
+}
+
 function synthesizeThoughtSurface({
   sourceKinds,
   repoNames,
@@ -3490,7 +3880,12 @@ function gatherSourceRefs(entry) {
 
 function gatherSourceMeta({ entry, kind }) {
   const sourceMeta = {};
-  const repoNames = ensureStringArray(entry.repoNames);
+  const repoNames = [
+    ...new Set([
+      ...ensureStringArray(entry.repoNames),
+      ...inferRepoNamesFromEntry(entry),
+    ]),
+  ];
   if (repoNames.length > 0) {
     sourceMeta.repoNames = repoNames;
   }
@@ -3500,13 +3895,15 @@ function gatherSourceMeta({ entry, kind }) {
     sourceMeta.channelId = channelId;
   }
 
-  const archiveTimestamp =
-    readString(entry, "anchorTimestamp") ??
-    readString(entry, "sourceTimestamp") ??
-    readString(entry, "timestamp");
-  const archiveYear = extractYear(archiveTimestamp);
-  if (archiveYear) {
-    sourceMeta.archiveYear = archiveYear;
+  if (kind === "archive_excursion") {
+    const archiveTimestamp =
+      readString(entry, "anchorTimestamp") ??
+      readString(entry, "sourceTimestamp") ??
+      readString(entry, "timestamp");
+    const archiveYear = extractYear(archiveTimestamp);
+    if (archiveYear) {
+      sourceMeta.archiveYear = archiveYear;
+    }
   }
 
   if (kind === "bridge_synthesis") {
@@ -3517,6 +3914,16 @@ function gatherSourceMeta({ entry, kind }) {
   }
 
   return sourceMeta;
+}
+
+function inferRepoNamesFromEntry(entry) {
+  const subjectLabel =
+    readString(entry, "subjectLabel") ??
+    readString(entry, "topic") ??
+    readString(entry, "label") ??
+    readString(entry, "fascinationTarget");
+  const repoName = extractRepoNameFromLabel(subjectLabel);
+  return repoName ? [repoName] : [];
 }
 
 function extractYear(timestamp) {
@@ -3886,6 +4293,10 @@ function readNumber(value, key) {
   return isObject(value) && typeof value[key] === "number" && Number.isFinite(value[key])
     ? value[key]
     : undefined;
+}
+
+function readBoolean(value, key) {
+  return isObject(value) && typeof value[key] === "boolean" ? value[key] : undefined;
 }
 
 function round3(value) {
