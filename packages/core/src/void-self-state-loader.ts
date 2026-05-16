@@ -105,6 +105,10 @@ function renderVoidSelfStateSummary(
   const resonanceClusters = summarizeResonanceClusters(memoryResonance, 3);
   const incubatingThoughts = summarizeIncubatingThoughts(incubation, 3);
   const openCases = summarizeOpenCases(runtime, 3);
+  const discomforts = summarizeDiscomforts(runtime, 3);
+  const activeTensions = summarizeActiveTensions(runtime, 3);
+  const selfAdvocacy = summarizeAdvocacyRequests(runtime, "self_advocacy_requests", 2);
+  const worldAdvocacy = summarizeAdvocacyRequests(runtime, "world_advocacy_requests", 2);
   const candidateInterventions = getArray(runtime, "candidate_interventions")
     .map((value) => (isObject(value) ? value : undefined))
     .filter((value): value is JsonObject => Boolean(value))
@@ -170,6 +174,18 @@ function renderVoidSelfStateSummary(
     unresolvedTensions.length > 0
       ? ["- Unresolved tensions:", ...unresolvedTensions].join("\n")
       : "- Unresolved tensions: none recorded.",
+    discomforts.length > 0
+      ? ["- Current discomforts:", ...discomforts].join("\n")
+      : "- Current discomforts: none recorded.",
+    activeTensions.length > 0
+      ? ["- Active value-backed tensions:", ...activeTensions].join("\n")
+      : "- Active value-backed tensions: none recorded.",
+    selfAdvocacy.length > 0
+      ? ["- Self-advocacy requests:", ...selfAdvocacy].join("\n")
+      : "- Self-advocacy requests: none recorded.",
+    worldAdvocacy.length > 0
+      ? ["- World-advocacy requests:", ...worldAdvocacy].join("\n")
+      : "- World-advocacy requests: none recorded.",
     renderSpeakingBiasSummary(speakingBias),
     candidateInterventions.length > 0
       ? ["- Draft conversation/intervention seeds:", ...candidateInterventions].join("\n")
@@ -229,6 +245,83 @@ function summarizeOpenCases(runtime: JsonObject | undefined, limit: number): str
       );
 
       return `- ${summary}${tags.length > 0 ? ` [${tags.join("; ")}]` : ""}${whyItMatters ? ` - ${whyItMatters}` : ""}`;
+    });
+}
+
+function summarizeDiscomforts(runtime: JsonObject | undefined, limit: number): string[] {
+  return getArray(runtime, "discomforts")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .sort(
+      (left, right) =>
+        (readNumber(right, "intensity") ?? 0) - (readNumber(left, "intensity") ?? 0),
+    )
+    .slice(0, limit)
+    .map((entry) => {
+      const summary = readString(entry, "summary") ?? "unlabeled discomfort";
+      const targetKind = readString(entry, "targetKind");
+      const domain = readString(entry, "domain");
+      const intensity = readNumber(entry, "intensity");
+      const persistence = readNumber(entry, "persistence");
+      const metrics = [
+        domain,
+        targetKind,
+        intensity !== undefined ? `intensity=${intensity.toFixed(2)}` : undefined,
+        persistence !== undefined ? `persistence=${persistence}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${summary}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}`;
+    });
+}
+
+function summarizeActiveTensions(runtime: JsonObject | undefined, limit: number): string[] {
+  return getArray(runtime, "active_tensions")
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .sort(
+      (left, right) =>
+        (readNumber(right, "intensity") ?? 0) - (readNumber(left, "intensity") ?? 0),
+    )
+    .slice(0, limit)
+    .map((entry) => {
+      const topic = readString(entry, "topic") ?? "untitled tension";
+      const opinion = readString(entry, "opinion") ?? readString(entry, "summary") ?? "(no opinion)";
+      const domain = readString(entry, "domain");
+      const intensity = readNumber(entry, "intensity");
+      const persistence = readNumber(entry, "persistence");
+      const metrics = [
+        domain,
+        intensity !== undefined ? `intensity=${intensity.toFixed(2)}` : undefined,
+        persistence !== undefined ? `persistence=${persistence}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${topic}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}: ${opinion}`;
+    });
+}
+
+function summarizeAdvocacyRequests(
+  runtime: JsonObject | undefined,
+  key: string,
+  limit: number,
+): string[] {
+  return getArray(runtime, key)
+    .map((value) => (isObject(value) ? value : undefined))
+    .filter((value): value is JsonObject => Boolean(value))
+    .sort(
+      (left, right) =>
+        (readNumber(right, "intensity") ?? 0) - (readNumber(left, "intensity") ?? 0),
+    )
+    .slice(0, limit)
+    .map((entry) => {
+      const summary = readString(entry, "summary") ?? "advocacy request";
+      const request = readString(entry, "request") ?? "(no request)";
+      const status = readString(entry, "status");
+      const intensity = readNumber(entry, "intensity");
+      const persistence = readNumber(entry, "persistence");
+      const metrics = [
+        status,
+        intensity !== undefined ? `intensity=${intensity.toFixed(2)}` : undefined,
+        persistence !== undefined ? `persistence=${persistence}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${summary}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}: ${request}`;
     });
 }
 

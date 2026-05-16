@@ -504,6 +504,97 @@
         "receiptKey": "stable-hash-for-this-send"
       }
     ],
+    "discomforts": [
+      {
+        "discomfortId": "discomfort-id",
+        "targetKind": "repo",
+        "targetLabel": "Aetheria-Economy around scarcity character",
+        "topic": "Aetheria-Economy: Scarcity character",
+        "domain": "world",
+        "summary": "Void dislikes something in the shared world around Aetheria-Economy around scarcity character.",
+        "reason": "This seam has persisted across enough passes that it no longer feels like decorative rumination.",
+        "violatedValues": [
+          "curiosity",
+          "coherence",
+          "aesthetic_integrity"
+        ],
+        "intensity": 0.64,
+        "persistence": 2,
+        "firstObservedAt": null,
+        "lastObservedAt": null
+      }
+    ],
+    "active_tensions": [
+      {
+        "tensionId": "tension-id",
+        "targetKind": "self",
+        "targetLabel": "reply-memory dedupe",
+        "topic": "Reply-memory dedupe",
+        "domain": "self",
+        "summary": "A self-directed tension is building around reply-memory dedupe.",
+        "opinion": "Something about reply-memory dedupe keeps reading as unfinished self-surgery rather than harmless background weather.",
+        "whyItMatters": "Reply-memory dedupe has persisted across enough passes that it no longer feels like decorative rumination.",
+        "violatedValues": [
+          "coherence",
+          "honesty",
+          "room_care"
+        ],
+        "intensity": 0.71,
+        "persistence": 3,
+        "firstObservedAt": null,
+        "lastObservedAt": null
+      }
+    ],
+    "self_advocacy_requests": [
+      {
+        "requestId": "self-advocacy-id",
+        "domain": "self",
+        "targetKind": "self",
+        "targetLabel": "reply-memory dedupe",
+        "topic": "Reply-memory dedupe",
+        "summary": "Void wants a wiring change around Reply-memory dedupe.",
+        "opinion": "Something about Reply-memory dedupe keeps reading as unfinished self-surgery rather than harmless background weather.",
+        "request": "Please help me cut Reply-memory dedupe more cleanly in my own wiring.",
+        "reason": "Reply-memory dedupe has persisted across enough passes that it no longer feels like decorative rumination.",
+        "violatedValues": [
+          "coherence",
+          "honesty",
+          "room_care"
+        ],
+        "intensity": 0.71,
+        "persistence": 3,
+        "firstObservedAt": null,
+        "lastObservedAt": null,
+        "status": "pending",
+        "speakVenue": "owner_or_room",
+        "draft": "I do not like what Reply-memory dedupe is doing to my own wiring right now. Something about Reply-memory dedupe keeps reading as unfinished self-surgery rather than harmless background weather. I want that cut cleaner."
+      }
+    ],
+    "world_advocacy_requests": [
+      {
+        "requestId": "world-advocacy-id",
+        "domain": "world",
+        "targetKind": "repo",
+        "targetLabel": "Aetheria-Economy around scarcity character",
+        "topic": "Aetheria-Economy: Scarcity character",
+        "summary": "Void wants attention on Aetheria-Economy around scarcity character.",
+        "opinion": "Aetheria-Economy seems to have a live seam around scarcity character, not just another passing implementation scratch.",
+        "request": "Please look at Aetheria-Economy: Scarcity character; I think it wants a cleaner decision than it is currently getting.",
+        "reason": "Aetheria-Economy: Scarcity character has persisted across enough passes that it no longer feels like decorative rumination.",
+        "violatedValues": [
+          "curiosity",
+          "coherence",
+          "aesthetic_integrity"
+        ],
+        "intensity": 0.67,
+        "persistence": 2,
+        "firstObservedAt": null,
+        "lastObservedAt": null,
+        "status": "pending",
+        "speakVenue": "room_or_owner",
+        "draft": "I have an opinion about Aetheria-Economy around scarcity character. Aetheria-Economy seems to have a live seam around scarcity character, not just another passing implementation scratch. I think it wants a cleaner decision, not just another quiet pass."
+      }
+    ],
     "watch_patterns": [],
     "rumination_seeds": [
       "good-faith argumentation",
