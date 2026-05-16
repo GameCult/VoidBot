@@ -13,3 +13,4 @@ export * from "./void-usage-rate-limiter";
 export * from "./void-self-state-loader";
 export * from "./void-self-state-domain";
 export * from "./void-self-state-projection";
+export * from "./void-self-state-service";

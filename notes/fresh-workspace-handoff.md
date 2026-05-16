@@ -26,6 +26,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - The smallest coherent target is one polymorphic CultCache-backed state authority with typed document kinds plus typed mutation tools: agents propose small operations, and the state service validates/applies them. Whole-state JSON editing is rejected as a durable mutation path.
 - Commit-one boundary naming is now in code at `packages/core/src/void-self-state-domain.ts`: it declares the global typed document kinds and strict operation payload schemas. Runtime behavior has not moved yet.
 - Read-only projection is now in `packages/core/src/void-self-state-projection.ts`. `loadVoidSelfState` uses that typed projection for nap/reply-mode context while leaving the old richer prompt summary intact until typed documents explicitly own those details.
+- Typed operations are now applied through `packages/core/src/void-self-state-service.ts` and `scripts/void-self-state.mjs apply-operation`. During migration this service writes the new typed documents and updates only the narrow legacy monolith fields still required by current runners.
 - Most of the deterministic cleanup in `scripts/void-memory-organ.mjs` is recent compensator cruft from failed attempts to manually clean an exploded state file. Do not preserve it as an earned organ. Architect the state boundary so that cleanup pile is unnecessary.
 - Sleep/distillation must be rewritten with a meaning-preservation contract: concrete subject, claim/question, evidence refs, live tension, and future-action implication survive compression. Bulk can die. Meaning does not get put through the office shredder and called a dream.
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
@@ -84,8 +85,8 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 ## Likely Next Bounded Move
 
 - Stop feature work on moderation, mood, agency, and public-lane behavior until the private-state boundary is rebuilt.
-- First bounded move after the current commit: add the typed mutation CLI/service for the operations already named in `void-self-state-domain.ts`.
-- Next cuts should delete unstable foundations early after the mutation service exists: move repo-activity cursor updates behind the typed store, replace whole-state agent JSON edits with operation output, remove `legacyJsonPath`/working-projection authority, then cut top-level mirror fields and cleanup code that only compensated for those broken boundaries.
+- First bounded move after the current commit: move repo-activity cursor updates and delivered-reply receipts behind `scripts/void-self-state.mjs apply-operation`.
+- Next cuts should delete unstable foundations early after concrete writers move: replace whole-state agent JSON edits with operation output, remove `legacyJsonPath`/working-projection authority, then cut top-level mirror fields and cleanup code that only compensated for those broken boundaries.
 - Rebuild sleep/distillation before trusting it again. Fixture check: a memory like `AquariumSynthCSharp: Workflow cannot own the body` must survive sleep with its concrete subject, claim, evidence, tension, and implication intact.
 - Do not build adapters around the JSON projection. That is how the heap learned to stand upright and ask for snacks.
 

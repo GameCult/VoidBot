@@ -9,6 +9,8 @@ import {
 } from "cultcache-ts";
 import { z } from "zod";
 
+import { voidSelfStateDocumentRegistry } from "./void-self-state-domain";
+
 const MODERATION_STATE_DOCUMENT_TYPE = "voidbot.moderation_state";
 const MODERATION_STATE_DOCUMENT_KEY = "voidbot.moderation_state/default";
 
@@ -62,7 +64,7 @@ export const moderationStateSchema = z
   })
   .passthrough();
 
-const moderationStateDocument = defineDocumentType({
+export const moderationStateDocument = defineDocumentType({
   type: MODERATION_STATE_DOCUMENT_TYPE,
   schema: moderationStateSchema,
 });
@@ -296,6 +298,7 @@ export async function recordModerationDeliveryReceipt(
 function createModerationStateCache(canonicalPath: string): CultCache {
   const cache = new CultCache();
   cache.registerDocumentType(moderationStateDocument);
+  cache.registerRegistry(voidSelfStateDocumentRegistry);
   cache.addBackingStore(new SingleFileMessagePackBackingStore(canonicalPath));
   return cache;
 }
