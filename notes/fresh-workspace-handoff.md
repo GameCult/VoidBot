@@ -24,6 +24,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - The ordinary bot/worker/provider/RAG/Postgres/Qdrant foundation still deserves to survive.
 - The moderation/mood/private-self-state foundation does not. Treat it as the top architectural risk until JSON projection mutation and legacy mirrors are gone.
 - The smallest coherent target is one polymorphic CultCache-backed state authority with typed document kinds plus typed mutation tools: agents propose small operations, and the state service validates/applies them. Whole-state JSON editing is rejected as a durable mutation path.
+- Commit-one boundary naming is now in code at `packages/core/src/void-self-state-domain.ts`: it declares the global typed document kinds and strict operation payload schemas. Runtime behavior has not moved yet.
 - Most of the deterministic cleanup in `scripts/void-memory-organ.mjs` is recent compensator cruft from failed attempts to manually clean an exploded state file. Do not preserve it as an earned organ. Architect the state boundary so that cleanup pile is unnecessary.
 - Sleep/distillation must be rewritten with a meaning-preservation contract: concrete subject, claim/question, evidence refs, live tension, and future-action implication survive compression. Bulk can die. Meaning does not get put through the office shredder and called a dream.
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
@@ -82,8 +83,8 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 ## Likely Next Bounded Move
 
 - Stop feature work on moderation, mood, agency, and public-lane behavior until the private-state boundary is rebuilt.
-- First bounded move: define typed CultCache document ownership and mutation operations for cursor/open cases, delivery receipts, candidate interventions, sleep/speaking runtime, and distilled memory. CultCache is natively polymorphic; do not create separate stores just to make the type names feel architectural.
-- Next cuts should delete unstable foundations early: move repo-activity cursor updates behind the typed store, replace whole-state agent JSON edits with operation output, remove `legacyJsonPath`/working-projection authority, then cut top-level mirror fields and cleanup code that only compensated for those broken boundaries.
+- First bounded move after the current commit: build read-only typed projections over the existing canonical moderation state, using the new document vocabulary without changing runtime mutation yet.
+- Next cuts should delete unstable foundations early after projections exist: add the typed mutation CLI/service, move repo-activity cursor updates behind the typed store, replace whole-state agent JSON edits with operation output, remove `legacyJsonPath`/working-projection authority, then cut top-level mirror fields and cleanup code that only compensated for those broken boundaries.
 - Rebuild sleep/distillation before trusting it again. Fixture check: a memory like `AquariumSynthCSharp: Workflow cannot own the body` must survive sleep with its concrete subject, claim, evidence, tension, and implication intact.
 - Do not build adapters around the JSON projection. That is how the heap learned to stand upright and ask for snacks.
 
