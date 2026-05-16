@@ -300,3 +300,59 @@ export function compareMemoryFreshness(left, right) {
   const rightTime = parseIsoTimestamp(readString(right, "lastObservedAt") ?? readString(right, "timestamp") ?? "") ?? 0;
   return rightTime - leftTime;
 }
+
+export function appendClause(existing, clause) {
+  const left = normalizeText(existing);
+  const right = normalizeText(clause);
+  if (!left) {
+    return right;
+  }
+  if (!right || left.includes(right)) {
+    return left;
+  }
+  return `${left} ${right}`;
+}
+
+export function topicSimilarity(left, right) {
+  const leftTokens = topConceptKeywords(left ?? "", 6);
+  const rightTokens = topConceptKeywords(right ?? "", 6);
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  let overlap = 0;
+  for (const token of leftSet) {
+    if (rightSet.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  return overlap / Math.max(leftSet.size, rightSet.size);
+}
+
+export function getValueObjects(values) {
+  return ensureArray(values).filter(isObject);
+}
+
+export function topConceptKeywords(text, limit) {
+  const counts = new Map();
+
+  for (const token of tokenize(text)) {
+    if (stopwords.has(token) || labelNoiseTokens.has(token)) {
+      continue;
+    }
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+      return right[0].length - left[0].length;
+    })
+    .slice(0, limit)
+    .map(([token]) => token);
+}
