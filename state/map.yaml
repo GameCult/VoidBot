@@ -123,6 +123,7 @@ landed_baseline:
   - A second scheduled task now runs the plain Node mood-drift script every 5 minutes, updating the shared self-state's activations plus speaking-bias meter, damping expression pressure based on actual recent speech receipts, and maintaining the four-hour nap clock that the moderation loop and direct reply prompts both consume.
   - That mood-drift organ now also reconciles compact semantic vectors for persistent memories and runtime seeds, maintains a small resonance graph plus incubation queue in the shared self-state, and leaves stronger dream residue during nap windows instead of only nudging activations.
   - Memory cleanup now has to be meaningfully destructive. Sleep-side consolidation should translate old thought fossils into the live claim/question/fascination surface, drop templated slogan-slop, trim repo/archive/runtime residue down to a small recent evidence surface, and keep the freshest surviving records instead of accidentally embalming the oldest ones after a sort.
+  - Durably weird semantic kinds are guilty until proven useful. `recent-preoccupation`, `quiet-room-status`, person-singleton labels, and `live seam` boilerplate are state poison, not doctrine, and the memory organ should cut them during ordinary cleanup rather than preserving them for another nap to admire.
 
 rejected_paths:
   - name: transcript_only_continuity

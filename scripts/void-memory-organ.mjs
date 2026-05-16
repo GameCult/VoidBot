@@ -23,8 +23,8 @@ const MAX_POST_NAP_SEAM_PROMOTIONS = 3;
 const MAX_POST_NAP_RESONANCE_EDGES = 12;
 const MAX_ARCHIVE_EXCURSION_MEMORIES = 6;
 const MAX_REPO_SWEEP_MEMORIES = 8;
-const MAX_SEMANTIC_MEMORIES = 18;
-const MAX_DREAM_MEMORIES = 6;
+const MAX_SEMANTIC_MEMORIES = 14;
+const MAX_DREAM_MEMORIES = 5;
 const MAX_RUNTIME_REPO_SWEEPS = 4;
 const MAX_RUNTIME_REPO_ACTIVITY_MEMORIES = 4;
 const MAX_RUNTIME_ARCHIVE_EXCURSIONS = 4;
@@ -367,6 +367,10 @@ function normalizeSemanticMemories({ memories, now }) {
   const kept = [];
 
   for (const memory of semanticMemories) {
+    if (shouldDropSemanticMemory(memory)) {
+      continue;
+    }
+
     if (readString(memory, "kind") === "identity_seam") {
       kept.push(memory);
       continue;
@@ -559,6 +563,10 @@ function sanitizePreferredThoughtLabel(label) {
     return null;
   }
 
+  if (looksPersonLikeSingleton(normalized)) {
+    return null;
+  }
+
   return normalized;
 }
 
@@ -660,9 +668,9 @@ function buildConciseThoughtSummary({ focusKind, targetKind, synthesized }) {
     return `${focus} keeps surviving compression as a self-seam.`;
   }
   if (focusKind === "claim") {
-    return `${focus} looks like a live claim rather than ambient noise.`;
+    return `${focus} has hardened into a concrete claim.`;
   }
-  return `${focus} still looks like a live seam.`;
+  return `${focus} remains unresolved enough to deserve a cleaner read.`;
 }
 
 function buildDreamSummary(normalized) {
@@ -738,6 +746,10 @@ function pruneHistoricalSeamMemories({ memories }) {
   const groupedDistilled = new Map();
 
   for (const memory of semanticMemories) {
+    if (shouldDropSemanticMemory(memory)) {
+      continue;
+    }
+
     const kind = readString(memory, "kind");
     if (kind === "identity_seam") {
       identitySeams.push(memory);
@@ -792,14 +804,24 @@ function isLowCoherenceDistilledSeam(entry) {
   const label = readString(entry, "subjectLabel") ?? "";
   const summary = readString(entry, "summary") ?? "";
   const targetKind = readString(entry, "targetKind") ?? "";
+  const kind = readString(entry, "kind") ?? "";
   const keywords = topConceptKeywords(`${label} ${summary}`, 5);
   if (keywords.length < 2) {
+    return true;
+  }
+  if (kind === "recent-preoccupation" || kind === "quiet-room-status") {
     return true;
   }
   if (targetKind === "self" && keywords.length < 3) {
     return true;
   }
+  if (targetKind === "system" && /live seam|live question|live claim/i.test(summary)) {
+    return true;
+  }
   if (!label || label.startsWith("seam:")) {
+    return true;
+  }
+  if (looksPersonLikeSingleton(label)) {
     return true;
   }
   if (looksKeywordSalad(label)) {
@@ -837,6 +859,36 @@ function shouldPurgeThoughtLikeMemory({ entry, normalized, preferredLabel }) {
   return true;
 }
 
+function shouldDropSemanticMemory(entry) {
+  const kind = readString(entry, "kind") ?? "";
+  const label = readString(entry, "subjectLabel") ?? readString(entry, "theme") ?? "";
+  const summary = readString(entry, "summary") ?? "";
+  const targetKind = readString(entry, "targetKind") ?? "";
+  const focusKind = readString(entry, "focusKind") ?? "";
+
+  if (kind === "identity_seam") {
+    return false;
+  }
+
+  if (kind === "recent-preoccupation" || kind === "quiet-room-status") {
+    return true;
+  }
+
+  if (looksPersonLikeSingleton(label)) {
+    return true;
+  }
+
+  if (targetKind === "system" && focusKind === "question" && !/repo|archive|lore|room|self/i.test(summary)) {
+    return true;
+  }
+
+  if (hasThoughtSurfaceTemplateSmell(summary)) {
+    return true;
+  }
+
+  return false;
+}
+
 function hasThoughtSurfaceTemplateSmell(value) {
   const normalized = normalizeText(value).toLowerCase();
   if (!normalized) {
@@ -848,6 +900,10 @@ function hasThoughtSurfaceTemplateSmell(value) {
     normalized.includes("if it had to change a real machine") ||
     normalized.includes("keeps returning with enough structure to deserve another honest pass") ||
     normalized.includes("still matters. what would") ||
+    normalized.includes("looks like a live seam") ||
+    normalized.includes("live seam around") ||
+    normalized.includes("looks like a live claim") ||
+    normalized.includes("looks like a live question") ||
     normalized.includes("archive-facing seam around") ||
     normalized.includes("self-facing seam around") ||
     normalized.includes("dream-compressed a seam around")
@@ -868,6 +924,20 @@ function looksKeywordSalad(value) {
   }
   const longTokens = tokens.filter((token) => token.length >= 5);
   return tokens.length >= 3 && longTokens.length === 0;
+}
+
+function looksPersonLikeSingleton(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.includes(":") || normalized.includes(" ")) {
+    return false;
+  }
+  if (!/^[A-Z][a-zA-Z0-9_-]+$/.test(normalized)) {
+    return false;
+  }
+  return normalized.length >= 4;
 }
 
 function pruneDreamMemories({ memories }) {
@@ -921,10 +991,79 @@ function trimHistoricalMemoryResidue({ memories, runtime }) {
     MAX_POST_NAP_RESONANCE_EDGES,
   );
   runtime.memory_resonance = memoryResonance;
+
+  if (Array.isArray(runtime.pending_adjustments) && runtime.pending_adjustments.length > 0) {
+    runtime.pending_adjustments = runtime.pending_adjustments.slice(-1);
+  }
+
+  scrubRuntimeThoughtResidue({ runtime });
 }
 
 function trimRecentObjectRecords(entries, limit) {
   return ensureArray(entries).filter(isObject).sort(compareMemoryFreshness).slice(0, limit);
+}
+
+function scrubRuntimeThoughtResidue({ runtime }) {
+  const candidateInterventions = ensureArray(runtime.candidate_interventions)
+    .filter(isObject)
+    .filter((entry) => !entryHasThoughtSurfaceTemplateSmell(entry))
+    .map((entry) => scrubThoughtLikeEntry(entry));
+  runtime.candidate_interventions = trimCandidateInterventions(candidateInterventions);
+
+  runtime.discomforts = ensureArray(runtime.discomforts)
+    .filter(isObject)
+    .filter((entry) => !entryHasThoughtSurfaceTemplateSmell(entry))
+    .map((entry) => scrubThoughtLikeEntry(entry))
+    .slice(0, MAX_DISCOMFORT_COUNT);
+
+  runtime.active_tensions = ensureArray(runtime.active_tensions)
+    .filter(isObject)
+    .filter((entry) => !entryHasThoughtSurfaceTemplateSmell(entry))
+    .map((entry) => scrubThoughtLikeEntry(entry))
+    .slice(0, MAX_ACTIVE_TENSION_COUNT);
+
+  runtime.self_advocacy_requests = ensureArray(runtime.self_advocacy_requests)
+    .filter(isObject)
+    .filter((entry) => !entryHasThoughtSurfaceTemplateSmell(entry))
+    .map((entry) => scrubThoughtLikeEntry(entry))
+    .slice(0, MAX_ADVOCACY_REQUEST_COUNT);
+
+  runtime.world_advocacy_requests = ensureArray(runtime.world_advocacy_requests)
+    .filter(isObject)
+    .filter((entry) => !entryHasThoughtSurfaceTemplateSmell(entry))
+    .map((entry) => scrubThoughtLikeEntry(entry))
+    .slice(0, MAX_ADVOCACY_REQUEST_COUNT);
+}
+
+function entryHasThoughtSurfaceTemplateSmell(entry) {
+  return Object.values(entry).some((value) => typeof value === "string" && hasThoughtSurfaceTemplateSmell(value));
+}
+
+function scrubThoughtLikeEntry(entry) {
+  const next = { ...entry };
+  for (const [key, value] of Object.entries(next)) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    next[key] = scrubThoughtSurfaceText(value);
+  }
+  return next;
+}
+
+function scrubThoughtSurfaceText(value) {
+  if (!hasThoughtSurfaceTemplateSmell(value)) {
+    return value;
+  }
+
+  return normalizeText(value)
+    .replace(/\bseems to have a live seam around\b/gi, "is accumulating a concrete decision around")
+    .replace(/\blive seam around\b/gi, "concrete decision around")
+    .replace(/\blooks like a live seam,? not just ambient noise\.?/gi, "is staying structurally important across passes.")
+    .replace(/\bstill looks like a live seam\.?/gi, "remains unresolved enough to deserve a cleaner read.")
+    .replace(/\blooks like a live claim\.?/gi, "has become a concrete claim.")
+    .replace(/\bstill looks like a live question\.?/gi, "remains an unresolved question.")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function compareMemoryFreshness(left, right) {
@@ -1997,7 +2136,7 @@ function buildAgencyInterventionDraft({ thought, domain, targetLabel }) {
   if (domain === "self") {
     return `I do not like what ${topic} is doing to my own wiring right now. ${opinion} I want that cut cleaner.`;
   }
-  return `I have an opinion about ${targetLabel}. ${opinion} I think it wants a cleaner decision, not just another quiet pass.`;
+  return `I have an opinion about ${targetLabel}. ${opinion} I think it needs a cleaner decision.`;
 }
 
 function findPriorAgencyEntry(entries, candidate) {
@@ -3272,7 +3411,7 @@ function buildThoughtClaim({ targetKind, focusPhrase, repoNames, sourceKinds, cu
   if (curiosityProfile.crossDomainPotential >= 0.55 && sourceKinds.includes("repo_sweep") && sourceKinds.includes("archive_excursion")) {
     return `${capitalizePhrase(focusPhrase)} links current work to older patterns strongly enough to deserve a concrete read.`;
   }
-  return `${capitalizePhrase(focusPhrase)} looks like a live seam, not just ambient noise.`;
+  return `${capitalizePhrase(focusPhrase)} is staying structurally important across passes.`;
 }
 
 function buildFascinationTarget({ targetKind, focusPhrase, repoNames }) {
@@ -3296,9 +3435,9 @@ function buildThoughtSummary({ focusKind, targetKind, focusPhrase, repoNames, so
     return `${capitalizePhrase(focusPhrase)} keeps pulling in the archive.${sourceLine}`.trim();
   }
   if (focusKind === "claim") {
-    return `${capitalizePhrase(focusPhrase)} looks like a live claim.${sourceLine}`.trim();
+    return `${capitalizePhrase(focusPhrase)} has become a concrete claim.${sourceLine}`.trim();
   }
-  return `${capitalizePhrase(focusPhrase)} still looks like a live question.${sourceLine}`.trim();
+  return `${capitalizePhrase(focusPhrase)} remains an unresolved question.${sourceLine}`.trim();
 }
 
 function topConceptKeywords(text, limit) {
