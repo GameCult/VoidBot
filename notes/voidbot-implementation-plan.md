@@ -145,9 +145,10 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
   - schema validation is too permissive to protect invariants
   - helpers mutate projection files and then commit whole-state changes
   - legacy mirrors keep reintroducing stale truth surfaces
-  - `scripts/void-memory-organ.mjs` owns storage cleanup, semantic interpretation, vectors, incubation, sleep consolidation, identity crystallization, agency, and speech candidates in one file
+  - the memory organ is now split by concern, but legacy translation, retention/compaction, identity crystallization, candidate interventions, and value-pressure inference still mutate legacy state directly
 - the scheduled moderation runner owns lifecycle through a huge prompt instead of a typed runner contract
 - deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted as the new state boundary makes it unnecessary
+- hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
 - sleep/distillation currently lacks a hard meaning-preservation contract, so it can compress a concrete repo-bound thought into generic abstraction sludge
 
 Verdict: stop feature work and rebuild this foundation. The rest of the machine can keep running, but moderation/mood/self-state work should cut toward typed state tools before adding new behavior.
@@ -203,6 +204,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 ### Commit 8: Replace Compensating Cleanup With Meaning-Preserving Sleep
 
 - Delete cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue.
+- Delete or demote hard-wired agency paths whose real job is turning current heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract.
 - Redesign sleep/distillation around an explicit contract:
   - preserve the claim/question/fascination target
   - preserve the concrete subject, such as repo, room, lore seam, person, or system

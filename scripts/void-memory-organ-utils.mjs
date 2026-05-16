@@ -370,6 +370,20 @@ export function appendClause(existing, clause) {
   return `${left} ${right}`;
 }
 
+export function appendUniqueString(items, value, limit) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return;
+  }
+  if (items.includes(normalized)) {
+    return;
+  }
+  items.push(normalized);
+  if (items.length > limit) {
+    items.splice(0, items.length - limit);
+  }
+}
+
 export function topicSimilarity(left, right) {
   const leftTokens = topConceptKeywords(left ?? "", 6);
   const rightTokens = topConceptKeywords(right ?? "", 6);

@@ -123,7 +123,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/void-memory-organ.mjs`
   - thin orchestrator for the hybrid symbolic/vector memory helper used by mood drift.
 - `scripts/void-memory-organ-*.mjs`
-  - split memory-organ modules for shared limits/utilities, vector/embedder substrate, memory-record intake, graph/cluster synthesis, historical cleanup/translation, incubation/bridge scoring, sleep/distillation, legacy mirror repair, and agency/intervention policy.
+  - split memory-organ modules for shared limits/utilities, vector/embedder substrate, memory-record intake, graph/cluster synthesis, legacy translation, retention/compaction, incubation/bridge scoring, sleep/distillation, identity crystallization, candidate interventions, value-pressure inference, and legacy mirror repair.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`
