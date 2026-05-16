@@ -57,7 +57,7 @@ data_flow:
 active_subgoals:
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Rebuild the moderation/self-state foundation so canonical CultCache `.cc` documents are mutated only through typed operations, never through an editable JSON working projection.
-  - Keep the old moderation and mood scheduled scripts offline until their behavior is rebuilt as typed phase machines.
+  - Keep the old moderation and mood scheduled tasks offline until their typed replacements are deliberately reinstalled; typed rumination exists as a direct runner again, but not as an enabled legacy task.
   - Cut legacy moderation mirrors, whole-state projection commits, and memory-organ compensators before adding more moderation, mood, agency, or public-lane behavior.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
   - Preserve boring observability and startup discipline around Postgres, Qdrant, Ollama, Docker, backups, scheduled tasks, watchdogs, and any private local fire-signal extensions.
@@ -129,7 +129,7 @@ landed_baseline:
   - State storage is now split into a thin factory plus per-domain Postgres/file store modules and bootstrap/migration helpers instead of one persistence omnibus.
   - Source archive storage is now sharded by repo behind a manifest plus per-repo shard directory instead of one giant `source-documents.json` blob.
   - Source repo indexing now reconciles automatically during stack startup and watchdog runs, refreshing hooks, indexing newly discovered repos, and pruning stale repo shards when repos disappear from `SOURCE_REPO_ROOT`.
-    - The old `Void Moderator Rumination` and `Void Mood Drift` scheduled tasks are disabled. Their replacement entry scripts are typed-only and intentionally reduced: moderation advances the typed chronology cursor, while mood updates typed sleep/speaking pressure in `.voidbot/private/void-self-state.cc`.
+    - The old `Void Moderator Rumination` and `Void Mood Drift` scheduled tasks are disabled. Their replacement entry scripts are typed-only: moderation now builds a bounded context packet, runs the reviewed rumination prompt from `prompts/void-moderator-rumination.md`, and applies typed operation payloads; mood updates typed sleep/speaking pressure in `.voidbot/private/void-self-state.cc`.
   - The active self-state service no longer registers, reads, or writes the legacy moderation document during routine operations.
   - The old Codex rumination, memory-organ cleanup, repo-weather, vector incubation, legacy mirror repair, and JSON projection paths are offline until rebuilt against the typed state boundary.
   - Memory cleanup now has to be meaningfully destructive. Sleep-side consolidation should translate old thought fossils into the live claim/question/fascination surface, drop templated slogan-slop, trim repo/archive/runtime residue down to a small recent evidence surface, and keep the freshest surviving records instead of accidentally embalming the oldest ones after a sort.
@@ -150,5 +150,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: VoidBot's ordinary bot/worker/provider/RAG/Postgres/Qdrant structure is still conceptually sound, and the private self-state path has been cut to a typed CultCache `.cc` store at `.voidbot/private/void-self-state.cc`. The active typed service no longer loads or mirrors the legacy moderation monolith. The old scheduled tasks are disabled; the rebuilt scripts are intentionally narrow typed-only runners, not compatibility wrappers around the old brain.
-  next_action: Rebuild the scheduled moderation phase machine and memory-maintenance organ from the typed `.cc` state boundary. The next brain should derive cleanup, agency, sleep, incubation, and speech candidates from validated typed operations and model-owned decisions, not from legacy projection fields, mirror repair, or hard-wired compensator stacks.
+  summary: VoidBot's ordinary bot/worker/provider/RAG/Postgres/Qdrant structure is still conceptually sound, and the private self-state path has been cut to a typed CultCache `.cc` store at `.voidbot/private/void-self-state.cc`. The active typed service no longer loads or mirrors the legacy moderation monolith. The old scheduled tasks are disabled; the moderation replacement has real rumination again through a reviewed prompt file plus typed operation output.
+  next_action: Harden the scheduled moderation phase machine and rebuild the memory-maintenance organ from the typed `.cc` state boundary. The next brain should derive cleanup, agency, sleep, incubation, and speech candidates from validated typed operations and model-owned decisions, not from legacy projection fields, mirror repair, or hard-wired compensator stacks.

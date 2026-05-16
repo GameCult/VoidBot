@@ -39,6 +39,7 @@ function main() {
         canonicalStatePath,
         repos,
         generatedAt,
+        readOnly: options.readOnly,
       })
     : { mode: "stateless", updated: false, repoCount: 0 };
 
@@ -72,6 +73,7 @@ function parseArgs(args) {
     repoNames: undefined,
     statePath: defaultModerationStatePath,
     cursorFile: undefined,
+    readOnly: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -101,6 +103,9 @@ function parseArgs(args) {
       case "--stateless":
         options.statePath = null;
         options.cursorFile = null;
+        break;
+      case "--read-only":
+        options.readOnly = true;
         break;
       default:
         throw new Error(`Unknown argument: ${argument}`);
@@ -525,9 +530,17 @@ function readRepoActivityCursorFromCanonicalState(canonicalStatePath) {
   return lookup;
 }
 
-function writeRepoActivityCursor({ canonicalStatePath, repos, generatedAt }) {
+function writeRepoActivityCursor({ canonicalStatePath, repos, generatedAt, readOnly }) {
   let updated = false;
   let repoCount = 0;
+
+  if (readOnly) {
+    return {
+      mode: "incremental_read_only",
+      updated: false,
+      repoCount: repos.filter((repo) => repo.status === "ok" && repo.recentCommitCount > 0).length,
+    };
+  }
 
   for (const repo of repos) {
     if (repo.status !== "ok" || !repo.latestCommit?.hash || repo.recentCommitCount <= 0) {

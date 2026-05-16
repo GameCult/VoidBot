@@ -111,7 +111,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/check-voidbot-operations.ps1`
   - watchdog for process liveness, Qdrant, Postgres, Ollama, source-repo reconcile drift, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
 - `scripts/run-void-moderator-rumination.ps1`
-  - typed cursor-only replacement runner. It polls recent Discord chronology, advances the typed moderation cursor in `.voidbot/private/void-self-state.cc`, and writes status/log pulse files. It does not launch Codex rumination, post speech, materialize a JSON projection, or run legacy memory/agency behavior.
+  - typed rumination runner. It builds a bounded context packet from `.voidbot/private/void-self-state.cc`, recent Discord chronology, and read-only repo activity; loads `prompts/void-moderator-rumination.md`; runs Codex rumination; applies returned typed operations through `scripts/void-self-state.mjs`; then records parent-owned cursor and speech receipts.
 - `scripts/moderation-state-store.mjs`
   - legacy moderation-state wrapper. It is not part of the active typed self-state path.
 - `scripts/void-self-state.mjs`
@@ -166,12 +166,16 @@ Within the Postgres path, the implementation is split on purpose now too:
 - `state-storage-postgres-bootstrap.ts` handles schema/bootstrap/import work
 - per-domain modules own queue, audit, interaction-memory, and rate-limit behavior
 
-## Flow 5: Scheduled Moderation Rebuild Stub
+## Flow 5: Scheduled Moderation Rumination
 
 1. The Windows scheduled task `Void Moderator Rumination` is disabled.
-2. `scripts/run-void-moderator-rumination.ps1` is now a typed cursor-only runner. It reads `.voidbot/private/void-self-state.cc`, polls `node scripts/export-recent-discord-history.mjs`, and applies `record_reviewed_messages` through `scripts/void-self-state.mjs`.
-3. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
-4. It intentionally does not launch Codex, post to Discord, materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or run memory/agency cleanup. Those behaviors need a fresh typed phase machine.
+2. `scripts/run-void-moderator-rumination.ps1` reads `.voidbot/private/void-self-state.cc`, polls `node scripts/export-recent-discord-history.mjs`, and gathers read-only repo activity with `node scripts/export-recent-repo-activity.mjs --read-only`.
+3. The runner writes a bounded context packet at `.voidbot/status/moderation-rumination-context.json`.
+4. The runner loads `prompts/void-moderator-rumination.md`, substitutes the context/state/output paths, and sends that prompt to Codex.
+5. Codex may use retrieval and analysis tools, but its durable state output is restricted to `.voidbot/status/moderation-rumination-operations.json`.
+6. The parent runner applies those typed operations through `scripts/void-self-state.mjs`, then records reviewed-message cursor and any speech receipt itself.
+7. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
+8. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
 
 ## Flow 6: Mood Rebuild Stub
 

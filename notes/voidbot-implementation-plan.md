@@ -158,7 +158,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
   - the old scheduled tasks are disabled instead of replaced with full typed behavior
   - legacy projection/mirror state still exists on disk as failed-boundary residue and must not become source material for the rebuild
   - the old memory organ is split by concern, but its legacy translation, retention/compaction, identity crystallization, candidate interventions, and value-pressure inference are offline scaffolding, not earned architecture
-- the scheduled moderation runner has been reduced to typed cursor advancement; lifecycle, evidence collection, decisioning, speech, receipts, and memory operations still need a typed runner contract
+- the scheduled moderation runner has a typed rumination contract again: bounded context in, reviewed prompt template, typed operation payloads out, parent-owned cursor/receipt recording
 - deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted rather than ported unless it protects a real invariant in the new model
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
 - sleep/distillation currently lacks a hard meaning-preservation implementation in the active runner, so it remains offline until rebuilt
@@ -203,7 +203,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 ### Commit 6: Delete JSON Projection Authority
 
 - Landed in the active path: routine self-state operations use `.voidbot/private/void-self-state.cc`, and the typed service no longer registers or mirrors the legacy moderation document.
-- `scripts/run-void-moderator-rumination.ps1` is typed cursor-only and does not materialize `.json`.
+- `scripts/run-void-moderator-rumination.ps1` restores rumination through `prompts/void-moderator-rumination.md` and typed operation output; it does not materialize `.json`.
 - `scripts/simulate-void-mood.mjs` is typed-only sleep/speaking pressure and does not refresh a JSON projection.
 - Remaining work: keep any explicit human debug export separate from mutation authority, and delete stale references/invocations as they are found.
 
@@ -213,9 +213,9 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Do not reinstall or re-enable old scheduled scripts as compatibility surfaces.
 - Verification: scheduled-task query shows both disabled; direct dry runs of the rebuilt scripts operate only on `.voidbot/private/void-self-state.cc`.
 
-### Commit 7: Rebuild Scheduled Runner As A Phase Machine
+### Commit 7: Harden Scheduled Runner As A Phase Machine
 
-- Replace the cursor-only moderation stub with explicit phases:
+- Continue hardening the typed rumination runner's explicit phases:
   - poll chronology
   - read typed state summary
   - collect evidence from Discord/source/lore only when a phase asks for it
