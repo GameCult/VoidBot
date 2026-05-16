@@ -283,7 +283,16 @@ function summarizeResonanceClusters(memoryResonance: JsonObject | undefined, lim
       const label = readString(cluster, "label") ?? "untitled";
       const summary = readString(cluster, "summary") ?? "(no summary)";
       const resonance = readNumber(cluster, "resonance");
-      return `- ${label}${resonance !== undefined ? ` (resonance=${resonance.toFixed(2)})` : ""}: ${summary}`;
+      const focusKind = readString(cluster, "focusKind");
+      const targetKind = readString(cluster, "targetKind");
+      const concreteness = readNumber(getObject(cluster, "curiosityProfile"), "concreteness");
+      const metrics = [
+        focusKind,
+        targetKind,
+        concreteness !== undefined ? `concrete=${concreteness.toFixed(2)}` : undefined,
+        resonance !== undefined ? `resonance=${resonance.toFixed(2)}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return `- ${label}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}: ${summary}`;
     });
 }
 
@@ -300,18 +309,26 @@ function summarizeIncubatingThoughts(incubation: JsonObject | undefined, limit: 
       const topic = readString(thought, "topic") ?? "untitled";
       const summary = readString(thought, "summary") ?? "(no summary)";
       const status = readString(thought, "status");
+      const focusKind = readString(thought, "focusKind");
+      const targetKind = readString(thought, "targetKind");
       const maturation = readNumber(thought, "maturation");
       const desireToSpeak = readNumber(thought, "desireToSpeak");
       const noveltyToSelf = readNumber(thought, "noveltyToSelf");
       const noveltyToRoom = readNumber(thought, "noveltyToRoom");
       const saturationScore = readNumber(thought, "saturationScore");
+      const concreteness = readNumber(thought, "concreteness");
+      const fertility = readNumber(thought, "fertility");
       const metrics = [
         status,
+        focusKind,
+        targetKind,
         maturation !== undefined ? `maturation=${maturation.toFixed(2)}` : undefined,
         desireToSpeak !== undefined ? `speak=${desireToSpeak.toFixed(2)}` : undefined,
         noveltyToSelf !== undefined ? `self=${noveltyToSelf.toFixed(2)}` : undefined,
         noveltyToRoom !== undefined ? `room=${noveltyToRoom.toFixed(2)}` : undefined,
         saturationScore !== undefined ? `sat=${saturationScore.toFixed(2)}` : undefined,
+        concreteness !== undefined ? `concrete=${concreteness.toFixed(2)}` : undefined,
+        fertility !== undefined ? `fertile=${fertility.toFixed(2)}` : undefined,
       ].filter((value): value is string => Boolean(value));
       return `- ${topic}${metrics.length > 0 ? ` [${metrics.join("; ")}]` : ""}: ${summary}`;
     });
@@ -328,10 +345,14 @@ function summarizeTopicSaturation(bridge: JsonObject | undefined, limit: number)
     .slice(0, limit)
     .map((entry) => {
       const topic = readString(entry, "topic") ?? "untitled";
+      const focusKind = readString(entry, "focusKind");
+      const targetKind = readString(entry, "targetKind");
       const dominance = readNumber(entry, "dominance");
       const recentMentions = readNumber(entry, "recentMentions");
       const coolingAdvice = readString(entry, "coolingAdvice");
       const metrics = [
+        focusKind,
+        targetKind,
         dominance !== undefined ? `dominance=${dominance.toFixed(2)}` : undefined,
         recentMentions !== undefined ? `recent=${recentMentions}` : undefined,
       ].filter((value): value is string => Boolean(value));
@@ -358,10 +379,14 @@ function summarizeRefractoryTopics(bridge: JsonObject | undefined, limit: number
     .slice(0, limit)
     .map((entry) => {
       const topic = readString(entry, "topic") ?? "untitled";
+      const focusKind = readString(entry, "focusKind");
+      const targetKind = readString(entry, "targetKind");
       const penalty = readNumber(entry, "penalty");
       const coolsUntil = readString(entry, "coolsUntil");
       const reason = readString(entry, "reason");
       const metrics = [
+        focusKind,
+        targetKind,
         penalty !== undefined ? `penalty=${penalty.toFixed(2)}` : undefined,
         coolsUntil ? `until ${coolsUntil}` : undefined,
       ].filter((value): value is string => Boolean(value));

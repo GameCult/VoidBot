@@ -607,8 +607,15 @@
       "clusters": [
         {
           "clusterId": "cluster-id",
-          "label": "first-contact / visible proof / carried interface",
-          "summary": "Recurring seam across different memory kinds that keeps trying to become a coherent thought.",
+          "label": "Why visible proof keeps resurfacing",
+          "summary": "Archive-facing seam around visible proof. Built from archive_excursion, dream. Why does visible proof keep resurfacing across the archive, and what does the current room need from it?",
+          "focusKind": "question",
+          "targetKind": "archive",
+          "focusPhrase": "visible proof",
+          "question": "Why does visible proof keep resurfacing across the archive, and what does the current room need from it?",
+          "claim": "Visible proof keeps returning with enough structure to deserve another honest pass.",
+          "fascinationTarget": "visible proof",
+          "worldFacing": true,
           "resonance": 0.73,
           "memoryIds": [],
           "sourceKinds": [],
@@ -618,6 +625,13 @@
           "channelIds": [],
           "evidenceRefs": [],
           "evidenceDiversity": 0.46,
+          "curiosityProfile": {
+            "concreteness": 0.52,
+            "fertility": 0.64,
+            "crossDomainPotential": 0.43,
+            "contradictionPressure": 0.22,
+            "selfFacing": false
+          },
           "lastStrengthenedAt": null
         }
       ]
@@ -628,8 +642,15 @@
       "active_thoughts": [
         {
           "thoughtId": "cluster-id",
-          "topic": "visible proof surfaces",
-          "summary": "Current working seam being deepened across multiple runs.",
+          "topic": "Why visible proof keeps resurfacing",
+          "summary": "Archive-facing seam around visible proof. Built from archive_excursion, dream. Why does visible proof keep resurfacing across the archive, and what does the current room need from it?",
+          "focusKind": "question",
+          "targetKind": "archive",
+          "focusPhrase": "visible proof",
+          "question": "Why does visible proof keep resurfacing across the archive, and what does the current room need from it?",
+          "claim": "Visible proof keeps returning with enough structure to deserve another honest pass.",
+          "fascinationTarget": "visible proof",
+          "worldFacing": true,
           "sourceMemoryIds": [],
           "sourceKinds": [],
           "resonance": 0.73,
@@ -641,7 +662,14 @@
           "deepDiveCount": 3,
           "supportCount": 4,
           "evidenceDiversity": 0.44,
+          "concreteness": 0.52,
+          "fertility": 0.64,
+          "crossDomainPotential": 0.43,
+          "contradictionPressure": 0.22,
           "explorationBonus": 0.31,
+          "outwardBonus": 0.18,
+          "curiosityPressure": 0.63,
+          "identityPenalty": 0.12,
           "saturationScore": 0.22,
           "recentMatchCount": 1,
           "refractoryPenalty": 0.0,

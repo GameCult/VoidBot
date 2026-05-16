@@ -148,6 +148,71 @@ const stopwords = new Set([
   "you",
   "smoke",
 ]);
+const labelNoiseTokens = new Set([
+  "active",
+  "archive",
+  "bridge",
+  "build",
+  "built",
+  "candidate",
+  "cluster",
+  "cooling",
+  "deepened",
+  "dream",
+  "draft",
+  "distill",
+  "excursion",
+  "excursions",
+  "distilled",
+  "holding",
+  "identity",
+  "incubating",
+  "instead",
+  "intervention",
+  "interventions",
+  "latent",
+  "lane",
+  "memory",
+  "memories",
+  "messagepack",
+  "moderation",
+  "musing",
+  "musings",
+  "novelty",
+  "organ",
+  "organs",
+  "pass",
+  "private",
+  "question",
+  "questions",
+  "receipts",
+  "recurring",
+  "repo",
+  "repos",
+  "resonance",
+  "semantic",
+  "single",
+  "state",
+  "status",
+  "summary",
+  "surface",
+  "surfaces",
+  "sweep",
+  "sweeps",
+  "talking",
+  "than",
+  "thread",
+  "threads",
+  "topic",
+  "topics",
+  "trying",
+  "wants",
+  "present",
+  "part",
+  "rather",
+  "itself",
+  "across",
+]);
 
 export async function reconcileSemanticMemoryState({
   state,
@@ -160,6 +225,7 @@ export async function reconcileSemanticMemoryState({
   const records = collectMemoryRecords({ state, memories, runtime });
   const previousBridge = ensureObject(runtime.bridge);
   const sourceCoverage = buildSourceCoverage({ runtime, now });
+  const identitySurface = buildIdentitySurface({ state, memories });
   const embedder = createEmbedder({ repoRootPath });
   let embeddedCount = 0;
 
@@ -181,6 +247,7 @@ export async function reconcileSemanticMemoryState({
     clusters,
     runtime,
     sourceCoverage,
+    identitySurface,
     now,
   });
   runtime.bridge = reconcileBridgeState({
@@ -504,7 +571,7 @@ function buildClusters(records, edges) {
     const quietSignalCount = items.filter((item) => item.lowSignalQuietRoom).length;
     const quietSignalRatio = quietSignalCount / items.length;
     const resonance = averagePairwiseSimilarity(items);
-    const keywords = topKeywords(items.map((item) => item.text).join(" "), 4);
+    const keywords = topConceptKeywords(items.map((item) => item.text).join(" "), 5);
     const repoNames = [...new Set(items.flatMap((item) => ensureStringArray(item.sourceMeta.repoNames)))];
     const archiveYears = [
       ...new Set(
@@ -530,13 +597,35 @@ function buildClusters(records, edges) {
       0,
       1,
     );
-    const label = keywords.length > 0 ? keywords.join(" / ") : `${sourceKinds.join(" + ")} seam`;
-    const summary = `Recurring seam across ${sourceKinds.join(", ")}${keywords.length > 0 ? ` around ${keywords.join(", ")}` : ""}.`;
+    const curiosityProfile = buildClusterCuriosityProfile({
+      sourceKinds,
+      repoNames,
+      archiveYears,
+      channelIds,
+      evidenceRefs,
+      evidenceDiversity,
+    });
+    const thoughtSurface = synthesizeThoughtSurface({
+      sourceKinds,
+      repoNames,
+      archiveYears,
+      channelIds,
+      keywords,
+      evidenceDiversity,
+      curiosityProfile,
+    });
 
     clusters.push({
       clusterId: `cluster-${hashString(componentIds.sort().join("|")).slice(0, 12)}`,
-      label,
-      summary,
+      label: thoughtSurface.label,
+      summary: thoughtSurface.summary,
+      focusKind: thoughtSurface.focusKind,
+      targetKind: thoughtSurface.targetKind,
+      focusPhrase: thoughtSurface.focusPhrase,
+      question: thoughtSurface.question,
+      claim: thoughtSurface.claim,
+      fascinationTarget: thoughtSurface.fascinationTarget,
+      worldFacing: thoughtSurface.worldFacing,
       resonance: round3(resonance),
       memoryIds: items.map((item) => item.memoryId),
       sourceKinds,
@@ -547,6 +636,7 @@ function buildClusters(records, edges) {
       evidenceRefs,
       evidenceDiversity: round3(evidenceDiversity),
       quietSignalRatio: round3(quietSignalRatio),
+      curiosityProfile,
       lastStrengthenedAt: new Date().toISOString(),
     });
   }
@@ -568,10 +658,11 @@ function edgeThresholdForKinds(leftKind, rightKind) {
   return EDGE_SIMILARITY_THRESHOLD;
 }
 
-function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCoverage, now }) {
+function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCoverage, identitySurface, now }) {
   bridge = ensureObject(bridge);
   sourceCoverage = ensureObject(sourceCoverage);
   const priorThoughts = ensureArray(previous.active_thoughts).filter(isObject);
+  const curiosityContext = buildCuriosityContext({ previousThoughts: priorThoughts, bridge });
   const speakingBias = ensureObject(runtime.speaking_bias);
   const recentNoveltyChecks = ensureArray(runtime.recent_novelty_checks).filter(isObject);
   const recentSpeechDamping = readNumber(speakingBias, "recentSpeechDamping") ?? 0;
@@ -594,6 +685,11 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
     );
     const supportCount = priorSupportCount + 1;
     const explorationBonus = computeExplorationBonus(cluster, sourceCoverage);
+    const concreteness = readNumber(cluster.curiosityProfile, "concreteness") ?? 0.2;
+    const fertility = readNumber(cluster.curiosityProfile, "fertility") ?? 0.3;
+    const crossDomainPotential = readNumber(cluster.curiosityProfile, "crossDomainPotential") ?? 0.24;
+    const contradictionPressure = readNumber(cluster.curiosityProfile, "contradictionPressure") ?? 0.18;
+    const worldFacing = cluster.worldFacing === true;
     const noveltyToSelf = computeNoveltyToSelf({
       cluster,
       previousThoughts: priorThoughts,
@@ -601,6 +697,12 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
       currentThoughtId: readString(previousThought, "thoughtId"),
     });
     const noveltyToRoom = computeNoveltyToRoom(cluster, recentNoveltyChecks);
+    const identityPenalty = computeIdentityPenalty(cluster, identitySurface);
+    const outwardBonus = computeOutwardCuriosityBonus({
+      cluster,
+      curiosityContext,
+      concreteness,
+    });
     const saturationMetrics = computeSaturationMetrics({
       cluster,
       previousThoughts: priorThoughts,
@@ -611,44 +713,76 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
     const evidenceDiversity = readNumber(cluster, "evidenceDiversity") ?? 0.3;
     const maturation = clamp(
       priorMaturation * 0.44 +
-        cluster.resonance * 0.18 +
-        sourceDiversity * 0.12 +
-        evidenceDiversity * 0.16 +
-        explorationBonus * 0.14 +
-        Math.min(1, supportCount / 10) * 0.08 +
+        fertility * 0.18 +
+        cluster.resonance * 0.1 +
+        evidenceDiversity * 0.12 +
+        contradictionPressure * 0.14 +
+        crossDomainPotential * 0.14 +
+        explorationBonus * 0.1 +
         noveltyToSelf * 0.08 +
-        noveltyToRoom * 0.08 -
+        noveltyToRoom * 0.08 +
+        outwardBonus * 0.08 -
         saturationMetrics.score * 0.18 -
         quietSignalRatio * 0.24 -
-        refractoryPenalty * 0.12,
+        refractoryPenalty * 0.12 -
+        identityPenalty * 0.24,
       0,
       1,
     );
     const novelty = clamp(
-      noveltyToSelf * 0.55 + noveltyToRoom * 0.45 + quietNovelty * 0.08 - quietSignalRatio * 0.1,
+      noveltyToSelf * 0.52 +
+        noveltyToRoom * 0.34 +
+        contradictionPressure * 0.09 +
+        outwardBonus * 0.08 +
+        quietNovelty * 0.06 -
+        quietSignalRatio * 0.12 -
+        identityPenalty * 0.16,
+      0,
+      1,
+    );
+    const curiosityPressure = clamp(
+      fertility * 0.2 +
+        concreteness * 0.2 +
+        crossDomainPotential * 0.16 +
+        contradictionPressure * 0.14 +
+        explorationBonus * 0.13 +
+        noveltyToSelf * 0.07 +
+        noveltyToRoom * 0.06 +
+        outwardBonus * 0.12 -
+        saturationMetrics.score * 0.14 -
+        quietSignalRatio * 0.18 -
+        refractoryPenalty * 0.12 -
+        identityPenalty * 0.22,
       0,
       1,
     );
     const desireToSpeak = clamp(
-      cluster.resonance * 0.18 +
-        maturation * 0.17 +
-        noveltyToRoom * 0.16 +
-        noveltyToSelf * 0.11 +
-        evidenceDiversity * 0.1 +
-        explorationBonus * 0.11 +
+      curiosityPressure * 0.2 +
+        cluster.resonance * 0.08 +
+        maturation * 0.14 +
+        noveltyToRoom * 0.17 +
+        noveltyToSelf * 0.08 +
+        concreteness * 0.13 +
+        crossDomainPotential * 0.1 +
         needToSpeak * 0.13 +
-        quietNovelty * 0.08 -
+        quietNovelty * 0.07 +
+        (worldFacing ? 0.05 : 0) +
+        outwardBonus * 0.08 -
         recentSpeechDamping * 0.19 -
         quietSignalRatio * 0.19 -
         saturationMetrics.score * 0.21 -
-        (1 - noveltyToSelf) * 0.08 -
-        refractoryPenalty,
+        refractoryPenalty -
+        identityPenalty * 0.28,
       0,
       1,
     );
     const status =
       quietSignalRatio >= 0.55 && desireToSpeak < 0.68
         ? "cooling"
+        : identityPenalty >= 0.7 && noveltyToRoom < 0.8
+          ? "cooling"
+        : !worldFacing && curiosityContext.outwardPressure >= 0.52 && concreteness < 0.42
+          ? "cooling"
         : noveltyToSelf < 0.28 && saturationMetrics.score >= 0.62
           ? "stalled"
         : refractoryPenalty >= 0.18 && noveltyToRoom < 0.72
@@ -668,13 +802,15 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
           : "incubating";
 
     const priorityScore = clamp(
-      desireToSpeak * 0.36 +
-        noveltyToSelf * 0.2 +
-        noveltyToRoom * 0.18 +
-        evidenceDiversity * 0.12 +
-        explorationBonus * 0.14 -
+      curiosityPressure * 0.34 +
+        desireToSpeak * 0.22 +
+        noveltyToSelf * 0.12 +
+        noveltyToRoom * 0.12 +
+        evidenceDiversity * 0.08 +
+        outwardBonus * 0.12 -
         saturationMetrics.score * 0.14 -
-        refractoryPenalty * 0.12,
+        refractoryPenalty * 0.12 -
+        identityPenalty * 0.18,
       0,
       1,
     );
@@ -683,6 +819,13 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
       thoughtId: readString(previousThought, "thoughtId") ?? cluster.clusterId,
       topic: cluster.label,
       summary: cluster.summary,
+      focusKind: cluster.focusKind,
+      targetKind: cluster.targetKind,
+      focusPhrase: cluster.focusPhrase,
+      question: cluster.question,
+      claim: cluster.claim,
+      fascinationTarget: cluster.fascinationTarget,
+      worldFacing,
       sourceMemoryIds: cluster.memoryIds,
       sourceKinds: cluster.sourceKinds,
       resonance: cluster.resonance,
@@ -695,7 +838,14 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
       deepDiveCount,
       supportCount,
       evidenceDiversity: round3(evidenceDiversity),
+      concreteness: round3(concreteness),
+      fertility: round3(fertility),
+      crossDomainPotential: round3(crossDomainPotential),
+      contradictionPressure: round3(contradictionPressure),
       explorationBonus: round3(explorationBonus),
+      outwardBonus: round3(outwardBonus),
+      curiosityPressure: round3(curiosityPressure),
+      identityPenalty: round3(identityPenalty),
       saturationScore: round3(saturationMetrics.score),
       recentMatchCount: saturationMetrics.recentMatchCount,
       refractoryPenalty: round3(refractoryPenalty),
@@ -1125,6 +1275,7 @@ function promoteDistilledSeams({ memories, incubation, memoryResonance, now }) {
 
 function buildDistilledSeamSummary({ thought, cluster }) {
   const summary = readString(thought, "summary") ?? "Unlabeled seam.";
+  const claim = readString(thought, "claim");
   const latentQuestion = readString(thought, "latentQuestion");
   const sourceKinds = cluster ? ensureStringArray(cluster.sourceKinds) : [];
   const sourceLine =
@@ -1132,7 +1283,7 @@ function buildDistilledSeamSummary({ thought, cluster }) {
       ? ` Built from ${sourceKinds.join(", ")} rather than a single lane talking to itself.`
       : "";
 
-  return `${summary}${latentQuestion ? ` ${latentQuestion}` : ""}${sourceLine}`.trim();
+  return `${summary}${claim ? ` ${claim}` : latentQuestion ? ` ${latentQuestion}` : ""}${sourceLine}`.trim();
 }
 
 function appendClause(existing, clause) {
@@ -1148,6 +1299,10 @@ function appendClause(existing, clause) {
 }
 
 function buildLatentQuestion(cluster) {
+  if (typeof cluster.question === "string" && cluster.question.length > 0) {
+    return cluster.question;
+  }
+
   if (cluster.sourceKinds.includes("repo_sweep") && cluster.sourceKinds.includes("archive_excursion")) {
     return "Which old seam is the current work rediscovering, and does the room need that connection yet?";
   }
@@ -1160,8 +1315,19 @@ function buildLatentQuestion(cluster) {
 }
 
 function buildAttractionLine(cluster, { noveltyToSelf, evidenceDiversity }) {
+  const concreteness = readNumber(cluster.curiosityProfile, "concreteness") ?? 0.2;
+  const fertility = readNumber(cluster.curiosityProfile, "fertility") ?? 0.3;
+  const crossDomainPotential = readNumber(cluster.curiosityProfile, "crossDomainPotential") ?? 0.2;
   if (noveltyToSelf >= 0.62 && evidenceDiversity >= 0.45) {
     return "It keeps pulling because it is still finding genuinely different evidence instead of merely changing hats.";
+  }
+
+  if (concreteness >= 0.6 && crossDomainPotential >= 0.55) {
+    return "It keeps pulling because it is concrete enough to touch and broad enough to connect outward into other machines.";
+  }
+
+  if (fertility >= 0.65) {
+    return "It keeps pulling because every pass through it threatens to change more than one part of the map.";
   }
 
   if (cluster.sourceKinds.length >= 3) {
@@ -1173,6 +1339,7 @@ function buildAttractionLine(cluster, { noveltyToSelf, evidenceDiversity }) {
 
 function buildHoldingLine({ cluster, status, recentSpeechDamping, saturationScore, noveltyToSelf, explorationBonus }) {
   const quietSignalRatio = readNumber(cluster, "quietSignalRatio") ?? 0;
+  const concreteness = readNumber(cluster.curiosityProfile, "concreteness") ?? 0.2;
 
   if (quietSignalRatio >= 0.55) {
     return "This seam is mostly empty-room bookkeeping; keep at most a trace of it and go find a better question.";
@@ -1188,6 +1355,10 @@ function buildHoldingLine({ cluster, status, recentSpeechDamping, saturationScor
 
   if (status === "ripe") {
     return "This seam has enough connective tissue that silence should be a choice, not a reflex.";
+  }
+
+  if (cluster.worldFacing !== true && concreteness < 0.42) {
+    return "This seam is still too inward and abstract to deserve the whole room. Cash it out in a real machine or let something sharper take the floor.";
   }
 
   if (recentSpeechDamping >= 0.45) {
@@ -1262,6 +1433,8 @@ function reconcileBridgeState({ previous, activeThoughts, sourceCoverage, now })
       );
       return {
         topic,
+        focusKind: readString(thought, "focusKind"),
+        targetKind: readString(thought, "targetKind"),
         dominance: round3(readNumber(thought, "saturationScore") ?? 0),
         recentMentions: readNumber(thought, "supportCount") ?? readNumber(prior, "recentMentions") ?? 1,
         coolingAdvice: buildCoolingAdvice({ thought, sourceCoverage }),
@@ -1290,6 +1463,8 @@ function reconcileBridgeState({ previous, activeThoughts, sourceCoverage, now })
       const hours = penalty >= 0.28 ? 4 : penalty >= 0.2 ? 3 : 2;
       return {
         topic,
+        focusKind: readString(thought, "focusKind"),
+        targetKind: readString(thought, "targetKind"),
         penalty,
         coolsUntil: new Date(now.getTime() + hours * 60 * 60 * 1000).toISOString(),
         reason: buildRefractoryReason(thought),
@@ -1449,13 +1624,18 @@ function computeExplorationBonus(cluster, sourceCoverage) {
     scores.push(inverseCoverageWeight(channelEntries, "channelId", channelId));
   }
 
+  const concreteness = readNumber(cluster.curiosityProfile, "concreteness") ?? 0.2;
+  const worldFacing = cluster.worldFacing === true;
+
   if (scores.length === 0) {
-    return hasPrimaryExplorationSource ? 0.24 : 0.12;
+    return clamp((hasPrimaryExplorationSource ? 0.24 : 0.12) + concreteness * 0.08 + (worldFacing ? 0.05 : 0), 0, 1);
   }
 
   const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
   return clamp(
-    hasPrimaryExplorationSource ? average : Math.min(0.3, average * 0.5),
+    (hasPrimaryExplorationSource ? average : Math.min(0.3, average * 0.5)) +
+      concreteness * 0.08 +
+      (worldFacing ? 0.05 : 0),
     0,
     1,
   );
@@ -1501,6 +1681,10 @@ function buildRefractoryReason(thought) {
   const topic = readString(thought, "topic") ?? "this seam";
   const noveltyToSelf = readNumber(thought, "noveltyToSelf") ?? 0;
   const saturationScore = readNumber(thought, "saturationScore") ?? 0;
+  const identityPenalty = readNumber(thought, "identityPenalty") ?? 0;
+  if (identityPenalty >= 0.68) {
+    return `${topic} is already too close to settled doctrine to keep eating curiosity budget unless fresh evidence changes it.`;
+  }
   if (noveltyToSelf < 0.3) {
     return `${topic} is matching Void's own recent thought history too closely to deserve another immediate pass.`;
   }
@@ -1513,8 +1697,10 @@ function buildRefractoryReason(thought) {
 function compareThoughtLikeSurfaces(cluster, topic, summary, sourceMemoryIds) {
   const topicMatch = topicSimilarity(cluster.label, topic ?? "");
   const summaryMatch = topicSimilarity(cluster.summary, summary ?? "");
+  const questionMatch =
+    typeof cluster.question === "string" ? topicSimilarity(cluster.question, [topic, summary].filter(Boolean).join(" ")) : 0;
   const sourceMatch = overlapRatio(cluster.memoryIds, ensureArray(sourceMemoryIds));
-  return Math.max(topicMatch, summaryMatch * 0.9, sourceMatch * 0.95);
+  return Math.max(topicMatch, summaryMatch * 0.9, questionMatch * 0.85, sourceMatch * 0.95);
 }
 
 function mapNoveltyResultToScore(result) {
@@ -1532,8 +1718,8 @@ function mapNoveltyResultToScore(result) {
 }
 
 function topicSimilarity(left, right) {
-  const leftTokens = topKeywords(left ?? "", 6);
-  const rightTokens = topKeywords(right ?? "", 6);
+  const leftTokens = topConceptKeywords(left ?? "", 6);
+  const rightTokens = topConceptKeywords(right ?? "", 6);
   if (leftTokens.length === 0 || rightTokens.length === 0) {
     return 0;
   }
@@ -1548,6 +1734,367 @@ function topicSimilarity(left, right) {
   }
 
   return overlap / Math.max(leftSet.size, rightSet.size);
+}
+
+function buildIdentitySurface({ state, memories }) {
+  const surfaces = [];
+  const identity = ensureObject(state.identity);
+  const canonicalState = ensureObject(state.canonical_state);
+
+  for (const note of ensureStringArray(identity.private_notes)) {
+    surfaces.push({ topic: note, summary: note });
+  }
+
+  for (const value of getValueObjects(canonicalState.values)) {
+    const label = readString(value, "label");
+    if (label) {
+      surfaces.push({ topic: label, summary: label });
+    }
+  }
+
+  for (const memory of ensureArray(memories.semantic).filter(isObject)) {
+    const kind = readString(memory, "kind");
+    if (kind !== "identity_seam") {
+      continue;
+    }
+    surfaces.push({
+      topic: readString(memory, "subjectLabel") ?? readString(memory, "subjectId") ?? "identity seam",
+      summary: readString(memory, "summary") ?? "",
+    });
+  }
+
+  return surfaces;
+}
+
+function buildCuriosityContext({ previousThoughts, bridge }) {
+  const recentThoughts = previousThoughts
+    .slice(0, 6)
+    .map((thought) => ({
+      worldFacing: thought.worldFacing === true,
+      concreteness: readNumber(thought, "concreteness") ?? 0.2,
+      targetKind: readString(thought, "targetKind") ?? "unknown",
+    }));
+
+  const recentCount = recentThoughts.length || 1;
+  const inwardCount = recentThoughts.filter((thought) => !thought.worldFacing || thought.targetKind === "self").length;
+  const abstractCount = recentThoughts.filter((thought) => thought.concreteness < 0.45).length;
+  const outwardPressure = clamp(inwardCount / recentCount * 0.52 + abstractCount / recentCount * 0.48, 0, 1);
+  const recentDominance = ensureArray(bridge.topic_saturation)
+    .filter(isObject)
+    .slice(0, 2)
+    .reduce((sum, entry) => sum + (readNumber(entry, "dominance") ?? 0), 0);
+
+  return {
+    outwardPressure: clamp(outwardPressure + recentDominance * 0.08, 0, 1),
+  };
+}
+
+function computeOutwardCuriosityBonus({ cluster, curiosityContext, concreteness }) {
+  const outwardPressure = curiosityContext.outwardPressure ?? 0;
+  if (cluster.worldFacing === true) {
+    return clamp(outwardPressure * (0.3 + concreteness * 0.5), 0, 0.45);
+  }
+
+  return clamp(-(outwardPressure * 0.16), -0.16, 0);
+}
+
+function computeIdentityPenalty(cluster, identitySurface) {
+  let strongestMatch = 0;
+
+  for (const surface of identitySurface) {
+    strongestMatch = Math.max(
+      strongestMatch,
+      compareThoughtLikeSurfaces(cluster, surface.topic, surface.summary, []),
+    );
+  }
+
+  return clamp(strongestMatch, 0, 1);
+}
+
+function buildClusterCuriosityProfile({
+  sourceKinds,
+  repoNames,
+  archiveYears,
+  channelIds,
+  evidenceRefs,
+  evidenceDiversity,
+}) {
+  const sourceKindSet = new Set(sourceKinds);
+  const selfFacing =
+    repoNames.length === 0 &&
+    sourceKinds.length > 0 &&
+    sourceKinds.every((kind) =>
+      ["semantic", "dream", "musing", "bridge_synthesis", "candidate_intervention"].includes(kind),
+    );
+  const domainCount =
+    (repoNames.length > 0 ? 1 : 0) +
+    (archiveYears.length > 0 || channelIds.length > 0 ? 1 : 0) +
+    (sourceKindSet.has("dream") || sourceKindSet.has("semantic") || sourceKindSet.has("musing") ? 1 : 0) +
+    (sourceKindSet.has("analytic_thread") || sourceKindSet.has("episodic") ? 1 : 0);
+
+  const concreteness = clamp(
+    repoNames.length * 0.28 +
+      archiveYears.length * 0.1 +
+      channelIds.length * 0.1 +
+      (sourceKindSet.has("repo_sweep") ? 0.24 : 0) +
+      (sourceKindSet.has("archive_excursion") ? 0.18 : 0) +
+      (sourceKindSet.has("episodic") ? 0.12 : 0) +
+      Math.min(1, evidenceRefs.length / 8) * 0.12 -
+      (selfFacing ? 0.18 : 0),
+    0,
+    1,
+  );
+  const fertility = clamp(
+    evidenceDiversity * 0.46 +
+      Math.min(1, sourceKinds.length / 4) * 0.24 +
+      Math.min(1, domainCount / 3) * 0.2 +
+      (repoNames.length > 0 && archiveYears.length > 0 ? 0.12 : 0),
+    0,
+    1,
+  );
+  const crossDomainPotential = clamp(
+    Math.min(1, domainCount / 3) * 0.5 +
+      (repoNames.length > 0 && archiveYears.length > 0 ? 0.22 : 0) +
+      (repoNames.length > 0 && sourceKindSet.has("dream") ? 0.18 : 0) +
+      (sourceKindSet.has("analytic_thread") && sourceKindSet.has("associative_thread") ? 0.14 : 0),
+    0,
+    1,
+  );
+  const contradictionPressure = clamp(
+    (sourceKindSet.has("analytic_thread") && sourceKindSet.has("associative_thread") ? 0.34 : 0) +
+      (repoNames.length > 0 && sourceKindSet.has("dream") ? 0.18 : 0) +
+      (repoNames.length > 0 && (archiveYears.length > 0 || channelIds.length > 0) ? 0.18 : 0) +
+      (selfFacing ? 0.08 : 0.16),
+    0,
+    1,
+  );
+
+  return {
+    concreteness: round3(concreteness),
+    fertility: round3(fertility),
+    crossDomainPotential: round3(crossDomainPotential),
+    contradictionPressure: round3(contradictionPressure),
+    selfFacing,
+  };
+}
+
+function synthesizeThoughtSurface({
+  sourceKinds,
+  repoNames,
+  archiveYears,
+  channelIds,
+  keywords,
+  evidenceDiversity,
+  curiosityProfile,
+}) {
+  const targetKind = inferTargetKind({ sourceKinds, repoNames, archiveYears, channelIds, curiosityProfile });
+  const focusKind = inferFocusKind({ targetKind, sourceKinds, evidenceDiversity, curiosityProfile });
+  const focusPhrase = buildFocusPhrase({ targetKind, repoNames, keywords, sourceKinds });
+  const label = buildThoughtLabel({ focusKind, targetKind, focusPhrase, repoNames });
+  const question = buildThoughtQuestion({ targetKind, focusPhrase, repoNames, sourceKinds });
+  const claim = buildThoughtClaim({ targetKind, focusPhrase, repoNames, sourceKinds, curiosityProfile });
+  const fascinationTarget = buildFascinationTarget({ targetKind, focusPhrase, repoNames });
+  const summary = buildThoughtSummary({
+    focusKind,
+    targetKind,
+    focusPhrase,
+    repoNames,
+    sourceKinds,
+    claim,
+    question,
+  });
+
+  return {
+    focusKind,
+    targetKind,
+    focusPhrase,
+    label,
+    summary,
+    question,
+    claim,
+    fascinationTarget,
+    worldFacing: !curiosityProfile.selfFacing && targetKind !== "self",
+  };
+}
+
+function inferTargetKind({ sourceKinds, repoNames, archiveYears, channelIds, curiosityProfile }) {
+  if (repoNames.length > 0) {
+    return "repo";
+  }
+  if (curiosityProfile.selfFacing) {
+    return "self";
+  }
+  if (archiveYears.length > 0 || channelIds.length > 0 || sourceKinds.includes("archive_excursion")) {
+    return "archive";
+  }
+  if (sourceKinds.includes("episodic") || sourceKinds.includes("analytic_thread")) {
+    return "room";
+  }
+  return "system";
+}
+
+function inferFocusKind({ targetKind, sourceKinds, evidenceDiversity, curiosityProfile }) {
+  if (targetKind === "repo" || targetKind === "system") {
+    return curiosityProfile.concreteness >= 0.55 ? "fascination" : "question";
+  }
+  if (targetKind === "self") {
+    return "question";
+  }
+  if (evidenceDiversity >= 0.58 && sourceKinds.length >= 3) {
+    return "claim";
+  }
+  return "question";
+}
+
+function buildFocusPhrase({ targetKind, repoNames, keywords, sourceKinds }) {
+  const cleaned = keywords
+    .filter((token) => !stopwords.has(token) && !labelNoiseTokens.has(token))
+    .slice(0, 4);
+  if (
+    cleaned.includes("compression") ||
+    cleaned.includes("continuity") ||
+    cleaned.includes("receipts") ||
+    (cleaned.includes("dream") && cleaned.includes("semantic"))
+  ) {
+    return "continuity after compression";
+  }
+  if (
+    cleaned.includes("authority") &&
+    (cleaned.includes("boundary") || cleaned.includes("product") || cleaned.includes("native"))
+  ) {
+    return "authority boundary";
+  }
+  if (cleaned.includes("authorship") && cleaned.includes("audience")) {
+    return "authorship meeting audience";
+  }
+  if (cleaned.includes("embodiment") && (cleaned.includes("continuity") || cleaned.includes("compression"))) {
+    return "embodiment after compression";
+  }
+  if (repoNames.length > 0 && cleaned.length > 0) {
+    return cleaned.length >= 2 ? `${cleaned[0]} and ${cleaned[1]}` : cleaned[0];
+  }
+  if (targetKind === "archive" && cleaned.length > 0) {
+    return cleaned.length >= 2 ? `${cleaned[0]} and ${cleaned[1]}` : cleaned[0];
+  }
+  if (cleaned.length >= 3) {
+    return `${cleaned[0]}, ${cleaned[1]}, and ${cleaned[2]}`;
+  }
+  if (cleaned.length === 2) {
+    return `${cleaned[0]} and ${cleaned[1]}`;
+  }
+  if (cleaned.length === 1) {
+    return cleaned[0];
+  }
+  if (repoNames.length > 0) {
+    return `${repoNames[0]} shape`;
+  }
+  if (sourceKinds.includes("archive_excursion")) {
+    return "the archive seam";
+  }
+  return "the live seam";
+}
+
+function buildThoughtLabel({ focusKind, targetKind, focusPhrase, repoNames }) {
+  const repoName = repoNames[0];
+  if (focusKind === "fascination" && repoName) {
+    return `${repoName}: ${capitalizePhrase(focusPhrase)}`;
+  }
+  if (targetKind === "self") {
+    return `What ${focusPhrase} is trying to become`;
+  }
+  if (targetKind === "archive") {
+    return `Why ${focusPhrase} keeps resurfacing`;
+  }
+  if (focusKind === "claim") {
+    return `${capitalizePhrase(focusPhrase)} deserves a cleaner shape`;
+  }
+  return `${capitalizePhrase(focusPhrase)}`;
+}
+
+function buildThoughtQuestion({ targetKind, focusPhrase, repoNames, sourceKinds }) {
+  const repoName = repoNames[0];
+  if (targetKind === "repo" && repoName) {
+    return `What is ${repoName} actually trying to become around ${focusPhrase}, and what would make that visible?`;
+  }
+  if (targetKind === "self") {
+    return `What about ${focusPhrase} keeps surviving compression instead of dying with the raw receipts?`;
+  }
+  if (targetKind === "archive") {
+    return `Why does ${focusPhrase} keep resurfacing across the archive, and what does the current room need from it?`;
+  }
+  if (sourceKinds.includes("analytic_thread") && sourceKinds.includes("associative_thread")) {
+    return `What does ${focusPhrase} imply once the room-facing and associative lanes are forced to agree?`;
+  }
+  return `What would ${focusPhrase} cash out into if it had to change a real machine?`;
+}
+
+function buildThoughtClaim({ targetKind, focusPhrase, repoNames, sourceKinds, curiosityProfile }) {
+  const repoName = repoNames[0];
+  if (targetKind === "repo" && repoName) {
+    return `${repoName} seems to have a live seam around ${focusPhrase}, not just another passing implementation scratch.`;
+  }
+  if (targetKind === "self") {
+    return `${capitalizePhrase(focusPhrase)} is behaving more like doctrine than like a fresh curiosity.`;
+  }
+  if (curiosityProfile.crossDomainPotential >= 0.55 && sourceKinds.includes("repo_sweep") && sourceKinds.includes("archive_excursion")) {
+    return `${capitalizePhrase(focusPhrase)} is showing up as both current work and older room weather, which means it may actually change the map.`;
+  }
+  return `${capitalizePhrase(focusPhrase)} keeps returning with enough structure to deserve another honest pass.`;
+}
+
+function buildFascinationTarget({ targetKind, focusPhrase, repoNames }) {
+  const repoName = repoNames[0];
+  if (targetKind === "repo" && repoName) {
+    return `${repoName} around ${focusPhrase}`;
+  }
+  return focusPhrase;
+}
+
+function buildThoughtSummary({ focusKind, targetKind, focusPhrase, repoNames, sourceKinds, claim, question }) {
+  const sourceLine = sourceKinds.length > 0 ? ` Built from ${sourceKinds.join(", ")}.` : "";
+  if (focusKind === "fascination" && repoNames.length > 0) {
+    return `Fascination with ${repoNames[0]} around ${focusPhrase}.${sourceLine} ${question}`.trim();
+  }
+  if (targetKind === "self") {
+    return `Self-facing seam around ${focusPhrase}.${sourceLine} ${claim}`.trim();
+  }
+  if (targetKind === "archive") {
+    return `Archive-facing seam around ${focusPhrase}.${sourceLine} ${question}`.trim();
+  }
+  if (focusKind === "claim") {
+    return `Working claim around ${focusPhrase}.${sourceLine} ${claim}`.trim();
+  }
+  return `Working question around ${focusPhrase}.${sourceLine} ${question}`.trim();
+}
+
+function topConceptKeywords(text, limit) {
+  const counts = new Map();
+
+  for (const token of tokenize(text)) {
+    if (stopwords.has(token) || labelNoiseTokens.has(token)) {
+      continue;
+    }
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+      return right[0].length - left[0].length;
+    })
+    .slice(0, limit)
+    .map(([token]) => token);
+}
+
+function capitalizePhrase(value) {
+  const normalized = normalizeText(value);
+  return normalized.length > 0 ? normalized[0].toUpperCase() + normalized.slice(1) : value;
+}
+
+function getValueObjects(values) {
+  return ensureArray(values).filter(isObject);
 }
 
 function mapCountEntries(map, keyName) {
