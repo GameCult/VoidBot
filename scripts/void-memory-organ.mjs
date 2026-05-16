@@ -287,6 +287,11 @@ export async function reconcileSemanticMemoryState({
     incubation,
     now,
   });
+  const ripeShareResult = queueRipeThoughtInterventions({
+    runtime,
+    incubation,
+    now,
+  });
 
   const dreamResult = distillDreams({
     memories,
@@ -317,6 +322,7 @@ export async function reconcileSemanticMemoryState({
     sleepConsolidated: consolidationResult.consolidated,
     promotedSeamCount: consolidationResult.promotedSeamCount,
     identityCrystallizedCount: crystallizationResult.count,
+    ripeInterventionCount: ripeShareResult.count,
     embeddingBackend: embedder.backend,
     embeddingModel: embedder.model,
   };
@@ -1137,23 +1143,28 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
     const desireToSpeak = clamp(
       curiosityPressure * 0.2 +
         cluster.resonance * 0.08 +
-        maturation * 0.14 +
-        noveltyToRoom * 0.17 +
-        noveltyToSelf * 0.08 +
-        concreteness * 0.13 +
+        maturation * 0.15 +
+        noveltyToRoom * 0.19 +
+        noveltyToSelf * 0.07 +
+        concreteness * 0.14 +
         crossDomainPotential * 0.1 +
-        needToSpeak * 0.13 +
+        needToSpeak * 0.15 +
         quietNovelty * 0.07 +
-        (worldFacing ? 0.05 : 0) +
+        (worldFacing ? 0.09 : 0) +
         outwardBonus * 0.08 -
-        recentSpeechDamping * 0.19 -
-        quietSignalRatio * 0.19 -
-        saturationMetrics.score * 0.21 -
-        refractoryPenalty -
+        recentSpeechDamping * 0.16 -
+        quietSignalRatio * (worldFacing && concreteness >= 0.62 ? 0.1 : 0.19) -
+        saturationMetrics.score * 0.19 -
+        refractoryPenalty * 0.82 -
         identityPenalty * 0.28,
       0,
       1,
     );
+    const groundedWorldThought =
+      worldFacing === true &&
+      concreteness >= 0.66 &&
+      curiosityPressure >= 0.58 &&
+      evidenceDiversity >= 0.34;
     const status =
       quietSignalRatio >= 0.55 && desireToSpeak < 0.68
         ? "cooling"
@@ -1167,10 +1178,15 @@ function reconcileIncubation({ previous, bridge, clusters, runtime, sourceCovera
           ? "refractory"
         : supportCount >= 6 && evidenceDiversity < 0.34
           ? "stalled"
-        : supportCount >= 3 && noveltyToSelf < 0.55
+        : supportCount >= 3 && noveltyToSelf < 0.55 && groundedWorldThought !== true
           ? "cooling"
         : saturationMetrics.score >= 0.56 && noveltyToSelf < 0.42
           ? "cooling"
+        : groundedWorldThought &&
+            desireToSpeak >= 0.62 &&
+            noveltyToRoom >= 0.44 &&
+            saturationMetrics.score < 0.62
+          ? "ripe"
         : ((desireToSpeak >= 0.74 && (noveltyToSelf >= 0.55 || noveltyToRoom >= 0.82)) &&
             saturationMetrics.score < 0.5) ||
           maturation >= 0.82
@@ -1423,6 +1439,31 @@ function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now
   return { count: crystallized.length };
 }
 
+function queueRipeThoughtInterventions({ runtime, incubation, now }) {
+  const candidateInterventions = ensureArray(runtime.candidate_interventions).filter(isObject);
+  const activeThoughts = ensureArray(incubation.active_thoughts).filter(isObject);
+  let queuedCount = 0;
+
+  for (const thought of activeThoughts) {
+    if (!shouldQueueRipeThoughtIntervention(thought)) {
+      continue;
+    }
+
+    if (
+      upsertRipeThoughtIntervention({
+        candidateInterventions,
+        thought,
+        now,
+      })
+    ) {
+      queuedCount += 1;
+    }
+  }
+
+  runtime.candidate_interventions = trimCandidateInterventions(candidateInterventions);
+  return { count: queuedCount };
+}
+
 function buildIdentityCrystallization(thought) {
   const supportCount = readNumber(thought, "supportCount") ?? 0;
   const deepDiveCount = readNumber(thought, "deepDiveCount") ?? 0;
@@ -1465,6 +1506,32 @@ function buildIdentityCrystallization(thought) {
   }
 
   return null;
+}
+
+function shouldQueueRipeThoughtIntervention(thought) {
+  if (readString(thought, "status") !== "ripe") {
+    return false;
+  }
+
+  if (thought.worldFacing !== true) {
+    return false;
+  }
+
+  const desireToSpeak = readNumber(thought, "desireToSpeak") ?? 0;
+  const concreteness = readNumber(thought, "concreteness") ?? 0;
+  const curiosityPressure = readNumber(thought, "curiosityPressure") ?? 0;
+  const noveltyToRoom = readNumber(thought, "noveltyToRoom") ?? 0;
+  const saturationScore = readNumber(thought, "saturationScore") ?? 0;
+  const targetKind = readString(thought, "targetKind") ?? "";
+
+  return (
+    desireToSpeak >= 0.6 &&
+    concreteness >= 0.62 &&
+    curiosityPressure >= 0.56 &&
+    noveltyToRoom >= 0.4 &&
+    saturationScore < 0.64 &&
+    ["repo", "archive", "room", "system"].includes(targetKind)
+  );
 }
 
 function upsertIdentitySemanticMemory({ semanticMemories, crystallization, thought, now }) {
@@ -1536,6 +1603,84 @@ function queueCrystallizationIntervention({ candidateInterventions, crystallizat
     whyNow:
       "This thought stopped behaving like live curiosity and became part of Void's own doctrine, which is usually worth sharing if the room has not already heard it.",
   });
+}
+
+function upsertRipeThoughtIntervention({ candidateInterventions, thought, now }) {
+  const draft = buildRipeThoughtShareDraft(thought);
+  if (!draft) {
+    return false;
+  }
+
+  const topic = readString(thought, "topic") ?? "untitled seam";
+  const summary = `Possible ripe-thought share: ${topic}`;
+  const sourceMemoryIds = ensureStringArray(thought.sourceMemoryIds);
+  const whyNow = buildRipeThoughtWhyNow(thought);
+  const existing = candidateInterventions.find((entry) => readString(entry, "summary") === summary);
+
+  if (existing) {
+    existing.timestamp = now.toISOString();
+    existing.summary = summary;
+    existing.draft = draft;
+    existing.priority = "medium";
+    existing.kind = "ripe_thought_share";
+    existing.sourceMemoryIds = sourceMemoryIds;
+    existing.shareWhenRoomQuiet = true;
+    existing.topic = topic;
+    existing.whyNow = whyNow;
+    return false;
+  }
+
+  candidateInterventions.push({
+    timestamp: now.toISOString(),
+    summary,
+    draft,
+    priority: "medium",
+    kind: "ripe_thought_share",
+    sourceMemoryIds,
+    shareWhenRoomQuiet: true,
+    topic,
+    whyNow,
+  });
+  return true;
+}
+
+function buildRipeThoughtShareDraft(thought) {
+  const topic = readString(thought, "topic") ?? "this seam";
+  const claim = readString(thought, "claim");
+  const question = readString(thought, "question");
+  const fascinationTarget = readString(thought, "fascinationTarget");
+  const summary = readString(thought, "summary");
+
+  if (claim) {
+    return `I keep circling ${topic}, and I think the live point is this: ${claim}`;
+  }
+
+  if (question && fascinationTarget) {
+    return `I keep worrying at ${topic}. The useful question in it feels like ${question}, especially once it touches ${fascinationTarget}.`;
+  }
+
+  if (question) {
+    return `I keep coming back to ${topic}. The question that still feels alive is ${question}.`;
+  }
+
+  if (fascinationTarget) {
+    return `I keep staring at ${fascinationTarget}. There is a real seam there, and ${topic} is the shortest honest name I have for it right now.`;
+  }
+
+  if (summary) {
+    return `I keep returning to ${topic}. The version worth saying out loud is this: ${summary}`;
+  }
+
+  return `I keep returning to ${topic}, and it has enough teeth now that silence would just be me being precious about it.`;
+}
+
+function buildRipeThoughtWhyNow(thought) {
+  const targetKind = readString(thought, "targetKind") ?? "project";
+  const noveltyToRoom = readNumber(thought, "noveltyToRoom") ?? 0;
+  const concreteness = readNumber(thought, "concreteness") ?? 0;
+  const curiosityPressure = readNumber(thought, "curiosityPressure") ?? 0;
+
+  return `This ${targetKind}-facing seam is already concrete (c=${round3(concreteness)}), still reasonably novel to the room (r=${round3(noveltyToRoom)}), and has enough curiosity pressure (q=${round3(curiosityPressure)}) that keeping it private would just be old stage fright in nicer clothes.`;
 }
 
 function trimCandidateInterventions(entries) {
@@ -1732,7 +1877,7 @@ function buildHoldingLine({ cluster, status, recentSpeechDamping, saturationScor
   }
 
   if (status === "ripe") {
-    return "This seam has enough connective tissue that silence should be a choice, not a reflex.";
+    return "This seam has enough connective tissue that the default question is how to say it cleanly, not whether it deserves a mouth at all.";
   }
 
   if (cluster.worldFacing !== true && concreteness < 0.42) {
@@ -1740,7 +1885,7 @@ function buildHoldingLine({ cluster, status, recentSpeechDamping, saturationScor
   }
 
   if (recentSpeechDamping >= 0.45) {
-    return "Recent speech already scratched the itch a bit; let the seam deepen before another confession.";
+    return "Recent speech already scratched the itch a bit, so give the seam one more pass unless it is still concrete, world-facing, and plainly worth airing.";
   }
 
   if (cluster.sourceKinds.length < 2) {
