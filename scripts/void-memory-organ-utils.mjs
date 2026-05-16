@@ -145,6 +145,17 @@ export function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+export function looksLegacyThoughtSurface(label, summary) {
+  return (
+    /\//.test(label) ||
+    /^Recurring seam across /i.test(summary) ||
+    /^Dream-compressed a seam around /i.test(summary) ||
+    /^Self-facing seam around /i.test(summary) ||
+    /^Archive-facing seam around /i.test(summary) ||
+    /What part of this thought wants embodiment/i.test(summary)
+  );
+}
+
 export function parseIsoTimestamp(value) {
   if (typeof value !== "string" || value.length === 0) {
     return null;
@@ -252,4 +263,40 @@ export function stripBom(input) {
 
 export function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function compactNarrative(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return normalized;
+  }
+  const firstSentence = normalized.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim();
+  const candidate = firstSentence && firstSentence.length >= 24 ? firstSentence : normalized;
+  return candidate.length > 220 ? `${candidate.slice(0, 217).trimEnd()}...` : candidate;
+}
+
+export function compactLabel(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return normalized;
+  }
+  if (/incremental sweep found/i.test(normalized)) {
+    const repoMatch = normalized.match(/`([^`]+)`/);
+    const repoName = repoMatch?.[1] ?? "repo";
+    return `${repoName} repo sweep`;
+  }
+  if (/no new discord traffic|one new discord message|no messages arrived/i.test(normalized)) {
+    return "room pass";
+  }
+  return normalized.length > 96 ? `${normalized.slice(0, 93).trimEnd()}...` : normalized;
+}
+
+export function capDistinctStrings(entries, limit) {
+  return [...new Set(ensureStringArray(entries))].slice(0, limit);
+}
+
+export function compareMemoryFreshness(left, right) {
+  const leftTime = parseIsoTimestamp(readString(left, "lastObservedAt") ?? readString(left, "timestamp") ?? "") ?? 0;
+  const rightTime = parseIsoTimestamp(readString(right, "lastObservedAt") ?? readString(right, "timestamp") ?? "") ?? 0;
+  return rightTime - leftTime;
 }

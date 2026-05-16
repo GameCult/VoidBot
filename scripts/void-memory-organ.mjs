@@ -62,6 +62,11 @@ import {
   mergeStringArrays,
   newestIsoTimestamp,
   cloneJson,
+  looksLegacyThoughtSurface,
+  compactNarrative,
+  compactLabel,
+  capDistinctStrings,
+  compareMemoryFreshness,
   parseIsoTimestamp,
   hashString,
   parseDotEnvSafe,
@@ -81,6 +86,7 @@ import {
   isObject,
 } from "./void-memory-organ-shared.mjs";
 import { collectMemoryRecords, extractYear } from "./void-memory-organ-records.mjs";
+import { reconcileLegacyStateMirrors, trimLegacyRuntimeResidue } from "./void-memory-organ-legacy-mirrors.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -417,17 +423,6 @@ function translateLegacyThoughtLikeEntry({
       fallbackTargetKind,
     }),
   };
-}
-
-function looksLegacyThoughtSurface(label, summary) {
-  return (
-    /\//.test(label) ||
-    /^Recurring seam across /i.test(summary) ||
-    /^Dream-compressed a seam around /i.test(summary) ||
-    /^Self-facing seam around /i.test(summary) ||
-    /^Archive-facing seam around /i.test(summary) ||
-    /What part of this thought wants embodiment/i.test(summary)
-  );
 }
 
 function choosePreferredThoughtLabel(entry) {
@@ -1063,194 +1058,6 @@ function distillStateSurface({ memories, runtime }) {
       edge.summary = compactNarrative(edge.summary);
     }
   }
-}
-
-function compactNarrative(value) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return normalized;
-  }
-  const firstSentence = normalized.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim();
-  const candidate = firstSentence && firstSentence.length >= 24 ? firstSentence : normalized;
-  return candidate.length > 220 ? `${candidate.slice(0, 217).trimEnd()}...` : candidate;
-}
-
-function compactLabel(value) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return normalized;
-  }
-  if (/incremental sweep found/i.test(normalized)) {
-    const repoMatch = normalized.match(/`([^`]+)`/);
-    const repoName = repoMatch?.[1] ?? "repo";
-    return `${repoName} repo sweep`;
-  }
-  if (/no new discord traffic|one new discord message|no messages arrived/i.test(normalized)) {
-    return "room pass";
-  }
-  return normalized.length > 96 ? `${normalized.slice(0, 93).trimEnd()}...` : normalized;
-}
-
-function capDistinctStrings(entries, limit) {
-  return [...new Set(ensureStringArray(entries))].slice(0, limit);
-}
-
-function compareMemoryFreshness(left, right) {
-  const leftTime = parseIsoTimestamp(readString(left, "lastObservedAt") ?? readString(left, "timestamp") ?? "") ?? 0;
-  const rightTime = parseIsoTimestamp(readString(right, "lastObservedAt") ?? readString(right, "timestamp") ?? "") ?? 0;
-  return rightTime - leftTime;
-}
-
-function trimLegacyRuntimeResidue({ runtime }) {
-  const memoryResonance = ensureObject(runtime.memory_resonance);
-  const recentEdges = ensureArray(memoryResonance.recent_edges).filter(isObject);
-  memoryResonance.recent_edges = recentEdges
-    .filter((edge) => !looksLegacyThoughtSurface(readString(edge, "leftLabel") ?? "", readString(edge, "summary") ?? ""))
-    .slice(-MAX_EDGE_COUNT);
-  runtime.memory_resonance = memoryResonance;
-}
-
-function reconcileLegacyStateMirrors({ state, memories, runtime, now }) {
-  const timestamp = now.toISOString();
-  const bridge = ensureObject(runtime.bridge);
-  const runtimeThoughtLanes = ensureObject(runtime.thought_lanes);
-  const activeThoughts = ensureArray(ensureObject(runtime.incubation).active_thoughts).filter(isObject);
-  const activeTensions = ensureArray(runtime.active_tensions).filter(isObject);
-
-  state.archive_excursions = [];
-  state.repo_sweeps = ensureArray(memories.repo_sweeps)
-    .filter(isObject)
-    .map((entry) => compactRepoSweepMirror(entry))
-    .slice(0, MAX_REPO_SWEEP_MEMORIES);
-  state.repo_activity_memories = ensureArray(runtime.repo_activity_memories)
-    .filter(isObject)
-    .map((entry) => compactRepoSweepMirror(entry))
-    .slice(0, MAX_RUNTIME_REPO_ACTIVITY_MEMORIES);
-  state.recent_archive_excursions = ensureArray(runtime.recent_archive_excursions)
-    .filter(isObject)
-    .map((entry) => compactArchiveExcursionMirror(entry))
-    .slice(0, MAX_RUNTIME_ARCHIVE_EXCURSIONS);
-  state.recent_novelty_checks = ensureArray(runtime.recent_novelty_checks)
-    .filter(isObject)
-    .map((entry) => compactNoveltyCheckMirror(entry))
-    .slice(0, MAX_POST_NAP_NOVELTY_CHECKS);
-  state.recent_activity = compactRecentActivityMirror(runtime.recent_activity, runtime, timestamp);
-  state.source_coverage = cloneJson(ensureObject(runtime.source_coverage));
-  state.speaking_bias = cloneJson(ensureObject(runtime.speaking_bias));
-  state.lastReviewSummary = readString(runtime, "lastReviewSummary") ?? readString(runtime, "last_review_summary") ?? null;
-  state.lastReviewSummaryShort =
-    readString(runtime, "lastReviewSummaryShort") ?? readString(runtime, "last_review_summary_short") ?? null;
-  state.last_review_summary = state.lastReviewSummary;
-  state.last_review_summary_short = state.lastReviewSummaryShort;
-  state.thought_lanes = {
-    analytic: buildThoughtLaneMirror({
-      sourceValue: runtimeThoughtLanes.analytic,
-      fallback: activeTensions[0],
-      timestamp,
-    }),
-    associative: buildThoughtLaneMirror({
-      sourceValue: runtimeThoughtLanes.associative,
-      fallback: activeThoughts[0] ?? bridge,
-      timestamp,
-    }),
-  };
-}
-
-function compactRepoSweepMirror(entry) {
-  return {
-    timestamp: readString(entry, "timestamp") ?? null,
-    memoryId: readString(entry, "memoryId") ?? null,
-    summary: compactNarrative(readString(entry, "summary") ?? ""),
-    repoNames: ensureStringArray(entry.repoNames).slice(0, 3),
-    whyItMattered: compactNarrative(readString(entry, "whyItMattered") ?? ""),
-  };
-}
-
-function compactArchiveExcursionMirror(entry) {
-  return {
-    memoryId: readString(entry, "memoryId") ?? null,
-    timestamp: readString(entry, "timestamp") ?? null,
-    topicHint: compactNarrative(readString(entry, "topicHint") ?? ""),
-    whyItWasFresh: compactNarrative(readString(entry, "whyItWasFresh") ?? ""),
-  };
-}
-
-function compactNoveltyCheckMirror(entry) {
-  return {
-    timestamp: readString(entry, "timestamp") ?? null,
-    query: compactNarrative(readString(entry, "query") ?? ""),
-    candidate: compactNarrative(readString(entry, "candidate") ?? ""),
-    result: readString(entry, "result") ?? null,
-    note: compactNarrative(readString(entry, "note") ?? ""),
-  };
-}
-
-function compactRecentActivityMirror(value, runtime, timestamp) {
-  const recentActivity = isObject(value) ? cloneJson(value) : {};
-  recentActivity.checkedAt = readString(recentActivity, "checkedAt") ?? timestamp;
-  if (typeof recentActivity.summary === "string") {
-    recentActivity.summary = compactNarrative(recentActivity.summary);
-  }
-  if (typeof recentActivity.lastDecisionRationale === "string") {
-    recentActivity.lastDecisionRationale = compactNarrative(recentActivity.lastDecisionRationale);
-  }
-  if (!recentActivity.summary) {
-    recentActivity.summary =
-      compactNarrative(readString(runtime, "lastReviewSummary") ?? readString(runtime, "last_review_summary") ?? "") ??
-      "";
-  }
-  return recentActivity;
-}
-
-function buildThoughtLaneMirror({ sourceValue, fallback, timestamp }) {
-  const summary = summarizeThoughtLaneSource(sourceValue, fallback);
-  return summary
-    ? [
-        {
-          timestamp,
-          summary,
-        },
-      ]
-    : [];
-}
-
-function summarizeThoughtLaneSource(sourceValue, fallback) {
-  if (typeof sourceValue === "string") {
-    return compactNarrative(sourceValue);
-  }
-
-  if (isObject(sourceValue)) {
-    const threads = ensureArray(sourceValue.active_threads).filter(isObject);
-    if (threads.length > 0) {
-      const latest = threads
-        .slice()
-        .sort(compareMemoryFreshness)[0];
-      return compactNarrative(
-        [readString(latest, "topic"), readString(latest, "claim"), readString(latest, "counterweight")]
-          .filter(Boolean)
-          .join(". "),
-      );
-    }
-    const description = readString(sourceValue, "description");
-    if (description) {
-      return compactNarrative(description);
-    }
-  }
-
-  if (isObject(fallback)) {
-    return compactNarrative(
-      [
-        readString(fallback, "topic"),
-        readString(fallback, "summary"),
-        readString(fallback, "claim"),
-        readString(fallback, "opinion"),
-      ]
-        .filter(Boolean)
-        .join(". "),
-    );
-  }
-
-  return null;
 }
 
 async function ensureSemanticVector({ record, embedder, now }) {
@@ -3586,4 +3393,3 @@ function mapCountEntries(map, keyName) {
     .map(([key, count]) => ({ [keyName]: key, count }))
     .sort((left, right) => right.count - left.count);
 }
-
