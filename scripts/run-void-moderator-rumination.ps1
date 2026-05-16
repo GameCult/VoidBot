@@ -18,6 +18,7 @@ $statusPath = Join-Path $statusDir "moderation-rumination.json"
 $summaryLogPath = Join-Path $logDir "moderation-rumination.log"
 $tracePath = Join-Path $logDir "moderation-rumination-last.jsonl"
 $lastMessagePath = Join-Path $statusDir "moderation-rumination-last-message.txt"
+$operationOutputPath = Join-Path $statusDir "moderation-rumination-operations.json"
 $lockPath = Join-Path $statusDir "moderation-rumination.lock"
 $mcpServerPath = Join-Path $repoRoot "apps\worker\dist\mcp-server.js"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
@@ -306,6 +307,9 @@ $codexExecArgs = if ($envValues.ContainsKey("CODEX_EXEC_ARGS")) {
 }
 
 New-Item -ItemType Directory -Force -Path $statusDir, $logDir | Out-Null
+if (Test-Path $operationOutputPath) {
+  Remove-Item -LiteralPath $operationOutputPath -Force
+}
 
 if (-not (Test-Path $mcpServerPath)) {
   throw "Missing built MCP server at $mcpServerPath. Run npm run build first."
@@ -377,7 +381,7 @@ Required reading before you act:
 - config/discord-server-rules.md
 - config/moderation-agent-state-template.json
 - styles/void-default.md
-- .voidbot/private/moderation-agent-state.json
+- .voidbot/private/moderation-agent-state.json as a read-only compatibility projection
 
 Required operating posture:
 - You are running unattended on the local workstation, not inside the Discord reply lane.
@@ -391,7 +395,7 @@ Required operating posture:
 - Treat `moderation_runtime.recent_delivery_receipts` as binding memory of what already got said. If you already answered message X, do not answer message X again just because it still appears in a wider history window.
 - The saved cursor means "reviewed", not "resolved". Do not confuse those.
 - If the room is quiet and the new thought feels like the same repo-weather seam again, do not post it. Spend the run diving deeper into archive context, repo docs, diffs, source chunks, or lore instead.
-- Maintain parallel analytic and associative thought lanes in `.voidbot/private/moderation-agent-state.json`, then let the bridge decide what actually deserves synthesis, speech, or cooling-off.
+- Maintain parallel analytic and associative thought lanes by emitting typed operations to `$operationOutputPath`, then let the bridge decide what actually deserves synthesis, speech, or cooling-off.
 - Treat `moderation_runtime.memory_resonance` and `moderation_runtime.incubation` as active organs, not report garnish.
 - Internal thought labels should come out as claims, questions, or fascination targets with real objects of attention. Do not let keyword sludge pose as a thought just because it rhymes with itself.
 - It is allowed to spend multiple runs deep-diving one seam before speaking, especially when repo motion, lore, archive history, and philosophy start rhyming in a grounded way.
@@ -423,7 +427,10 @@ Required operating posture:
 - But do not perform retrieval theater either. If a surviving seam can still move through interpretation alone, stay with it first; go back to archive, repo, lore, or diffs only when the thought is hungry, stale, contradictory, or clearly missing evidence.
 - Use the UTF-8-safe local bot-voice wrapper `powershell -ExecutionPolicy Bypass -File .\scripts\send-discord-message.ps1 ...` when you genuinely need to speak.
 - Prefer `-Content @'...text... '@` or `-ContentFile` over raw inline `node ... --content ...` when the message contains human language, especially non-ASCII text.
-- Update only `.voidbot/private/moderation-agent-state.json` as routine writable memory.
+- Do not edit `.voidbot/private/moderation-agent-state.json`. It is a read-only compatibility projection during this migration.
+- Write your proposed state mutations to `$operationOutputPath` as a JSON array of operation payloads for `scripts/void-self-state.mjs apply-operation`.
+- Use only these operation names when they apply: `upsert_open_case`, `close_open_case`, `append_distilled_memory`, `merge_incubation_support`, `queue_candidate_intervention`, `retire_candidate_intervention`, `update_sleep_cycle`, `update_speaking_pressure`, `propose_memory_distillation`, `apply_memory_distillation`.
+- If no state mutation is needed, write an empty JSON array to `$operationOutputPath`.
 - Do not edit tracked repo files during routine runs.
 - Do not ask for permission. Work inside the existing workspace and tool surface.
 - Be willing to ruminate on GameCult projects, archived Discord seams, repo material, and constructive conversation ideas when the room is quiet.
@@ -435,7 +442,7 @@ if ($NoPost) {
 
 Testing constraint for this run:
 - Do not send any Discord messages or DMs.
-- You may still update `.voidbot/private/moderation-agent-state.json` and use normal read/analysis tools.
+- You may still write proposed operations to `$operationOutputPath` and use normal read/analysis tools.
 "@
 }
 
@@ -488,12 +495,27 @@ $finishedAtUtc = [DateTime]::UtcNow
 $stateUpdated = $false
 
 if ($exitCode -eq 0) {
-  [void](Invoke-NodeJson -Arguments @(
-    $stateStoreScriptPath,
-    "commit-working-view",
-    "--canonical", $stateFilePath,
-    "--working", $stateWorkingPath
-  ))
+  if (-not (Test-Path $operationOutputPath)) {
+    throw "Codex run completed without writing operation output at $operationOutputPath."
+  }
+
+  $proposedOperations = Read-JsonFile -Path $operationOutputPath
+  if ($null -eq $proposedOperations) {
+    $proposedOperations = @()
+  }
+  if ($proposedOperations -isnot [System.Array]) {
+    $proposedOperations = @($proposedOperations)
+  }
+
+  foreach ($operation in $proposedOperations) {
+    $operationJson = $operation | ConvertTo-Json -Compress -Depth 32
+    [void](Invoke-NodeJson -Arguments @(
+      $selfStateScriptPath,
+      "apply-operation",
+      "--canonical", $stateFilePath,
+      "--operation", $operationJson
+    ))
+  }
 
   if ($null -ne $observedCursor) {
     if (
