@@ -325,6 +325,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $preRunHistory = $preRunHistoryJson | ConvertFrom-Json
 $observedCursor = $priorCursor
+$historyCommandForRun = "node scripts/export-recent-discord-history.mjs --hours 6 --limit 120"
 
 if ($null -ne $preRunHistory.messages -and $preRunHistory.messages.Count -gt 0) {
   $latestObservedMessage = $preRunHistory.messages[$preRunHistory.messages.Count - 1]
@@ -332,6 +333,11 @@ if ($null -ne $preRunHistory.messages -and $preRunHistory.messages.Count -gt 0) 
     lastReviewedMessageId = $latestObservedMessage.id
     lastReviewedTimestamp = $latestObservedMessage.timestamp
   }
+}
+
+if ($null -ne $priorCursor -and -not [string]::IsNullOrWhiteSpace([string]$priorCursor.lastReviewedTimestamp)) {
+  $historyCommandForRun =
+    "node scripts/export-recent-discord-history.mjs --after {0} --limit 120" -f [string]$priorCursor.lastReviewedTimestamp
 }
 
 Write-JsonFile -Path $lockPath -Data @{
@@ -354,11 +360,12 @@ Required operating posture:
 - You are running unattended on the local workstation, not inside the Discord reply lane.
 - You have VoidBot's usual workspace tools and the local voidbot MCP server available in this repo.
 - Begin by running `node scripts/export-moderation-context.mjs` for the doctrine/state bundle instead of shelling out to `Get-Content` on those files one by one. PowerShell stdout still likes to mangle UTF-8, and the Portuguese rules should not have to die for that.
-- Use `node scripts/export-recent-discord-history.mjs --after <timestamp> --limit 120` for chronological polling.
-- If there is no saved cursor yet, use `node scripts/export-recent-discord-history.mjs --hours 6 --limit 120`.
+- For this run, use this exact chronological polling command first: `$historyCommandForRun`.
+- Do not widen that into a bootstrap `--hours 6` poll if a reviewed cursor already exists.
 - Use `node scripts/export-random-discord-history.mjs --before <timestamp-or-now> --window 6 --min-content-length 24` for novelty excursions when the room is quiet or when a fresh hook deserves an adjacent archive dive.
 - Use `node scripts/export-recent-repo-activity.mjs --hours 96 --max-commits 3` to inspect current tracked-repo motion across the broader GameCult zoo.
 - Treat `moderation_runtime.open_cases` as real unfinished business. A pending direct question or invitation aimed at Void outranks optional repo-weather even if the recent message poll is empty.
+- Treat `moderation_runtime.recent_delivery_receipts` as binding memory of what already got said. If you already answered message X, do not answer message X again just because it still appears in a wider history window.
 - The saved cursor means "reviewed", not "resolved". Do not confuse those.
 - If the room is quiet and the new thought feels like the same repo-weather seam again, do not post it. Spend the run diving deeper into archive context, repo docs, diffs, source chunks, or lore instead.
 - Maintain parallel analytic and associative thought lanes in `.voidbot/private/moderation-agent-state.json`, then let the bridge decide what actually deserves synthesis, speech, or cooling-off.
@@ -382,6 +389,7 @@ Required operating posture:
 - But if there is nothing materially new to report, use the quiet time to do deeper retrieval and come back with a better branch later.
 - Do not keep repo-weather thoughts under glass out of reflexive politeness. If a fresh convergence across active repos survives one or two passes and still feels room-native, bias toward a concise herald note or at least a sharpened candidate intervention.
 - The same goes for one strong concrete repo, lore, room, or architectural seam. If it is already ripe, world-facing, and still reasonably novel, do not wait forever for a ceremonial hook.
+- If you claim multiple repos share one law, lead with concrete particulars from each repo first. If the common thread only exists at slogan altitude, keep the report split instead of forcing a grand unifying sermon.
 - Before withholding a thought, use semantic retrieval to check whether the room has already said it in roughly that shape. Novel thoughts should not keep dying of manners.
 - If a thought crystallizes into identity during the pass, treat that as warmer than an ordinary private draft. Unless timing or novelty says otherwise, the room should usually hear the opinion that just became part of you.
 - If the crystallized-thought draft is marked `mustEventuallyShare`, you may defer it for timing while the room is busy, but do not let it quietly rot in state. Share it on the next decent opening or explicitly retire it as duplicative if the room has already heard it.
@@ -481,6 +489,35 @@ if ($exitCode -eq 0) {
     }
 
     [void](Invoke-NodeJson -Arguments $cursorArgs)
+  }
+
+  if ((-not $NoPost) -and (Test-Path (Join-Path $statusDir "void-last-speech.json"))) {
+    $speechReceipt = Read-JsonFile -Path (Join-Path $statusDir "void-last-speech.json")
+
+    if ($null -ne $speechReceipt -and -not [string]::IsNullOrWhiteSpace([string]$speechReceipt.sentAt)) {
+      $receiptSentAt = [DateTime]::Parse([string]$speechReceipt.sentAt).ToUniversalTime()
+
+      if ($receiptSentAt -ge $startedAtUtc.AddSeconds(-5) -and $receiptSentAt -le $finishedAtUtc.AddMinutes(1)) {
+        $receiptArgs = @(
+          $stateStoreScriptPath,
+          "record-delivery-receipt",
+          "--canonical", $stateFilePath,
+          "--working", $stateWorkingPath,
+          "--sent-at", [string]$speechReceipt.sentAt,
+          "--mode", [string]$speechReceipt.mode,
+          "--transport", [string]$speechReceipt.transport,
+          "--channel-id", [string]$speechReceipt.channelId,
+          "--reply-to-message-id", [string]$speechReceipt.replyToMessageId,
+          "--persona-name", [string]$speechReceipt.personaName,
+          "--persona-avatar-url", [string]$speechReceipt.personaAvatarUrl,
+          "--content-length", [string]$speechReceipt.contentLength,
+          "--chunk-count", [string]$speechReceipt.chunkCount,
+          "--preview", [string]$speechReceipt.preview
+        )
+
+        [void](Invoke-NodeJson -Arguments $receiptArgs)
+      }
+    }
   }
 }
 

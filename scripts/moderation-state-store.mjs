@@ -16,6 +16,7 @@ const {
   ensureModerationStateStore,
   getModerationStateLegacyJsonPath,
   getModerationStateWorkingPath,
+  recordModerationDeliveryReceipt,
   readModerationStateCursor,
   setModerationStateCursor,
 } = require(coreDistPath);
@@ -74,6 +75,32 @@ async function main() {
         canonicalPath,
         workingPath,
         cursor: state.moderation_runtime?.cursor ?? null,
+      });
+      return;
+    }
+    case "record-delivery-receipt": {
+      const sentAt = args["sent-at"];
+      if (typeof sentAt !== "string" || sentAt.trim().length === 0) {
+        throw new Error("record-delivery-receipt requires --sent-at.");
+      }
+
+      const state = await recordModerationDeliveryReceipt(paths, {
+        sentAt,
+        mode: args.mode ?? null,
+        transport: args.transport ?? null,
+        channelId: args["channel-id"] ?? null,
+        replyToMessageId: args["reply-to-message-id"] ?? null,
+        personaName: args["persona-name"] ?? null,
+        personaAvatarUrl: args["persona-avatar-url"] ?? null,
+        contentLength: args["content-length"] ? Number.parseInt(args["content-length"], 10) : null,
+        chunkCount: args["chunk-count"] ? Number.parseInt(args["chunk-count"], 10) : null,
+        preview: args.preview ?? null,
+      });
+      writeJson({
+        canonicalPath,
+        workingPath,
+        cursor: state.moderation_runtime?.cursor ?? null,
+        recentDeliveryReceipts: state.moderation_runtime?.recent_delivery_receipts ?? [],
       });
       return;
     }

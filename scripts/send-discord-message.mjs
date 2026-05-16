@@ -563,6 +563,8 @@ function writeLastSpeechStatus(payload) {
   const statusPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
   mkdirSync(dirname(statusPath), { recursive: true });
   writeFileSync(statusPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const logPath = resolve(repoRoot, ".voidbot/status/void-speech-log.jsonl");
+  writeFileSync(logPath, `${JSON.stringify(payload)}\n`, { encoding: "utf8", flag: "a" });
 }
 
 function stripLeadingBom(input) {

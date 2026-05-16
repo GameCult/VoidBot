@@ -488,6 +488,22 @@
         "resolvedAt": null
       }
     ],
+    "recent_delivery_receipts": [
+      {
+        "sentAt": null,
+        "mode": "channel",
+        "transport": "bot",
+        "channelId": null,
+        "replyToMessageId": null,
+        "personaName": null,
+        "personaAvatarUrl": null,
+        "contentLength": null,
+        "chunkCount": null,
+        "preview": "short leading slice of what got sent",
+        "previewHash": "sha1-of-preview",
+        "receiptKey": "stable-hash-for-this-send"
+      }
+    ],
     "watch_patterns": [],
     "rumination_seeds": [
       "good-faith argumentation",
