@@ -23,7 +23,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 - `owner_codex` and `local_llm` are the active reply lanes.
 - The ordinary bot/worker/provider/RAG/Postgres/Qdrant foundation still deserves to survive.
 - The moderation/mood/private-self-state foundation does not. Treat it as the top architectural risk until JSON projection mutation and legacy mirrors are gone.
-- The smallest coherent target is typed CultCache documents plus typed mutation tools: agents propose small operations, and the state service validates/applies them. Whole-state JSON editing is rejected as a durable mutation path.
+- The smallest coherent target is one polymorphic CultCache-backed state authority with typed document kinds plus typed mutation tools: agents propose small operations, and the state service validates/applies them. Whole-state JSON editing is rejected as a durable mutation path.
 - The owner Codex lane is no longer one swollen file; orchestration, runtime/parsing, rendering, and shared helpers are split under `packages/providers/src/owner-codex-*.ts`.
 - The local Ollama lane is no longer one swollen file; orchestration stays in `packages/providers/src/local-llm-provider.ts` while prompt/rendering, tool-loop helpers, and shared types/constants live under `packages/providers/src/local-llm-*.ts`.
 - The Discord bot lane is no longer one swollen entrypoint; gateway wiring remains in `apps/bot/src/discord-bot.ts` while command/prompt handlers and Discord-shape support helpers now live under `apps/bot/src/discord-bot-*.ts`.
@@ -80,7 +80,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 ## Likely Next Bounded Move
 
 - Stop feature work on moderation, mood, agency, and public-lane behavior until the private-state boundary is rebuilt.
-- First bounded move: define typed CultCache document ownership and mutation operations for cursor/open cases, delivery receipts, candidate interventions, sleep/speaking runtime, and distilled memory.
+- First bounded move: define typed CultCache document ownership and mutation operations for cursor/open cases, delivery receipts, candidate interventions, sleep/speaking runtime, and distilled memory. CultCache is natively polymorphic; do not create separate stores just to make the type names feel architectural.
 - Next cuts should delete unstable foundations early: move repo-activity cursor updates behind the typed store, replace whole-state agent JSON edits with operation output, remove `legacyJsonPath`/working-projection authority, then cut top-level mirror fields.
 - Do not build adapters around the JSON projection. That is how the heap learned to stand upright and ask for snacks.
 

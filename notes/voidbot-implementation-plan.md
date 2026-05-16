@@ -26,7 +26,7 @@ The next priority is to remove JSON from the mutation loop entirely. Agents and 
   - source archive manifest and repo shards
   - provider artifacts/traces
   - logs/status/backups
-- CultCache owns private Void self-state, split by document type:
+- One polymorphic CultCache-backed state authority owns private Void self-state through typed document kinds:
   - `void.self_profile`: identity, stable values, voice/personality configuration
   - `void.moderation_cursor`: reviewed Discord cursor, open room obligations
   - `void.speech_receipts`: recent delivered replies and dedupe keys
@@ -34,7 +34,7 @@ The next priority is to remove JSON from the mutation loop entirely. Agents and 
   - `void.scheduled_runtime`: sleep cycle, speaking pressure, last run summaries
   - `void.candidate_interventions`: drafts or requests that may become speech
 
-Each durable fact has one owner. No top-level mirrors. No editable shadow copy pretending to be a harmless view.
+CultCache does not need a separate physical store per state type; it is already polymorphic. The intended split is ownership by typed document kind and mutation contract, not a herd of little stores in fake mustaches. Each durable fact still has one owner. No top-level mirrors. No editable shadow copy pretending to be a harmless view.
 
 ### Runtime State Model
 
@@ -63,7 +63,7 @@ Runtime context dies at the end of the pass unless an explicit typed mutation pr
 ### Authoritative Boundaries
 
 - Bot/worker/provider/RAG boundaries survive.
-- CultCache self-state has one mutation authority: a typed state service.
+- CultCache self-state has one mutation authority: a typed state service over one polymorphic cache.
 - Agents do not edit state files. They call tools such as:
   - `record_reviewed_messages`
   - `upsert_open_case`

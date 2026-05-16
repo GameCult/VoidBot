@@ -65,7 +65,7 @@ active_subgoals:
 accepted_design:
   - Bot, worker, providers, and RAG remain the main structural seams.
   - State storage stays intentionally split: Postgres for operational state, Qdrant for vectors, `.voidbot/` for archives, artifacts, logs, and backup material.
-  - Private Void self-state should be split into typed CultCache document authorities: self profile, moderation cursor/open obligations, speech receipts, thought memory/incubation, scheduled runtime, and candidate interventions.
+  - Private Void self-state should live behind one polymorphic CultCache-backed authority with typed document kinds for self profile, moderation cursor/open obligations, speech receipts, thought memory/incubation, scheduled runtime, and candidate interventions. Do not mistake typed document ownership for separate physical stores.
   - Agents and scheduled runners should cross the private-state boundary with small typed mutation operations such as cursor updates, open-case upserts, receipt records, memory appends, incubation merges, and candidate-intervention changes.
   - JSON may be used for operation payloads or debug exports, but not as an editable working projection of canonical self-state.
   - `owner_codex` and `local_llm` remain distinct lanes with different tool-execution and safety posture.
