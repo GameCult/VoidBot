@@ -822,9 +822,7 @@ function consolidateSleepMemory({ memories, runtime, sleepCycle, incubation, mem
   runtime.recent_musings = ensureArray(runtime.recent_musings)
     .filter((value) => typeof value === "string")
     .slice(-MAX_POST_NAP_RECENT_MUSINGS);
-  runtime.candidate_interventions = ensureArray(runtime.candidate_interventions)
-    .filter(isObject)
-    .slice(-MAX_POST_NAP_CANDIDATE_INTERVENTIONS);
+  runtime.candidate_interventions = trimCandidateInterventions(runtime.candidate_interventions);
 
   sleepCycle.lastDistillationSummary = appendClause(
     sleepCycle.lastDistillationSummary,
@@ -885,7 +883,7 @@ function crystallizeIdentityThoughts({ state, memories, runtime, incubation, now
   state.identity = identity;
   state.canonical_state = canonicalState;
   incubation.active_thoughts = retained;
-  runtime.candidate_interventions = candidateInterventions.slice(-MAX_POST_NAP_CANDIDATE_INTERVENTIONS);
+  runtime.candidate_interventions = trimCandidateInterventions(candidateInterventions);
   incubation.lastIncubationSummary = appendClause(
     readString(incubation, "lastIncubationSummary"),
     `Crystallized ${crystallized.length} long-chewed seam${crystallized.length === 1 ? "" : "s"} into identity so they stop pacing the active queue.`,
@@ -991,6 +989,8 @@ function queueCrystallizationIntervention({ candidateInterventions, crystallizat
     existing.priority = "medium";
     existing.kind = "identity_crystallization";
     existing.sourceMemoryIds = sourceMemoryIds;
+    existing.mustEventuallyShare = true;
+    existing.shareWhenRoomQuiet = true;
     existing.whyNow =
       "This thought stopped behaving like live curiosity and became part of Void's own doctrine, which is usually worth sharing if the room has not already heard it.";
     return;
@@ -1003,9 +1003,21 @@ function queueCrystallizationIntervention({ candidateInterventions, crystallizat
     priority: "medium",
     kind: "identity_crystallization",
     sourceMemoryIds,
+    mustEventuallyShare: true,
+    shareWhenRoomQuiet: true,
     whyNow:
       "This thought stopped behaving like live curiosity and became part of Void's own doctrine, which is usually worth sharing if the room has not already heard it.",
   });
+}
+
+function trimCandidateInterventions(entries) {
+  const interventions = ensureArray(entries).filter(isObject);
+  const sticky = interventions.filter((entry) => entry.mustEventuallyShare === true);
+  const ordinary = interventions.filter((entry) => entry.mustEventuallyShare !== true);
+  const keepOrdinary = Math.max(0, MAX_POST_NAP_CANDIDATE_INTERVENTIONS - sticky.length);
+  return [...sticky.slice(-MAX_POST_NAP_CANDIDATE_INTERVENTIONS), ...ordinary.slice(-keepOrdinary)].slice(
+    -MAX_POST_NAP_CANDIDATE_INTERVENTIONS,
+  );
 }
 
 function appendUniqueString(items, value, limit) {
