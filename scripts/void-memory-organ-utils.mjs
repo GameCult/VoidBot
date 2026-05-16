@@ -44,6 +44,63 @@ export function normalizeText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+export function sanitizePreferredThoughtLabel(label) {
+  const normalized = normalizeText(label)
+    .replace(/^Why\s+/i, "")
+    .replace(/\s+keeps\s+resurfacing$/i, "")
+    .replace(/^What\s+/i, "")
+    .replace(/\s+is\s+trying\s+to\s+become$/i, "")
+    .trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (looksKeywordSalad(normalized)) {
+    return null;
+  }
+
+  if (/\b(still matters|current room need|change a real machine)\b/i.test(normalized)) {
+    return null;
+  }
+
+  if (looksPersonLikeSingleton(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+export function looksKeywordSalad(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (normalized.split(",").length >= 3) {
+    return true;
+  }
+  const tokens = tokenize(normalized).filter((token) => !stopwords.has(token));
+  if (tokens.length === 0) {
+    return true;
+  }
+  const longTokens = tokens.filter((token) => token.length >= 5);
+  return tokens.length >= 3 && longTokens.length === 0;
+}
+
+export function looksPersonLikeSingleton(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.includes(":") || normalized.includes(" ")) {
+    return false;
+  }
+  if (!/^[A-Z][a-zA-Z0-9_-]+$/.test(normalized)) {
+    return false;
+  }
+  return normalized.length >= 4;
+}
+
 export function selectRecentRecords(entries, { limit, quietLimit }) {
   const recent = ensureArray(entries).slice(-Math.max(limit * 3, limit));
   const quiet = [];
@@ -355,4 +412,10 @@ export function topConceptKeywords(text, limit) {
     })
     .slice(0, limit)
     .map(([token]) => token);
+}
+
+export function mapCountEntries(map, keyName) {
+  return [...map.entries()]
+    .map(([key, count]) => ({ [keyName]: key, count }))
+    .sort((left, right) => right.count - left.count);
 }

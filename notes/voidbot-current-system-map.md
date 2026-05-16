@@ -121,7 +121,9 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/simulate-void-mood.mjs`
   - plain Node mood-drift organ that nudges the shared personality-vector activations with Perlin-shaped noise, damps them back toward their means using plasticity, updates the speak/confession/novelty pressure meter in the shared self-state, maintains the nap-cycle clock plus sleep-state vector bias, and now also reconciles compact semantic-memory vectors plus incubation/dream state.
 - `scripts/void-memory-organ.mjs`
-  - hybrid symbolic/vector memory helper used by mood drift to attach compact semantic vectors to persistent memories and runtime seeds, build resonance clusters, keep an incubation queue alive across turns, leave more meaningful dream residue during naps, and turn sustained value-backed pressure into explicit discomforts, tensions, and advocacy requests.
+  - thin orchestrator for the hybrid symbolic/vector memory helper used by mood drift.
+- `scripts/void-memory-organ-*.mjs`
+  - split memory-organ modules for shared limits/utilities, vector/embedder substrate, memory-record intake, graph/cluster synthesis, historical cleanup/translation, incubation/bridge scoring, sleep/distillation, legacy mirror repair, and agency/intervention policy.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`
