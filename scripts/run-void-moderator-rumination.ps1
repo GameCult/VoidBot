@@ -23,6 +23,7 @@ $mcpServerPath = Join-Path $repoRoot "apps\worker\dist\mcp-server.js"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $moderationContextScriptPath = Join-Path $repoRoot "scripts\export-moderation-context.mjs"
 $stateStoreScriptPath = Join-Path $repoRoot "scripts\moderation-state-store.mjs"
+$selfStateScriptPath = Join-Path $repoRoot "scripts\void-self-state.mjs"
 $startedAtUtc = [DateTime]::UtcNow
 
 function Read-DotEnv {
@@ -214,6 +215,27 @@ function Invoke-NodeJson {
   return $output | ConvertFrom-Json
 }
 
+function Add-JsonPropertyIfPresent {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable] $Target,
+    [Parameter(Mandatory = $true)]
+    [string] $Name,
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return
+  }
+
+  $stringValue = [string]$Value
+  if ([string]::IsNullOrWhiteSpace($stringValue)) {
+    return
+  }
+
+  $Target[$Name] = $Value
+}
+
 trap {
   $finishedAtUtc = [DateTime]::UtcNow
   $failureMessage = $_.Exception.Message
@@ -292,7 +314,8 @@ if (-not (Test-Path $mcpServerPath)) {
 $scriptPreflight = @(
   $recentHistoryScriptPath,
   $moderationContextScriptPath,
-  $stateStoreScriptPath
+  $stateStoreScriptPath,
+  $selfStateScriptPath
 )
 
 foreach ($requiredPath in $scriptPreflight) {
@@ -473,22 +496,23 @@ if ($exitCode -eq 0) {
   ))
 
   if ($null -ne $observedCursor) {
-    $cursorArgs = @(
-      $stateStoreScriptPath,
-      "set-cursor",
-      "--canonical", $stateFilePath,
-      "--working", $stateWorkingPath
-    )
+    if (
+      -not [string]::IsNullOrWhiteSpace([string]$observedCursor.lastReviewedMessageId) -and
+      -not [string]::IsNullOrWhiteSpace([string]$observedCursor.lastReviewedTimestamp)
+    ) {
+      $cursorOperation = @{
+        operation = "record_reviewed_messages"
+        lastReviewedMessageId = [string]$observedCursor.lastReviewedMessageId
+        lastReviewedTimestamp = [string]$observedCursor.lastReviewedTimestamp
+      } | ConvertTo-Json -Compress
 
-    if (-not [string]::IsNullOrWhiteSpace([string]$observedCursor.lastReviewedMessageId)) {
-      $cursorArgs += @("--message-id", [string]$observedCursor.lastReviewedMessageId)
+      [void](Invoke-NodeJson -Arguments @(
+        $selfStateScriptPath,
+        "apply-operation",
+        "--canonical", $stateFilePath,
+        "--operation", $cursorOperation
+      ))
     }
-
-    if (-not [string]::IsNullOrWhiteSpace([string]$observedCursor.lastReviewedTimestamp)) {
-      $cursorArgs += @("--timestamp", [string]$observedCursor.lastReviewedTimestamp)
-    }
-
-    [void](Invoke-NodeJson -Arguments $cursorArgs)
   }
 
   if ((-not $NoPost) -and (Test-Path (Join-Path $statusDir "void-last-speech.json"))) {
@@ -498,24 +522,35 @@ if ($exitCode -eq 0) {
       $receiptSentAt = [DateTime]::Parse([string]$speechReceipt.sentAt).ToUniversalTime()
 
       if ($receiptSentAt -ge $startedAtUtc.AddSeconds(-5) -and $receiptSentAt -le $finishedAtUtc.AddMinutes(1)) {
-        $receiptArgs = @(
-          $stateStoreScriptPath,
-          "record-delivery-receipt",
-          "--canonical", $stateFilePath,
-          "--working", $stateWorkingPath,
-          "--sent-at", [string]$speechReceipt.sentAt,
-          "--mode", [string]$speechReceipt.mode,
-          "--transport", [string]$speechReceipt.transport,
-          "--channel-id", [string]$speechReceipt.channelId,
-          "--reply-to-message-id", [string]$speechReceipt.replyToMessageId,
-          "--persona-name", [string]$speechReceipt.personaName,
-          "--persona-avatar-url", [string]$speechReceipt.personaAvatarUrl,
-          "--content-length", [string]$speechReceipt.contentLength,
-          "--chunk-count", [string]$speechReceipt.chunkCount,
-          "--preview", [string]$speechReceipt.preview
-        )
+        $receipt = @{
+          receiptKey = "speech-{0}-{1}-{2}" -f ([string]$speechReceipt.sentAt), ([string]$speechReceipt.channelId), ([string]$speechReceipt.replyToMessageId)
+          sentAt = [string]$speechReceipt.sentAt
+        }
+        Add-JsonPropertyIfPresent -Target $receipt -Name "mode" -Value $speechReceipt.mode
+        Add-JsonPropertyIfPresent -Target $receipt -Name "transport" -Value $speechReceipt.transport
+        Add-JsonPropertyIfPresent -Target $receipt -Name "channelId" -Value $speechReceipt.channelId
+        Add-JsonPropertyIfPresent -Target $receipt -Name "replyToMessageId" -Value $speechReceipt.replyToMessageId
+        Add-JsonPropertyIfPresent -Target $receipt -Name "personaName" -Value $speechReceipt.personaName
+        Add-JsonPropertyIfPresent -Target $receipt -Name "personaAvatarUrl" -Value $speechReceipt.personaAvatarUrl
+        if ($null -ne $speechReceipt.contentLength) {
+          $receipt["contentLength"] = [int]$speechReceipt.contentLength
+        }
+        if ($null -ne $speechReceipt.chunkCount) {
+          $receipt["chunkCount"] = [int]$speechReceipt.chunkCount
+        }
+        Add-JsonPropertyIfPresent -Target $receipt -Name "preview" -Value $speechReceipt.preview
 
-        [void](Invoke-NodeJson -Arguments $receiptArgs)
+        $receiptOperation = @{
+          operation = "record_delivery_receipt"
+          receipt = $receipt
+        } | ConvertTo-Json -Compress -Depth 8
+
+        [void](Invoke-NodeJson -Arguments @(
+          $selfStateScriptPath,
+          "apply-operation",
+          "--canonical", $stateFilePath,
+          "--operation", $receiptOperation
+        ))
       }
     }
   }

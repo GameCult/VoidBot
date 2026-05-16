@@ -204,6 +204,10 @@ function applyLegacyCompatibilityOperation(
     }
     case "record_delivery_receipt":
       upsertLegacyRuntimeArray(runtime, "recent_delivery_receipts", operation.receipt, "receiptKey");
+      runtime.recent_delivery_receipts = readObjectArray(runtime.recent_delivery_receipts)
+        .filter((entry) => readString(entry, "sentAt"))
+        .sort((left, right) => (readString(left, "sentAt") ?? "").localeCompare(readString(right, "sentAt") ?? ""))
+        .slice(-24);
       closeLegacyOpenCaseForReceipt(runtime, operation.receipt);
       return true;
     case "queue_candidate_intervention":

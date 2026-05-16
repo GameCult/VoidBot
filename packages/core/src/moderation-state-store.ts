@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -223,159 +222,12 @@ export async function readModerationStateCursor(canonicalPath: string): Promise<
   };
 }
 
-export async function setModerationStateCursor(
-  paths: ModerationStatePaths,
-  cursor: {
-    lastReviewedMessageId?: string | null;
-    lastReviewedTimestamp?: string | null;
-  },
-): Promise<ModerationState> {
-  const canonicalPath = resolve(paths.canonicalPath);
-  const workingPath = resolve(paths.workingPath);
-  const state = await loadModerationState(canonicalPath);
-  state.moderation_runtime.cursor = {
-    lastReviewedMessageId: cursor.lastReviewedMessageId ?? null,
-    lastReviewedTimestamp: cursor.lastReviewedTimestamp ?? null,
-  };
-  await saveModerationState(canonicalPath, state);
-  await materializeModerationStateWorkingView({ state, workingPath });
-  return state;
-}
-
-export interface ModerationDeliveryReceipt {
-  sentAt: string;
-  mode?: string | null;
-  transport?: string | null;
-  channelId?: string | null;
-  replyToMessageId?: string | null;
-  personaName?: string | null;
-  personaAvatarUrl?: string | null;
-  contentLength?: number | null;
-  chunkCount?: number | null;
-  preview?: string | null;
-}
-
-export async function recordModerationDeliveryReceipt(
-  paths: ModerationStatePaths,
-  receipt: ModerationDeliveryReceipt,
-): Promise<ModerationState> {
-  const canonicalPath = resolve(paths.canonicalPath);
-  const workingPath = resolve(paths.workingPath);
-  const state = await loadModerationState(canonicalPath);
-  const runtime = cloneJson(state.moderation_runtime);
-  const runtimeRecord = runtime as Record<string, unknown>;
-  const receipts = readArray(runtimeRecord, "recent_delivery_receipts")
-    .filter(isObject)
-    .filter((entry): entry is Record<string, unknown> => !!readString(entry, "sentAt"));
-
-  const normalizedReceipt = normalizeDeliveryReceipt(receipt);
-  const receiptKey = readString(normalizedReceipt, "receiptKey");
-  const existing = receipts.find(
-    (entry) =>
-      readString(entry, "receiptKey") === receiptKey ||
-      (readString(normalizedReceipt, "replyToMessageId") &&
-        readString(entry, "replyToMessageId") ===
-          readString(normalizedReceipt, "replyToMessageId") &&
-        readString(entry, "previewHash") === readString(normalizedReceipt, "previewHash")),
-  );
-
-  if (existing) {
-    Object.assign(existing, normalizedReceipt);
-  } else {
-    receipts.push(normalizedReceipt);
-  }
-
-  runtimeRecord.recent_delivery_receipts = receipts
-    .sort(compareDeliveryReceiptsBySentAt)
-    .slice(-24);
-  closeAnsweredOpenCases(runtimeRecord, normalizedReceipt);
-  state.moderation_runtime = runtime;
-  await saveModerationState(canonicalPath, state);
-  await materializeModerationStateWorkingView({ state, workingPath });
-  return state;
-}
-
 function createModerationStateCache(canonicalPath: string): CultCache {
   const cache = new CultCache();
   cache.registerDocumentType(moderationStateDocument);
   cache.registerRegistry(voidSelfStateDocumentRegistry);
   cache.addBackingStore(new SingleFileMessagePackBackingStore(canonicalPath));
   return cache;
-}
-
-function normalizeDeliveryReceipt(receipt: ModerationDeliveryReceipt) {
-  const sentAt = receipt.sentAt;
-  const replyToMessageId = receipt.replyToMessageId ?? null;
-  const preview = receipt.preview?.trim() ?? null;
-  const previewHash = preview ? sha1(preview) : null;
-  const receiptKey = sha1(
-    JSON.stringify({
-      sentAt,
-      channelId: receipt.channelId ?? null,
-      replyToMessageId,
-      previewHash,
-      mode: receipt.mode ?? null,
-    }),
-  );
-
-  return {
-    sentAt,
-    mode: receipt.mode ?? null,
-    transport: receipt.transport ?? null,
-    channelId: receipt.channelId ?? null,
-    replyToMessageId,
-    personaName: receipt.personaName ?? null,
-    personaAvatarUrl: receipt.personaAvatarUrl ?? null,
-    contentLength: receipt.contentLength ?? null,
-    chunkCount: receipt.chunkCount ?? null,
-    preview,
-    previewHash,
-    receiptKey,
-  };
-}
-
-function compareDeliveryReceiptsBySentAt(left: unknown, right: unknown) {
-  const leftSentAt = isObject(left) ? readString(left, "sentAt") ?? "" : "";
-  const rightSentAt = isObject(right) ? readString(right, "sentAt") ?? "" : "";
-  return leftSentAt.localeCompare(rightSentAt);
-}
-
-function closeAnsweredOpenCases(runtime: Record<string, unknown>, receipt: Record<string, unknown>) {
-  const replyToMessageId = readString(receipt, "replyToMessageId");
-  if (!replyToMessageId) {
-    return;
-  }
-
-  const preview = readString(receipt, "preview");
-  const sentAt = readString(receipt, "sentAt");
-  const openCases = readArray(runtime, "open_cases").filter(isObject);
-
-  for (const openCase of openCases) {
-    const sourceMessageId = readString(openCase, "sourceMessageId");
-    const status = readString(openCase, "status");
-
-    if (sourceMessageId !== replyToMessageId) {
-      continue;
-    }
-
-    if (status && ["answered", "resolved", "closed", "retired", "dropped"].includes(status)) {
-      continue;
-    }
-
-    openCase.status = "answered";
-    openCase.resolvedAt = sentAt ?? null;
-    openCase.lastTouchedAt = sentAt ?? null;
-    openCase.resolutionSummary =
-      preview && preview.length > 0
-        ? `Answered in-channel: ${preview}`
-        : "Answered in-channel.";
-  }
-
-  runtime.open_cases = openCases;
-}
-
-function sha1(value: string) {
-  return createHash("sha1").update(value).digest("hex");
 }
 
 function reattachSemanticVectors(previous: ModerationState, next: ModerationState): ModerationState {
