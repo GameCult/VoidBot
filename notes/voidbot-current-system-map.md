@@ -132,12 +132,18 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - rumination fixture. It seeds an isolated CultCache `.cc` state, routes the non-skip rumination runner through a fake Codex child, and verifies short-term memory, incubation, agency pressure, and candidate intervention proposals are applied by the parent runner while the prompt-facing context keeps exact timestamps out.
 - `scripts/smoke-void-rumination-speech-fixture.ps1`
   - parent-owned speech fixture. It queues one deliverable candidate through fake Codex, routes delivery through a fake Discord sender, then verifies the parent runner writes a delivery receipt and marks the candidate spoken through typed state.
+- `scripts/smoke-void-rumination-nap-skip-fixture.ps1`
+  - nap-skip fixture. It seeds a napping typed state with no room debt, points `CODEX_EXECUTABLE` at a bogus command, then verifies the runner exits with `napping_without_room_debt` and writes no operation proposals before invoking the model.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - Scheduled task `Void Mood Drift`
   - enabled typed mood/sleep runner. It invokes `scripts/run-void-mood-drift.ps1`, which calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
 - Scheduled task `Void Moderator Rumination`
-  - enabled after parent-owned speech closure and one observed live scheduled pass with Last Result `0`. Its script is typed-only and has model-branch plus parent-owned speech fixtures; the next stability gate is sleep consuming the short-term memory it produced.
+  - enabled after parent-owned speech closure and one observed live scheduled pass with Last Result `0`. Its script is typed-only and has model-branch plus parent-owned speech fixtures.
+- Live sleep maintenance
+  - passed once on real state after a manual typed nap. The maintenance runner consumed the scheduled rumination short-term memory with one `apply_memory_distillation` operation, leaving short-term memory empty and preserving one durable identity seam with target, claim, tension, action implication, and anchors.
+- Sleep brake
+  - scheduled rumination skips during naps when there are no new room messages and no open cases, so sleep can distill the short-term surface without awake rumination immediately adding fresh residue.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`

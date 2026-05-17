@@ -295,6 +295,13 @@ function Convert-ToOperationArray {
   return @($Value)
 }
 
+function Test-OpenCaseRequiresRumination {
+  param($Case)
+
+  $status = Get-ObjectPropertyString -Value $Case -Name "status"
+  return $null -ne $status -and -not @("answered", "resolved", "closed", "retired", "dropped").Contains($status)
+}
+
 function Assert-AllowedRuminationOperation {
   param($Operation)
 
@@ -600,6 +607,35 @@ Write-JsonFile -Path $contextPath -Data @{
   observedCursor = Project-CursorForRumination -Cursor $observedCursor -Now $startedAtUtc
   recentHistory = Project-RecentHistoryForRumination -History $history -Now $startedAtUtc
   repoActivity = Select-RuminationRepoActivity -RepoActivity $repoActivity -Now $startedAtUtc
+}
+
+$isNapping = [bool](Get-ObjectPropertyValue -Value $typedState.scheduledRuntime.sleepCycle -Name "isNapping")
+$openCaseCount = @(
+  @(Convert-ToValueArray -Value $typedState.moderationCursor.openCases) |
+    Where-Object { Test-OpenCaseRequiresRumination -Case $_ }
+).Count
+if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0) {
+  Append-RunLog "napping: no new room messages or open cases; skipping awake rumination."
+  Write-JsonFile -Path $operationOutputPath -Data @()
+  $finishedAtUtc = [DateTime]::UtcNow
+  Write-JsonFile -Path $statusPath -Data @{
+    status = "skipped"
+    reason = "napping_without_room_debt"
+    startedAt = $startedAtUtc.ToString("o")
+    finishedAt = $finishedAtUtc.ToString("o")
+    durationSeconds = [Math]::Round(($finishedAtUtc - $startedAtUtc).TotalSeconds, 2)
+    noPost = [bool]$NoPost
+    skipModel = [bool]$SkipModel
+    stateFile = [string]$stateFilePath
+    contextPath = [string]$contextPath
+    operationOutputPath = [string]$operationOutputPath
+    observedMessageCount = [int]$messageCount
+    openCaseCount = [int]$openCaseCount
+    tracePath = [string]$tracePath
+    lastMessagePath = [string]$lastMessagePath
+  }
+  Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
+  return
 }
 
 $stateWriteBefore = if (Test-Path $stateFilePath) { (Get-Item $stateFilePath).LastWriteTimeUtc } else { [DateTime]::MinValue }

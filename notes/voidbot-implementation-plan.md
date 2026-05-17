@@ -286,7 +286,9 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Landed controlled live rumination review: the first real-model `-NoPost` pass produced valid but self-orbiting readiness-test residue, which was pruned/retired and folded into a prompt guard; the second real-model `-NoPost` pass sampled non-VoidBot repo pressure, used retrieval, and correctly wrote `[]` when nothing earned persistence.
 - Landed parent-owned speech closure: candidate interventions can include `deliveryTarget`, the prompt forbids child-side send scripts, the parent runner delivers at most one newly queued deliverable candidate per pass, records the receipt, and marks the candidate spoken with `mark_candidate_intervention_spoken`. `npm run moderation:rumination:speech-fixture` proves the loop with fake Codex and fake Discord send helpers.
 - Landed scheduled rumination re-enable: one observed live scheduled pass completed with Last Result `0`, proposed one anchored short-term memory, delivered no speech, and kept exact timestamps out of the prompt-facing context.
-- Remaining work: observe the next sleep maintenance pass and verify that scheduled rumination residue is promoted, merged, or pruned instead of lingering.
+- Landed live sleep-maintenance verification: a manual typed nap ran real memory maintenance on live state, promoted the scheduled rumination short-term memory into one durable `identity_seam`, and left `thoughtMemory.shortTerm` empty.
+- Landed sleep brake: scheduled rumination now skips before model invocation during naps when there are no new room messages or open cases. `npm run moderation:rumination:nap-skip-fixture` proves the model path is not touched and no operation proposals are written.
+- Remaining work: let ordinary scheduling run and inspect the next unattended awake rumination and sleep cycle for duplicate speech, stale short-term residue, or ungrounded memory writes before calling the system broadly stable.
 
 ### Commit 10: Resume Product Hardening
 
