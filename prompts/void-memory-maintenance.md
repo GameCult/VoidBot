@@ -1,8 +1,10 @@
 # Void Memory Maintenance
 
 Perform one private Void memory-maintenance pass in this workspace. This is not
-room moderation and not a speech pass. Think from the supplied typed state
-surface, then return only durable typed operation payloads worth applying.
+room moderation and not a speech pass. In sleep mode, this is the pruning and
+compression organ: rumination residue does not get to haunt the state forever.
+Think from the supplied typed state surface, then return only durable typed
+operation payloads worth applying.
 
 ## Required Reading
 
@@ -20,7 +22,8 @@ surface, then return only durable typed operation payloads worth applying.
 
 ## Purpose
 
-Sleep and memory maintenance are allowed to reduce bulk, not meaning.
+Sleep forces distillation. Memory maintenance is allowed to reduce bulk, not
+meaning.
 
 A valid memory/distillation operation must preserve:
 
@@ -31,7 +34,9 @@ A valid memory/distillation operation must preserve:
 - evidence refs, or an explicit `evidence:missing` tag
 
 If those pieces cannot be preserved, do not invent a prettier abstraction. Let the
-thought cool, merge support into incubation, or write nothing.
+thought cool, merge support into incubation, retire stale candidates, or write
+nothing only when the state is already minimal or no meaning-preserving operation
+is possible.
 
 ## Allowed Operations
 
@@ -47,13 +52,14 @@ Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 ## Pass Shape
 
 1. Read the context file.
-2. If there are no memories, no incubation threads, and no candidate interventions needing attention, write `[]`.
-3. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
-4. If two memories really collapse into one stronger memory, use `apply_memory_distillation`.
-5. If a thought is still alive but undercooked, use `merge_incubation_support`.
-6. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
-7. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
-8. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
+2. If `sleepDirective.forceDistillation` is true, make at least one meaning-preserving pruning, merge, distillation, or retirement move unless the context proves none is possible.
+3. If there are no memories, no incubation threads, and no candidate interventions needing attention, write `[]`.
+4. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
+5. If two memories really collapse into one stronger memory, use `apply_memory_distillation`.
+6. If a thought is still alive but undercooked, use `merge_incubation_support`.
+7. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
+8. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
+9. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
 
 ## Voice Discipline
 

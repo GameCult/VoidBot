@@ -125,7 +125,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - `scripts/simulate-void-mood.mjs`
-  - typed-only mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending a typed rebuild.
+  - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`
@@ -185,14 +185,16 @@ Within the Postgres path, the implementation is split on purpose now too:
 2. `scripts/simulate-void-mood.mjs` reads typed documents from `.voidbot/private/void-self-state.cc`.
 3. It updates `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations.
 4. It writes `.voidbot/status/void-mood-drift.json`.
-5. The old memory-organ script family, legacy state template, and legacy context exporter have been deleted.
+5. When sleep is active, the script invokes `scripts/run-void-memory-maintenance.ps1` once per nap to force typed distillation/pruning.
+6. The old memory-organ script family, legacy state template, and legacy context exporter have been deleted.
 
 ## Flow 7: Typed Memory Maintenance
 
-1. `scripts/run-void-memory-maintenance.ps1` exits if moderation rumination is holding its lock.
+1. `scripts/run-void-memory-maintenance.ps1` is invoked by mood drift during sleep, and can also be run manually for fixtures.
 2. It reads `.voidbot/private/void-self-state.cc` through the typed self-state service.
 3. It writes `.voidbot/status/void-memory-maintenance-context.json` with prompt-facing relative chronology and only typed memory/incubation/candidate surfaces.
 4. It loads `prompts/void-memory-maintenance.md` and asks Codex for operation proposals unless `-SkipModel` is set.
 5. The parent runner rejects any operation outside memory, incubation, or candidate-intervention maintenance.
 6. The parent runner applies allowed operations through `scripts/void-self-state.mjs`.
-7. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.
+7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is memory pressure. A real model pass that returns no operations under pressure fails visibly instead of letting yesterday's residue haunt the state.
+8. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.

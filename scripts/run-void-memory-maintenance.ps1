@@ -348,13 +348,32 @@ $codexExecArgs = if ($envValues.ContainsKey("CODEX_EXEC_ARGS")) { Split-CommandA
 
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
+$isSleepMaintenance = [bool]$typedState.scheduledRuntime.sleepCycle.isNapping
+$memoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.memories).Count
+$incubationCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.incubation).Count
+$activeCandidateCount = @(
+  @(Convert-ToValueArray -Value $typedState.candidateInterventions.interventions) |
+    Where-Object {
+      $status = Get-ObjectPropertyString -Value $_ -Name "status"
+      $status -eq "queued" -or $status -eq "deferred"
+    }
+).Count
+$maintenancePressure = $memoryCount + $incubationCount + $activeCandidateCount
 
 Write-JsonFile -Path $contextPath -Data @{
   generated = "now"
   stateFile = $stateFilePath
   selfStateSummary = $typedContext.summary
-  mode = if ($typedState.scheduledRuntime.sleepCycle.isNapping) { "sleep_maintenance" } else { "awake_memory_maintenance" }
+  mode = if ($isSleepMaintenance) { "sleep_maintenance" } else { "awake_memory_maintenance" }
   maintenanceBoundary = "This pass may propose only typed memory/incubation/candidate operations. Exact timestamps stay in typed state; prompt-facing chronology uses relative phrases."
+  sleepDirective = @{
+    forceDistillation = [bool]($isSleepMaintenance -and $maintenancePressure -gt 1)
+    maintenancePressure = [int]$maintenancePressure
+    memoryCount = [int]$memoryCount
+    incubationCount = [int]$incubationCount
+    activeCandidateCount = [int]$activeCandidateCount
+    rule = "During sleep, yesterday's rumination residue must be pruned or compressed. Return [] only when the typed surfaces are already minimal or no meaning-preserving operation is possible."
+  }
   memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
@@ -416,6 +435,10 @@ if (-not (Test-Path $operationOutputPath)) {
 
 $proposedOperations = @(Convert-ToOperationArray -Value (Read-JsonFile -Path $operationOutputPath))
 $appliedOperations = @()
+
+if ((-not $SkipModel) -and $isSleepMaintenance -and $maintenancePressure -gt 1 -and @($proposedOperations).Count -eq 0) {
+  throw "Sleep memory maintenance returned no operations despite maintenance pressure $maintenancePressure."
+}
 
 foreach ($operation in $proposedOperations) {
   Assert-AllowedMemoryMaintenanceOperation -Operation $operation

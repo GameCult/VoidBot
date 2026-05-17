@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -15,6 +16,9 @@ const statusPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.json");
 const lockPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.lock");
 const lastSpeechPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
 const moderationLockPath = resolve(repoRoot, ".voidbot/status/moderation-rumination.lock");
+const memoryMaintenanceStatusPath = resolve(repoRoot, ".voidbot/status/void-memory-maintenance.json");
+const memoryMaintenanceScriptPath = resolve(repoRoot, "scripts/run-void-memory-maintenance.ps1");
+const args = new Set(process.argv.slice(2));
 
 async function main() {
   const now = new Date();
@@ -53,12 +57,27 @@ async function main() {
       },
     );
 
+    const memoryMaintenance = runSleepMemoryMaintenanceIfDue({ sleepCycle });
+    if (memoryMaintenance.status === "failed") {
+      writeStatus({
+        status: "failed",
+        reason: "sleep_memory_maintenance_failed",
+        observedAt: now.toISOString(),
+        statePath,
+        speakingPressure,
+        sleepCycle,
+        memoryMaintenance,
+      });
+      throw new Error(`Sleep memory maintenance failed with exit code ${memoryMaintenance.exitCode}.`);
+    }
+
     writeStatus({
       status: "ok",
       observedAt: now.toISOString(),
       statePath,
       speakingPressure,
       sleepCycle,
+      memoryMaintenance,
     });
   });
 }
@@ -155,6 +174,83 @@ function readJsonSafe(path) {
   } catch {
     return null;
   }
+}
+
+function runSleepMemoryMaintenanceIfDue({ sleepCycle }) {
+  if (args.has("--skip-memory-maintenance")) {
+    return {
+      status: "skipped",
+      reason: "disabled_by_argument",
+    };
+  }
+
+  if (sleepCycle.isNapping !== true) {
+    return {
+      status: "skipped",
+      reason: "not_napping",
+    };
+  }
+
+  const napStartedMs = Date.parse(sleepCycle.currentNapStartedAt ?? "");
+  if (!Number.isFinite(napStartedMs)) {
+    return {
+      status: "skipped",
+      reason: "missing_nap_start",
+    };
+  }
+
+  if (!args.has("--force-memory-maintenance") && completedMemoryMaintenanceAfter(napStartedMs)) {
+    return {
+      status: "skipped",
+      reason: "already_completed_this_nap",
+    };
+  }
+
+  const result = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      memoryMaintenanceScriptPath,
+      "-StateFilePath",
+      statePath,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+
+  const output = [result.stdout, result.stderr].filter((value) => value && value.trim().length > 0).join("\n").trim();
+  if (result.status !== 0) {
+    return {
+      status: "failed",
+      exitCode: result.status,
+      output,
+    };
+  }
+
+  return {
+    status: "ok",
+    exitCode: result.status,
+    output,
+  };
+}
+
+function completedMemoryMaintenanceAfter(timestampMs) {
+  const status = readJsonSafe(memoryMaintenanceStatusPath);
+  if (status?.status !== "ok") {
+    return false;
+  }
+  if (typeof status.stateFile !== "string" || resolve(status.stateFile) !== statePath) {
+    return false;
+  }
+
+  const finishedMs = Date.parse(status.finishedAt ?? "");
+  return Number.isFinite(finishedMs) && finishedMs >= timestampMs;
 }
 
 function writeStatus(payload) {
