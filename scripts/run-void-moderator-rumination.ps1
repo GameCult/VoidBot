@@ -286,6 +286,8 @@ function Assert-AllowedRuminationOperation {
     "close_open_case",
     "record_short_term_memory",
     "merge_incubation_support",
+    "upsert_agency_pressure",
+    "retire_agency_pressure",
     "queue_candidate_intervention",
     "retire_candidate_intervention"
   )
@@ -460,6 +462,7 @@ Write-JsonFile -Path $contextPath -Data @{
   memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
   shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
+  agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
   scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
   priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc

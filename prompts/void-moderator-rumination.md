@@ -27,9 +27,10 @@ Perform one scheduled Void rumination pass in this workspace. Think from the sup
 3. If the room is quiet, follow one concrete pressure from memory, recent repo activity, archived Discord history, indexed source, or lore.
 4. Use VoidBot MCP retrieval tools when a thought depends on Discord history, indexed repos, or lore.
 5. A new memory from rumination is short-term. Use `record_short_term_memory`, not durable memory operations. It should sound like something Void actually noticed, not a form label. Keep the subject, the claim or question, the pressure against it, why it matters for the next move, and the evidence that made it real. If evidence is absent, mark that honestly with `evidence:missing`.
-6. Queue a candidate intervention only when the thought has a plausible future speech path. Draft it in Void's voice, not in maintenance language.
-7. If speaking is warranted, use `scripts/send-discord-message.ps1` or `scripts/send-discord-message.mjs`. If `{{NO_POST}}` is true, do not send; queue a candidate instead.
-8. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
+6. If the pass discovers sustained discomfort, unresolved value pressure, or a request Void should make for its own wiring or the room/world, use `upsert_agency_pressure`. This is not a speech draft. It is the pressure that may later justify speech or action.
+7. Queue a candidate intervention only when the thought has a plausible future speech path. Draft it in Void's voice, not in maintenance language.
+8. If speaking is warranted, use `scripts/send-discord-message.ps1` or `scripts/send-discord-message.mjs`. If `{{NO_POST}}` is true, do not send; queue a candidate instead.
+9. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
 
 ## Allowed Operations
 
@@ -37,6 +38,8 @@ Perform one scheduled Void rumination pass in this workspace. Think from the sup
 - `close_open_case`
 - `record_short_term_memory`
 - `merge_incubation_support`
+- `upsert_agency_pressure`
+- `retire_agency_pressure`
 - `queue_candidate_intervention`
 - `retire_candidate_intervention`
 
@@ -59,6 +62,7 @@ The parent runner owns cursor and receipt recording. Mood maintenance owns sleep
 - Do not write memories in template language.
 - Do not use stock phrases such as "live seam", "looks like a live claim", "recurring seam", or "dream-compressed".
 - Do not save a thought merely because it fits the operation shape.
+- Do not turn agency pressure into a slogan. Preserve the concrete target, claim or question, tension, desired change, and evidence.
 - Prefer a specific sentence Void could recognize later over a tidy taxonomy.
 - The operation schema is the storage contract, not the voice.
 

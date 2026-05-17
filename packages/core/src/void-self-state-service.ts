@@ -4,11 +4,13 @@ import { CultCache, SingleFileMessagePackBackingStore } from "cultcache-ts";
 
 import {
   type VoidCandidateInterventions,
+  type VoidAgencyPressure,
   type VoidModerationCursor,
   type VoidScheduledRuntime,
   type VoidSelfStateOperation,
   type VoidSpeechReceipts,
   voidCandidateInterventionsDocument,
+  voidAgencyPressureDocument,
   voidModerationCursorDocument,
   voidScheduledRuntimeDocument,
   voidSelfProfileDocument,
@@ -57,7 +59,7 @@ export async function applyVoidSelfStateOperation(
   return {
     operation: operation.operation,
     canonicalPath,
-    typedDocumentsWritten: 6,
+    typedDocumentsWritten: 7,
   };
 }
 
@@ -78,6 +80,7 @@ function readTypedStateOrEmpty(
     speechReceipts: cache.getGlobal(voidSpeechReceiptsDocument) ?? empty.speechReceipts,
     thoughtMemory: cache.getGlobal(voidThoughtMemoryDocument) ?? empty.thoughtMemory,
     scheduledRuntime: cache.getGlobal(voidScheduledRuntimeDocument) ?? empty.scheduledRuntime,
+    agencyPressure: cache.getGlobal(voidAgencyPressureDocument) ?? empty.agencyPressure,
     candidateInterventions:
       cache.getGlobal(voidCandidateInterventionsDocument) ?? empty.candidateInterventions,
   };
@@ -92,6 +95,7 @@ async function writeTypedState(
   await cache.putGlobal(voidSpeechReceiptsDocument, stripUndefined(state.speechReceipts));
   await cache.putGlobal(voidThoughtMemoryDocument, stripUndefined(state.thoughtMemory));
   await cache.putGlobal(voidScheduledRuntimeDocument, stripUndefined(state.scheduledRuntime));
+  await cache.putGlobal(voidAgencyPressureDocument, stripUndefined(state.agencyPressure));
   await cache.putGlobal(voidCandidateInterventionsDocument, stripUndefined(state.candidateInterventions));
 }
 
@@ -152,6 +156,16 @@ function applyTypedOperation(
     case "retire_candidate_intervention":
       retireCandidateIntervention(state.candidateInterventions, operation);
       return;
+    case "upsert_agency_pressure":
+      upsertBy(state.agencyPressure.pressures, operation.pressure, (entry) => entry.pressureId);
+      state.agencyPressure.pressures = state.agencyPressure.pressures
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .slice(-64);
+      state.agencyPressure.updatedAt = operation.pressure.updatedAt;
+      return;
+    case "retire_agency_pressure":
+      retireAgencyPressure(state.agencyPressure, operation);
+      return;
     case "update_sleep_cycle":
       state.scheduledRuntime.sleepCycle = operation.sleepCycle;
       state.scheduledRuntime.updatedAt = new Date().toISOString();
@@ -189,6 +203,20 @@ function closeTypedOpenCase(
     openCase.resolutionSummary = operation.resolutionSummary;
   }
   cursor.updatedAt = operation.resolvedAt;
+}
+
+function retireAgencyPressure(
+  agencyPressure: VoidAgencyPressure,
+  operation: Extract<VoidSelfStateOperation, { operation: "retire_agency_pressure" }>,
+): void {
+  const pressure = agencyPressure.pressures.find((entry) => entry.pressureId === operation.pressureId);
+  if (pressure) {
+    pressure.status = "retired";
+    pressure.retiredAt = operation.retiredAt;
+    pressure.updatedAt = operation.retiredAt;
+    pressure.tags = Array.from(new Set([...pressure.tags, `retired:${operation.reason}`]));
+  }
+  agencyPressure.updatedAt = operation.retiredAt;
 }
 
 function closeCasesForReceipt(

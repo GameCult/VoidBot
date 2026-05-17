@@ -253,6 +253,34 @@ function Project-InterventionsForRumination {
   )
 }
 
+function Project-AgencyPressureForRumination {
+  param($Pressures, [DateTime] $Now)
+
+  return @(
+    @(Convert-ToValueArray -Value $Pressures) | ForEach-Object {
+      @{
+        pressureId = Get-ObjectPropertyString -Value $_ -Name "pressureId"
+        kind = Get-ObjectPropertyString -Value $_ -Name "kind"
+        status = Get-ObjectPropertyString -Value $_ -Name "status"
+        target = Get-ObjectPropertyValue -Value $_ -Name "target"
+        summary = Get-ObjectPropertyString -Value $_ -Name "summary"
+        claim = Get-ObjectPropertyString -Value $_ -Name "claim"
+        question = Get-ObjectPropertyString -Value $_ -Name "question"
+        tension = Get-ObjectPropertyString -Value $_ -Name "tension"
+        actionImplication = Get-ObjectPropertyString -Value $_ -Name "actionImplication"
+        intensity = Get-ObjectPropertyValue -Value $_ -Name "intensity"
+        created = Project-RelativeTimestamp -Value $_ -Name "createdAt" -Now $Now
+        updated = Project-RelativeTimestamp -Value $_ -Name "updatedAt" -Now $Now
+        resolved = Project-RelativeTimestamp -Value $_ -Name "resolvedAt" -Now $Now
+        retired = Project-RelativeTimestamp -Value $_ -Name "retiredAt" -Now $Now
+        evidenceRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "evidenceRefs"))
+        sourceMemoryIds = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "sourceMemoryIds"))
+        tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
+      }
+    }
+  )
+}
+
 function Project-ScheduledRuntimeForRumination {
   param($Runtime, [DateTime] $Now)
 

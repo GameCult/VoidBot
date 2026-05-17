@@ -6,12 +6,14 @@ import {
 
 import {
   type VoidCandidateInterventions,
+  type VoidAgencyPressure,
   type VoidModerationCursor,
   type VoidScheduledRuntime,
   type VoidSelfProfile,
   type VoidSpeechReceipts,
   type VoidThoughtMemory,
   voidCandidateInterventionsSchema,
+  voidAgencyPressureSchema,
   voidModerationCursorSchema,
   voidScheduledRuntimeSchema,
   voidSelfProfileSchema,
@@ -25,6 +27,7 @@ export interface VoidSelfStateTypedProjection {
   speechReceipts: VoidSpeechReceipts;
   thoughtMemory: VoidThoughtMemory;
   scheduledRuntime: VoidScheduledRuntime;
+  agencyPressure: VoidAgencyPressure;
   candidateInterventions: VoidCandidateInterventions;
 }
 
@@ -87,6 +90,11 @@ export function createEmptyVoidSelfState(
       lastRuns: [],
       updatedAt: createdAt,
     }),
+    agencyPressure: voidAgencyPressureSchema.parse({
+      schemaVersion: 1,
+      pressures: [],
+      updatedAt: createdAt,
+    }),
     candidateInterventions: voidCandidateInterventionsSchema.parse({
       schemaVersion: 1,
       interventions: [],
@@ -139,6 +147,11 @@ export function renderVoidSelfStateSummary(
     .slice(-3)
     .reverse()
     .map((entry) => `- ${entry.summary}: ${entry.draft}`);
+  const agencyPressures = state.agencyPressure.pressures
+    .filter((entry) => ["active", "cooling", "ready_to_act"].includes(entry.status))
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4)
+    .map((entry) => renderAgencyPressure(entry));
 
   return [
     `- Identity: ${profile.publicName}${profile.publicDescription ? ` - ${profile.publicDescription}` : ""}`,
@@ -162,11 +175,30 @@ export function renderVoidSelfStateSummary(
     incubation.length > 0
       ? ["- Thoughts still moving:", ...incubation].join("\n")
       : "- Thoughts still moving: none.",
+    agencyPressures.length > 0
+      ? ["- Agency pressure:", ...agencyPressures].join("\n")
+      : "- Agency pressure: none active.",
     interventions.length > 0
       ? ["- Things Void may say soon:", ...interventions].join("\n")
       : "- Things Void may say soon: none queued.",
     renderTransientRoomLog(options),
   ].join("\n");
+}
+
+function renderAgencyPressure(pressure: VoidAgencyPressure["pressures"][number]): string {
+  const target = pressure.target.label ?? pressure.target.id;
+  const lines = [`- ${target}: ${pressure.summary}`];
+  if (pressure.claim) {
+    lines.push(`  What Void is asserting: ${pressure.claim}`);
+  }
+  if (pressure.question) {
+    lines.push(`  What Void needs answered: ${pressure.question}`);
+  }
+  if (pressure.tension) {
+    lines.push(`  What makes it difficult: ${pressure.tension}`);
+  }
+  lines.push(`  What this pressure wants changed: ${pressure.actionImplication}`);
+  return lines.join("\n");
 }
 
 export function buildVoidSelfStateProjection(

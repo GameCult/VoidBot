@@ -124,6 +124,8 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - typed memory-maintenance runner. It builds a bounded prompt-facing context from typed short-term memories, durable memories, incubation, candidates, receipts, and scheduled runtime; loads `prompts/void-memory-maintenance.md`; asks Codex for memory/incubation/candidate operation proposals; then applies only allowed typed operations through `scripts/void-self-state.mjs`. It accepts `-StateFilePath` so fixture passes can use a throwaway `.cc` store.
 - `scripts/smoke-void-memory-maintenance-sleep-fixture.ps1`
   - sleep-maintenance fixture. It seeds a temporary CultCache `.cc` store with a napping sleep cycle and one short-term memory, runs mood drift with a fake Codex child through the non-skip maintenance branch, and verifies the source short-term record is gone while one durable meaning-preserving memory remains.
+- `scripts/smoke-void-agency-pressure-fixture.ps1`
+  - agency-pressure fixture. It seeds one typed self-advocacy pressure, verifies it appears in the rendered self-state summary, then runs mood drift against an isolated fixture state to prove agency pressure contributes to speaking pressure without creating a hard-wired speech candidate.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - Scheduled task `Void Mood Drift`
@@ -131,7 +133,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - Scheduled task `Void Moderator Rumination`
   - disabled pending its own model-branch fixture. Its script is typed-only, but unattended speech/thought is still too behaviorally sharp to re-enable on smoke tests alone.
 - `scripts/simulate-void-mood.mjs`
-  - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
+  - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`
@@ -204,3 +206,10 @@ Within the Postgres path, the implementation is split on purpose now too:
 6. The parent runner applies allowed operations through `scripts/void-self-state.mjs`.
 7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is short-term memory pressure. A real model pass that returns no operations under pressure fails visibly, and any real sleep pass that leaves short-term memory behind fails instead of letting yesterday's residue haunt the state. The fixture smoke exercises this path with a fake Codex child so the parent validation and application machinery are tested without relying on live inference.
 8. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.
+
+### Agency Pressure
+
+1. Rumination and memory maintenance may propose `upsert_agency_pressure` or `retire_agency_pressure`.
+2. The typed service validates that each pressure has a concrete target, claim or question, action implication, intensity, and either evidence refs/source memory ids or an explicit `evidence:missing` tag.
+3. The self-state summary renders active agency pressure separately from queued speech candidates.
+4. Mood drift reads active and ready agency pressure into speaking pressure, but it does not manufacture speech text from it.

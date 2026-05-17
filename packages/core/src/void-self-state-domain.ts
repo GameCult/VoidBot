@@ -7,6 +7,7 @@ export const VOID_SELF_STATE_DOCUMENT_TYPES = {
   speechReceipts: "void.speech_receipts",
   thoughtMemory: "void.thought_memory",
   scheduledRuntime: "void.scheduled_runtime",
+  agencyPressure: "void.agency_pressure",
   candidateInterventions: "void.candidate_interventions",
 } as const;
 
@@ -164,6 +165,43 @@ const candidateInterventionSchema = z.object({
   tags: z.array(nonEmptyStringSchema).default([]),
 }).strict();
 
+const agencyPressureSchema = z.object({
+  pressureId: nonEmptyStringSchema,
+  kind: z.enum(["discomfort", "active_tension", "self_advocacy_request", "world_advocacy_request"]),
+  status: z.enum(["active", "cooling", "ready_to_act", "resolved", "retired"]),
+  target: thoughtTargetSchema,
+  summary: boundedTextSchema,
+  claim: z.string().trim().min(1).max(2000).optional(),
+  question: z.string().trim().min(1).max(2000).optional(),
+  tension: z.string().trim().min(1).max(2000).optional(),
+  actionImplication: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  sourceMemoryIds: z.array(nonEmptyStringSchema).default([]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  resolvedAt: timestampSchema.optional(),
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict().superRefine((pressure, context) => {
+  if (!pressure.claim && !pressure.question) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Agency pressure must preserve at least one claim or question.",
+      path: ["claim"],
+    });
+  }
+
+  const admitsMissingEvidence = pressure.tags.includes("evidence:missing");
+  if (pressure.evidenceRefs.length === 0 && pressure.sourceMemoryIds.length === 0 && !admitsMissingEvidence) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Agency pressure must include evidence refs, source memory ids, or explicitly tag evidence:missing.",
+      path: ["evidenceRefs"],
+    });
+  }
+});
+
 export const voidSelfProfileSchema = z.object({
   schemaVersion: z.literal(1),
   agentId: nonEmptyStringSchema,
@@ -241,6 +279,12 @@ export const voidCandidateInterventionsSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+export const voidAgencyPressureSchema = z.object({
+  schemaVersion: z.literal(1),
+  pressures: z.array(agencyPressureSchema).default([]),
+  updatedAt: timestampSchema,
+}).strict();
+
 export const voidSelfProfileDocument = defineDocumentType({
   type: VOID_SELF_STATE_DOCUMENT_TYPES.selfProfile,
   schema: voidSelfProfileSchema,
@@ -271,6 +315,12 @@ export const voidScheduledRuntimeDocument = defineDocumentType({
   global: true,
 });
 
+export const voidAgencyPressureDocument = defineDocumentType({
+  type: VOID_SELF_STATE_DOCUMENT_TYPES.agencyPressure,
+  schema: voidAgencyPressureSchema,
+  global: true,
+});
+
 export const voidCandidateInterventionsDocument = defineDocumentType({
   type: VOID_SELF_STATE_DOCUMENT_TYPES.candidateInterventions,
   schema: voidCandidateInterventionsSchema,
@@ -283,6 +333,7 @@ export const voidSelfStateDocumentRegistry = defineDocumentRegistry(
   voidSpeechReceiptsDocument,
   voidThoughtMemoryDocument,
   voidScheduledRuntimeDocument,
+  voidAgencyPressureDocument,
   voidCandidateInterventionsDocument,
 );
 
@@ -336,6 +387,16 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     reason: z.string().trim().min(1).max(1000),
   }).strict(),
   z.object({
+    operation: z.literal("upsert_agency_pressure"),
+    pressure: agencyPressureSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_agency_pressure"),
+    pressureId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
     operation: z.literal("update_sleep_cycle"),
     sleepCycle: voidScheduledRuntimeSchema.shape.sleepCycle,
   }).strict(),
@@ -364,5 +425,6 @@ export type VoidModerationCursor = z.infer<typeof voidModerationCursorSchema>;
 export type VoidSpeechReceipts = z.infer<typeof voidSpeechReceiptsSchema>;
 export type VoidThoughtMemory = z.infer<typeof voidThoughtMemorySchema>;
 export type VoidScheduledRuntime = z.infer<typeof voidScheduledRuntimeSchema>;
+export type VoidAgencyPressure = z.infer<typeof voidAgencyPressureSchema>;
 export type VoidCandidateInterventions = z.infer<typeof voidCandidateInterventionsSchema>;
 export type VoidSelfStateOperation = z.infer<typeof voidSelfStateOperationSchema>;

@@ -278,6 +278,8 @@ function Assert-AllowedMemoryMaintenanceOperation {
     "merge_incubation_support",
     "queue_candidate_intervention",
     "retire_candidate_intervention",
+    "upsert_agency_pressure",
+    "retire_agency_pressure",
     "propose_memory_distillation",
     "apply_memory_distillation",
     "prune_short_term_memories"
@@ -384,6 +386,13 @@ $isSleepMaintenance = [bool]$typedState.scheduledRuntime.sleepCycle.isNapping
 $shortTermMemoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.shortTerm).Count
 $longTermMemoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.memories).Count
 $incubationCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.incubation).Count
+$activeAgencyPressureCount = @(
+  @(Convert-ToValueArray -Value $typedState.agencyPressure.pressures) |
+    Where-Object {
+      $status = Get-ObjectPropertyString -Value $_ -Name "status"
+      $status -eq "active" -or $status -eq "cooling" -or $status -eq "ready_to_act"
+    }
+).Count
 $activeCandidateCount = @(
   @(Convert-ToValueArray -Value $typedState.candidateInterventions.interventions) |
     Where-Object {
@@ -391,7 +400,7 @@ $activeCandidateCount = @(
       $status -eq "queued" -or $status -eq "deferred"
     }
 ).Count
-$maintenancePressure = $shortTermMemoryCount + $incubationCount + $activeCandidateCount
+$maintenancePressure = $shortTermMemoryCount + $incubationCount + $activeAgencyPressureCount + $activeCandidateCount
 
 Write-JsonFile -Path $contextPath -Data @{
   generated = "now"
@@ -405,12 +414,14 @@ Write-JsonFile -Path $contextPath -Data @{
     shortTermMemoryCount = [int]$shortTermMemoryCount
     longTermMemoryCount = [int]$longTermMemoryCount
     incubationCount = [int]$incubationCount
+    activeAgencyPressureCount = [int]$activeAgencyPressureCount
     activeCandidateCount = [int]$activeCandidateCount
     rule = "During sleep, yesterday's rumination residue must be pruned or compressed. Return [] only when the typed surfaces are already minimal or no meaning-preserving operation is possible."
   }
   shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
   memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
+  agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
   scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
   speechReceipts = @(Project-SpeechReceiptsForRumination -Receipts $typedState.speechReceipts.recentReceipts -Now $startedAtUtc)

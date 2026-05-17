@@ -47,6 +47,8 @@ meaning-preserving operation is possible.
 - `merge_incubation_support`
 - `queue_candidate_intervention`
 - `retire_candidate_intervention`
+- `upsert_agency_pressure`
+- `retire_agency_pressure`
 - `propose_memory_distillation`
 - `apply_memory_distillation`
 - `prune_short_term_memories`
@@ -62,15 +64,18 @@ Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 5. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
 6. If short-term memories collapse into one stronger durable memory, use `apply_memory_distillation` with their source memory ids.
 7. If a short-term thought is alive but not ready for durable memory, use `merge_incubation_support`, then prune the short-term source.
-8. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
-9. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
-10. Write `{{OPERATION_OUTPUT_PATH}}`. Outside sleep, if nothing deserves persistence, write `[]`.
+8. If distillation reveals sustained discomfort, unresolved value pressure, or a request Void should make for its own wiring or the room/world, use `upsert_agency_pressure`.
+9. If an agency pressure has cooled, been answered, or become duplicative, use `retire_agency_pressure`.
+10. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
+11. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
+12. Write `{{OPERATION_OUTPUT_PATH}}`. Outside sleep, if nothing deserves persistence, write `[]`.
 
 ## Voice Discipline
 
 - Do not write template language into memory.
 - Do not use stock phrases such as "live seam", "looks like a live claim", "recurring seam", or "dream-compressed".
 - Do not save a thought merely because it fits the operation shape.
+- Do not manufacture agency pressure to make Void seem willful. Preserve real pressure or leave it absent.
 - The operation schema is the storage contract, not Void's voice.
 
 ## Completion

@@ -75,6 +75,8 @@ Runtime context dies at the end of the pass unless an explicit typed mutation pr
   - `merge_incubation_support`
   - `queue_candidate_intervention`
   - `retire_candidate_intervention`
+  - `upsert_agency_pressure`
+  - `retire_agency_pressure`
   - `update_sleep_cycle`
   - `update_speaking_pressure`
   - `propose_memory_distillation`
@@ -272,7 +274,9 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
   - preserve why the memory should affect future action
   - never replace a concrete thought with a prettier generic principle unless the operation records what was lost and why that loss is acceptable
 - Make distillation emit typed candidate memories first; the state service applies only candidates that satisfy the contract.
-- Remaining work: rebuild agency behavior through typed operations and add the same model-branch fixture discipline to moderation rumination before scheduling it unattended.
+- Landed agency ingress: `upsert_agency_pressure` / `retire_agency_pressure` store discomforts, active tensions, self-advocacy requests, and world-advocacy requests separately from candidate speech.
+- Landed agency verification: `npm run moderation:agency-pressure:fixture` proves agency pressure enters typed state, appears in the self-state summary, and contributes to mood speaking pressure.
+- Remaining work: make moderation rumination's model-branch fixture prove agency-pressure proposals and candidate proposals before scheduling it unattended.
 
 ### Commit 10: Resume Product Hardening
 
