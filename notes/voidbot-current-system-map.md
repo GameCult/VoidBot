@@ -42,6 +42,10 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - Profile synthesis, disposition, psychological read, inferred traits, interaction dimensions, and response-guidance construction.
 - `packages/core/src/context-builder.ts`
   - request context assembly, including interaction-memory/profile attachment, shared Void self-state projection, and any precomputed situational social read.
+- `packages/core/src/void-self-state-loader.ts`
+  - thin typed `.cc` self-state loader that delegates read-side rendering to the projection module.
+- `packages/core/src/void-self-state-projection.ts`
+  - read-side projection authority for typed self-state: renders the agent-facing summary and compact nap/reply-mode projection from typed documents without touching legacy state.
 - `packages/core/src/situational-social-read.ts`
   - quick Ollama sidecar inferer for ephemeral room-reading scaffolding built from the current prompt, recent room transcript, and longer-horizon interaction memory.
 - `packages/providers/src/owner-codex-provider.ts`

@@ -176,9 +176,10 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 ### Commit 2: Add Read-Only Typed Projections
 
-- Build a self-state service that reads current canonical state and renders the same summaries used by direct replies.
-- Keep JSON projection for the old runner.
-- Verification: compare rendered summary against current loader output on a fixture.
+- Landed path: `packages/core/src/void-self-state-projection.ts` owns typed `.cc` document to agent-facing summary/projection rendering.
+- `packages/core/src/void-self-state-loader.ts` only loads typed documents and delegates read-side projection.
+- No JSON projection is needed for the live typed runner.
+- Verification: projection smoke loads a temp `.cc` store and confirms mode plus transient room context render.
 
 ### Commit 3: Add Typed Mutation CLI
 
