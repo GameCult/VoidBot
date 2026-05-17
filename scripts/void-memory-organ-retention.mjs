@@ -306,9 +306,9 @@ function scrubThoughtSurfaceText(value) {
   }
 
   return normalizeText(value)
-    .replace(/\bseems to have a live seam around\b/gi, "is accumulating a concrete decision around")
-    .replace(/\blive seam around\b/gi, "concrete decision around")
-    .replace(/\blooks like a live seam,? not just ambient noise\.?/gi, "is staying structurally important across passes.")
+    .replace(/\bseems to have a live seam around\b/gi, "keeps returning to")
+    .replace(/\blive seam around\b/gi, "unresolved pressure around")
+    .replace(/\blooks like a live seam,? not just ambient noise\.?/gi, "keeps mattering across passes.")
     .replace(/\bstill looks like a live seam\.?/gi, "remains unresolved enough to deserve a cleaner read.")
     .replace(/\blooks like a live claim\.?/gi, "has become a concrete claim.")
     .replace(/\bstill looks like a live question\.?/gi, "remains an unresolved question.")

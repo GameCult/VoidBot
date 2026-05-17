@@ -484,9 +484,9 @@ function buildFocusPhrase({ targetKind, repoNames, keywords, sourceKinds }) {
     return `${repoNames[0]} shape`;
   }
   if (sourceKinds.includes("archive_excursion")) {
-    return "the archive seam";
+    return "an archive pressure";
   }
-  return "the live seam";
+  return "an unresolved pressure";
 }
 
 function buildThoughtLabel({ focusKind, targetKind, focusPhrase, repoNames }) {

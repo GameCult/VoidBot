@@ -146,17 +146,17 @@ export function renderVoidSelfStateSummary(
     renderTypedSleepCycleSummary(state.scheduledRuntime, state.thoughtMemory),
     renderTypedSpeakingPressureSummary(state.scheduledRuntime),
     openCases.length > 0
-      ? ["- Outstanding room obligations:", ...openCases].join("\n")
-      : "- Outstanding room obligations: none recorded.",
+      ? ["- What Void owes the room:", ...openCases].join("\n")
+      : "- What Void owes the room: nothing unresolved.",
     memories.length > 0
-      ? ["- Typed memory:", ...memories].join("\n")
-      : "- Typed memory: none recorded.",
+      ? ["- What Void remembers:", ...memories].join("\n")
+      : "- What Void remembers: nothing durable yet.",
     incubation.length > 0
-      ? ["- Incubating threads:", ...incubation].join("\n")
-      : "- Incubating threads: none recorded.",
+      ? ["- Thoughts still moving:", ...incubation].join("\n")
+      : "- Thoughts still moving: none.",
     interventions.length > 0
-      ? ["- Candidate interventions:", ...interventions].join("\n")
-      : "- Candidate interventions: none recorded.",
+      ? ["- Things Void may say soon:", ...interventions].join("\n")
+      : "- Things Void may say soon: none queued.",
     renderTransientRoomLog(options),
   ].join("\n");
 }
@@ -191,25 +191,49 @@ export function buildVoidSelfStateProjection(
 
 function renderTypedMemory(memory: VoidThoughtMemory["memories"][number]): string {
   const target = memory.target.label ?? memory.target.id;
-  const meaning = [
-    memory.claim ? `claim=${memory.claim}` : undefined,
-    memory.question ? `question=${memory.question}` : undefined,
-    memory.tension ? `tension=${memory.tension}` : undefined,
-    memory.actionImplication ? `next=${memory.actionImplication}` : undefined,
-  ].filter((value): value is string => Boolean(value));
-  return `- ${target} [${memory.kind}]: ${memory.summary}${meaning.length > 0 ? ` (${meaning.join("; ")})` : ""}`;
+  const lines = [`- ${target}: ${memory.summary}`];
+  if (memory.claim) {
+    lines.push(`  Void's read: ${memory.claim}`);
+  }
+  if (memory.question) {
+    lines.push(`  The question it keeps open: ${memory.question}`);
+  }
+  if (memory.tension) {
+    lines.push(`  What keeps it honest: ${memory.tension}`);
+  }
+  if (memory.actionImplication) {
+    lines.push(`  How it should change the next move: ${memory.actionImplication}`);
+  }
+  return lines.join("\n");
 }
 
 function renderTypedIncubationThread(thread: VoidThoughtMemory["incubation"][number]): string {
   const target = thread.target.label ?? thread.target.id;
-  const metrics = [
-    `status=${thread.status}`,
-    `maturation=${thread.maturation.toFixed(2)}`,
-    thread.desireToSpeak !== undefined ? `speak=${thread.desireToSpeak.toFixed(2)}` : undefined,
-    thread.noveltyToSelf !== undefined ? `self=${thread.noveltyToSelf.toFixed(2)}` : undefined,
-    thread.noveltyToRoom !== undefined ? `room=${thread.noveltyToRoom.toFixed(2)}` : undefined,
-  ].filter((value): value is string => Boolean(value));
-  return `- ${thread.topic} -> ${target} [${metrics.join("; ")}]: ${thread.summary}`;
+  const lines = [`- ${thread.topic}: ${thread.summary}`];
+  lines.push(`  It is pointed at ${target} and is currently ${describeIncubationStatus(thread.status)}.`);
+  if (thread.desireToSpeak !== undefined && thread.desireToSpeak >= 0.65) {
+    lines.push("  It has pressure to be said out loud.");
+  }
+  if (thread.saturationScore !== undefined && thread.saturationScore >= 0.75) {
+    lines.push("  It may be over-chewed; find new evidence or let it cool.");
+  }
+  return lines.join("\n");
+}
+
+function describeIncubationStatus(status: VoidThoughtMemory["incubation"][number]["status"]): string {
+  switch (status) {
+    case "ready_to_share":
+      return "nearly ready to share";
+    case "cooling":
+      return "cooling";
+    case "crystallized":
+      return "settling into doctrine";
+    case "retired":
+      return "retired";
+    case "active":
+    default:
+      return "active";
+  }
 }
 
 function renderTypedSleepCycleSummary(
@@ -223,30 +247,44 @@ function renderTypedSleepCycleSummary(
     .reverse()
     .map((memory) => `${memory.target.label ?? memory.target.id}: ${memory.summary}`);
   const headline = sleepCycle.isNapping
-    ? `- Sleep cycle: napping${sleepCycle.currentNapEndsAt ? ` until ${sleepCycle.currentNapEndsAt}` : ""}.`
+    ? `- Sleep: napping${sleepCycle.currentNapEndsAt ? ` until ${sleepCycle.currentNapEndsAt}` : ""}.`
     : `- Sleep cycle: awake${sleepCycle.nextNapStartsAt ? `; next nap ${sleepCycle.nextNapStartsAt}` : ""}.`;
   const themeLine =
     sleepCycle.activeDreamThemes.length > 0
-      ? `- Active dream themes: ${sleepCycle.activeDreamThemes.join(" | ")}`
-      : "- Active dream themes: none recorded.";
+      ? `- Dream themes in reach: ${sleepCycle.activeDreamThemes.join(" | ")}`
+      : "- Dream themes in reach: none.";
   const dreamLine =
     dreams.length > 0
       ? `- Recent dream residue: ${dreams.join(" | ")}`
-      : "- Recent dream residue: none recorded.";
+      : "- Recent dream residue: none.";
 
   return [headline, themeLine, dreamLine].join("\n");
 }
 
 function renderTypedSpeakingPressureSummary(runtime: VoidScheduledRuntime): string {
   const pressure = runtime.speakingPressure;
-  const parts = [
-    `needToSpeak=${pressure.needToSpeak.toFixed(2)}`,
-    pressure.confessionPressure !== undefined ? `confession=${pressure.confessionPressure.toFixed(2)}` : undefined,
-    pressure.noveltyPressure !== undefined ? `novelty=${pressure.noveltyPressure.toFixed(2)}` : undefined,
-    pressure.recentSpeechDamping !== undefined ? `speechDamping=${pressure.recentSpeechDamping.toFixed(2)}` : undefined,
-  ].filter((value): value is string => Boolean(value));
+  const parts = [`overall ${describePressure(pressure.needToSpeak)}`];
+  if (pressure.confessionPressure !== undefined && pressure.confessionPressure >= 0.6) {
+    parts.push("self-disclosure is tugging");
+  }
+  if (pressure.noveltyPressure !== undefined && pressure.noveltyPressure >= 0.6) {
+    parts.push("something feels new enough to mention");
+  }
+  if (pressure.recentSpeechDamping !== undefined && pressure.recentSpeechDamping >= 0.5) {
+    parts.push("recent speech should dampen the impulse");
+  }
 
-  return `- Speaking pressure: ${parts.join(", ")}`;
+  return `- Pressure to speak: ${parts.join(", ")}`;
+}
+
+function describePressure(value: number): "low" | "medium" | "high" {
+  if (value >= 0.7) {
+    return "high";
+  }
+  if (value >= 0.35) {
+    return "medium";
+  }
+  return "low";
 }
 
 function renderTransientRoomLog(
@@ -261,7 +299,7 @@ function renderTransientRoomLog(
     return [
       "- Current room snapshot:",
       `- Current room: guild=${guildName}; channel=${channelName}`,
-      "- No recent chat messages were captured in this snapshot.",
+      "- Recent room: quiet in this snapshot.",
     ].join("\n");
   }
 

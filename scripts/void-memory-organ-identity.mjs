@@ -158,7 +158,7 @@ function queueCrystallizationIntervention({ candidateInterventions, crystallizat
     return;
   }
 
-  const summary = `Possible crystallized-thought share: ${crystallization.subjectLabel}`;
+  const summary = `Void may need to say this about ${crystallization.subjectLabel}`;
   const sourceMemoryIds = ensureStringArray(thought.sourceMemoryIds);
   const existing = candidateInterventions.find(
     (entry) => readString(entry, "summary") === summary,

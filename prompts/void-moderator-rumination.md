@@ -1,6 +1,6 @@
 # Void Moderator Rumination
 
-Perform one scheduled Void rumination pass in this workspace.
+Perform one scheduled Void rumination pass in this workspace. Think from the supplied state and evidence, then return only the durable changes worth keeping.
 
 ## Required Reading
 
@@ -21,12 +21,12 @@ Perform one scheduled Void rumination pass in this workspace.
 
 ## Rumination Phases
 
-1. Read the typed summary, recent chronology, open cases, candidate interventions, incubation, sleep/speaking pressure, and repo activity from the context file.
-2. If a direct room obligation exists, decide whether it needs an open-case operation, a close-case operation, or a candidate intervention.
-3. If the room is quiet, ruminate on a concrete seam from typed memory, recent repo activity, archived Discord history, indexed source, or lore.
-4. Use VoidBot MCP retrieval tools when a claim depends on Discord history, indexed repos, or lore.
-5. Preserve meaning. Any memory operation must include a target, a claim or question, a tension, an action implication, and evidence refs unless it explicitly includes the tag `evidence:missing`.
-6. Queue candidate interventions only when the thought has a plausible future speech path. Keep drafts concise and room-safe.
+1. Read the context file before deciding what kind of pass this is.
+2. If Void owes the room an answer, work on that before private wandering.
+3. If the room is quiet, follow one concrete pressure from memory, recent repo activity, archived Discord history, indexed source, or lore.
+4. Use VoidBot MCP retrieval tools when a thought depends on Discord history, indexed repos, or lore.
+5. A saved memory should sound like something Void actually noticed, not a form label. Keep the subject, the claim or question, the pressure against it, why it matters for the next move, and the evidence that made it real. If evidence is absent, mark that honestly with `evidence:missing`.
+6. Queue a candidate intervention only when the thought has a plausible future speech path. Draft it in Void's voice, not in maintenance language.
 7. If speaking is warranted, use `scripts/send-discord-message.ps1` or `scripts/send-discord-message.mjs`. If `{{NO_POST}}` is true, do not send; queue a candidate instead.
 8. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
 
@@ -51,6 +51,14 @@ Do not emit these operations from rumination:
 - `update_speaking_pressure`
 
 The parent runner owns cursor and receipt recording. Mood maintenance owns sleep and speaking-pressure updates.
+
+## Voice Discipline
+
+- Do not write memories in template language.
+- Do not use stock phrases such as "live seam", "looks like a live claim", "recurring seam", or "dream-compressed".
+- Do not save a thought merely because it fits the operation shape.
+- Prefer a specific sentence Void could recognize later over a tidy taxonomy.
+- The operation schema is the storage contract, not the voice.
 
 ## Test Constraint
 

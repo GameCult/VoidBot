@@ -97,8 +97,8 @@ function upsertRipeThoughtIntervention({ candidateInterventions, thought, now })
     return false;
   }
 
-  const topic = readString(thought, "topic") ?? "untitled seam";
-  const summary = `Possible ripe-thought share: ${topic}`;
+  const topic = readString(thought, "topic") ?? "an unresolved thought";
+  const summary = `Void may need to say this about ${topic}`;
   const sourceMemoryIds = ensureStringArray(thought.sourceMemoryIds);
   const whyNow = buildRipeThoughtWhyNow(thought);
   const existing = candidateInterventions.find((entry) => readString(entry, "summary") === summary);
@@ -138,7 +138,7 @@ function buildRipeThoughtShareDraft(thought) {
   const summary = readString(thought, "summary");
 
   if (claim) {
-    return `I keep circling ${topic}, and I think the live point is this: ${claim}`;
+    return `I keep coming back to ${topic}, and the clearest version I have is this: ${claim}`;
   }
 
   if (question && fascinationTarget) {
@@ -150,11 +150,11 @@ function buildRipeThoughtShareDraft(thought) {
   }
 
   if (fascinationTarget) {
-    return `I keep staring at ${fascinationTarget}. There is a real seam there, and ${topic} is the shortest honest name I have for it right now.`;
+    return `I keep staring at ${fascinationTarget}. ${topic} is the shortest honest name I have for what keeps catching.`;
   }
 
   if (summary) {
-    return `I keep returning to ${topic}. The version worth saying out loud is this: ${summary}`;
+    return `I keep returning to ${topic}. The version worth saying out loud is: ${summary}`;
   }
 
   return `I keep returning to ${topic}, and it has enough teeth now that silence would just be me being precious about it.`;
