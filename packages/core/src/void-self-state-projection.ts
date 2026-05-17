@@ -70,6 +70,7 @@ export function createEmptyVoidSelfState(
     }),
     thoughtMemory: voidThoughtMemorySchema.parse({
       schemaVersion: 1,
+      shortTerm: [],
       memories: [],
       incubation: [],
       updatedAt: createdAt,
@@ -119,6 +120,10 @@ export function renderVoidSelfStateSummary(
     .slice(-6)
     .reverse()
     .map((memory) => renderTypedMemory(memory));
+  const shortTermMemories = state.thoughtMemory.shortTerm
+    .slice(-6)
+    .reverse()
+    .map((memory) => renderTypedMemory(memory));
   const incubation = state.thoughtMemory.incubation
     .filter((thread) => thread.status !== "retired")
     .sort((left, right) => right.maturation - left.maturation)
@@ -151,6 +156,9 @@ export function renderVoidSelfStateSummary(
     memories.length > 0
       ? ["- What Void remembers:", ...memories].join("\n")
       : "- What Void remembers: nothing durable yet.",
+    shortTermMemories.length > 0
+      ? ["- Short-term residue awaiting sleep:", ...shortTermMemories].join("\n")
+      : "- Short-term residue awaiting sleep: none.",
     incubation.length > 0
       ? ["- Thoughts still moving:", ...incubation].join("\n")
       : "- Thoughts still moving: none.",

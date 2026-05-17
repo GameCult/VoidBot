@@ -71,7 +71,7 @@ Runtime context dies at the end of the pass unless an explicit typed mutation pr
   - `upsert_open_case`
   - `close_open_case`
   - `record_delivery_receipt`
-  - `append_distilled_memory`
+  - `record_short_term_memory`
   - `merge_incubation_support`
   - `queue_candidate_intervention`
   - `retire_candidate_intervention`
@@ -79,6 +79,7 @@ Runtime context dies at the end of the pass unless an explicit typed mutation pr
   - `update_speaking_pressure`
   - `propose_memory_distillation`
   - `apply_memory_distillation`
+  - `prune_short_term_memories`
 - Model/agent output crosses the boundary as proposed operations, not as rewritten state.
 - The state service validates, normalizes, dedupes, and writes.
 
@@ -96,7 +97,7 @@ The clean crossing surface is small JSON command payloads, not a whole JSON stat
 }
 ```
 
-Memory-bearing operations have a stricter contract than historical projections. A new distilled memory must carry:
+Memory-bearing operations have a stricter contract than historical projections. A new rumination memory is short-term and must carry:
 
 - a concrete target
 - a summary
@@ -109,12 +110,29 @@ If those fields are missing, the operation is invalid. This is the wall that kee
 
 ```json
 {
-  "operation": "append_distilled_memory",
-  "kind": "project_seam",
-  "subject": "AquariumSynthCSharp",
-  "summary": "Workflow cannot own the body.",
-  "evidenceRefs": ["source:..."],
-  "observedAt": "2026-05-16T00:00:00.000Z"
+  "operation": "record_short_term_memory",
+  "memory": {
+    "memoryId": "mem-aquarium-body-workflow",
+    "kind": "project_seam",
+    "target": {
+      "kind": "repo",
+      "id": "AquariumSynthCSharp",
+      "label": "AquariumSynthCSharp"
+    },
+    "summary": "Workflow cannot own the body.",
+    "claim": "The implementation boundary should own runtime state instead of leaving workflow scripts to compensate for it.",
+    "tension": "Workflow scripts are good at orchestration and bad at being an organism.",
+    "actionImplication": "Move authority into the runtime boundary before adding more maintenance scripts.",
+    "evidenceRefs": [
+      {
+        "ref": "source:...",
+        "kind": "source"
+      }
+    ],
+    "createdAt": "2026-05-16T00:00:00.000Z",
+    "updatedAt": "2026-05-16T00:00:00.000Z",
+    "tags": []
+  }
 }
 ```
 

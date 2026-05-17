@@ -204,6 +204,7 @@ export const voidSpeechReceiptsSchema = z.object({
 
 export const voidThoughtMemorySchema = z.object({
   schemaVersion: z.literal(1),
+  shortTerm: z.array(distilledMemorySchema).default([]),
   memories: z.array(distilledMemorySchema).default([]),
   incubation: z.array(incubationThreadSchema).default([]),
   updatedAt: timestampSchema,
@@ -311,8 +312,14 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     receipt: deliveryReceiptSchema,
   }).strict(),
   z.object({
-    operation: z.literal("append_distilled_memory"),
+    operation: z.literal("record_short_term_memory"),
     memory: meaningPreservingMemorySchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("prune_short_term_memories"),
+    sourceMemoryIds: z.array(nonEmptyStringSchema).min(1),
+    prunedAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
   }).strict(),
   z.object({
     operation: z.literal("merge_incubation_support"),

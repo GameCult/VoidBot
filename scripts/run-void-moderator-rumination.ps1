@@ -277,6 +277,24 @@ function Convert-ToOperationArray {
   return @($Value)
 }
 
+function Assert-AllowedRuminationOperation {
+  param($Operation)
+
+  $operationName = Get-ObjectPropertyString -Value $Operation -Name "operation"
+  $allowed = @(
+    "upsert_open_case",
+    "close_open_case",
+    "record_short_term_memory",
+    "merge_incubation_support",
+    "queue_candidate_intervention",
+    "retire_candidate_intervention"
+  )
+
+  if ($null -eq $operationName -or -not $allowed.Contains($operationName)) {
+    throw "Rumination proposed disallowed operation '$operationName'."
+  }
+}
+
 function Convert-LastSpeechToReceiptOperation {
   param($Speech)
 
@@ -440,6 +458,7 @@ Write-JsonFile -Path $contextPath -Data @{
   openCases = @(Project-OpenCasesForRumination -Cases $typedState.moderationCursor.openCases -Now $startedAtUtc)
   speechReceipts = @(Project-SpeechReceiptsForRumination -Receipts $typedState.speechReceipts.recentReceipts -Now $startedAtUtc)
   memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
+  shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
   scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
@@ -518,6 +537,7 @@ foreach ($operation in $proposedOperations) {
   if ($null -eq $operation -or $null -eq $operationName) {
     continue
   }
+  Assert-AllowedRuminationOperation -Operation $operation
   $appliedOperations += Apply-TypedOperation -Operation $operation
 }
 

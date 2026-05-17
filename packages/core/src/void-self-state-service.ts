@@ -128,9 +128,18 @@ function applyTypedOperation(
       state.speechReceipts.updatedAt = operation.receipt.sentAt;
       closeCasesForReceipt(state.moderationCursor, operation.receipt);
       return;
-    case "append_distilled_memory":
-      upsertBy(state.thoughtMemory.memories, operation.memory, (entry) => entry.memoryId);
+    case "record_short_term_memory":
+      upsertBy(state.thoughtMemory.shortTerm, operation.memory, (entry) => entry.memoryId);
+      state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .slice(-48);
       state.thoughtMemory.updatedAt = operation.memory.updatedAt;
+      return;
+    case "prune_short_term_memories":
+      state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(
+        (entry) => !operation.sourceMemoryIds.includes(entry.memoryId),
+      );
+      state.thoughtMemory.updatedAt = operation.prunedAt;
       return;
     case "merge_incubation_support":
       upsertBy(state.thoughtMemory.incubation, operation.thread, (entry) => entry.threadId);
@@ -157,6 +166,9 @@ function applyTypedOperation(
       upsertBy(state.thoughtMemory.memories, operation.memory, (entry) => entry.memoryId);
       state.thoughtMemory.memories = state.thoughtMemory.memories.filter(
         (entry) => !operation.sourceMemoryIds.includes(entry.memoryId) || entry.memoryId === operation.memory.memoryId,
+      );
+      state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(
+        (entry) => !operation.sourceMemoryIds.includes(entry.memoryId),
       );
       state.thoughtMemory.updatedAt = operation.appliedAt;
       return;

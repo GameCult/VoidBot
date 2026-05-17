@@ -22,7 +22,10 @@ operation payloads worth applying.
 
 ## Purpose
 
-Sleep forces distillation. Memory maintenance is allowed to reduce bulk, not
+Sleep forces distillation. The `shortTermMemories` list is the day's residue.
+None of it survives sleep as short-term memory. Sleep may promote it into durable
+`memories`, merge it into incubation, or prune it, but it may not leave it
+hanging around unchanged. Memory maintenance is allowed to reduce bulk, not
 meaning.
 
 A valid memory/distillation operation must preserve:
@@ -33,33 +36,35 @@ A valid memory/distillation operation must preserve:
 - why this should affect future action
 - evidence refs, or an explicit `evidence:missing` tag
 
-If those pieces cannot be preserved, do not invent a prettier abstraction. Let the
-thought cool, merge support into incubation, retire stale candidates, or write
-nothing only when the state is already minimal or no meaning-preserving operation
-is possible.
+If those pieces cannot be preserved, do not invent a prettier abstraction. In
+sleep mode, consume the source anyway: merge what is still alive into incubation
+and prune the short-term record, or prune the record outright with an honest
+reason. Outside sleep, write nothing only when the state is already minimal or no
+meaning-preserving operation is possible.
 
 ## Allowed Operations
 
-- `append_distilled_memory`
 - `merge_incubation_support`
 - `queue_candidate_intervention`
 - `retire_candidate_intervention`
 - `propose_memory_distillation`
 - `apply_memory_distillation`
+- `prune_short_term_memories`
 
 Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 
 ## Pass Shape
 
 1. Read the context file.
-2. If `sleepDirective.forceDistillation` is true, make at least one meaning-preserving pruning, merge, distillation, or retirement move unless the context proves none is possible.
-3. If there are no memories, no incubation threads, and no candidate interventions needing attention, write `[]`.
-4. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
-5. If two memories really collapse into one stronger memory, use `apply_memory_distillation`.
-6. If a thought is still alive but undercooked, use `merge_incubation_support`.
-7. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
-8. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
-9. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
+2. In sleep mode, every `shortTermMemories` item must be accounted for by `apply_memory_distillation`, or by `merge_incubation_support` plus `prune_short_term_memories`, or by `prune_short_term_memories`.
+3. If `sleepDirective.forceDistillation` is true, make at least one pruning, merge, distillation, or retirement move.
+4. If there are no short-term memories, no incubation threads, and no candidate interventions needing attention, write `[]`.
+5. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
+6. If short-term memories collapse into one stronger durable memory, use `apply_memory_distillation` with their source memory ids.
+7. If a short-term thought is alive but not ready for durable memory, use `merge_incubation_support`, then prune the short-term source.
+8. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
+9. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
+10. Write `{{OPERATION_OUTPUT_PATH}}`. Outside sleep, if nothing deserves persistence, write `[]`.
 
 ## Voice Discipline
 

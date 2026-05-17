@@ -119,9 +119,9 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/lib/void-rumination-context-projection.ps1`
   - rumination context projector. It turns typed timestamps and helper payloads into prompt-facing relative phrases while leaving exact chronology in parent-owned typed state, status, and cursor bookkeeping.
 - `scripts/void-self-state.mjs`
-  - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, memory appends, incubation merges, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
+  - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, short-term memory records, sleep-owned distillations, incubation merges, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
 - `scripts/run-void-memory-maintenance.ps1`
-  - typed memory-maintenance runner. It builds a bounded prompt-facing context from typed memories, incubation, candidates, receipts, and scheduled runtime; loads `prompts/void-memory-maintenance.md`; asks Codex for memory/incubation/candidate operation proposals; then applies only allowed typed operations through `scripts/void-self-state.mjs`. It accepts `-StateFilePath` so fixture passes can use a throwaway `.cc` store.
+  - typed memory-maintenance runner. It builds a bounded prompt-facing context from typed short-term memories, durable memories, incubation, candidates, receipts, and scheduled runtime; loads `prompts/void-memory-maintenance.md`; asks Codex for memory/incubation/candidate operation proposals; then applies only allowed typed operations through `scripts/void-self-state.mjs`. It accepts `-StateFilePath` so fixture passes can use a throwaway `.cc` store.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - `scripts/simulate-void-mood.mjs`
@@ -196,5 +196,5 @@ Within the Postgres path, the implementation is split on purpose now too:
 4. It loads `prompts/void-memory-maintenance.md` and asks Codex for operation proposals unless `-SkipModel` is set.
 5. The parent runner rejects any operation outside memory, incubation, or candidate-intervention maintenance.
 6. The parent runner applies allowed operations through `scripts/void-self-state.mjs`.
-7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is memory pressure. A real model pass that returns no operations under pressure fails visibly instead of letting yesterday's residue haunt the state.
+7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is short-term memory pressure. A real model pass that returns no operations under pressure fails visibly, and any real sleep pass that leaves short-term memory behind fails instead of letting yesterday's residue haunt the state.
 8. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.

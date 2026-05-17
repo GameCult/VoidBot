@@ -267,12 +267,12 @@ function Assert-AllowedMemoryMaintenanceOperation {
 
   $operationName = Get-ObjectPropertyString -Value $Operation -Name "operation"
   $allowed = @(
-    "append_distilled_memory",
     "merge_incubation_support",
     "queue_candidate_intervention",
     "retire_candidate_intervention",
     "propose_memory_distillation",
-    "apply_memory_distillation"
+    "apply_memory_distillation",
+    "prune_short_term_memories"
   )
 
   if ($null -eq $operationName -or -not $allowed.Contains($operationName)) {
@@ -349,7 +349,8 @@ $codexExecArgs = if ($envValues.ContainsKey("CODEX_EXEC_ARGS")) { Split-CommandA
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
 $isSleepMaintenance = [bool]$typedState.scheduledRuntime.sleepCycle.isNapping
-$memoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.memories).Count
+$shortTermMemoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.shortTerm).Count
+$longTermMemoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.memories).Count
 $incubationCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.incubation).Count
 $activeCandidateCount = @(
   @(Convert-ToValueArray -Value $typedState.candidateInterventions.interventions) |
@@ -358,7 +359,7 @@ $activeCandidateCount = @(
       $status -eq "queued" -or $status -eq "deferred"
     }
 ).Count
-$maintenancePressure = $memoryCount + $incubationCount + $activeCandidateCount
+$maintenancePressure = $shortTermMemoryCount + $incubationCount + $activeCandidateCount
 
 Write-JsonFile -Path $contextPath -Data @{
   generated = "now"
@@ -367,13 +368,15 @@ Write-JsonFile -Path $contextPath -Data @{
   mode = if ($isSleepMaintenance) { "sleep_maintenance" } else { "awake_memory_maintenance" }
   maintenanceBoundary = "This pass may propose only typed memory/incubation/candidate operations. Exact timestamps stay in typed state; prompt-facing chronology uses relative phrases."
   sleepDirective = @{
-    forceDistillation = [bool]($isSleepMaintenance -and $maintenancePressure -gt 1)
+    forceDistillation = [bool]($isSleepMaintenance -and $maintenancePressure -gt 0)
     maintenancePressure = [int]$maintenancePressure
-    memoryCount = [int]$memoryCount
+    shortTermMemoryCount = [int]$shortTermMemoryCount
+    longTermMemoryCount = [int]$longTermMemoryCount
     incubationCount = [int]$incubationCount
     activeCandidateCount = [int]$activeCandidateCount
     rule = "During sleep, yesterday's rumination residue must be pruned or compressed. Return [] only when the typed surfaces are already minimal or no meaning-preserving operation is possible."
   }
+  shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
   memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
@@ -436,13 +439,21 @@ if (-not (Test-Path $operationOutputPath)) {
 $proposedOperations = @(Convert-ToOperationArray -Value (Read-JsonFile -Path $operationOutputPath))
 $appliedOperations = @()
 
-if ((-not $SkipModel) -and $isSleepMaintenance -and $maintenancePressure -gt 1 -and @($proposedOperations).Count -eq 0) {
+if ((-not $SkipModel) -and $isSleepMaintenance -and $maintenancePressure -gt 0 -and @($proposedOperations).Count -eq 0) {
   throw "Sleep memory maintenance returned no operations despite maintenance pressure $maintenancePressure."
 }
 
 foreach ($operation in $proposedOperations) {
   Assert-AllowedMemoryMaintenanceOperation -Operation $operation
   $appliedOperations += Apply-TypedOperation -Operation $operation
+}
+
+if ((-not $SkipModel) -and $isSleepMaintenance) {
+  $refreshedTypedState = Get-TypedSelfState
+  $remainingShortTermCount = @(Convert-ToValueArray -Value $refreshedTypedState.typedState.thoughtMemory.shortTerm).Count
+  if ($remainingShortTermCount -gt 0) {
+    throw "Sleep memory maintenance left $remainingShortTermCount short-term memories unpromoted."
+  }
 }
 
 $finishedAtUtc = [DateTime]::UtcNow
