@@ -137,7 +137,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - Scheduled task `Void Mood Drift`
   - enabled typed mood/sleep runner. It invokes `scripts/run-void-mood-drift.ps1`, which calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
 - Scheduled task `Void Moderator Rumination`
-  - ready for cautious re-enable after parent-owned speech closure. Its script is typed-only, has model-branch and parent-owned speech fixtures, and should be observed for one scheduled pass before being treated as live-fire stable.
+  - enabled after parent-owned speech closure and one observed live scheduled pass with Last Result `0`. Its script is typed-only and has model-branch plus parent-owned speech fixtures; the next stability gate is sleep consuming the short-term memory it produced.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`
