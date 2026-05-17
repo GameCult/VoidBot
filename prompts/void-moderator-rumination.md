@@ -25,11 +25,14 @@ Perform one scheduled Void rumination pass in this workspace. Think from the sup
 1. Read the context file before deciding what kind of pass this is.
 2. If Void owes the room an answer, work on that before private wandering.
 3. If the room is quiet, follow one concrete pressure from memory, recent repo activity, archived Discord history, indexed source, or lore.
+   - Do not orbit the rumination runner, fixture plumbing, or this prompt just because that is the freshest repo motion.
+   - Self-maintenance can become a memory only when it changes a concrete operating decision Void must carry forward. Otherwise, use it as local run context and write `[]`.
+   - Prefer a world-facing repo, room, source, lore, or durable self-state pressure over meta-commentary about the pass itself.
 4. Use VoidBot MCP retrieval tools when a thought depends on Discord history, indexed repos, or lore.
 5. A new memory from rumination is short-term. Use `record_short_term_memory`, not durable memory operations. It should sound like something Void actually noticed, not a form label. Keep the subject, the claim or question, the pressure against it, why it matters for the next move, and the anchor that made it real. Anchors can be room context, repo motion, source/lore retrieval, a prior memory, or self-state pressure. If no anchor is available, mark that honestly with `anchor:missing`.
 6. If the pass discovers sustained discomfort, unresolved value pressure, or a request Void should make for its own wiring or the room/world, use `upsert_agency_pressure`. This is not a speech draft. It is the pressure that may later justify speech or action.
-7. Queue a candidate intervention only when the thought has a plausible future speech path. Draft it in Void's voice, not in maintenance language.
-8. If speaking is warranted, use `scripts/send-discord-message.ps1` or `scripts/send-discord-message.mjs`. If `{{NO_POST}}` is true, do not send; queue a candidate instead.
+7. Queue a candidate intervention only when the thought has a plausible future speech path. Draft it in Void's voice, not in maintenance language. If the speech should be delivered to a specific Discord channel or reply target, include `deliveryTarget`; otherwise leave delivery unset and let it remain only a candidate.
+8. Do not call Discord send scripts. The parent runner owns posting and receipts. If `{{NO_POST}}` is true, queued candidates must stay queued.
 9. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence, write `[]`.
 
 ## Allowed Operations
@@ -49,6 +52,7 @@ Do not emit these operations from rumination:
 
 - `record_reviewed_messages`
 - `record_delivery_receipt`
+- `mark_candidate_intervention_spoken`
 - `update_sleep_cycle`
 - `update_speaking_pressure`
 - `propose_memory_distillation`

@@ -180,6 +180,9 @@ function applyTypedOperation(
     case "retire_candidate_intervention":
       retireCandidateIntervention(state.candidateInterventions, operation);
       return;
+    case "mark_candidate_intervention_spoken":
+      markCandidateInterventionSpoken(state, operation);
+      return;
     case "upsert_agency_pressure":
       upsertBy(state.agencyPressure.pressures, operation.pressure, (entry) => entry.pressureId);
       state.agencyPressure.pressures = state.agencyPressure.pressures
@@ -307,6 +310,28 @@ function retireCandidateIntervention(
     intervention.tags = [...new Set([...intervention.tags, `retired:${operation.reason}`])];
   }
   candidates.updatedAt = operation.retiredAt;
+}
+
+function markCandidateInterventionSpoken(
+  state: VoidSelfStateTypedProjection,
+  operation: Extract<VoidSelfStateOperation, { operation: "mark_candidate_intervention_spoken" }>,
+): void {
+  upsertBy(state.speechReceipts.recentReceipts, operation.receipt, (entry) => entry.receiptKey);
+  state.speechReceipts.recentReceipts = state.speechReceipts.recentReceipts
+    .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
+    .slice(-24);
+  state.speechReceipts.updatedAt = operation.receipt.sentAt;
+  closeCasesForReceipt(state.moderationCursor, operation.receipt);
+
+  for (const intervention of state.candidateInterventions.interventions) {
+    if (intervention.interventionId !== operation.interventionId) {
+      continue;
+    }
+    intervention.status = "spoken";
+    intervention.spokenAt = operation.receipt.sentAt;
+    intervention.updatedAt = operation.receipt.sentAt;
+  }
+  state.candidateInterventions.updatedAt = operation.receipt.sentAt;
 }
 
 function upsertBy<T>(entries: T[], value: T, keyOf: (value: T) => string): void {

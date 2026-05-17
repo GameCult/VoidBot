@@ -36,9 +36,13 @@ process.stdin.on("end", () => {
     console.error("fixture prompt did not contain the short-term rumination contract");
     process.exit(2);
   }
+  if (!prompt.includes("Do not orbit the rumination runner")) {
+    console.error("fixture prompt did not contain the self-orbit guard");
+    process.exit(3);
+  }
   if (prompt.includes("moderation-agent-state.json") && !prompt.includes("Do not read or write")) {
     console.error("fixture prompt referenced legacy state outside the boundary warning");
-    process.exit(3);
+    process.exit(4);
   }
 
   const operations = [

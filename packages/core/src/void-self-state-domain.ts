@@ -75,6 +75,22 @@ const deliveryReceiptSchema = z.object({
   previewHash: z.string().trim().min(1).optional(),
 }).strict();
 
+const candidateDeliveryTargetSchema = z.object({
+  mode: z.enum(["channel", "owner_dm"]).default("channel"),
+  channelId: z.string().trim().min(1).optional(),
+  replyToMessageId: z.string().trim().min(1).optional(),
+  personaName: z.string().trim().min(1).optional(),
+  personaAvatarUrl: z.string().trim().min(1).optional(),
+}).strict().superRefine((delivery, context) => {
+  if (delivery.mode === "channel" && !delivery.channelId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Channel candidate interventions must include a channelId delivery target.",
+      path: ["channelId"],
+    });
+  }
+});
+
 const distilledMemorySchema = z.object({
   memoryId: nonEmptyStringSchema,
   kind: z.enum(["distilled_seam", "identity_seam", "project_seam", "room_observation", "dream_residue"]),
@@ -159,6 +175,7 @@ const candidateInterventionSchema = z.object({
   target: thoughtTargetSchema.optional(),
   summary: boundedTextSchema,
   draft: boundedTextSchema,
+  deliveryTarget: candidateDeliveryTargetSchema.optional(),
   priority: z.number().min(0).max(1).default(0.5),
   mustEventuallyShare: z.boolean().default(false),
   createdAt: timestampSchema,
@@ -415,6 +432,11 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     interventionId: nonEmptyStringSchema,
     retiredAt: timestampSchema,
     reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("mark_candidate_intervention_spoken"),
+    interventionId: nonEmptyStringSchema,
+    receipt: deliveryReceiptSchema,
   }).strict(),
   z.object({
     operation: z.literal("upsert_agency_pressure"),

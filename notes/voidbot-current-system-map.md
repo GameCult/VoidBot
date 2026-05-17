@@ -130,12 +130,14 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - agency-pressure fixture. It seeds one typed self-advocacy pressure, verifies it appears in the rendered self-state summary, then runs mood drift against an isolated fixture state to prove agency pressure contributes to speaking pressure without creating a hard-wired speech candidate.
 - `scripts/smoke-void-rumination-fixture.ps1`
   - rumination fixture. It seeds an isolated CultCache `.cc` state, routes the non-skip rumination runner through a fake Codex child, and verifies short-term memory, incubation, agency pressure, and candidate intervention proposals are applied by the parent runner while the prompt-facing context keeps exact timestamps out.
+- `scripts/smoke-void-rumination-speech-fixture.ps1`
+  - parent-owned speech fixture. It queues one deliverable candidate through fake Codex, routes delivery through a fake Discord sender, then verifies the parent runner writes a delivery receipt and marks the candidate spoken through typed state.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - Scheduled task `Void Mood Drift`
   - enabled typed mood/sleep runner. It invokes `scripts/run-void-mood-drift.ps1`, which calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
 - Scheduled task `Void Moderator Rumination`
-  - disabled pending a controlled real-model no-post pass and review. Its script is typed-only and now has a model-branch fixture, but unattended speech/thought is still too behaviorally sharp to re-enable on runner plumbing alone.
+  - ready for cautious re-enable after parent-owned speech closure. Its script is typed-only, has model-branch and parent-owned speech fixtures, and should be observed for one scheduled pass before being treated as live-fire stable.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`
@@ -188,8 +190,9 @@ Within the Postgres path, the implementation is split on purpose now too:
 4. The runner loads `prompts/void-moderator-rumination.md`, substitutes the context/state/output paths, and sends that prompt to Codex.
 5. Codex may use retrieval and analysis tools, but its durable state output is restricted to `.voidbot/status/moderation-rumination-operations.json`.
 6. The parent runner applies those typed operations through `scripts/void-self-state.mjs`, then records reviewed-message cursor and any speech receipt itself.
-7. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
-8. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
+7. If posting is enabled and the child queued a candidate intervention with a delivery target, the parent runner sends at most one newly proposed candidate, records the delivery receipt, and marks the candidate spoken through typed state. The child prompt forbids direct send-script calls.
+8. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
+9. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
 
 ## Flow 6: Mood Rebuild Stub
 

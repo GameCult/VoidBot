@@ -38,6 +38,11 @@ $contextProjectionScriptPath = Join-Path $repoRoot "scripts\lib\void-rumination-
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $repoActivityScriptPath = Join-Path $repoRoot "scripts\export-recent-repo-activity.mjs"
 $selfStateScriptPath = Join-Path $repoRoot "scripts\void-self-state.mjs"
+$sendMessageScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_SEND_DISCORD_SCRIPT)) {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_SEND_DISCORD_SCRIPT)
+} else {
+  Join-Path $repoRoot "scripts\send-discord-message.mjs"
+}
 $startedAtUtc = [DateTime]::UtcNow
 
 . $contextProjectionScriptPath
@@ -358,6 +363,95 @@ function Convert-LastSpeechToReceiptOperation {
   }
 }
 
+function Convert-LastSpeechToSpokenCandidateOperation {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $InterventionId,
+    $Speech
+  )
+
+  $receiptOperation = Convert-LastSpeechToReceiptOperation -Speech $Speech
+  if ($null -eq $receiptOperation) {
+    return $null
+  }
+
+  return @{
+    operation = "mark_candidate_intervention_spoken"
+    interventionId = $InterventionId
+    receipt = $receiptOperation.receipt
+  }
+}
+
+function Invoke-CandidateInterventionDelivery {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Operation
+  )
+
+  $intervention = Get-ObjectPropertyValue -Value $Operation -Name "intervention"
+  $deliveryTarget = Get-ObjectPropertyValue -Value $intervention -Name "deliveryTarget"
+  if ($null -eq $deliveryTarget) {
+    return $null
+  }
+
+  $interventionId = Get-ObjectPropertyString -Value $intervention -Name "interventionId"
+  $draft = Get-ObjectPropertyString -Value $intervention -Name "draft"
+  if ([string]::IsNullOrWhiteSpace($interventionId) -or [string]::IsNullOrWhiteSpace($draft)) {
+    return $null
+  }
+
+  $contentPath = Join-Path $statusDir ("moderation-rumination-speech-{0}.txt" -f ([Guid]::NewGuid().ToString("n")))
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($contentPath, $draft, $utf8NoBom)
+
+  $arguments = @($sendMessageScriptPath, "--content-file", $contentPath)
+  $mode = Get-ObjectPropertyString -Value $deliveryTarget -Name "mode"
+  if ($mode -eq "owner_dm") {
+    $arguments += "--owner-dm"
+  } else {
+    $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
+    if ([string]::IsNullOrWhiteSpace($channelId)) {
+      throw "Candidate intervention '$interventionId' has deliveryTarget without channelId."
+    }
+    $arguments += @("--channel-id", $channelId)
+  }
+
+  $replyToMessageId = Get-ObjectPropertyString -Value $deliveryTarget -Name "replyToMessageId"
+  if (-not [string]::IsNullOrWhiteSpace($replyToMessageId)) {
+    $arguments += @("--reply-to", $replyToMessageId)
+  }
+
+  $personaName = Get-ObjectPropertyString -Value $deliveryTarget -Name "personaName"
+  if (-not [string]::IsNullOrWhiteSpace($personaName)) {
+    $arguments += @("--persona-name", $personaName)
+  }
+
+  $personaAvatarUrl = Get-ObjectPropertyString -Value $deliveryTarget -Name "personaAvatarUrl"
+  if (-not [string]::IsNullOrWhiteSpace($personaAvatarUrl)) {
+    $arguments += @("--persona-avatar-url", $personaAvatarUrl)
+  }
+
+  $previousVoidStatusDir = $env:VOID_STATUS_DIR
+  try {
+    $env:VOID_STATUS_DIR = $statusDir
+    & node @arguments | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      throw "Candidate intervention delivery failed with exit code $LASTEXITCODE."
+    }
+  } finally {
+    $env:VOID_STATUS_DIR = $previousVoidStatusDir
+    Remove-Item -LiteralPath $contentPath -Force -ErrorAction SilentlyContinue
+  }
+
+  $lastSpeechPath = Join-Path $statusDir "void-last-speech.json"
+  if (-not (Test-Path $lastSpeechPath)) {
+    throw "Candidate intervention delivery did not write last speech status."
+  }
+
+  $speech = Read-JsonFile -Path $lastSpeechPath
+  return Convert-LastSpeechToSpokenCandidateOperation -InterventionId $interventionId -Speech $speech
+}
+
 trap {
   $finishedAtUtc = [DateTime]::UtcNow
   $failureMessage = $_.Exception.Message
@@ -405,7 +499,7 @@ if (Test-Path $operationOutputPath) {
   Remove-Item -LiteralPath $operationOutputPath -Force
 }
 
-foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath)) {
+foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath, $sendMessageScriptPath)) {
   if (-not (Test-Path $requiredPath)) {
     throw "Missing required helper at $requiredPath"
   }
@@ -596,12 +690,21 @@ if (
   }
 }
 
-$lastSpeechPath = Join-Path $statusDir "void-last-speech.json"
-if ((-not $NoPost) -and (Test-Path $lastSpeechPath)) {
-  $speech = Read-JsonFile -Path $lastSpeechPath
-  $receiptOperation = Convert-LastSpeechToReceiptOperation -Speech $speech
-  if ($null -ne $receiptOperation) {
-    $appliedOperations += Apply-TypedOperation -Operation $receiptOperation
+$deliveredCandidateCount = 0
+if (-not $NoPost) {
+  foreach ($operation in $proposedOperations) {
+    if ($deliveredCandidateCount -ge 1) {
+      break
+    }
+    $operationName = Get-ObjectPropertyString -Value $operation -Name "operation"
+    if ($operationName -ne "queue_candidate_intervention") {
+      continue
+    }
+    $spokenOperation = Invoke-CandidateInterventionDelivery -Operation $operation
+    if ($null -ne $spokenOperation) {
+      $appliedOperations += Apply-TypedOperation -Operation $spokenOperation
+      $deliveredCandidateCount += 1
+    }
   }
 }
 
@@ -628,6 +731,7 @@ $finalStatus = [ordered]@{
   observedCursorTimestamp = [string]$observedCursorTimestamp
   proposedOperationCount = [int]@($proposedOperations).Count
   appliedOperationCount = [int]@($appliedOperations).Count
+  deliveredCandidateCount = [int]$deliveredCandidateCount
   stateUpdated = [bool](@($appliedOperations).Count -gt 0)
   tracePath = [string]$tracePath
   lastMessagePath = [string]$lastMessagePath

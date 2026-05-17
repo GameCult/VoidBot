@@ -560,10 +560,13 @@ function findSplitIndex(input, limit) {
 }
 
 function writeLastSpeechStatus(payload) {
-  const statusPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
+  const statusDir = process.env.VOID_STATUS_DIR
+    ? resolve(process.env.VOID_STATUS_DIR)
+    : resolve(repoRoot, ".voidbot/status");
+  const statusPath = resolve(statusDir, "void-last-speech.json");
   mkdirSync(dirname(statusPath), { recursive: true });
   writeFileSync(statusPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  const logPath = resolve(repoRoot, ".voidbot/status/void-speech-log.jsonl");
+  const logPath = resolve(statusDir, "void-speech-log.jsonl");
   writeFileSync(logPath, `${JSON.stringify(payload)}\n`, { encoding: "utf8", flag: "a" });
 }
 
