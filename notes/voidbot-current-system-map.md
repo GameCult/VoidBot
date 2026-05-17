@@ -128,12 +128,14 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - memory-lifecycle fixture. It proves long-term memory is durable but plastic: a short-term memory promotes into durable memory, later revision retires the superseded durable record, and crystallization produces one active identity memory plus a self-profile value.
 - `scripts/smoke-void-agency-pressure-fixture.ps1`
   - agency-pressure fixture. It seeds one typed self-advocacy pressure, verifies it appears in the rendered self-state summary, then runs mood drift against an isolated fixture state to prove agency pressure contributes to speaking pressure without creating a hard-wired speech candidate.
+- `scripts/smoke-void-rumination-fixture.ps1`
+  - rumination fixture. It seeds an isolated CultCache `.cc` state, routes the non-skip rumination runner through a fake Codex child, and verifies short-term memory, incubation, agency pressure, and candidate intervention proposals are applied by the parent runner while the prompt-facing context keeps exact timestamps out.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - Scheduled task `Void Mood Drift`
   - enabled typed mood/sleep runner. It invokes `scripts/run-void-mood-drift.ps1`, which calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
 - Scheduled task `Void Moderator Rumination`
-  - disabled pending its own model-branch fixture. Its script is typed-only, but unattended speech/thought is still too behaviorally sharp to re-enable on smoke tests alone.
+  - disabled pending a controlled real-model no-post pass and review. Its script is typed-only and now has a model-branch fixture, but unattended speech/thought is still too behaviorally sharp to re-enable on runner plumbing alone.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`

@@ -1,4 +1,5 @@
 param(
+  [string] $StateFilePath,
   [switch] $NoPost,
   [switch] $SkipModel
 )
@@ -10,9 +11,21 @@ $ProgressPreference = "SilentlyContinue"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
 
-$stateFilePath = Join-Path $repoRoot ".voidbot\private\void-self-state.cc"
-$statusDir = Join-Path $repoRoot ".voidbot\status"
-$logDir = Join-Path $repoRoot ".voidbot\logs"
+$stateFilePath = if ([string]::IsNullOrWhiteSpace($StateFilePath)) {
+  Join-Path $repoRoot ".voidbot\private\void-self-state.cc"
+} else {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StateFilePath)
+}
+$statusDir = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_STATUS_DIR)) {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_RUMINATION_STATUS_DIR)
+} else {
+  Join-Path $repoRoot ".voidbot\status"
+}
+$logDir = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_LOG_DIR)) {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_RUMINATION_LOG_DIR)
+} else {
+  Join-Path $repoRoot ".voidbot\logs"
+}
 $statusPath = Join-Path $statusDir "moderation-rumination.json"
 $summaryLogPath = Join-Path $logDir "moderation-rumination.log"
 $tracePath = Join-Path $logDir "moderation-rumination-last.jsonl"
@@ -402,10 +415,34 @@ if (-not (Test-Path $promptTemplatePath)) {
 }
 
 $envValues = Read-DotEnv -Path (Join-Path $repoRoot ".env")
-$codexExecutable = if ($envValues.ContainsKey("CODEX_EXECUTABLE") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_EXECUTABLE"])) { $envValues["CODEX_EXECUTABLE"] } else { "codex" }
-$codexModel = if ($envValues.ContainsKey("CODEX_MODEL") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_MODEL"])) { $envValues["CODEX_MODEL"] } else { "gpt-5.4" }
-$codexReasoningEffort = if ($envValues.ContainsKey("CODEX_MODEL_REASONING_EFFORT") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_MODEL_REASONING_EFFORT"])) { $envValues["CODEX_MODEL_REASONING_EFFORT"] } else { "medium" }
-$codexExecArgs = if ($envValues.ContainsKey("CODEX_EXEC_ARGS")) { Split-CommandArgs -Value $envValues["CODEX_EXEC_ARGS"] } else { @() }
+$codexExecutable = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXECUTABLE)) {
+  $env:CODEX_EXECUTABLE
+} elseif ($envValues.ContainsKey("CODEX_EXECUTABLE") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_EXECUTABLE"])) {
+  $envValues["CODEX_EXECUTABLE"]
+} else {
+  "codex"
+}
+$codexModel = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_MODEL)) {
+  $env:CODEX_MODEL
+} elseif ($envValues.ContainsKey("CODEX_MODEL") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_MODEL"])) {
+  $envValues["CODEX_MODEL"]
+} else {
+  "gpt-5.4"
+}
+$codexReasoningEffort = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_MODEL_REASONING_EFFORT)) {
+  $env:CODEX_MODEL_REASONING_EFFORT
+} elseif ($envValues.ContainsKey("CODEX_MODEL_REASONING_EFFORT") -and -not [string]::IsNullOrWhiteSpace($envValues["CODEX_MODEL_REASONING_EFFORT"])) {
+  $envValues["CODEX_MODEL_REASONING_EFFORT"]
+} else {
+  "medium"
+}
+$codexExecArgs = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXEC_ARGS)) {
+  Split-CommandArgs -Value $env:CODEX_EXEC_ARGS
+} elseif ($envValues.ContainsKey("CODEX_EXEC_ARGS")) {
+  Split-CommandArgs -Value $envValues["CODEX_EXEC_ARGS"]
+} else {
+  @()
+}
 
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState

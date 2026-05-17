@@ -239,7 +239,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 ### Commit 6.5: Keep Old Scripts Offline
 
 - `Void Mood Drift` has been deliberately reinstalled after the typed sleep-maintenance fixture passed. It runs `scripts/run-void-mood-drift.ps1`, which calls the typed `scripts/simulate-void-mood.mjs` path.
-- Keep `Void Moderator Rumination` disabled until its typed operation path has a model-branch fixture comparable to the sleep-maintenance fixture.
+- Keep `Void Moderator Rumination` disabled until its typed operation path has passed a controlled real-model no-post run and review. The model-branch fixture now proves runner plumbing; it does not prove the live model's judgment is ready for unattended speech.
 - Do not reinstall or re-enable deleted legacy scripts as compatibility surfaces.
 - Verification: scheduled-task query shows mood enabled with Last Result `0`, moderation disabled, and rebuilt direct dry runs operate only on `.voidbot/private/void-self-state.cc`.
 
@@ -282,7 +282,8 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Make distillation emit typed candidate memories first; the state service applies only candidates that satisfy the contract.
 - Landed agency ingress: `upsert_agency_pressure` / `retire_agency_pressure` store discomforts, active tensions, self-advocacy requests, and world-advocacy requests separately from candidate speech.
 - Landed agency verification: `npm run moderation:agency-pressure:fixture` proves agency pressure enters typed state, appears in the self-state summary, and contributes to mood speaking pressure.
-- Remaining work: make moderation rumination's model-branch fixture prove agency-pressure proposals and candidate proposals before scheduling it unattended.
+- Landed rumination verification: `npm run moderation:rumination:fixture` routes the non-skip rumination branch through a fake Codex child and proves short-term memory, incubation, agency-pressure, and candidate-intervention proposals cross the parent-applied typed operation boundary without timestamp leakage.
+- Remaining work: run a controlled real-model typed rumination pass with `-NoPost`, inspect whether the proposed operations are concrete enough to survive sleep, and decide whether unattended scheduling is ready or whether action/receipt closure still needs hardening.
 
 ### Commit 10: Resume Product Hardening
 
