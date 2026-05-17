@@ -6,7 +6,7 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 The typed moderation, mood, sleep, agency, and private self-state boundary is live. The current goal is to let ordinary scheduling run, inspect the next unattended awake rumination and sleep cycle, and harden only the seams that show concrete failure. Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop without reviving JSON projection edits, legacy mirrors, or the swollen memory organ.
 
-The next priority is observational hardening of the enabled typed loop. Agents and scheduled workers mutate typed CultCache-backed state through explicit operations, not by editing a whole-state JSON working copy. Sleep and memory distillation now preserve meaning-bearing claims/anchors/tensions in fixture and live-state passes; keep checking ordinary cycles for abstraction sludge, duplicate speech, stale residue, or self-orbiting memories.
+The next priority is observational hardening of the enabled typed loop. Agents and scheduled workers mutate typed CultCache-backed state through explicit operations, not by editing a whole-state JSON working copy. Sleep and memory distillation now preserve meaning-bearing claims/anchors/tensions in fixture and live-state passes, and short-term rumination has a clustering guard so repeated same-target/topic thoughts update one provisional memory instead of stacking duplicates. Keep checking ordinary cycles for abstraction sludge, duplicate speech, stale residue, or self-orbiting memories.
 
 The center remains prevention, not legacy repair. The old brain is evidence of a failed boundary. The new brain rejects malformed memory at ingress so the runtime does not need a permanent cleanup bureaucracy to recover basic meaning.
 
@@ -113,6 +113,8 @@ Memory-bearing operations have a stricter contract than historical projections. 
 - anchors, or an explicit `anchor:missing` tag
 
 If those fields are missing, the operation is invalid. This is the wall that keeps the next iteration from turning into topic sludge and asking cleanup to be its personality.
+
+Short-term memory also has a self-novelty wall now. If a rumination write repeats an existing target/topic cluster, the state service keeps the existing source id, merges anchors/tags, and stores the incoming narrowed thought as the current working version. Same repo is not enough to merge; the topic pressure must overlap.
 
 ```json
 {
@@ -287,7 +289,8 @@ Verdict: the foundation is coherent enough for cautious live operation. Do not a
 - Landed scheduled rumination re-enable: one observed live scheduled pass completed with Last Result `0`, proposed one anchored short-term memory, delivered no speech, and kept exact timestamps out of the prompt-facing context.
 - Landed live sleep-maintenance verification: a manual typed nap ran real memory maintenance on live state, promoted the scheduled rumination short-term memory into one durable `identity_seam`, and left `thoughtMemory.shortTerm` empty.
 - Landed sleep brake: scheduled rumination now skips before model invocation during naps when there are no new room messages or open cases. `npm run moderation:rumination:nap-skip-fixture` proves the model path is not touched and no operation proposals are written.
-- Remaining work: let ordinary scheduling run and inspect the next unattended awake rumination and sleep cycle for duplicate speech, stale short-term residue, or ungrounded memory writes before calling the system broadly stable.
+- Landed short-term clustering guard: `record_short_term_memory` folds repeated same-target/topic pressure into one provisional memory with merged anchors, and `npm run moderation:short-term-clustering:fixture` proves the synth-boundary duplicate case without merging unrelated same-repo thoughts.
+- Remaining work: let ordinary scheduling run and inspect the next unattended awake rumination and sleep cycle for repeated thought clusters, stale short-term residue, or ungrounded memory writes before calling the system broadly stable.
 
 ### Commit 10: Resume Product Hardening
 

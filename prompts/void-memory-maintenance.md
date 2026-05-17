@@ -65,7 +65,7 @@ Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 3. If `sleepDirective.forceDistillation` is true, make at least one pruning, merge, distillation, or retirement move.
 4. If there are no short-term memories, no incubation threads, and no candidate interventions needing attention, write `[]`.
 5. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
-6. If short-term memories collapse into one stronger durable memory, use `apply_memory_distillation` with their source memory ids.
+6. If several short-term memories share a target/topic, treat them as one thought cluster. Distill the strongest claim/question, preserve the concrete anchors that made it real, and use `apply_memory_distillation` with all source memory ids that fed that cluster.
 7. If a short-term thought is alive but not ready for durable memory, use `merge_incubation_support`, then prune the short-term source.
 8. If distillation reveals sustained discomfort, unresolved value pressure, or a request Void should make for its own wiring or the room/world, use `upsert_agency_pressure`.
 9. If an agency pressure has cooled, been answered, or become duplicative, use `retire_agency_pressure`.

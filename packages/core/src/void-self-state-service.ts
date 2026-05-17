@@ -9,6 +9,7 @@ import {
   type VoidScheduledRuntime,
   type VoidSelfStateOperation,
   type VoidSpeechReceipts,
+  type VoidThoughtMemory,
   voidCandidateInterventionsDocument,
   voidAgencyPressureDocument,
   voidModerationCursorDocument,
@@ -133,7 +134,7 @@ function applyTypedOperation(
       closeCasesForReceipt(state.moderationCursor, operation.receipt);
       return;
     case "record_short_term_memory":
-      upsertBy(state.thoughtMemory.shortTerm, operation.memory, (entry) => entry.memoryId);
+      recordShortTermMemory(state.thoughtMemory, operation.memory);
       state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm
         .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
         .slice(-48);
@@ -212,6 +213,93 @@ function applyTypedOperation(
       state.thoughtMemory.updatedAt = operation.appliedAt;
       return;
   }
+}
+
+function recordShortTermMemory(
+  thoughtMemory: VoidThoughtMemory,
+  memory: VoidThoughtMemory["shortTerm"][number],
+): void {
+  const exactIndex = thoughtMemory.shortTerm.findIndex((entry) => entry.memoryId === memory.memoryId);
+  if (exactIndex !== -1) {
+    thoughtMemory.shortTerm[exactIndex] = memory;
+    return;
+  }
+
+  const clusterIndex = thoughtMemory.shortTerm.findIndex((entry) => shouldClusterShortTermMemory(entry, memory));
+  if (clusterIndex === -1) {
+    thoughtMemory.shortTerm.push(memory);
+    return;
+  }
+
+  thoughtMemory.shortTerm[clusterIndex] = mergeShortTermMemoryCluster(
+    thoughtMemory.shortTerm[clusterIndex],
+    memory,
+  );
+}
+
+function shouldClusterShortTermMemory(
+  existing: VoidThoughtMemory["shortTerm"][number],
+  incoming: VoidThoughtMemory["shortTerm"][number],
+): boolean {
+  const sharedTags = getSharedNormalizedTags(existing.tags, incoming.tags);
+  const sharedTopicCount = sharedTags.filter((tag) => tag.startsWith("topic:")).length;
+  const sharedRepoCount = sharedTags.filter((tag) => tag.startsWith("repo:")).length;
+  const sameTarget =
+    existing.target.kind === incoming.target.kind &&
+    existing.target.id.toLowerCase() === incoming.target.id.toLowerCase();
+
+  if (sameTarget && (sharedTopicCount > 0 || sharedTags.length >= 2)) {
+    return true;
+  }
+
+  if (sharedTopicCount > 0 && sharedRepoCount > 0) {
+    return true;
+  }
+
+  return sharedTopicCount >= 2;
+}
+
+function mergeShortTermMemoryCluster(
+  existing: VoidThoughtMemory["shortTerm"][number],
+  incoming: VoidThoughtMemory["shortTerm"][number],
+): VoidThoughtMemory["shortTerm"][number] {
+  return {
+    ...incoming,
+    memoryId: existing.memoryId,
+    createdAt: earlierTimestamp(existing.createdAt, incoming.createdAt),
+    anchorRefs: mergeRefs(existing.anchorRefs, incoming.anchorRefs),
+    evidenceRefs: mergeRefs(existing.evidenceRefs, incoming.evidenceRefs),
+    tags: mergeTags(existing.tags, incoming.tags, "cluster:short-term"),
+  };
+}
+
+function getSharedNormalizedTags(left: string[], right: string[]): string[] {
+  const leftTags = new Set(left.map(normalizeTag));
+  return Array.from(new Set(right.map(normalizeTag).filter((tag) => leftTags.has(tag))));
+}
+
+function mergeRefs<T extends { ref: string }>(left: T[], right: T[]): T[] {
+  const refs = new Map<string, T>();
+  for (const entry of [...left, ...right]) {
+    refs.set(entry.ref, entry);
+  }
+  return Array.from(refs.values());
+}
+
+function mergeTags(left: string[], right: string[], extraTag: string): string[] {
+  const tags = new Map<string, string>();
+  for (const tag of [...left, ...right, extraTag]) {
+    tags.set(normalizeTag(tag), tag);
+  }
+  return Array.from(tags.values());
+}
+
+function normalizeTag(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+function earlierTimestamp(left: string, right: string): string {
+  return left.localeCompare(right) <= 0 ? left : right;
 }
 
 function retireSourceMemories(

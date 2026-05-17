@@ -126,6 +126,8 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - sleep-maintenance fixture. It seeds a temporary CultCache `.cc` store with a napping sleep cycle and one short-term memory, runs mood drift with a fake Codex child through the non-skip maintenance branch, and verifies the source short-term record is gone while one durable meaning-preserving memory remains.
 - `scripts/smoke-void-memory-lifecycle-fixture.ps1`
   - memory-lifecycle fixture. It proves long-term memory is durable but plastic: a short-term memory promotes into durable memory, later revision retires the superseded durable record, and crystallization produces one active identity memory plus a self-profile value.
+- `scripts/smoke-void-short-term-clustering-fixture.ps1`
+  - short-term clustering fixture. It proves repeated same-target/topic rumination proposals fold into one provisional memory with merged anchors, while a different topic in the same repo stays separate.
 - `scripts/smoke-void-agency-pressure-fixture.ps1`
   - agency-pressure fixture. It seeds one typed self-advocacy pressure, verifies it appears in the rendered self-state summary, then runs mood drift against an isolated fixture state to prove agency pressure contributes to speaking pressure without creating a hard-wired speech candidate.
 - `scripts/smoke-void-rumination-fixture.ps1`
@@ -223,9 +225,10 @@ Within the Postgres path, the implementation is split on purpose now too:
 ### Memory Lifecycle
 
 1. Rumination may only write short-term memories. It cannot directly mutate durable memory.
-2. Sleep maintenance promotes, merges, prunes, revises, retires, or crystallizes memory through typed operations.
-3. Durable memory is not immutable. `revise_durable_memory` creates an explicit replacement and retires superseded source memories; `retire_durable_memory` marks obsolete memory inactive; `crystallize_memory_into_identity` promotes a stable thought into an `identity_seam` and may update self-profile values or private notes.
-4. Prompt-facing language should talk about anchors: what made the thought real. The schema still accepts old `evidenceRefs`, but new memory payloads should prefer `anchorRefs` or explicit `anchor:missing`.
+2. The typed state service clusters repeated short-term memories before sleep sees them. If a new record repeats the same target/topic pressure, it updates one provisional memory and merges anchors instead of stacking another variant.
+3. Sleep maintenance promotes, merges, prunes, revises, retires, or crystallizes memory through typed operations.
+4. Durable memory is not immutable. `revise_durable_memory` creates an explicit replacement and retires superseded source memories; `retire_durable_memory` marks obsolete memory inactive; `crystallize_memory_into_identity` promotes a stable thought into an `identity_seam` and may update self-profile values or private notes.
+5. Prompt-facing language should talk about anchors: what made the thought real. The schema still accepts old `evidenceRefs`, but new memory payloads should prefer `anchorRefs` or explicit `anchor:missing`.
 
 ### Agency Pressure
 
