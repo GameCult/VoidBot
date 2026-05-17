@@ -59,6 +59,7 @@ async function main() {
     content,
     options.replyToMessageId,
     persona,
+    env,
   );
   writeLastSpeechStatus({
     sentAt: new Date().toISOString(),
@@ -239,13 +240,14 @@ async function postChunkedDiscordMessage(
   content,
   replyToMessageId,
   persona,
+  env,
 ) {
   const chunks = splitDiscordContent(content);
 
   for (let index = 0; index < chunks.length; index += 1) {
     const replyTarget = index === 0 ? replyToMessageId : undefined;
     if (persona) {
-      await postDiscordWebhookMessage(botToken, channelId, chunks[index], replyTarget, persona);
+      await postDiscordWebhookMessage(botToken, channelId, chunks[index], replyTarget, persona, env);
     } else {
       await postDiscordMessage(
         botToken,
@@ -289,9 +291,11 @@ async function postDiscordWebhookMessage(
   content,
   replyToMessageId,
   persona,
+  env,
 ) {
   const target = await resolveWebhookTarget(botToken, channelId);
-  let webhook = await getCachedPersonaWebhook(target.webhookChannelId);
+  const configuredWebhook = await getConfiguredPersonaWebhook(env, target.webhookChannelId);
+  let webhook = configuredWebhook ?? await getCachedPersonaWebhook(target.webhookChannelId);
 
   if (!webhook) {
     webhook = await createPersonaWebhook(botToken, target.webhookChannelId);
@@ -309,6 +313,12 @@ async function postDiscordWebhookMessage(
   } catch (error) {
     if (!isStaleWebhookError(error)) {
       throw error;
+    }
+
+    if (configuredWebhook) {
+      throw new Error(
+        `Configured persona webhook for channel ${target.webhookChannelId} is no longer executable: ${error.message}`,
+      );
     }
 
     clearCachedPersonaWebhook(target.webhookChannelId);
@@ -379,7 +389,11 @@ async function createPersonaWebhook(botToken, channelId) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create Discord webhook: ${response.status} ${await response.text()}`);
+    const detail = await response.text();
+    throw new Error(
+      `Failed to create Discord webhook for channel ${channelId}: ${response.status} ${detail}. ` +
+        `Grant the bot Manage Webhooks there or configure DISCORD_PERSONA_WEBHOOK_URL_${channelId}.`,
+    );
   }
 
   const payload = await response.json();
@@ -395,6 +409,60 @@ async function createPersonaWebhook(botToken, channelId) {
     name: PERSONA_WEBHOOK_NAME,
     createdAt: new Date().toISOString(),
   };
+}
+
+async function getConfiguredPersonaWebhook(env, channelId) {
+  const channelSpecificKey = `DISCORD_PERSONA_WEBHOOK_URL_${channelId}`;
+  const rawUrl = trimOptionalString(env[channelSpecificKey]) ?? trimOptionalString(env.DISCORD_PERSONA_WEBHOOK_URL);
+
+  if (!rawUrl) {
+    return undefined;
+  }
+
+  const webhook = parseDiscordWebhookUrl(rawUrl, channelId);
+  await assertConfiguredWebhookTargetsChannel(webhook, channelId);
+  return webhook;
+}
+
+function parseDiscordWebhookUrl(rawUrl, expectedChannelId) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`Configured persona webhook for channel ${expectedChannelId} is not a valid URL.`);
+  }
+
+  const match = url.pathname.match(/\/api(?:\/v\d+)?\/webhooks\/([^/]+)\/([^/?#]+)/) ??
+    url.pathname.match(/\/webhooks\/([^/]+)\/([^/?#]+)/);
+
+  if (!match) {
+    throw new Error(
+      `Configured persona webhook for channel ${expectedChannelId} must look like https://discord.com/api/webhooks/<id>/<token>.`,
+    );
+  }
+
+  return {
+    id: match[1],
+    token: match[2],
+    channelId: expectedChannelId,
+    name: "configured",
+    configured: true,
+  };
+}
+
+async function assertConfiguredWebhookTargetsChannel(webhook, expectedChannelId) {
+  const response = await fetch(`https://discord.com/api/v10/webhooks/${webhook.id}/${webhook.token}`);
+
+  if (!response.ok) {
+    throw new Error(`Configured persona webhook lookup failed: ${response.status} ${await response.text()}`);
+  }
+
+  const payload = await response.json();
+  if (payload.channel_id !== expectedChannelId) {
+    throw new Error(
+      `Configured persona webhook targets channel ${payload.channel_id}, not required channel ${expectedChannelId}.`,
+    );
+  }
 }
 
 async function executePersonaWebhook(

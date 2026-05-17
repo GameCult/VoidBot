@@ -610,9 +610,14 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
   $previousVoidStatusDir = $env:VOID_STATUS_DIR
   try {
     $env:VOID_STATUS_DIR = $statusDir
-    & node @arguments | Out-Null
+    $sendOutput = & node @arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-      throw "Candidate intervention delivery failed with exit code $LASTEXITCODE."
+      $sendDetail = [string]($sendOutput -join [Environment]::NewLine)
+      if ([string]::IsNullOrWhiteSpace($sendDetail)) {
+        throw "Candidate intervention delivery failed with exit code $LASTEXITCODE."
+      }
+
+      throw "Candidate intervention delivery failed with exit code $LASTEXITCODE`: $($sendDetail.Trim())"
     }
   } finally {
     $env:VOID_STATUS_DIR = $previousVoidStatusDir

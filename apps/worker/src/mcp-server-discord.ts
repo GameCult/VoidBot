@@ -24,6 +24,7 @@ interface CachedWebhookRecord {
   channelId: string;
   name: string;
   createdAt: string;
+  configured?: boolean;
 }
 
 export async function openOwnerDmChannel(
@@ -114,7 +115,8 @@ async function postDiscordPersonaMessage(
   replyToMessageId?: string,
 ): Promise<{ id: string; transport: "webhook" }> {
   const target = await resolveWebhookTarget(botToken, channelId);
-  let webhook = getCachedPersonaWebhook(target.webhookChannelId);
+  const configuredWebhook = await getConfiguredPersonaWebhook(target.webhookChannelId);
+  let webhook = configuredWebhook ?? getCachedPersonaWebhook(target.webhookChannelId);
 
   if (!webhook) {
     webhook = await createPersonaWebhook(botToken, target.webhookChannelId);
@@ -132,6 +134,14 @@ async function postDiscordPersonaMessage(
   } catch (error) {
     if (!isStaleWebhookError(error)) {
       throw error;
+    }
+
+    if (configuredWebhook) {
+      throw new Error(
+        `Configured persona webhook for channel ${target.webhookChannelId} is no longer executable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
 
     clearCachedPersonaWebhook(target.webhookChannelId);
@@ -215,7 +225,11 @@ async function createPersonaWebhook(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create Discord webhook: ${response.status} ${await response.text()}`);
+    const detail = await response.text();
+    throw new Error(
+      `Failed to create Discord webhook for channel ${channelId}: ${response.status} ${detail}. ` +
+        `Grant the bot Manage Webhooks there or configure DISCORD_PERSONA_WEBHOOK_URL_${channelId}.`,
+    );
   }
 
   const payload = (await response.json()) as { id?: string; token?: string };
@@ -231,6 +245,64 @@ async function createPersonaWebhook(
     name: PERSONA_WEBHOOK_NAME,
     createdAt: new Date().toISOString(),
   };
+}
+
+async function getConfiguredPersonaWebhook(channelId: string): Promise<CachedWebhookRecord | undefined> {
+  const channelSpecificKey = `DISCORD_PERSONA_WEBHOOK_URL_${channelId}`;
+  const rawUrl = trimOptionalString(process.env[channelSpecificKey]) ?? trimOptionalString(process.env.DISCORD_PERSONA_WEBHOOK_URL);
+
+  if (!rawUrl) {
+    return undefined;
+  }
+
+  const webhook = parseDiscordWebhookUrl(rawUrl, channelId);
+  await assertConfiguredWebhookTargetsChannel(webhook, channelId);
+  return webhook;
+}
+
+function parseDiscordWebhookUrl(rawUrl: string, expectedChannelId: string): CachedWebhookRecord {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`Configured persona webhook for channel ${expectedChannelId} is not a valid URL.`);
+  }
+
+  const match = url.pathname.match(/\/api(?:\/v\d+)?\/webhooks\/([^/]+)\/([^/?#]+)/) ??
+    url.pathname.match(/\/webhooks\/([^/]+)\/([^/?#]+)/);
+
+  if (!match) {
+    throw new Error(
+      `Configured persona webhook for channel ${expectedChannelId} must look like https://discord.com/api/webhooks/<id>/<token>.`,
+    );
+  }
+
+  return {
+    id: match[1],
+    token: match[2],
+    channelId: expectedChannelId,
+    name: "configured",
+    createdAt: "configured",
+    configured: true,
+  };
+}
+
+async function assertConfiguredWebhookTargetsChannel(
+  webhook: CachedWebhookRecord,
+  expectedChannelId: string,
+): Promise<void> {
+  const response = await fetch(`https://discord.com/api/v10/webhooks/${webhook.id}/${webhook.token}`);
+
+  if (!response.ok) {
+    throw new Error(`Configured persona webhook lookup failed: ${response.status} ${await response.text()}`);
+  }
+
+  const payload = (await response.json()) as { channel_id?: string };
+  if (payload.channel_id !== expectedChannelId) {
+    throw new Error(
+      `Configured persona webhook targets channel ${payload.channel_id}, not required channel ${expectedChannelId}.`,
+    );
+  }
 }
 
 async function executePersonaWebhook(
