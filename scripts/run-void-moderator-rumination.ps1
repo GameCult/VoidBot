@@ -326,7 +326,7 @@ function Test-CandidateMatchesPressure {
   )
 
   $status = Get-ObjectPropertyString -Value $Candidate -Name "status"
-  if ($null -eq $status -or -not @("queued", "deferred", "spoken").Contains($status)) {
+  if ($null -eq $status -or -not @("queued", "spoken").Contains($status)) {
     return $false
   }
 
@@ -337,6 +337,21 @@ function Test-CandidateMatchesPressure {
 
   $candidateTargetKey = Get-ThoughtTargetKey -Target (Get-ObjectPropertyValue -Value $Candidate -Name "target")
   return $null -ne $PressureTargetKey -and $candidateTargetKey -eq $PressureTargetKey
+}
+
+function Get-DeliverableCandidateInterventions {
+  param($TypedState)
+
+  return @(
+    @(Convert-ToValueArray -Value $TypedState.candidateInterventions.interventions) |
+      Where-Object {
+        $status = Get-ObjectPropertyString -Value $_ -Name "status"
+        $deliveryTarget = Get-ObjectPropertyValue -Value $_ -Name "deliveryTarget"
+        $spokenAt = Get-ObjectPropertyString -Value $_ -Name "spokenAt"
+        $status -eq "queued" -and $null -ne $deliveryTarget -and [string]::IsNullOrWhiteSpace($spokenAt)
+      } |
+      Sort-Object -Property @{ Expression = { [double](Get-ObjectPropertyValue -Value $_ -Name "priority") }; Descending = $true }, @{ Expression = { Get-ObjectPropertyString -Value $_ -Name "updatedAt" }; Descending = $false }
+  )
 }
 
 function Get-SpeechPressureObligations {
@@ -392,6 +407,14 @@ function Test-OperationResolvesSpeechPressure {
 
   if ($operationName -eq "queue_candidate_intervention") {
     $intervention = Get-ObjectPropertyValue -Value $Operation -Name "intervention"
+    $status = Get-ObjectPropertyString -Value $intervention -Name "status"
+    if ($messageCount -gt 0 -and -not $NoPost) {
+      $deliveryTarget = Get-ObjectPropertyValue -Value $intervention -Name "deliveryTarget"
+      $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
+      if ($status -ne "queued" -or [string]::IsNullOrWhiteSpace($channelId)) {
+        return $false
+      }
+    }
     return Test-CandidateMatchesPressure -Candidate $intervention -PressureId $pressureId -PressureTargetKey $pressureTargetKey
   }
 
@@ -524,6 +547,16 @@ function Invoke-CandidateInterventionDelivery {
   )
 
   $intervention = Get-ObjectPropertyValue -Value $Operation -Name "intervention"
+  return Invoke-CandidateInterventionDeliveryFromIntervention -Intervention $intervention
+}
+
+function Invoke-CandidateInterventionDeliveryFromIntervention {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Intervention
+  )
+
+  $intervention = $Intervention
   $deliveryTarget = Get-ObjectPropertyValue -Value $intervention -Name "deliveryTarget"
   if ($null -eq $deliveryTarget) {
     return $null
@@ -677,6 +710,7 @@ $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
 $priorCursor = $typedState.moderationCursor
 $speechPressureObligations = @(Get-SpeechPressureObligations -TypedState $typedState)
+$deliverableCandidates = @(Get-DeliverableCandidateInterventions -TypedState $typedState)
 
 $historyArgs = @($recentHistoryScriptPath)
 $priorCursorTimestamp = Get-ObjectPropertyString -Value $priorCursor -Name "lastReviewedTimestamp"
@@ -731,6 +765,7 @@ Write-JsonFile -Path $contextPath -Data @{
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
   speechPressureObligations = $speechPressureObligations
+  deliverableCandidateCount = [int]$deliverableCandidates.Count
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
   scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
   priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc
@@ -744,7 +779,7 @@ $openCaseCount = @(
   @(Convert-ToValueArray -Value $typedState.moderationCursor.openCases) |
     Where-Object { Test-OpenCaseRequiresRumination -Case $_ }
 ).Count
-if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0) {
+if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $deliverableCandidates.Count -eq 0) {
   Append-RunLog "napping: no new room messages or open cases; skipping awake rumination."
   Write-JsonFile -Path $operationOutputPath -Data @()
   $finishedAtUtc = [DateTime]::UtcNow
@@ -761,6 +796,7 @@ if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0) {
     operationOutputPath = [string]$operationOutputPath
     observedMessageCount = [int]$messageCount
     openCaseCount = [int]$openCaseCount
+    deliverableCandidateCount = [int]$deliverableCandidates.Count
     tracePath = [string]$tracePath
     lastMessagePath = [string]$lastMessagePath
   }
@@ -860,15 +896,13 @@ if (
 
 $deliveredCandidateCount = 0
 if (-not $NoPost) {
-  foreach ($operation in $proposedOperations) {
+  $refreshedTypedContext = Get-TypedSelfState
+  $deliverableCandidates = @(Get-DeliverableCandidateInterventions -TypedState $refreshedTypedContext.typedState)
+  foreach ($candidate in $deliverableCandidates) {
     if ($deliveredCandidateCount -ge 1) {
       break
     }
-    $operationName = Get-ObjectPropertyString -Value $operation -Name "operation"
-    if ($operationName -ne "queue_candidate_intervention") {
-      continue
-    }
-    $spokenOperation = Invoke-CandidateInterventionDelivery -Operation $operation
+    $spokenOperation = Invoke-CandidateInterventionDeliveryFromIntervention -Intervention $candidate
     if ($null -ne $spokenOperation) {
       $appliedOperations += Apply-TypedOperation -Operation $spokenOperation
       $deliveredCandidateCount += 1

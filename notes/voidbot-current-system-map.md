@@ -198,10 +198,10 @@ Within the Postgres path, the implementation is split on purpose now too:
 4. The runner loads `prompts/void-moderator-rumination.md`, substitutes the context/state/output paths, and sends that prompt to Codex.
 5. Codex may use retrieval and analysis tools, but its durable state output is restricted to `.voidbot/status/moderation-rumination-operations.json`.
 6. The parent runner applies those typed operations through `scripts/void-self-state.mjs`, then records reviewed-message cursor and any speech receipt itself.
-7. If posting is enabled and the child queued a candidate intervention with a delivery target, the parent runner sends at most one newly proposed candidate, records the delivery receipt, and marks the candidate spoken through typed state. The child prompt forbids direct send-script calls.
+7. If posting is enabled and typed state contains a queued candidate intervention with a delivery target, the parent runner sends at most one candidate, records the delivery receipt, and marks the candidate spoken through typed state. The candidate may have been proposed in the current pass or already queued from an earlier pass. The child prompt forbids direct send-script calls.
 8. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
 9. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
-10. Before applying model output, the runner enforces speech-pressure accountability. High-intensity active self/world advocacy pressures with no matching queued/deferred candidate are projected as `speechPressureObligations`; model output must queue/defer a candidate or cool/retire the pressure instead of returning silent `[]`.
+10. Before applying model output, the runner enforces speech-pressure accountability. High-intensity active self/world advocacy pressures with no matching queued/spoken candidate are projected as `speechPressureObligations`; model output must queue a candidate or cool/retire the pressure instead of returning silent `[]`. Deferred candidates do not satisfy that pressure by themselves.
 
 ## Flow 6: Mood And Sleep Runtime
 
