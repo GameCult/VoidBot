@@ -56,7 +56,7 @@ data_flow:
 
 active_subgoals:
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
-  - Rebuild the moderation/self-state foundation so canonical CultCache `.cc` documents are mutated only through typed operations, never through an editable JSON working projection.
+  - Keep the rebuilt moderation/self-state foundation on canonical CultCache `.cc` typed operations, never an editable JSON working projection.
   - Keep the typed moderation and mood scheduled tasks enabled after the first observed live rumination pass and a manual live sleep-maintenance pass both completed cleanly; the next work is ordinary hardening, not keeping legacy scaffolding alive.
   - Keep legacy moderation mirrors, whole-state projection commits, and deleted memory-organ compensators from re-entering the active path before adding more moderation, mood, agency, or public-lane behavior.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
@@ -130,7 +130,7 @@ landed_baseline:
   - State storage is now split into a thin factory plus per-domain Postgres/file store modules and bootstrap/migration helpers instead of one persistence omnibus.
   - Source archive storage is now sharded by repo behind a manifest plus per-repo shard directory instead of one giant `source-documents.json` blob.
   - Source repo indexing now reconciles automatically during stack startup and watchdog runs, refreshing hooks, indexing newly discovered repos, and pruning stale repo shards when repos disappear from `SOURCE_REPO_ROOT`.
-    - The old `Void Moderator Rumination` and `Void Mood Drift` scheduled tasks are disabled. Their replacement entry scripts are typed-only: moderation now builds a bounded context packet with prompt-facing relative chronology, runs the reviewed rumination prompt from `prompts/void-moderator-rumination.md`, and applies typed operation payloads; mood updates typed sleep/speaking pressure in `.voidbot/private/void-self-state.cc`.
+    - The typed `Void Moderator Rumination` and `Void Mood Drift` scheduled tasks are enabled. Moderation builds a bounded context packet with prompt-facing relative chronology, runs the reviewed rumination prompt from `prompts/void-moderator-rumination.md`, applies typed operation payloads, and skips during naps when there is no room debt; mood updates typed sleep/speaking pressure and invokes memory maintenance during sleep.
   - The active self-state service no longer registers, reads, or writes the legacy moderation document during routine operations.
   - The old memory-organ cleanup/vector-incubation/agency stack, legacy state template, legacy moderation context exporter, legacy moderation-state store, and JSON projection paths are deleted or offline; replacements must be typed-operation native.
   - Memory maintenance now has a typed runner boundary: `scripts/run-void-memory-maintenance.ps1` builds prompt-facing typed context, loads `prompts/void-memory-maintenance.md`, rejects non-maintenance operations, and applies allowed memory/incubation/candidate proposals through `scripts/void-self-state.mjs`.

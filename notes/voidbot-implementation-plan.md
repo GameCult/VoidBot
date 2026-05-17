@@ -4,11 +4,11 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The old implementation reached that goal through JSON projection edits, legacy mirrors, and a swollen memory organ; that path is now offline. Most of the deterministic cleanup code is recent compensator cruft: it accumulated because the live state had exploded into nonsense, and repeated "clean this file" passes preserved the mess by adding machinery around it.
+The typed moderation, mood, sleep, agency, and private self-state boundary is live. The current goal is to let ordinary scheduling run, inspect the next unattended awake rumination and sleep cycle, and harden only the seams that show concrete failure. Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop without reviving JSON projection edits, legacy mirrors, or the swollen memory organ.
 
-The next priority is to rebuild the scheduled loop and memory maintenance on the typed CultCache `.cc` state boundary so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/anchors/tensions instead of collapsing them into generic slogan paste.
+The next priority is observational hardening of the enabled typed loop. Agents and scheduled workers mutate typed CultCache-backed state through explicit operations, not by editing a whole-state JSON working copy. Sleep and memory distillation now preserve meaning-bearing claims/anchors/tensions in fixture and live-state passes; keep checking ordinary cycles for abstraction sludge, duplicate speech, stale residue, or self-orbiting memories.
 
-The center of the next pass is prevention, not legacy repair. The old brain can be treated as evidence of a failed boundary. The new brain should reject malformed memory at ingress so the runtime never needs a permanent cleanup bureaucracy to recover basic meaning.
+The center remains prevention, not legacy repair. The old brain is evidence of a failed boundary. The new brain rejects malformed memory at ingress so the runtime does not need a permanent cleanup bureaucracy to recover basic meaning.
 
 ## Smallest Coherent Architecture
 
@@ -178,19 +178,18 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - The bot/worker/provider/RAG/Postgres/Qdrant shape is basically sound.
 - Source archive sharding is sound.
 - Interaction memory being Postgres-backed is sound.
-- The private moderation/self-state foundation is not sound:
-  - the active `.cc` store is typed, but the real phase machine is not rebuilt yet
-  - the old scheduled tasks are disabled instead of replaced with full typed behavior
-  - legacy projection/mirror state may still exist on disk as failed-boundary residue and must not become source material for the rebuild
+- The private moderation/self-state foundation is live on typed `.cc` state:
+  - the enabled moderation and mood scheduled tasks use typed runners
+  - legacy projection/mirror state may still exist on disk as failed-boundary residue and must not become source material
   - the old memory organ and legacy moderation-state wrapper have been removed from the codebase; their translation, retention/compaction, identity crystallization, candidate intervention, and value-pressure behavior must not be revived as compatibility scaffolding
-- the scheduled moderation runner has a typed rumination contract again: bounded context in, reviewed prompt template, typed operation payloads out, parent-owned cursor/receipt recording
+- the scheduled moderation runner has a typed rumination contract: bounded context in, reviewed prompt template, typed operation payloads out, parent-owned cursor/receipt recording
 - recent event timing in that bounded context now crosses a projection boundary first, so the child sees "5 minutes ago" language while the parent keeps exact timestamps for bookkeeping
 - the old memory-organ script family, legacy moderation state template, and legacy context exporter have now been deleted instead of preserved as forensic bait
 - deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should stay deleted rather than be ported unless a future typed operation protects a real invariant in the new model
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
-- sleep/distillation now has a typed maintenance runner and reviewed prompt boundary wired into the sleep phase; it still needs real model-pass hardening before the old scheduled task should be re-enabled unattended
+- sleep/distillation has a typed maintenance runner, reviewed prompt boundary, fixture coverage, and one live-state pass proving short-term residue can become durable memory without losing meaning
 
-Verdict: stop feature work and rebuild this foundation. The rest of the machine can keep running, but moderation/mood/self-state work should cut toward typed state tools before adding new behavior.
+Verdict: the foundation is coherent enough for cautious live operation. Do not add behavior by widening prompts or reviving compensators; harden only failures observed in ordinary scheduled cycles.
 
 ## Migration Plan
 
@@ -239,9 +238,9 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 ### Commit 6.5: Keep Old Scripts Offline
 
 - `Void Mood Drift` has been deliberately reinstalled after the typed sleep-maintenance fixture passed. It runs `scripts/run-void-mood-drift.ps1`, which calls the typed `scripts/simulate-void-mood.mjs` path.
-- Re-enable `Void Moderator Rumination` only after typed operation quality and parent-owned speech closure have passed. The runner now has both a model-branch fixture and a parent-owned speech fixture; the first live scheduled pass still needs inspection before the loop is treated as stable.
+- `Void Moderator Rumination` is re-enabled after typed operation quality, parent-owned speech closure, and an observed live scheduled pass. The runner has model-branch, parent-owned speech, and nap-skip fixtures.
 - Do not reinstall or re-enable deleted legacy scripts as compatibility surfaces.
-- Verification: scheduled-task query shows mood enabled with Last Result `0`, moderation disabled, and rebuilt direct dry runs operate only on `.voidbot/private/void-self-state.cc`.
+- Verification: scheduled-task query shows mood and moderation enabled with Last Result `0`, and rebuilt direct dry runs operate only on `.voidbot/private/void-self-state.cc`.
 
 ### Commit 7: Harden Scheduled Runner As A Phase Machine
 

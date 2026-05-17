@@ -190,7 +190,7 @@ Within the Postgres path, the implementation is split on purpose now too:
 
 ## Flow 5: Scheduled Moderation Rumination
 
-1. The Windows scheduled task `Void Moderator Rumination` is disabled.
+1. The Windows scheduled task `Void Moderator Rumination` is enabled.
 2. `scripts/run-void-moderator-rumination.ps1` reads `.voidbot/private/void-self-state.cc`, polls `node scripts/export-recent-discord-history.mjs`, and gathers read-only repo activity with `node scripts/export-recent-repo-activity.mjs --read-only`.
 3. The runner writes a bounded context packet at `.voidbot/status/moderation-rumination-context.json`; the prompt-facing packet projects recent timing as relative phrases instead of raw timestamps.
 4. The runner loads `prompts/void-moderator-rumination.md`, substitutes the context/state/output paths, and sends that prompt to Codex.
@@ -200,9 +200,9 @@ Within the Postgres path, the implementation is split on purpose now too:
 8. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
 9. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
 
-## Flow 6: Mood Rebuild Stub
+## Flow 6: Mood And Sleep Runtime
 
-1. The Windows scheduled task `Void Mood Drift` is disabled.
+1. The Windows scheduled task `Void Mood Drift` is enabled.
 2. `scripts/simulate-void-mood.mjs` reads typed documents from `.voidbot/private/void-self-state.cc`.
 3. It updates `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations.
 4. It writes `.voidbot/status/void-mood-drift.json`.
