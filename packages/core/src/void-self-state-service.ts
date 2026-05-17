@@ -419,7 +419,45 @@ function markCandidateInterventionSpoken(
     intervention.spokenAt = operation.receipt.sentAt;
     intervention.updatedAt = operation.receipt.sentAt;
   }
+  retireSiblingCandidatesForReceipt(state.candidateInterventions, operation);
   state.candidateInterventions.updatedAt = operation.receipt.sentAt;
+}
+
+function retireSiblingCandidatesForReceipt(
+  candidates: VoidCandidateInterventions,
+  operation: Extract<VoidSelfStateOperation, { operation: "mark_candidate_intervention_spoken" }>,
+): void {
+  const { receipt } = operation;
+  if (!receipt.replyToMessageId) {
+    return;
+  }
+
+  for (const intervention of candidates.interventions) {
+    if (
+      intervention.interventionId === operation.interventionId ||
+      intervention.status !== "queued" ||
+      intervention.spokenAt ||
+      !candidateDeliveryTargetMatchesReceipt(intervention.deliveryTarget, receipt)
+    ) {
+      continue;
+    }
+
+    intervention.status = "retired";
+    intervention.retiredAt = receipt.sentAt;
+    intervention.updatedAt = receipt.sentAt;
+    intervention.tags = Array.from(new Set([...intervention.tags, "retired:duplicate reply target already answered"]));
+  }
+}
+
+function candidateDeliveryTargetMatchesReceipt(
+  deliveryTarget: VoidCandidateInterventions["interventions"][number]["deliveryTarget"],
+  receipt: VoidSpeechReceipts["recentReceipts"][number],
+): boolean {
+  return (
+    deliveryTarget?.mode === "channel" &&
+    deliveryTarget.channelId === receipt.channelId &&
+    deliveryTarget.replyToMessageId === receipt.replyToMessageId
+  );
 }
 
 function upsertBy<T>(entries: T[], value: T, keyOf: (value: T) => string): void {

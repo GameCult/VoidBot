@@ -64,6 +64,32 @@ process.stdin.on("end", () => {
         tags: ["fixture"],
       },
     },
+    {
+      operation: "queue_candidate_intervention",
+      intervention: {
+        interventionId: "fixture-duplicate-same-reply-target",
+        kind: "direct_reply",
+        status: "queued",
+        target: {
+          kind: "room",
+          id: "fixture-channel",
+          label: "Fixture channel",
+        },
+        summary: "Duplicate same-target candidate should retire when the sibling speaks.",
+        draft: "This duplicate should never be delivered after the same reply target is answered.",
+        deliveryTarget: {
+          mode: "channel",
+          channelId: "fixture-channel-id",
+          replyToMessageId: "fixture-message-id",
+          personaName: "Void",
+        },
+        priority: 0.7,
+        mustEventuallyShare: false,
+        createdAt: "2026-05-17T03:00:01.000Z",
+        updatedAt: "2026-05-17T03:00:01.000Z",
+        tags: ["fixture", "duplicate"],
+      },
+    },
   ];
 
   mkdirSync(dirname(operationOutputPath), { recursive: true });
@@ -154,17 +180,21 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   if ($status.status -ne "ok") {
     throw "Speech fixture did not finish ok."
   }
-  if ([int]$status.proposedOperationCount -ne 1 -or [int]$status.appliedOperationCount -ne 2 -or [int]$status.deliveredCandidateCount -ne 1) {
-    throw "Speech fixture expected one proposal, two applied operations, and one delivered candidate."
+  if ([int]$status.proposedOperationCount -ne 2 -or [int]$status.appliedOperationCount -ne 3 -or [int]$status.deliveredCandidateCount -ne 1) {
+    throw "Speech fixture expected two proposals, three applied operations, and one delivered candidate."
   }
 
   $stateJson = node -e "const core=require('./packages/core/dist/index.js'); core.loadVoidSelfStateTypedDocuments({canonicalPath: process.argv[1]}).then((state)=>console.log(JSON.stringify(state))).catch((error)=>{ console.error(error); process.exit(1); })" $stateFilePath
   $state = $stateJson | ConvertFrom-Json
-  $candidate = @($state.candidateInterventions.interventions)[0]
+  $candidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-parent-owned-speech" })[0]
+  $duplicateCandidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-duplicate-same-reply-target" })[0]
   $receipt = @($state.speechReceipts.recentReceipts)[0]
 
   if ($candidate.status -ne "spoken") {
     throw "Speech fixture did not mark the candidate spoken."
+  }
+  if ($duplicateCandidate.status -ne "retired") {
+    throw "Speech fixture did not retire the duplicate same-target candidate."
   }
   if ($receipt.channelId -ne "fixture-channel-id" -or $receipt.replyToMessageId -ne "fixture-message-id") {
     throw "Speech fixture did not preserve the delivery receipt target."
