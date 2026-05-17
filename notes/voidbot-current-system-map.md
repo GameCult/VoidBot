@@ -201,6 +201,7 @@ Within the Postgres path, the implementation is split on purpose now too:
 7. If posting is enabled and the child queued a candidate intervention with a delivery target, the parent runner sends at most one newly proposed candidate, records the delivery receipt, and marks the candidate spoken through typed state. The child prompt forbids direct send-script calls.
 8. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
 9. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
+10. Before applying model output, the runner enforces speech-pressure accountability. High-intensity active self/world advocacy pressures with no matching queued/deferred candidate are projected as `speechPressureObligations`; model output must queue/defer a candidate or cool/retire the pressure instead of returning silent `[]`.
 
 ## Flow 6: Mood And Sleep Runtime
 
@@ -236,3 +237,4 @@ Within the Postgres path, the implementation is split on purpose now too:
 2. The typed service validates that each pressure has a concrete target, claim or question, action implication, intensity, and either anchors/source memory ids or an explicit `anchor:missing` tag.
 3. The self-state summary renders active agency pressure separately from queued speech candidates.
 4. Mood drift reads active and ready agency pressure into speaking pressure, but it does not manufacture speech text from it.
+5. The rumination runner bridges desire-to-speak without manufacturing text: strong advocacy pressure becomes an obligation for the model to queue/defer a candidate or explicitly cool/retire the pressure. The parent rejects silent output for those obligations.

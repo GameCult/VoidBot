@@ -302,6 +302,134 @@ function Test-OpenCaseRequiresRumination {
   return $null -ne $status -and -not @("answered", "resolved", "closed", "retired", "dropped").Contains($status)
 }
 
+function Get-ThoughtTargetKey {
+  param($Target)
+
+  if ($null -eq $Target) {
+    return $null
+  }
+
+  $kind = Get-ObjectPropertyString -Value $Target -Name "kind"
+  $id = Get-ObjectPropertyString -Value $Target -Name "id"
+  if ([string]::IsNullOrWhiteSpace($kind) -or [string]::IsNullOrWhiteSpace($id)) {
+    return $null
+  }
+  return ("{0}:{1}" -f $kind.ToLowerInvariant(), $id.ToLowerInvariant())
+}
+
+function Test-CandidateMatchesPressure {
+  param(
+    $Candidate,
+    [Parameter(Mandatory = $true)]
+    [string] $PressureId,
+    [string] $PressureTargetKey
+  )
+
+  $status = Get-ObjectPropertyString -Value $Candidate -Name "status"
+  if ($null -eq $status -or -not @("queued", "deferred", "spoken").Contains($status)) {
+    return $false
+  }
+
+  $tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Candidate -Name "tags"))
+  if ($tags | Where-Object { ([string]$_).ToLowerInvariant() -eq ("source_pressure:{0}" -f $PressureId.ToLowerInvariant()) }) {
+    return $true
+  }
+
+  $candidateTargetKey = Get-ThoughtTargetKey -Target (Get-ObjectPropertyValue -Value $Candidate -Name "target")
+  return $null -ne $PressureTargetKey -and $candidateTargetKey -eq $PressureTargetKey
+}
+
+function Get-SpeechPressureObligations {
+  param($TypedState)
+
+  $candidateInterventions = @(Convert-ToValueArray -Value $TypedState.candidateInterventions.interventions)
+  return @(
+    @(Convert-ToValueArray -Value $TypedState.agencyPressure.pressures) |
+      Where-Object {
+        $status = Get-ObjectPropertyString -Value $_ -Name "status"
+        $kind = Get-ObjectPropertyString -Value $_ -Name "kind"
+        $intensity = Get-ObjectPropertyValue -Value $_ -Name "intensity"
+        $status -in @("active", "ready_to_act") -and
+          $kind -in @("self_advocacy_request", "world_advocacy_request") -and
+          $null -ne $intensity -and [double]$intensity -ge 0.65
+      } |
+      Where-Object {
+        $pressureId = Get-ObjectPropertyString -Value $_ -Name "pressureId"
+        $pressureTargetKey = Get-ThoughtTargetKey -Target (Get-ObjectPropertyValue -Value $_ -Name "target")
+        -not ($candidateInterventions | Where-Object {
+          Test-CandidateMatchesPressure -Candidate $_ -PressureId $pressureId -PressureTargetKey $pressureTargetKey
+        } | Select-Object -First 1)
+      } |
+      ForEach-Object {
+        @{
+          pressureId = Get-ObjectPropertyString -Value $_ -Name "pressureId"
+          kind = Get-ObjectPropertyString -Value $_ -Name "kind"
+          status = Get-ObjectPropertyString -Value $_ -Name "status"
+          target = Get-ObjectPropertyValue -Value $_ -Name "target"
+          summary = Get-ObjectPropertyString -Value $_ -Name "summary"
+          claim = Get-ObjectPropertyString -Value $_ -Name "claim"
+          question = Get-ObjectPropertyString -Value $_ -Name "question"
+          tension = Get-ObjectPropertyString -Value $_ -Name "tension"
+          actionImplication = Get-ObjectPropertyString -Value $_ -Name "actionImplication"
+          intensity = Get-ObjectPropertyValue -Value $_ -Name "intensity"
+          sourceMemoryIds = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "sourceMemoryIds"))
+          tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
+          requiredResolution = "Queue a candidate intervention with tag source_pressure:$((Get-ObjectPropertyString -Value $_ -Name "pressureId")) or cool/retire this pressure with an explicit reason."
+        }
+      }
+  )
+}
+
+function Test-OperationResolvesSpeechPressure {
+  param(
+    $Operation,
+    $Obligation
+  )
+
+  $operationName = Get-ObjectPropertyString -Value $Operation -Name "operation"
+  $pressureId = Get-ObjectPropertyString -Value $Obligation -Name "pressureId"
+  $pressureTargetKey = Get-ThoughtTargetKey -Target (Get-ObjectPropertyValue -Value $Obligation -Name "target")
+
+  if ($operationName -eq "queue_candidate_intervention") {
+    $intervention = Get-ObjectPropertyValue -Value $Operation -Name "intervention"
+    return Test-CandidateMatchesPressure -Candidate $intervention -PressureId $pressureId -PressureTargetKey $pressureTargetKey
+  }
+
+  if ($operationName -eq "retire_agency_pressure") {
+    return (Get-ObjectPropertyString -Value $Operation -Name "pressureId") -eq $pressureId
+  }
+
+  if ($operationName -eq "upsert_agency_pressure") {
+    $pressure = Get-ObjectPropertyValue -Value $Operation -Name "pressure"
+    if ((Get-ObjectPropertyString -Value $pressure -Name "pressureId") -ne $pressureId) {
+      return $false
+    }
+
+    $status = Get-ObjectPropertyString -Value $pressure -Name "status"
+    return $status -in @("cooling", "resolved", "retired")
+  }
+
+  return $false
+}
+
+function Assert-SpeechPressureObligationsResolved {
+  param(
+    [object[]] $Obligations,
+    [object[]] $Operations
+  )
+
+  foreach ($obligation in $Obligations) {
+    $pressureId = Get-ObjectPropertyString -Value $obligation -Name "pressureId"
+    $resolved = $Operations | Where-Object {
+      Test-OperationResolvesSpeechPressure -Operation $_ -Obligation $obligation
+    } | Select-Object -First 1
+
+    if ($null -eq $resolved) {
+      throw "Active advocacy pressure '$pressureId' requires a candidate intervention or an explicit cool/retire operation; silent [] would muzzle it."
+    }
+  }
+}
+
 function Assert-AllowedRuminationOperation {
   param($Operation)
 
@@ -548,6 +676,7 @@ $codexExecArgs = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXEC_ARGS)) {
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
 $priorCursor = $typedState.moderationCursor
+$speechPressureObligations = @(Get-SpeechPressureObligations -TypedState $typedState)
 
 $historyArgs = @($recentHistoryScriptPath)
 $priorCursorTimestamp = Get-ObjectPropertyString -Value $priorCursor -Name "lastReviewedTimestamp"
@@ -601,6 +730,7 @@ Write-JsonFile -Path $contextPath -Data @{
   shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
+  speechPressureObligations = $speechPressureObligations
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
   scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
   priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc
@@ -700,6 +830,8 @@ if (-not (Test-Path $operationOutputPath)) {
 Append-RunLog "reading proposed operation output."
 $proposedOperations = @(Convert-ToOperationArray -Value (Read-JsonFile -Path $operationOutputPath))
 $appliedOperations = @()
+
+Assert-SpeechPressureObligationsResolved -Obligations $speechPressureObligations -Operations $proposedOperations
 
 Append-RunLog ("applying proposed operations: {0}" -f @($proposedOperations).Count)
 foreach ($operation in $proposedOperations) {

@@ -25,6 +25,13 @@ function Get-ObjectPropertyValue {
     return $null
   }
 
+  if ($Value -is [System.Collections.IDictionary]) {
+    if ($Value.Contains($Name)) {
+      return $Value[$Name]
+    }
+    return $null
+  }
+
   $property = $Value.PSObject.Properties[$Name]
   if ($null -eq $property) {
     return $null
