@@ -15,7 +15,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const env = readLocalEnv();
   const botToken = env.DISCORD_BOT_TOKEN?.trim();
-  const persona = normalizePersonaOptions(options);
+  const persona = normalizePersonaOptions(options, env);
 
   if (!botToken) {
     throw new Error("DISCORD_BOT_TOKEN is required.");
@@ -502,11 +502,10 @@ async function executePersonaWebhook(
   }
 }
 
-function normalizePersonaOptions(options) {
+function normalizePersonaOptions(options, env) {
   const personaName = trimOptionalString(options.personaName);
-  const personaAvatarUrl = trimOptionalString(options.personaAvatarUrl);
 
-  if (!personaName && !personaAvatarUrl) {
+  if (!personaName && !trimOptionalString(options.personaAvatarUrl)) {
     return undefined;
   }
 
@@ -514,10 +513,31 @@ function normalizePersonaOptions(options) {
     throw new Error("personaName is required when using the shared persona webhook pipe.");
   }
 
+  const normalizedPersonaName = personaName.slice(0, 80);
+
   return {
-    personaName: personaName.slice(0, 80),
-    personaAvatarUrl,
+    personaName: normalizedPersonaName,
+    personaAvatarUrl: resolvePersonaAvatarUrl(options, env, normalizedPersonaName),
   };
+}
+
+function resolvePersonaAvatarUrl(options, env, personaName) {
+  const explicitAvatarUrl = trimOptionalString(options.personaAvatarUrl);
+
+  if (explicitAvatarUrl) {
+    return explicitAvatarUrl;
+  }
+
+  const personaKey = `DISCORD_PERSONA_AVATAR_URL_${toEnvKeySuffix(personaName)}`;
+  return trimOptionalString(env[personaKey]) ?? trimOptionalString(env.DISCORD_PERSONA_AVATAR_URL);
+}
+
+function toEnvKeySuffix(value) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function trimOptionalString(value) {

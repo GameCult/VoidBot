@@ -366,9 +366,8 @@ function normalizePersonaOptions(
   options?: DiscordPersonaOptions,
 ): NormalizedDiscordPersonaOptions | undefined {
   const personaName = trimOptionalString(options?.personaName);
-  const personaAvatarUrl = trimOptionalString(options?.personaAvatarUrl);
 
-  if (!personaName && !personaAvatarUrl) {
+  if (!personaName && !trimOptionalString(options?.personaAvatarUrl)) {
     return undefined;
   }
 
@@ -376,10 +375,34 @@ function normalizePersonaOptions(
     throw new Error("personaName is required when posting through the shared persona webhook pipe.");
   }
 
+  const normalizedPersonaName = personaName.slice(0, 80);
+
   return {
-    personaName: personaName.slice(0, 80),
-    personaAvatarUrl,
+    personaName: normalizedPersonaName,
+    personaAvatarUrl: resolvePersonaAvatarUrl(options, normalizedPersonaName),
   };
+}
+
+function resolvePersonaAvatarUrl(
+  options: DiscordPersonaOptions | undefined,
+  personaName: string,
+): string | undefined {
+  const explicitAvatarUrl = trimOptionalString(options?.personaAvatarUrl);
+
+  if (explicitAvatarUrl) {
+    return explicitAvatarUrl;
+  }
+
+  const personaKey = `DISCORD_PERSONA_AVATAR_URL_${toEnvKeySuffix(personaName)}`;
+  return trimOptionalString(process.env[personaKey]) ?? trimOptionalString(process.env.DISCORD_PERSONA_AVATAR_URL);
+}
+
+function toEnvKeySuffix(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function trimOptionalString(value?: string): string | undefined {
