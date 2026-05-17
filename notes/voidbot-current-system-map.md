@@ -118,18 +118,12 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - typed rumination runner. It builds a bounded context packet from `.voidbot/private/void-self-state.cc`, recent Discord chronology, and read-only repo activity; loads `prompts/void-moderator-rumination.md`; runs Codex rumination; applies returned typed operations through `scripts/void-self-state.mjs`; then records parent-owned cursor and speech receipts.
 - `scripts/lib/void-rumination-context-projection.ps1`
   - rumination context projector. It turns typed timestamps and helper payloads into prompt-facing relative phrases while leaving exact chronology in parent-owned typed state, status, and cursor bookkeeping.
-- `scripts/moderation-state-store.mjs`
-  - legacy moderation-state wrapper. It is not part of the active typed self-state path.
 - `scripts/void-self-state.mjs`
   - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, memory appends, incubation merges, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
 - `scripts/simulate-void-mood.mjs`
   - typed-only mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending a typed rebuild.
-- `scripts/void-memory-organ.mjs`
-  - thin orchestrator for the hybrid symbolic/vector memory helper used by mood drift.
-- `scripts/void-memory-organ-*.mjs`
-  - split memory-organ modules for shared limits/utilities, vector/embedder substrate, memory-record intake, graph/cluster synthesis, legacy translation, retention/compaction, incubation/bridge scoring, sleep/distillation, identity crystallization, candidate interventions, value-pressure inference, and legacy mirror repair.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`
@@ -189,4 +183,4 @@ Within the Postgres path, the implementation is split on purpose now too:
 2. `scripts/simulate-void-mood.mjs` reads typed documents from `.voidbot/private/void-self-state.cc`.
 3. It updates `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations.
 4. It writes `.voidbot/status/void-mood-drift.json`.
-5. It intentionally does not run the old memory organ, vector incubation, dream cleanup, legacy mirror repair, or JSON projection refresh. That work must be rebuilt as typed operations with meaning-preserving contracts.
+5. The old memory-organ script family, legacy state template, and legacy context exporter have been deleted. Memory maintenance, incubation, dream residue, and agency must be rebuilt as typed operation proposals with meaning-preserving contracts rather than revived from the compensator stack.

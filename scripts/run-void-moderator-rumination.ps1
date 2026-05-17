@@ -248,13 +248,19 @@ function Apply-TypedOperation {
     $Operation
   )
 
-  $operationJson = $Operation | ConvertTo-Json -Compress -Depth 32
-  return Invoke-NodeJson -Arguments @(
-    $selfStateScriptPath,
-    "apply-operation",
-    "--canonical", $stateFilePath,
-    "--operation", $operationJson
-  )
+  $operationInputPath = Join-Path $statusDir ("moderation-rumination-operation-{0}.json" -f ([Guid]::NewGuid().ToString("n")))
+  Write-JsonFile -Path $operationInputPath -Data $Operation
+
+  try {
+    return Invoke-NodeJson -Arguments @(
+      $selfStateScriptPath,
+      "apply-operation",
+      "--canonical", $stateFilePath,
+      "--operation-file", $operationInputPath
+    )
+  } finally {
+    Remove-Item -LiteralPath $operationInputPath -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Convert-ToOperationArray {

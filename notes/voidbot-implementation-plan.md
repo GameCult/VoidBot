@@ -134,7 +134,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 
 - `.voidbot/private/moderation-agent-state.json` as an editable working projection.
 - `legacyJsonPath`/working-path duality for canonical self-state.
-- Top-level mirror fields beside `moderation_runtime`.
+- Top-level mirror fields beside the old legacy runtime object.
 - Any helper that mutates the JSON projection and commits it back.
 - Prompt doctrine that tells the child agent how to manually preserve state shape.
 - Regex/template police that try to repair semantic sludge after the store allowed sludge to become durable.
@@ -157,11 +157,12 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - The private moderation/self-state foundation is not sound:
   - the active `.cc` store is typed, but the real phase machine is not rebuilt yet
   - the old scheduled tasks are disabled instead of replaced with full typed behavior
-  - legacy projection/mirror state still exists on disk as failed-boundary residue and must not become source material for the rebuild
-  - the old memory organ is split by concern, but its legacy translation, retention/compaction, identity crystallization, candidate interventions, and value-pressure inference are offline scaffolding, not earned architecture
+  - legacy projection/mirror state may still exist on disk as failed-boundary residue and must not become source material for the rebuild
+  - the old memory organ and legacy moderation-state wrapper have been removed from the codebase; their translation, retention/compaction, identity crystallization, candidate intervention, and value-pressure behavior must not be revived as compatibility scaffolding
 - the scheduled moderation runner has a typed rumination contract again: bounded context in, reviewed prompt template, typed operation payloads out, parent-owned cursor/receipt recording
 - recent event timing in that bounded context now crosses a projection boundary first, so the child sees "5 minutes ago" language while the parent keeps exact timestamps for bookkeeping
-- deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted rather than ported unless it protects a real invariant in the new model
+- the old memory-organ script family, legacy moderation state template, and legacy context exporter have now been deleted instead of preserved as forensic bait
+- deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should stay deleted rather than be ported unless a future typed operation protects a real invariant in the new model
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
 - sleep/distillation currently lacks a hard meaning-preservation implementation in the active runner, so it remains offline until rebuilt
 
@@ -185,9 +186,10 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 ### Commit 3: Add Typed Mutation CLI
 
-- Extend `scripts/moderation-state-store.mjs` or replace it with a typed command surface for cursor, open cases, receipts, candidates, sleep, speaking pressure, and distilled memories.
-- The CLI writes CultCache directly.
-- Verification: fixture tests for each operation.
+- Landed path: `scripts/void-self-state.mjs apply-operation` is the typed command surface for cursor, open cases, receipts, repo cursors, candidates, sleep, speaking pressure, incubation, and distilled memories.
+- The CLI writes CultCache directly through `packages/core/src/void-self-state-service.ts`.
+- The legacy `scripts/moderation-state-store.mjs` wrapper has been deleted.
+- Verification: fixture tests and runner smokes should exercise operation application.
 
 ### Commit 4: Move Repo Activity Cursor Behind The Store
 
