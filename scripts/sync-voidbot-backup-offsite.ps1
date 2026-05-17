@@ -164,10 +164,17 @@ function Invoke-RemotePowerShell {
 
   $bytes = [System.Text.Encoding]::Unicode.GetBytes($Script)
   $encoded = [Convert]::ToBase64String($bytes)
-  $output = & ssh $Target powershell -NoProfile -NonInteractive -EncodedCommand $encoded
+  $output = & ssh.exe `
+    -o BatchMode=yes `
+    -o ConnectTimeout=10 `
+    -o ServerAliveInterval=5 `
+    -o ServerAliveCountMax=2 `
+    $Target powershell -NoProfile -NonInteractive -EncodedCommand $encoded 2>&1
 
   if ($LASTEXITCODE -ne 0) {
-    throw "Remote PowerShell command failed on $Target."
+    $outputText = [string]($output -join "`n")
+    $detail = if ([string]::IsNullOrWhiteSpace($outputText)) { "" } else { " $($outputText.Trim())" }
+    throw "Remote PowerShell command failed on $Target.$detail"
   }
 
   return ($output -join "`n").Trim()

@@ -169,6 +169,13 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   if ($receipt.channelId -ne "fixture-channel-id" -or $receipt.replyToMessageId -ne "fixture-message-id") {
     throw "Speech fixture did not preserve the delivery receipt target."
   }
+  if ($receipt.candidateInterventionId -ne "fixture-parent-owned-speech") {
+    throw "Speech fixture did not link the delivery receipt back to the spoken candidate."
+  }
+  $lastMessage = Get-Content -LiteralPath (Join-Path $fixtureStatusDir "moderation-rumination-last-message.txt") -Raw -Encoding UTF8
+  if ($lastMessage -notmatch "deliveredCandidates=1") {
+    throw "Speech fixture did not refresh the final rumination message summary."
+  }
 
   @{
     status = "ok"

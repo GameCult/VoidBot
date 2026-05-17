@@ -62,6 +62,7 @@ const moderationRepoCursorSchema = z.object({
 
 const deliveryReceiptSchema = z.object({
   receiptKey: nonEmptyStringSchema,
+  candidateInterventionId: nonEmptyStringSchema.optional(),
   sentAt: timestampSchema,
   mode: z.string().trim().min(1).optional(),
   transport: z.string().trim().min(1).optional(),

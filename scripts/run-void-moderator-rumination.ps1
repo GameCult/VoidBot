@@ -474,7 +474,10 @@ function Assert-AllowedRuminationOperation {
 }
 
 function Convert-LastSpeechToReceiptOperation {
-  param($Speech)
+  param(
+    $Speech,
+    [string] $CandidateInterventionId
+  )
 
   $sentAt = Get-ObjectPropertyString -Value $Speech -Name "sentAt"
   if ($null -eq $Speech -or $null -eq $sentAt) {
@@ -483,6 +486,7 @@ function Convert-LastSpeechToReceiptOperation {
 
   $receiptKeyParts = @(
     "speech",
+    $CandidateInterventionId,
     $sentAt,
     (Get-ObjectPropertyString -Value $Speech -Name "channelId"),
     (Get-ObjectPropertyString -Value $Speech -Name "replyToMessageId"),
@@ -499,6 +503,10 @@ function Convert-LastSpeechToReceiptOperation {
     sentAt = $sentAt
     mode = if (Get-ObjectPropertyString -Value $Speech -Name "mode") { Get-ObjectPropertyString -Value $Speech -Name "mode" } else { "channel" }
     transport = if (Get-ObjectPropertyString -Value $Speech -Name "transport") { Get-ObjectPropertyString -Value $Speech -Name "transport" } else { "bot" }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($CandidateInterventionId)) {
+    $receipt.candidateInterventionId = $CandidateInterventionId
   }
 
   foreach ($key in @("channelId", "replyToMessageId", "personaName", "personaAvatarUrl", "preview", "previewHash")) {
@@ -528,7 +536,7 @@ function Convert-LastSpeechToSpokenCandidateOperation {
     $Speech
   )
 
-  $receiptOperation = Convert-LastSpeechToReceiptOperation -Speech $Speech
+  $receiptOperation = Convert-LastSpeechToReceiptOperation -Speech $Speech -CandidateInterventionId $InterventionId
   if ($null -eq $receiptOperation) {
     return $null
   }
@@ -913,7 +921,16 @@ if (-not $NoPost) {
 Append-RunLog "writing final rumination status."
 $finishedAtUtc = [DateTime]::UtcNow
 Append-RunLog "final status timestamp captured."
-$lastMessage = if (Test-Path $lastMessagePath) { Get-Content -Path $lastMessagePath -Raw -Encoding UTF8 } else { "" }
+$lastMessageSummary = @(
+  "Void moderation rumination finished."
+  "mode=" + $(if ($SkipModel) { "typed_rumination_skip_model" } else { "typed_rumination" })
+  "proposed=" + [string]@($proposedOperations).Count
+  "applied=" + [string]@($appliedOperations).Count
+  "deliveredCandidates=" + [string]$deliveredCandidateCount
+  "finishedAt=" + $finishedAtUtc.ToString("o")
+) -join [Environment]::NewLine
+[System.IO.File]::WriteAllText($lastMessagePath, $lastMessageSummary + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+$lastMessage = Get-Content -Path $lastMessagePath -Raw -Encoding UTF8
 Append-RunLog "final status last message loaded."
 
 $finalStatus = [ordered]@{
@@ -937,6 +954,7 @@ $finalStatus = [ordered]@{
   stateUpdated = [bool](@($appliedOperations).Count -gt 0)
   tracePath = [string]$tracePath
   lastMessagePath = [string]$lastMessagePath
+  lastMessage = [string]$lastMessage
 }
 Write-JsonFile -Path $statusPath -Data $finalStatus
 

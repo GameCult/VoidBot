@@ -176,6 +176,7 @@ function Project-SpeechReceiptsForRumination {
     @(Convert-ToValueArray -Value $Receipts) | ForEach-Object {
       @{
         receiptKey = Get-ObjectPropertyString -Value $_ -Name "receiptKey"
+        candidateInterventionId = Get-ObjectPropertyString -Value $_ -Name "candidateInterventionId"
         sent = Project-RelativeTimestamp -Value $_ -Name "sentAt" -Now $Now
         mode = Get-ObjectPropertyString -Value $_ -Name "mode"
         transport = Get-ObjectPropertyString -Value $_ -Name "transport"

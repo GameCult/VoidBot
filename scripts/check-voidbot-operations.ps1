@@ -273,9 +273,19 @@ function Invoke-CommandWithTimeout {
 
   $stdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
   $stderrPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+  $quotedArguments = @(
+    $ArgumentList | ForEach-Object {
+      $argument = [string]$_
+      if ($argument -notmatch '[\s"]') {
+        return $argument
+      }
+
+      return '"' + ($argument -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+    }
+  )
 
   try {
-    $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
+    $process = Start-Process -FilePath $FilePath -ArgumentList ($quotedArguments -join " ") -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
 
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
       try {
@@ -527,20 +537,34 @@ function Invoke-RemoteLinuxCommand {
     [AllowEmptyString()]
     [string] $IdentityFile = "",
     [Parameter(Mandatory = $true)]
-    [string] $Command
+    [string] $Command,
+    [Parameter(Mandatory = $false)]
+    [int] $TimeoutSeconds = 45
   )
 
-  $args = @("-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
+  $args = @(
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=10",
+    "-o", "ServerAliveInterval=5",
+    "-o", "ServerAliveCountMax=2"
+  )
 
   if (-not [string]::IsNullOrWhiteSpace($IdentityFile)) {
     $args += @("-i", $IdentityFile)
   }
 
-  $args += @($Target, $Command)
-  $response = & ssh.exe @args
+  $remoteCommand = "timeout ${TimeoutSeconds}s $Command"
+  $response = & ssh.exe @($args + @($Target, $remoteCommand)) 2>&1
+  $exitCode = $LASTEXITCODE
 
-  if ($LASTEXITCODE -ne 0) {
-    throw "SSH command failed for $Target."
+  if ($exitCode -eq 124) {
+    throw "SSH command timed out after $TimeoutSeconds second(s) for $Target."
+  }
+
+  if ($exitCode -ne 0) {
+    $outputText = [string]($response -join "`n")
+    $output = if ([string]::IsNullOrWhiteSpace($outputText)) { "" } else { " $($outputText.Trim())" }
+    throw "SSH command failed for $Target.$output"
   }
 
   return [string]($response -join "`n")
