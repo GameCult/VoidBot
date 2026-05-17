@@ -164,7 +164,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - the old memory-organ script family, legacy moderation state template, and legacy context exporter have now been deleted instead of preserved as forensic bait
 - deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should stay deleted rather than be ported unless a future typed operation protects a real invariant in the new model
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
-- sleep/distillation currently lacks a hard meaning-preservation implementation in the active runner, so it remains offline until rebuilt
+- sleep/distillation now has a typed maintenance runner and reviewed prompt boundary, but still needs real model-pass hardening before it should be scheduled unattended
 
 Verdict: stop feature work and rebuild this foundation. The rest of the machine can keep running, but moderation/mood/self-state work should cut toward typed state tools before adding new behavior.
 
@@ -239,8 +239,9 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 ### Commit 9: Replace Compensating Cleanup With Meaning-Preserving Sleep
 
-- Delete cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue.
-- Delete or demote hard-wired agency paths whose real job is turning current heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract.
+- Landed cut: cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue have been deleted with the old memory-organ stack.
+- Landed cut: hard-wired agency paths that turned heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract have been deleted.
+- Landed replacement boundary: `scripts/run-void-memory-maintenance.ps1` asks the model for memory/incubation/candidate typed operation proposals using `prompts/void-memory-maintenance.md`, rejects non-maintenance operations, and applies the rest through `scripts/void-self-state.mjs`.
 - Treat legacy brain mush as a migration problem, not the design center. New memory writes must cross the meaning-preserving typed operation schema before they reach CultCache.
 - Redesign sleep/distillation around an explicit contract:
   - preserve the claim/question/fascination target
@@ -250,7 +251,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
   - preserve why the memory should affect future action
   - never replace a concrete thought with a prettier generic principle unless the operation records what was lost and why that loss is acceptable
 - Make distillation emit typed candidate memories first; the state service applies only candidates that satisfy the contract.
-- Verification: fixture memories such as `AquariumSynthCSharp: Workflow cannot own the body` survive sleep with their subject, claim, evidence, and tension intact.
+- Remaining verification: model-pass fixtures such as `AquariumSynthCSharp: Workflow cannot own the body` survive sleep with their subject, claim, evidence, and tension intact.
 
 ### Commit 10: Resume Product Hardening
 

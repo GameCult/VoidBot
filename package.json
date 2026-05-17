@@ -36,6 +36,7 @@
     "moderation:recent-history": "node scripts/export-recent-discord-history.mjs",
     "moderation:random-history": "node scripts/export-random-discord-history.mjs",
     "moderation:recent-repo-activity": "node scripts/export-recent-repo-activity.mjs",
+    "moderation:memory-maintenance": "powershell -ExecutionPolicy Bypass -File scripts/run-void-memory-maintenance.ps1",
     "moderation:mood-drift": "node scripts/simulate-void-mood.mjs",
     "rag:scrub-bot-prompts": "tsx scripts/scrub-bot-prompts-from-history.ts",
     "rag:index-sources": "tsx scripts/index-source-repos.ts",
