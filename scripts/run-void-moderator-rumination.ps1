@@ -21,10 +21,13 @@ $operationOutputPath = Join-Path $statusDir "moderation-rumination-operations.js
 $contextPath = Join-Path $statusDir "moderation-rumination-context.json"
 $lockPath = Join-Path $statusDir "moderation-rumination.lock"
 $promptTemplatePath = Join-Path $repoRoot "prompts\void-moderator-rumination.md"
+$contextProjectionScriptPath = Join-Path $repoRoot "scripts\lib\void-rumination-context-projection.ps1"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $repoActivityScriptPath = Join-Path $repoRoot "scripts\export-recent-repo-activity.mjs"
 $selfStateScriptPath = Join-Path $repoRoot "scripts\void-self-state.mjs"
 $startedAtUtc = [DateTime]::UtcNow
+
+. $contextProjectionScriptPath
 
 function Write-JsonFile {
   param(
@@ -268,29 +271,6 @@ function Convert-ToOperationArray {
   return @($Value)
 }
 
-function Get-ObjectPropertyString {
-  param(
-    $Value,
-    [Parameter(Mandatory = $true)]
-    [string] $Name
-  )
-
-  if ($null -eq $Value) {
-    return $null
-  }
-
-  $property = $Value.PSObject.Properties[$Name]
-  if ($null -eq $property -or $null -eq $property.Value) {
-    return $null
-  }
-
-  $text = [string]$property.Value
-  if ([string]::IsNullOrWhiteSpace($text)) {
-    return $null
-  }
-  return $text
-}
-
 function Convert-LastSpeechToReceiptOperation {
   param($Speech)
 
@@ -336,33 +316,6 @@ function Convert-LastSpeechToReceiptOperation {
   return @{
     operation = "record_delivery_receipt"
     receipt = $receipt
-  }
-}
-
-function Select-RuminationRepoActivity {
-  param($RepoActivity)
-
-  if ($null -eq $RepoActivity) {
-    return $null
-  }
-
-  $reposProperty = $RepoActivity.PSObject.Properties["repos"]
-  $repos = if ($null -ne $reposProperty -and $null -ne $reposProperty.Value) { @($reposProperty.Value) } else { @() }
-  $freshRepos = @(
-    $repos |
-      Where-Object {
-        $recent = $_.PSObject.Properties["recentCommitCount"]
-        $status = $_.PSObject.Properties["status"]
-        $null -ne $recent -and $null -ne $status -and [string]$status.Value -eq "ok" -and [int]$recent.Value -gt 0
-      } |
-      Select-Object -First 8
-  )
-
-  return @{
-    generatedAt = Get-ObjectPropertyString -Value $RepoActivity -Name "generatedAt"
-    cursorMode = Get-ObjectPropertyString -Value $RepoActivity -Name "cursorMode"
-    digest = Get-ObjectPropertyString -Value $RepoActivity -Name "digest"
-    freshRepos = $freshRepos
   }
 }
 
@@ -413,7 +366,7 @@ if (Test-Path $operationOutputPath) {
   Remove-Item -LiteralPath $operationOutputPath -Force
 }
 
-foreach ($requiredPath in @($recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath)) {
+foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath)) {
   if (-not (Test-Path $requiredPath)) {
     throw "Missing required helper at $requiredPath"
   }
@@ -473,26 +426,21 @@ try {
 }
 
 Write-JsonFile -Path $contextPath -Data @{
-  generatedAt = [DateTime]::UtcNow.ToString("o")
+  generated = "now"
   stateFile = $stateFilePath
   noPost = [bool]$NoPost
   selfStateSummary = $typedContext.summary
-  openCases = $typedState.moderationCursor.openCases
-  speechReceipts = $typedState.speechReceipts.recentReceipts
-  memories = $typedState.thoughtMemory.memories
-  incubation = $typedState.thoughtMemory.incubation
-  candidateInterventions = $typedState.candidateInterventions.interventions
-  scheduledRuntime = $typedState.scheduledRuntime
-  priorCursor = @{
-    lastReviewedMessageId = Get-ObjectPropertyString -Value $priorCursor -Name "lastReviewedMessageId"
-    lastReviewedTimestamp = Get-ObjectPropertyString -Value $priorCursor -Name "lastReviewedTimestamp"
-  }
-  observedCursor = @{
-    lastReviewedMessageId = Get-ObjectPropertyString -Value $observedCursor -Name "lastReviewedMessageId"
-    lastReviewedTimestamp = Get-ObjectPropertyString -Value $observedCursor -Name "lastReviewedTimestamp"
-  }
-  recentHistory = $history
-  repoActivity = Select-RuminationRepoActivity -RepoActivity $repoActivity
+  chronology = "Times in this prompt-facing context are relative phrases. Exact timestamps stay parent-owned for typed state and cursor bookkeeping."
+  openCases = @(Project-OpenCasesForRumination -Cases $typedState.moderationCursor.openCases -Now $startedAtUtc)
+  speechReceipts = @(Project-SpeechReceiptsForRumination -Receipts $typedState.speechReceipts.recentReceipts -Now $startedAtUtc)
+  memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
+  incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
+  candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
+  scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
+  priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc
+  observedCursor = Project-CursorForRumination -Cursor $observedCursor -Now $startedAtUtc
+  recentHistory = Project-RecentHistoryForRumination -History $history -Now $startedAtUtc
+  repoActivity = Select-RuminationRepoActivity -RepoActivity $repoActivity -Now $startedAtUtc
 }
 
 $stateWriteBefore = if (Test-Path $stateFilePath) { (Get-Item $stateFilePath).LastWriteTimeUtc } else { [DateTime]::MinValue }

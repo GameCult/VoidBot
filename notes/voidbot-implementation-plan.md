@@ -124,6 +124,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 
 - Self-state prompt summaries are derived from typed documents.
 - Recent room context is derived from Discord archive and the current poll.
+- Prompt-facing recent chronology is derived as relative phrases. Exact timestamps remain state/status/cursor data and should not be fed to the child rumination loop unless a tool or parent-owned operation specifically needs them.
 - Topic saturation is derived from incubation/memory support, not separately stored as another truth.
 - Source coverage is derived from recent evidence refs and repo/archive metadata.
 - Need-to-speak can keep a small pressure field, but its inputs remain receipts, candidates, and time since last speech.
@@ -159,6 +160,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
   - legacy projection/mirror state still exists on disk as failed-boundary residue and must not become source material for the rebuild
   - the old memory organ is split by concern, but its legacy translation, retention/compaction, identity crystallization, candidate interventions, and value-pressure inference are offline scaffolding, not earned architecture
 - the scheduled moderation runner has a typed rumination contract again: bounded context in, reviewed prompt template, typed operation payloads out, parent-owned cursor/receipt recording
+- recent event timing in that bounded context now crosses a projection boundary first, so the child sees "5 minutes ago" language while the parent keeps exact timestamps for bookkeeping
 - deterministic cleanup is mostly recent scar tissue from failed manual cleanup passes; it should be deleted rather than ported unless it protects a real invariant in the new model
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
 - sleep/distillation currently lacks a hard meaning-preservation implementation in the active runner, so it remains offline until rebuilt

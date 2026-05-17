@@ -171,9 +171,10 @@ export function buildVoidSelfStateProjection(
     .reverse()
     .map((memory) => memory.summary);
   const isNapping = sleepCycle.isNapping === true;
-  const napStartedAt = sleepCycle.currentNapStartedAt;
-  const napEndsAt = sleepCycle.currentNapEndsAt;
-  const nextNapAt = sleepCycle.nextNapStartsAt;
+  const now = new Date();
+  const napStartedAt = formatRelativeTime(sleepCycle.currentNapStartedAt, now);
+  const napEndsAt = formatRelativeTime(sleepCycle.currentNapEndsAt, now);
+  const nextNapAt = formatRelativeTime(sleepCycle.nextNapStartsAt, now);
 
   return {
     mode: isNapping ? "napping" : "awake",
@@ -241,14 +242,15 @@ function renderTypedSleepCycleSummary(
   thoughtMemory: VoidThoughtMemory,
 ): string {
   const sleepCycle = runtime.sleepCycle;
+  const now = new Date();
   const dreams = thoughtMemory.memories
     .filter((memory) => memory.kind === "dream_residue")
     .slice(-2)
     .reverse()
     .map((memory) => `${memory.target.label ?? memory.target.id}: ${memory.summary}`);
   const headline = sleepCycle.isNapping
-    ? `- Sleep: napping${sleepCycle.currentNapEndsAt ? ` until ${sleepCycle.currentNapEndsAt}` : ""}.`
-    : `- Sleep cycle: awake${sleepCycle.nextNapStartsAt ? `; next nap ${sleepCycle.nextNapStartsAt}` : ""}.`;
+    ? `- Sleep: napping${sleepCycle.currentNapEndsAt ? `; ends ${formatRelativeTime(sleepCycle.currentNapEndsAt, now)}` : ""}.`
+    : `- Sleep cycle: awake${sleepCycle.nextNapStartsAt ? `; next nap ${formatRelativeTime(sleepCycle.nextNapStartsAt, now)}` : ""}.`;
   const themeLine =
     sleepCycle.activeDreamThemes.length > 0
       ? `- Dream themes in reach: ${sleepCycle.activeDreamThemes.join(" | ")}`
@@ -305,7 +307,7 @@ function renderTransientRoomLog(
 
   const lines = recentMessages.map(
     (message) =>
-      `- [${message.timestamp}] ${message.authorName}: ${collapseWhitespace(message.content || "(no text content)")}`,
+      `- ${formatRelativeTime(message.timestamp)} ${message.authorName}: ${collapseWhitespace(message.content || "(no text content)")}`,
   );
 
   return [
@@ -317,4 +319,60 @@ function renderTransientRoomLog(
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function formatRelativeTime(value: string | undefined, now = new Date()): string {
+  if (!value) {
+    return "recently";
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "recently";
+  }
+
+  const deltaMs = timestamp - now.getTime();
+  const future = deltaMs > 0;
+  const absoluteSeconds = Math.abs(deltaMs) / 1000;
+  const phrase = describeRelativeDuration(absoluteSeconds);
+
+  if (phrase === "just now") {
+    return phrase;
+  }
+
+  return future ? `in ${phrase}` : `${phrase} ago`;
+}
+
+function describeRelativeDuration(absoluteSeconds: number): string {
+  if (absoluteSeconds < 45) {
+    return "just now";
+  }
+
+  const minutes = Math.round(absoluteSeconds / 60);
+  if (minutes < 90) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) {
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+
+  const days = Math.round(hours / 24);
+  if (days < 21) {
+    return `${days} day${days === 1 ? "" : "s"}`;
+  }
+
+  const weeks = Math.round(days / 7);
+  if (weeks < 10) {
+    return `${weeks} week${weeks === 1 ? "" : "s"}`;
+  }
+
+  const months = Math.round(days / 30);
+  if (months < 18) {
+    return `${months} month${months === 1 ? "" : "s"}`;
+  }
+
+  const years = Math.round(days / 365);
+  return `${years} year${years === 1 ? "" : "s"}`;
 }
