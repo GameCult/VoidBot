@@ -21,6 +21,7 @@ const evidenceRefSchema = z.object({
   kind: z.string().trim().min(1).max(64).optional(),
   summary: z.string().trim().max(1000).optional(),
 }).strict();
+const anchorRefSchema = evidenceRefSchema;
 
 const activationVectorSchema = z.object({
   mean: z.number().min(0).max(1),
@@ -83,6 +84,7 @@ const distilledMemorySchema = z.object({
   question: z.string().trim().min(1).max(2000).optional(),
   tension: z.string().trim().min(1).max(2000).optional(),
   actionImplication: z.string().trim().min(1).max(2000).optional(),
+  anchorRefs: z.array(anchorRefSchema).default([]),
   evidenceRefs: z.array(evidenceRefSchema).default([]),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -115,12 +117,12 @@ const meaningPreservingMemorySchema = distilledMemorySchema.superRefine((memory,
     });
   }
 
-  const admitsMissingEvidence = memory.tags.includes("evidence:missing");
-  if (memory.evidenceRefs.length === 0 && !admitsMissingEvidence) {
+  const admitsMissingAnchor = memory.tags.includes("anchor:missing") || memory.tags.includes("evidence:missing");
+  if (memory.anchorRefs.length === 0 && memory.evidenceRefs.length === 0 && !admitsMissingAnchor) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Memory writes must include evidence refs or explicitly tag evidence:missing.",
-      path: ["evidenceRefs"],
+      message: "Memory writes must include anchor refs or explicitly tag anchor:missing.",
+      path: ["anchorRefs"],
     });
   }
 });
@@ -131,6 +133,7 @@ const incubationThreadSchema = z.object({
   topic: boundedTextSchema,
   summary: boundedTextSchema,
   supportMemoryIds: z.array(nonEmptyStringSchema).default([]),
+  anchorRefs: z.array(anchorRefSchema).default([]),
   evidenceRefs: z.array(evidenceRefSchema).default([]),
   maturation: z.number().min(0).max(1).default(0),
   noveltyToRoom: z.number().min(0).max(1).optional(),
@@ -176,6 +179,7 @@ const agencyPressureSchema = z.object({
   tension: z.string().trim().min(1).max(2000).optional(),
   actionImplication: z.string().trim().min(1).max(2000),
   intensity: z.number().min(0).max(1).default(0.5),
+  anchorRefs: z.array(anchorRefSchema).default([]),
   evidenceRefs: z.array(evidenceRefSchema).default([]),
   sourceMemoryIds: z.array(nonEmptyStringSchema).default([]),
   createdAt: timestampSchema,
@@ -192,15 +196,22 @@ const agencyPressureSchema = z.object({
     });
   }
 
-  const admitsMissingEvidence = pressure.tags.includes("evidence:missing");
-  if (pressure.evidenceRefs.length === 0 && pressure.sourceMemoryIds.length === 0 && !admitsMissingEvidence) {
+  const admitsMissingAnchor = pressure.tags.includes("anchor:missing") || pressure.tags.includes("evidence:missing");
+  if (pressure.anchorRefs.length === 0 && pressure.evidenceRefs.length === 0 && pressure.sourceMemoryIds.length === 0 && !admitsMissingAnchor) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Agency pressure must include evidence refs, source memory ids, or explicitly tag evidence:missing.",
-      path: ["evidenceRefs"],
+      message: "Agency pressure must include anchor refs, source memory ids, or explicitly tag anchor:missing.",
+      path: ["anchorRefs"],
     });
   }
 });
+
+const selfProfileValueSchema = z.object({
+  id: nonEmptyStringSchema,
+  label: nonEmptyStringSchema,
+  priority: z.number().min(0).max(1),
+  summary: z.string().trim().max(1000).optional(),
+}).strict();
 
 export const voidSelfProfileSchema = z.object({
   schemaVersion: z.literal(1),
@@ -208,12 +219,7 @@ export const voidSelfProfileSchema = z.object({
   publicName: nonEmptyStringSchema,
   publicDescription: z.string().trim().max(1000).optional(),
   privateNotes: z.array(boundedTextSchema).default([]),
-  values: z.array(z.object({
-    id: nonEmptyStringSchema,
-    label: nonEmptyStringSchema,
-    priority: z.number().min(0).max(1),
-    summary: z.string().trim().max(1000).optional(),
-  }).strict()).default([]),
+  values: z.array(selfProfileValueSchema).default([]),
   activationProfile: z.object({
     underlyingOrganization: activationCategorySchema.default({}),
     stableDispositions: activationCategorySchema.default({}),
@@ -370,6 +376,30 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     operation: z.literal("prune_short_term_memories"),
     sourceMemoryIds: z.array(nonEmptyStringSchema).min(1),
     prunedAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("revise_durable_memory"),
+    sourceMemoryIds: z.array(nonEmptyStringSchema).min(1),
+    memory: meaningPreservingMemorySchema,
+    revisedAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_durable_memory"),
+    memoryId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("crystallize_memory_into_identity"),
+    sourceMemoryIds: z.array(nonEmptyStringSchema).min(1),
+    memory: meaningPreservingMemorySchema.refine((memory) => memory.kind === "identity_seam", {
+      message: "Crystallized identity memory must use kind identity_seam.",
+    }),
+    value: selfProfileValueSchema.optional(),
+    privateNote: z.string().trim().min(1).max(4000).optional(),
+    crystallizedAt: timestampSchema,
     reason: z.string().trim().min(1).max(1000),
   }).strict(),
   z.object({

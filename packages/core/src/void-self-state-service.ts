@@ -145,6 +145,30 @@ function applyTypedOperation(
       );
       state.thoughtMemory.updatedAt = operation.prunedAt;
       return;
+    case "revise_durable_memory":
+      upsertBy(state.thoughtMemory.memories, operation.memory, (entry) => entry.memoryId);
+      retireSourceMemories(state, operation.sourceMemoryIds, operation.memory.memoryId, operation.revisedAt, operation.reason);
+      state.thoughtMemory.updatedAt = operation.revisedAt;
+      return;
+    case "retire_durable_memory":
+      retireDurableMemory(state, operation.memoryId, operation.retiredAt, operation.reason);
+      state.thoughtMemory.updatedAt = operation.retiredAt;
+      return;
+    case "crystallize_memory_into_identity":
+      upsertBy(state.thoughtMemory.memories, operation.memory, (entry) => entry.memoryId);
+      retireSourceMemories(state, operation.sourceMemoryIds, operation.memory.memoryId, operation.crystallizedAt, operation.reason);
+      if (operation.value) {
+        upsertBy(state.selfProfile.values, operation.value, (entry) => entry.id);
+        state.selfProfile.values = state.selfProfile.values
+          .sort((left, right) => right.priority - left.priority)
+          .slice(0, 24);
+      }
+      if (operation.privateNote) {
+        state.selfProfile.privateNotes = [...state.selfProfile.privateNotes, operation.privateNote].slice(-24);
+      }
+      state.selfProfile.updatedAt = operation.crystallizedAt;
+      state.thoughtMemory.updatedAt = operation.crystallizedAt;
+      return;
     case "merge_incubation_support":
       upsertBy(state.thoughtMemory.incubation, operation.thread, (entry) => entry.threadId);
       state.thoughtMemory.updatedAt = operation.thread.updatedAt;
@@ -178,15 +202,43 @@ function applyTypedOperation(
       return;
     case "apply_memory_distillation":
       upsertBy(state.thoughtMemory.memories, operation.memory, (entry) => entry.memoryId);
-      state.thoughtMemory.memories = state.thoughtMemory.memories.filter(
-        (entry) => !operation.sourceMemoryIds.includes(entry.memoryId) || entry.memoryId === operation.memory.memoryId,
-      );
+      retireSourceMemories(state, operation.sourceMemoryIds, operation.memory.memoryId, operation.appliedAt, "distilled into replacement memory");
       state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(
         (entry) => !operation.sourceMemoryIds.includes(entry.memoryId),
       );
       state.thoughtMemory.updatedAt = operation.appliedAt;
       return;
   }
+}
+
+function retireSourceMemories(
+  state: VoidSelfStateTypedProjection,
+  sourceMemoryIds: string[],
+  replacementMemoryId: string,
+  retiredAt: string,
+  reason: string,
+): void {
+  for (const sourceMemoryId of sourceMemoryIds) {
+    if (sourceMemoryId === replacementMemoryId) {
+      continue;
+    }
+    retireDurableMemory(state, sourceMemoryId, retiredAt, reason);
+  }
+}
+
+function retireDurableMemory(
+  state: VoidSelfStateTypedProjection,
+  memoryId: string,
+  retiredAt: string,
+  reason: string,
+): void {
+  const memory = state.thoughtMemory.memories.find((entry) => entry.memoryId === memoryId);
+  if (!memory) {
+    return;
+  }
+  memory.retiredAt = retiredAt;
+  memory.updatedAt = retiredAt;
+  memory.tags = Array.from(new Set([...memory.tags, `retired:${reason}`]));
 }
 
 function closeTypedOpenCase(

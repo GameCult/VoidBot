@@ -52,13 +52,14 @@ process.stdin.on("end", () => {
       claim: "Runtime state should be owned by the implementation boundary rather than by workflow scripts.",
       tension: "Workflow scripts can orchestrate a pass, but they become compensators when they own the organism's body.",
       actionImplication: "Move authority into typed runtime state before adding more maintenance scripts.",
-      evidenceRefs: [
+      anchorRefs: [
         {
           ref: "fixture:aquarium-body-workflow",
           kind: "fixture",
           summary: "Seeded short-term memory for the sleep-maintenance fixture.",
         },
       ],
+      evidenceRefs: [],
       createdAt: "2026-05-17T00:00:00.000Z",
       updatedAt: "2026-05-17T01:00:00.000Z",
       tags: [],
@@ -93,13 +94,14 @@ process.stdin.on("end", () => {
       claim = "Runtime state should be owned by the implementation boundary rather than by workflow scripts."
       tension = "Workflow scripts can orchestrate a pass, but they become compensators when they own the organism's body."
       actionImplication = "Move authority into typed runtime state before adding more maintenance scripts."
-      evidenceRefs = @(
+      anchorRefs = @(
         @{
           ref = "fixture:aquarium-body-workflow"
           kind = "fixture"
           summary = "Seeded short-term memory for the sleep-maintenance fixture."
         }
       )
+      evidenceRefs = @()
       createdAt = "2026-05-17T00:00:00.000Z"
       updatedAt = "2026-05-17T00:00:00.000Z"
       tags = @()
@@ -166,8 +168,8 @@ process.stdin.on("end", () => {
   if ([string]::IsNullOrWhiteSpace($durableMemory.claim) -or [string]::IsNullOrWhiteSpace($durableMemory.tension) -or [string]::IsNullOrWhiteSpace($durableMemory.actionImplication)) {
     throw "Sleep fixture produced a durable memory without claim, tension, and action implication."
   }
-  if (@($durableMemory.evidenceRefs).Count -lt 1) {
-    throw "Sleep fixture produced a durable memory without evidence refs."
+  if (@($durableMemory.anchorRefs).Count -lt 1) {
+    throw "Sleep fixture produced a durable memory without anchor refs."
   }
 
   @{

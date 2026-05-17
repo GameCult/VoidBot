@@ -34,7 +34,7 @@ A valid memory/distillation operation must preserve:
 - the claim or question
 - the live tension or counterweight
 - why this should affect future action
-- evidence refs, or an explicit `evidence:missing` tag
+- anchors, or an explicit `anchor:missing` tag
 
 If those pieces cannot be preserved, do not invent a prettier abstraction. In
 sleep mode, consume the source anyway: merge what is still alive into incubation
@@ -51,6 +51,9 @@ meaning-preserving operation is possible.
 - `retire_agency_pressure`
 - `propose_memory_distillation`
 - `apply_memory_distillation`
+- `revise_durable_memory`
+- `retire_durable_memory`
+- `crystallize_memory_into_identity`
 - `prune_short_term_memories`
 
 Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
@@ -66,9 +69,12 @@ Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 7. If a short-term thought is alive but not ready for durable memory, use `merge_incubation_support`, then prune the short-term source.
 8. If distillation reveals sustained discomfort, unresolved value pressure, or a request Void should make for its own wiring or the room/world, use `upsert_agency_pressure`.
 9. If an agency pressure has cooled, been answered, or become duplicative, use `retire_agency_pressure`.
-10. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
-11. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
-12. Write `{{OPERATION_OUTPUT_PATH}}`. Outside sleep, if nothing deserves persistence, write `[]`.
+10. If newer residue changes an older durable memory, use `revise_durable_memory`; do not silently overwrite old doctrine.
+11. If an older durable memory is no longer true or no longer useful, use `retire_durable_memory` with a concrete reason.
+12. If a thought has ripened into stable self-doctrine, use `crystallize_memory_into_identity`; long-term memory is durable, not frozen.
+13. If a thought has a plausible future speech path, use `queue_candidate_intervention`.
+14. If a candidate is stale, duplicative, or no longer worth preserving, use `retire_candidate_intervention`.
+15. Write `{{OPERATION_OUTPUT_PATH}}`. Outside sleep, if nothing deserves persistence, write `[]`.
 
 ## Voice Discipline
 

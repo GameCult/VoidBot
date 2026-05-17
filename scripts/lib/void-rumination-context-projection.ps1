@@ -197,6 +197,7 @@ function Project-MemoriesForRumination {
         created = Project-RelativeTimestamp -Value $_ -Name "createdAt" -Now $Now
         updated = Project-RelativeTimestamp -Value $_ -Name "updatedAt" -Now $Now
         retired = Project-RelativeTimestamp -Value $_ -Name "retiredAt" -Now $Now
+        anchorRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "anchorRefs"))
         evidenceRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "evidenceRefs"))
         tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
       }
@@ -215,6 +216,7 @@ function Project-IncubationForRumination {
         topic = Get-ObjectPropertyString -Value $_ -Name "topic"
         summary = Get-ObjectPropertyString -Value $_ -Name "summary"
         supportMemoryIds = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "supportMemoryIds"))
+        anchorRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "anchorRefs"))
         evidenceRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "evidenceRefs"))
         maturation = Get-ObjectPropertyValue -Value $_ -Name "maturation"
         noveltyToRoom = Get-ObjectPropertyValue -Value $_ -Name "noveltyToRoom"
@@ -273,6 +275,7 @@ function Project-AgencyPressureForRumination {
         updated = Project-RelativeTimestamp -Value $_ -Name "updatedAt" -Now $Now
         resolved = Project-RelativeTimestamp -Value $_ -Name "resolvedAt" -Now $Now
         retired = Project-RelativeTimestamp -Value $_ -Name "retiredAt" -Now $Now
+        anchorRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "anchorRefs"))
         evidenceRefs = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "evidenceRefs"))
         sourceMemoryIds = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "sourceMemoryIds"))
         tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))

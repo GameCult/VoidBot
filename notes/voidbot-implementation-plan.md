@@ -6,7 +6,7 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 Stop feature work on moderation, mood, and self-state until the state boundary is rebuilt. The live product goal still stands: Void should answer Discord, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop. The old implementation reached that goal through JSON projection edits, legacy mirrors, and a swollen memory organ; that path is now offline. Most of the deterministic cleanup code is recent compensator cruft: it accumulated because the live state had exploded into nonsense, and repeated "clean this file" passes preserved the mess by adding machinery around it.
 
-The next priority is to rebuild the scheduled loop and memory maintenance on the typed CultCache `.cc` state boundary so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/evidence/tensions instead of collapsing them into generic slogan paste.
+The next priority is to rebuild the scheduled loop and memory maintenance on the typed CultCache `.cc` state boundary so the compensator pile is unnecessary. Agents and scheduled workers should mutate typed CultCache-backed state through explicit tools/APIs, not by editing a whole-state JSON working copy. Sleep and memory distillation must also be redesigned from first principles so they preserve meaning-bearing claims/anchors/tensions instead of collapsing them into generic slogan paste.
 
 The center of the next pass is prevention, not legacy repair. The old brain can be treated as evidence of a failed boundary. The new brain should reject malformed memory at ingress so the runtime never needs a permanent cleanup bureaucracy to recover basic meaning.
 
@@ -34,6 +34,7 @@ The center of the next pass is prevention, not legacy repair. The old brain can 
   - `void.speech_receipts`: recent delivered replies and dedupe keys
   - `void.thought_memory`: distilled memories, incubation threads, resonance summaries
   - `void.scheduled_runtime`: sleep cycle, speaking pressure, last run summaries
+  - `void.agency_pressure`: discomforts, active tensions, and self/world advocacy pressure
   - `void.candidate_interventions`: drafts or requests that may become speech
 
 CultCache does not need a separate physical store per state type; it is already polymorphic. The intended split is ownership by typed document kind and mutation contract, not a herd of little stores in fake mustaches. Each durable fact still has one owner. No top-level mirrors. No editable shadow copy pretending to be a harmless view.
@@ -52,7 +53,7 @@ CultCache does not need a separate physical store per state type; it is already 
   - current cursor window
   - outstanding obligations
   - selected memory/thought summaries
-  - selected repo/archive evidence
+  - selected repo/archive anchors
   - proposed state mutations
   - optional speech request
 - Mood drift runtime is deterministic maintenance:
@@ -81,6 +82,9 @@ Runtime context dies at the end of the pass unless an explicit typed mutation pr
   - `update_speaking_pressure`
   - `propose_memory_distillation`
   - `apply_memory_distillation`
+  - `revise_durable_memory`
+  - `retire_durable_memory`
+  - `crystallize_memory_into_identity`
   - `prune_short_term_memories`
 - Model/agent output crosses the boundary as proposed operations, not as rewritten state.
 - The state service validates, normalizes, dedupes, and writes.
@@ -106,7 +110,7 @@ Memory-bearing operations have a stricter contract than historical projections. 
 - at least one claim or question
 - a tension or counterweight
 - an action implication
-- evidence refs, or an explicit `evidence:missing` tag
+- anchors, or an explicit `anchor:missing` tag
 
 If those fields are missing, the operation is invalid. This is the wall that keeps the next iteration from turning into topic sludge and asking cleanup to be its personality.
 
@@ -125,7 +129,7 @@ If those fields are missing, the operation is invalid. This is the wall that kee
     "claim": "The implementation boundary should own runtime state instead of leaving workflow scripts to compensate for it.",
     "tension": "Workflow scripts are good at orchestration and bad at being an organism.",
     "actionImplication": "Move authority into the runtime boundary before adding more maintenance scripts.",
-    "evidenceRefs": [
+    "anchorRefs": [
       {
         "ref": "source:...",
         "kind": "source"
@@ -146,7 +150,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - Recent room context is derived from Discord archive and the current poll.
 - Prompt-facing recent chronology is derived as relative phrases. Exact timestamps remain state/status/cursor data and should not be fed to the child rumination loop unless a tool or parent-owned operation specifically needs them.
 - Topic saturation is derived from incubation/memory support, not separately stored as another truth.
-- Source coverage is derived from recent evidence refs and repo/archive metadata.
+- Source coverage is derived from recent anchors and repo/archive metadata.
 - Need-to-speak can keep a small pressure field, but its inputs remain receipts, candidates, and time since last speech.
 - Legacy top-level mirrors are deleted. If a consumer needs a projection, render it on demand.
 
@@ -244,7 +248,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Continue hardening the typed rumination runner's explicit phases:
   - poll chronology
   - read typed state summary
-  - collect evidence from Discord/source/lore only when a phase asks for it
+  - collect anchors from Discord/source/lore only when a phase asks for it
   - ask model for decisions and operation payloads
   - validate/apply operations
   - optionally send speech
@@ -264,12 +268,14 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Landed cut: hard-wired agency paths that turned heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract have been deleted.
 - Landed replacement boundary: `scripts/run-void-memory-maintenance.ps1` asks the model for memory/incubation/candidate typed operation proposals using `prompts/void-memory-maintenance.md`, rejects non-maintenance operations, and applies the rest through `scripts/void-self-state.mjs`.
 - Landed sleep integration: `scripts/simulate-void-mood.mjs` invokes memory maintenance once per nap, and the maintenance runner fails a real sleep pass that returns no operations while memory pressure is present.
-- Landed verification: `npm run moderation:memory-maintenance:sleep-fixture` exercises the non-skip model branch with a fake Codex child, proving `AquariumSynthCSharp: Workflow cannot own the body` promotes from short-term into durable memory while preserving subject, claim, evidence, tension, and action implication.
+- Landed verification: `npm run moderation:memory-maintenance:sleep-fixture` exercises the non-skip model branch with a fake Codex child, proving `AquariumSynthCSharp: Workflow cannot own the body` promotes from short-term into durable memory while preserving subject, claim, anchor, tension, and action implication.
+- Landed memory lifecycle: `revise_durable_memory`, `retire_durable_memory`, and `crystallize_memory_into_identity` make long-term memory durable but plastic instead of silently immutable.
+- Landed lifecycle verification: `npm run moderation:memory-lifecycle:fixture` proves a short-term thought can promote into durable memory, revise into a replacement, retire superseded durable records, and crystallize into an identity memory plus self-profile value.
 - Treat legacy brain mush as a migration problem, not the design center. New memory writes must cross the meaning-preserving typed operation schema before they reach CultCache.
 - Redesign sleep/distillation around an explicit contract:
   - preserve the claim/question/fascination target
   - preserve the concrete subject, such as repo, room, lore seam, person, or system
-  - preserve evidence refs or admit when evidence is missing
+  - preserve anchors or admit when anchors are missing
   - preserve the live tension/counterweight
   - preserve why the memory should affect future action
   - never replace a concrete thought with a prettier generic principle unless the operation records what was lost and why that loss is acceptable

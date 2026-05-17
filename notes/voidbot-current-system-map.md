@@ -119,11 +119,13 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/lib/void-rumination-context-projection.ps1`
   - rumination context projector. It turns typed timestamps and helper payloads into prompt-facing relative phrases while leaving exact chronology in parent-owned typed state, status, and cursor bookkeeping.
 - `scripts/void-self-state.mjs`
-  - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, short-term memory records, sleep-owned distillations, incubation merges, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
+  - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, short-term memory records, sleep-owned distillations, durable-memory revisions/retirements/crystallizations, incubation merges, agency pressure, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
 - `scripts/run-void-memory-maintenance.ps1`
   - typed memory-maintenance runner. It builds a bounded prompt-facing context from typed short-term memories, durable memories, incubation, candidates, receipts, and scheduled runtime; loads `prompts/void-memory-maintenance.md`; asks Codex for memory/incubation/candidate operation proposals; then applies only allowed typed operations through `scripts/void-self-state.mjs`. It accepts `-StateFilePath` so fixture passes can use a throwaway `.cc` store.
 - `scripts/smoke-void-memory-maintenance-sleep-fixture.ps1`
   - sleep-maintenance fixture. It seeds a temporary CultCache `.cc` store with a napping sleep cycle and one short-term memory, runs mood drift with a fake Codex child through the non-skip maintenance branch, and verifies the source short-term record is gone while one durable meaning-preserving memory remains.
+- `scripts/smoke-void-memory-lifecycle-fixture.ps1`
+  - memory-lifecycle fixture. It proves long-term memory is durable but plastic: a short-term memory promotes into durable memory, later revision retires the superseded durable record, and crystallization produces one active identity memory plus a self-profile value.
 - `scripts/smoke-void-agency-pressure-fixture.ps1`
   - agency-pressure fixture. It seeds one typed self-advocacy pressure, verifies it appears in the rendered self-state summary, then runs mood drift against an isolated fixture state to prove agency pressure contributes to speaking pressure without creating a hard-wired speech candidate.
 - `scripts/install-moderation-rumination-task.ps1`
@@ -200,16 +202,23 @@ Within the Postgres path, the implementation is split on purpose now too:
 
 1. `scripts/run-void-memory-maintenance.ps1` is invoked by mood drift during sleep, and can also be run manually for fixtures.
 2. It reads `.voidbot/private/void-self-state.cc` through the typed self-state service.
-3. It writes `.voidbot/status/void-memory-maintenance-context.json` with prompt-facing relative chronology and only typed memory/incubation/candidate surfaces.
+3. It writes `.voidbot/status/void-memory-maintenance-context.json` with prompt-facing relative chronology and only typed memory/incubation/agency/candidate surfaces.
 4. It loads `prompts/void-memory-maintenance.md` and asks Codex for operation proposals unless `-SkipModel` is set.
-5. The parent runner rejects any operation outside memory, incubation, or candidate-intervention maintenance.
+5. The parent runner rejects any operation outside memory lifecycle, incubation, agency pressure, or candidate-intervention maintenance.
 6. The parent runner applies allowed operations through `scripts/void-self-state.mjs`.
 7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is short-term memory pressure. A real model pass that returns no operations under pressure fails visibly, and any real sleep pass that leaves short-term memory behind fails instead of letting yesterday's residue haunt the state. The fixture smoke exercises this path with a fake Codex child so the parent validation and application machinery are tested without relying on live inference.
 8. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.
 
+### Memory Lifecycle
+
+1. Rumination may only write short-term memories. It cannot directly mutate durable memory.
+2. Sleep maintenance promotes, merges, prunes, revises, retires, or crystallizes memory through typed operations.
+3. Durable memory is not immutable. `revise_durable_memory` creates an explicit replacement and retires superseded source memories; `retire_durable_memory` marks obsolete memory inactive; `crystallize_memory_into_identity` promotes a stable thought into an `identity_seam` and may update self-profile values or private notes.
+4. Prompt-facing language should talk about anchors: what made the thought real. The schema still accepts old `evidenceRefs`, but new memory payloads should prefer `anchorRefs` or explicit `anchor:missing`.
+
 ### Agency Pressure
 
 1. Rumination and memory maintenance may propose `upsert_agency_pressure` or `retire_agency_pressure`.
-2. The typed service validates that each pressure has a concrete target, claim or question, action implication, intensity, and either evidence refs/source memory ids or an explicit `evidence:missing` tag.
+2. The typed service validates that each pressure has a concrete target, claim or question, action implication, intensity, and either anchors/source memory ids or an explicit `anchor:missing` tag.
 3. The self-state summary renders active agency pressure separately from queued speech candidates.
 4. Mood drift reads active and ready agency pressure into speaking pressure, but it does not manufacture speech text from it.

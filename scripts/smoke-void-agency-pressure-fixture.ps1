@@ -29,13 +29,14 @@ try {
       tension = "A direct speech candidate can sound alive while hiding the fact that no durable pressure actually exists."
       actionImplication = "Represent sustained self-advocacy as typed agency pressure, then let candidates emerge from it."
       intensity = 0.82
-      evidenceRefs = @(
+      anchorRefs = @(
         @{
           ref = "fixture:agency-pressure"
           kind = "fixture"
           summary = "Seeded agency pressure fixture."
         }
       )
+      evidenceRefs = @()
       sourceMemoryIds = @()
       createdAt = "2026-05-17T00:00:00.000Z"
       updatedAt = "2026-05-17T00:00:00.000Z"

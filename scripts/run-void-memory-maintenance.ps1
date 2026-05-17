@@ -282,6 +282,9 @@ function Assert-AllowedMemoryMaintenanceOperation {
     "retire_agency_pressure",
     "propose_memory_distillation",
     "apply_memory_distillation",
+    "revise_durable_memory",
+    "retire_durable_memory",
+    "crystallize_memory_into_identity",
     "prune_short_term_memories"
   )
 

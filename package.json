@@ -38,6 +38,7 @@
     "moderation:recent-repo-activity": "node scripts/export-recent-repo-activity.mjs",
     "moderation:memory-maintenance": "powershell -ExecutionPolicy Bypass -File scripts/run-void-memory-maintenance.ps1",
     "moderation:memory-maintenance:sleep-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-memory-maintenance-sleep-fixture.ps1",
+    "moderation:memory-lifecycle:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-memory-lifecycle-fixture.ps1",
     "moderation:agency-pressure:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-agency-pressure-fixture.ps1",
     "moderation:mood-drift": "node scripts/simulate-void-mood.mjs",
     "rag:scrub-bot-prompts": "tsx scripts/scrub-bot-prompts-from-history.ts",

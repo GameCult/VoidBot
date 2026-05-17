@@ -125,6 +125,7 @@ export function renderVoidSelfStateSummary(
     .slice(0, 4)
     .map((value) => value.label);
   const memories = state.thoughtMemory.memories
+    .filter((memory) => !memory.retiredAt)
     .slice(-6)
     .reverse()
     .map((memory) => renderTypedMemory(memory));
@@ -206,7 +207,7 @@ export function buildVoidSelfStateProjection(
 ): VoidSelfStateContext["projection"] {
   const sleepCycle = typedState.scheduledRuntime.sleepCycle;
   const dreamSummaries = typedState.thoughtMemory.memories
-    .filter((memory) => memory.kind === "dream_residue")
+    .filter((memory) => memory.kind === "dream_residue" && !memory.retiredAt)
     .slice(-3)
     .reverse()
     .map((memory) => memory.summary);
@@ -284,7 +285,7 @@ function renderTypedSleepCycleSummary(
   const sleepCycle = runtime.sleepCycle;
   const now = new Date();
   const dreams = thoughtMemory.memories
-    .filter((memory) => memory.kind === "dream_residue")
+    .filter((memory) => memory.kind === "dream_residue" && !memory.retiredAt)
     .slice(-2)
     .reverse()
     .map((memory) => `${memory.target.label ?? memory.target.id}: ${memory.summary}`);
