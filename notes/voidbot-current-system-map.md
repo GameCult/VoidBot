@@ -122,8 +122,14 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, short-term memory records, sleep-owned distillations, incubation merges, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
 - `scripts/run-void-memory-maintenance.ps1`
   - typed memory-maintenance runner. It builds a bounded prompt-facing context from typed short-term memories, durable memories, incubation, candidates, receipts, and scheduled runtime; loads `prompts/void-memory-maintenance.md`; asks Codex for memory/incubation/candidate operation proposals; then applies only allowed typed operations through `scripts/void-self-state.mjs`. It accepts `-StateFilePath` so fixture passes can use a throwaway `.cc` store.
+- `scripts/smoke-void-memory-maintenance-sleep-fixture.ps1`
+  - sleep-maintenance fixture. It seeds a temporary CultCache `.cc` store with a napping sleep cycle and one short-term memory, runs mood drift with a fake Codex child through the non-skip maintenance branch, and verifies the source short-term record is gone while one durable meaning-preserving memory remains.
 - `scripts/install-moderation-rumination-task.ps1`
   - installs the local 15-minute scheduled task that runs the moderation/participation loop through the hidden PowerShell launcher shim.
+- Scheduled task `Void Mood Drift`
+  - enabled typed mood/sleep runner. It invokes `scripts/run-void-mood-drift.ps1`, which calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
+- Scheduled task `Void Moderator Rumination`
+  - disabled pending its own model-branch fixture. Its script is typed-only, but unattended speech/thought is still too behaviorally sharp to re-enable on smoke tests alone.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
 - `scripts/run-void-mood-drift.ps1`
@@ -196,5 +202,5 @@ Within the Postgres path, the implementation is split on purpose now too:
 4. It loads `prompts/void-memory-maintenance.md` and asks Codex for operation proposals unless `-SkipModel` is set.
 5. The parent runner rejects any operation outside memory, incubation, or candidate-intervention maintenance.
 6. The parent runner applies allowed operations through `scripts/void-self-state.mjs`.
-7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is short-term memory pressure. A real model pass that returns no operations under pressure fails visibly, and any real sleep pass that leaves short-term memory behind fails instead of letting yesterday's residue haunt the state.
+7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is short-term memory pressure. A real model pass that returns no operations under pressure fails visibly, and any real sleep pass that leaves short-term memory behind fails instead of letting yesterday's residue haunt the state. The fixture smoke exercises this path with a fake Codex child so the parent validation and application machinery are tested without relying on live inference.
 8. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.

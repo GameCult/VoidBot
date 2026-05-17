@@ -11,14 +11,16 @@ const {
   loadVoidSelfStateTypedDocuments,
 } = require(resolve(repoRoot, "packages/core/dist/index.js"));
 
-const statePath = resolve(repoRoot, ".voidbot/private/void-self-state.cc");
-const statusPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.json");
-const lockPath = resolve(repoRoot, ".voidbot/status/void-mood-drift.lock");
-const lastSpeechPath = resolve(repoRoot, ".voidbot/status/void-last-speech.json");
-const moderationLockPath = resolve(repoRoot, ".voidbot/status/moderation-rumination.lock");
-const memoryMaintenanceStatusPath = resolve(repoRoot, ".voidbot/status/void-memory-maintenance.json");
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
+const statePath = resolveArgPath("--state-path", ".voidbot/private/void-self-state.cc");
+const statusDir = resolveStatusDir();
+const statusPath = resolve(statusDir, "void-mood-drift.json");
+const lockPath = resolve(statusDir, "void-mood-drift.lock");
+const lastSpeechPath = resolve(statusDir, "void-last-speech.json");
+const moderationLockPath = resolve(statusDir, "moderation-rumination.lock");
+const memoryMaintenanceStatusPath = resolveMemoryMaintenanceStatusPath();
 const memoryMaintenanceScriptPath = resolve(repoRoot, "scripts/run-void-memory-maintenance.ps1");
-const args = new Set(process.argv.slice(2));
 
 async function main() {
   const now = new Date();
@@ -313,3 +315,28 @@ function clamp(value, min, max) {
 }
 
 await main();
+
+function getArgValue(name) {
+  const index = rawArgs.indexOf(name);
+  if (index < 0) {
+    return undefined;
+  }
+
+  const value = rawArgs[index + 1];
+  return typeof value === "string" && !value.startsWith("--") ? value : undefined;
+}
+
+function resolveArgPath(name, fallbackRelativePath) {
+  const value = getArgValue(name);
+  return value ? resolve(value) : resolve(repoRoot, fallbackRelativePath);
+}
+
+function resolveStatusDir() {
+  const value = process.env.VOID_STATUS_DIR;
+  return resolve(value && value.trim().length > 0 ? value : resolve(repoRoot, ".voidbot/status"));
+}
+
+function resolveMemoryMaintenanceStatusPath() {
+  const statusDir = process.env.VOID_MEMORY_MAINTENANCE_STATUS_DIR;
+  return resolve(statusDir && statusDir.trim().length > 0 ? statusDir : resolveStatusDir(), "void-memory-maintenance.json");
+}

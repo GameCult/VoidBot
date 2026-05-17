@@ -232,9 +232,10 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 
 ### Commit 6.5: Keep Old Scripts Offline
 
-- Confirm `Void Moderator Rumination` and `Void Mood Drift` remain disabled while their replacement behavior is rebuilt.
-- Do not reinstall or re-enable old scheduled scripts as compatibility surfaces.
-- Verification: scheduled-task query shows both disabled; direct dry runs of the rebuilt scripts operate only on `.voidbot/private/void-self-state.cc`.
+- `Void Mood Drift` has been deliberately reinstalled after the typed sleep-maintenance fixture passed. It runs `scripts/run-void-mood-drift.ps1`, which calls the typed `scripts/simulate-void-mood.mjs` path.
+- Keep `Void Moderator Rumination` disabled until its typed operation path has a model-branch fixture comparable to the sleep-maintenance fixture.
+- Do not reinstall or re-enable deleted legacy scripts as compatibility surfaces.
+- Verification: scheduled-task query shows mood enabled with Last Result `0`, moderation disabled, and rebuilt direct dry runs operate only on `.voidbot/private/void-self-state.cc`.
 
 ### Commit 7: Harden Scheduled Runner As A Phase Machine
 
@@ -261,6 +262,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
 - Landed cut: hard-wired agency paths that turned heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract have been deleted.
 - Landed replacement boundary: `scripts/run-void-memory-maintenance.ps1` asks the model for memory/incubation/candidate typed operation proposals using `prompts/void-memory-maintenance.md`, rejects non-maintenance operations, and applies the rest through `scripts/void-self-state.mjs`.
 - Landed sleep integration: `scripts/simulate-void-mood.mjs` invokes memory maintenance once per nap, and the maintenance runner fails a real sleep pass that returns no operations while memory pressure is present.
+- Landed verification: `npm run moderation:memory-maintenance:sleep-fixture` exercises the non-skip model branch with a fake Codex child, proving `AquariumSynthCSharp: Workflow cannot own the body` promotes from short-term into durable memory while preserving subject, claim, evidence, tension, and action implication.
 - Treat legacy brain mush as a migration problem, not the design center. New memory writes must cross the meaning-preserving typed operation schema before they reach CultCache.
 - Redesign sleep/distillation around an explicit contract:
   - preserve the claim/question/fascination target
@@ -270,7 +272,7 @@ Verdict: stop feature work and rebuild this foundation. The rest of the machine 
   - preserve why the memory should affect future action
   - never replace a concrete thought with a prettier generic principle unless the operation records what was lost and why that loss is acceptable
 - Make distillation emit typed candidate memories first; the state service applies only candidates that satisfy the contract.
-- Remaining verification: model-pass fixtures such as `AquariumSynthCSharp: Workflow cannot own the body` survive sleep with their subject, claim, evidence, and tension intact.
+- Remaining work: rebuild agency behavior through typed operations and add the same model-branch fixture discipline to moderation rumination before scheduling it unattended.
 
 ### Commit 10: Resume Product Hardening
 
