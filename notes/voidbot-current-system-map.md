@@ -225,7 +225,7 @@ Within the Postgres path, the implementation is split on purpose now too:
 ### Memory Lifecycle
 
 1. Rumination may only write short-term memories. It cannot directly mutate durable memory.
-2. The typed state service clusters repeated short-term memories before sleep sees them. If a new record repeats the same target/topic pressure, it updates one provisional memory and merges anchors instead of stacking another variant.
+2. The typed state service clusters repeated short-term memories before sleep sees them. If a new record repeats the same target/topic pressure, it updates one provisional memory and merges anchors instead of stacking another variant. This preserves deepening: fresh anchors and sharper tensions should accumulate inside the cluster, while unchanged paraphrases should not become separate memories.
 3. Sleep maintenance promotes, merges, prunes, revises, retires, or crystallizes memory through typed operations.
 4. Durable memory is not immutable. `revise_durable_memory` creates an explicit replacement and retires superseded source memories; `retire_durable_memory` marks obsolete memory inactive; `crystallize_memory_into_identity` promotes a stable thought into an `identity_seam` and may update self-profile values or private notes.
 5. Prompt-facing language should talk about anchors: what made the thought real. The schema still accepts old `evidenceRefs`, but new memory payloads should prefer `anchorRefs` or explicit `anchor:missing`.

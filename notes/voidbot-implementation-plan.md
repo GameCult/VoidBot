@@ -114,7 +114,7 @@ Memory-bearing operations have a stricter contract than historical projections. 
 
 If those fields are missing, the operation is invalid. This is the wall that keeps the next iteration from turning into topic sludge and asking cleanup to be its personality.
 
-Short-term memory also has a self-novelty wall now. If a rumination write repeats an existing target/topic cluster, the state service keeps the existing source id, merges anchors/tags, and stores the incoming narrowed thought as the current working version. Same repo is not enough to merge; the topic pressure must overlap.
+Short-term memory also has a self-novelty wall now. If a rumination write repeats an existing target/topic cluster, the state service keeps the existing source id, merges anchors/tags, and stores the incoming narrowed thought as the current working version. Same repo is not enough to merge; the topic pressure must overlap. This wall should preserve deepening, not forbid attention: saturation is about whether the thought is still gaining anchors, tension, and consequence, not whether the topic has appeared before.
 
 ```json
 {
@@ -289,7 +289,7 @@ Verdict: the foundation is coherent enough for cautious live operation. Do not a
 - Landed scheduled rumination re-enable: one observed live scheduled pass completed with Last Result `0`, proposed one anchored short-term memory, delivered no speech, and kept exact timestamps out of the prompt-facing context.
 - Landed live sleep-maintenance verification: a manual typed nap ran real memory maintenance on live state, promoted the scheduled rumination short-term memory into one durable `identity_seam`, and left `thoughtMemory.shortTerm` empty.
 - Landed sleep brake: scheduled rumination now skips before model invocation during naps when there are no new room messages or open cases. `npm run moderation:rumination:nap-skip-fixture` proves the model path is not touched and no operation proposals are written.
-- Landed short-term clustering guard: `record_short_term_memory` folds repeated same-target/topic pressure into one provisional memory with merged anchors, and `npm run moderation:short-term-clustering:fixture` proves the synth-boundary duplicate case without merging unrelated same-repo thoughts.
+- Landed short-term clustering guard: `record_short_term_memory` folds repeated same-target/topic pressure into one provisional memory with merged anchors, and `npm run moderation:short-term-clustering:fixture` proves the synth-boundary duplicate case without merging unrelated same-repo thoughts. The prompt now states explicitly that underexplored, low-saturation, newly anchored thoughts may keep deepening inside the cluster.
 - Remaining work: let ordinary scheduling run and inspect the next unattended awake rumination and sleep cycle for repeated thought clusters, stale short-term residue, or ungrounded memory writes before calling the system broadly stable.
 
 ### Commit 10: Resume Product Hardening
