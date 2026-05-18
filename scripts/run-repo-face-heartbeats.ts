@@ -34,6 +34,8 @@ interface FaceHeartbeatParticipant {
   baseRecoveryMinutes: number;
   nextTurnAt: number;
   lastTurnAt?: number;
+  activeTurnStartedAt?: number;
+  activeJobId?: string;
   lastQueuedAt?: string;
   queuedCount: number;
   constraints: string[];
@@ -70,11 +72,12 @@ async function main(): Promise<void> {
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
   const now = new Date();
   const pendingJobs = dryRun
-    ? new Set<string>()
+    ? new Map<string, string>()
     : await listExistingFaceJobs(config.databaseDsn, config.stateStorageBackend, config);
 
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
   state.globalHeat = config.repoFaceHeartbeats.globalHeat;
+  const completedThisTick = new Set<string>();
   state.participants = reconcileParticipants(
     state.participants,
     registry.identities,
@@ -84,14 +87,14 @@ async function main(): Promise<void> {
     state.initiativeClock,
     config.repoFaceHeartbeats.baseRecoveryMinutes,
     config.repoFaceHeartbeats.globalHeat,
-  ).map((participant) => ({
-    ...participant,
-    currentLoad: pendingJobs.has(participant.identityId) ? 1 : 0,
-  }));
+  ).map((participant) =>
+    applyActiveTurnFreeze(participant, pendingJobs.get(participant.identityId), state, completedThisTick),
+  );
 
   const selected = selectReadyParticipants(
     state,
     config.repoFaceHeartbeats.maxJobsPerTick,
+    completedThisTick,
   );
   const queuedIdentityIds: string[] = [];
 
@@ -193,11 +196,12 @@ async function main(): Promise<void> {
 
         if (result.created) {
           queuedIdentityIds.push(identity.id);
-          const recoveryMinutes = recoveryFor(participant);
           participant.lastQueuedAt = queuedAt;
+          participant.activeTurnStartedAt = state.initiativeClock;
+          participant.activeJobId = result.job.id;
           participant.lastTurnAt = state.initiativeClock;
           participant.queuedCount += 1;
-          participant.nextTurnAt = Math.max(state.initiativeClock, participant.nextTurnAt) + recoveryMinutes;
+          participant.currentLoad = 1;
           state.history.push({
             type: "queued",
             identityId: identity.id,
@@ -205,8 +209,7 @@ async function main(): Promise<void> {
             requestMessageId,
             queuedAt,
             initiativeClock: state.initiativeClock,
-            nextTurnAt: participant.nextTurnAt,
-            recoveryMinutes,
+            frozen: true,
             heat: participant.heat,
             effectiveSpeed: participant.effectiveSpeed,
           });
@@ -238,7 +241,7 @@ async function listExistingFaceJobs(
   databaseDsn: string,
   stateStorageBackend: "file" | "postgres",
   config: ReturnType<typeof loadConfig>,
-): Promise<Set<string>> {
+): Promise<Map<string, string>> {
   const storage = await createStateStorage({
     backend: stateStorageBackend,
     databaseDsn,
@@ -249,7 +252,7 @@ async function listExistingFaceJobs(
   });
   try {
     const jobs = await storage.jobQueue.listByStates(["approved", "running"]);
-    const active = new Set<string>();
+    const active = new Map<string, string>();
     for (const job of jobs) {
       if (job.command !== HEARTBEAT_COMMAND) {
         continue;
@@ -258,7 +261,7 @@ async function listExistingFaceJobs(
         job.requestMessageId?.match(/^repo-face-heartbeat:([^:]+):/) ??
         job.requestMessageId?.match(/:repo-face:([^:]+):\d+$/);
       if (match) {
-        active.add(match[1]);
+        active.set(match[1], job.id);
       }
     }
     return active;
@@ -340,15 +343,62 @@ function reconcileParticipants(
   });
 }
 
+function applyActiveTurnFreeze(
+  participant: FaceHeartbeatParticipant,
+  activeJobId: string | undefined,
+  state: FaceHeartbeatState,
+  completedThisTick: Set<string>,
+): FaceHeartbeatParticipant {
+  if (activeJobId) {
+    return {
+      ...participant,
+      currentLoad: 1,
+      activeJobId,
+      activeTurnStartedAt: participant.activeTurnStartedAt ?? participant.lastTurnAt ?? state.initiativeClock,
+    };
+  }
+
+  if (participant.currentLoad >= 1 || participant.activeTurnStartedAt !== undefined || participant.activeJobId) {
+    const completedTurnStartedAt = participant.activeTurnStartedAt ?? participant.lastTurnAt ?? state.initiativeClock;
+    const unfrozen = {
+      ...participant,
+      currentLoad: 0,
+      activeTurnStartedAt: undefined,
+      activeJobId: undefined,
+    };
+    const recoveryMinutes = recoveryFor(unfrozen);
+    unfrozen.nextTurnAt = Math.max(state.initiativeClock, completedTurnStartedAt) + recoveryMinutes;
+    completedThisTick.add(participant.identityId);
+    state.history.push({
+      type: "turn_completed",
+      identityId: participant.identityId,
+      completedAtClock: state.initiativeClock,
+      startedAtClock: completedTurnStartedAt,
+      nextTurnAt: unfrozen.nextTurnAt,
+      recoveryMinutes,
+      heat: participant.heat,
+      effectiveSpeed: participant.effectiveSpeed,
+    });
+    return unfrozen;
+  }
+
+  return {
+    ...participant,
+    currentLoad: 0,
+  };
+}
+
 function selectReadyParticipants(
   state: FaceHeartbeatState,
   maxJobs: number,
+  completedThisTick: Set<string>,
 ): FaceHeartbeatParticipant[] {
   const eligible = state.participants
     .filter((participant) => {
       return (
         participant.status === "active" &&
-        participant.currentLoad < 1
+        participant.currentLoad < 1 &&
+        !completedThisTick.has(participant.identityId)
       );
     });
 
@@ -401,6 +451,8 @@ function buildHeartbeatPrompt(input: {
       baseRecoveryMinutes: input.participant.baseRecoveryMinutes,
       nextTurnAt: input.participant.nextTurnAt,
       lastTurnAt: input.participant.lastTurnAt,
+      activeTurnStartedAt: input.participant.activeTurnStartedAt,
+      activeJobId: input.participant.activeJobId,
       reactionBias: input.participant.reactionBias,
       interruptThreshold: input.participant.interruptThreshold,
       queuedCount: input.participant.queuedCount,
@@ -524,6 +576,8 @@ function migrateLegacyHeartbeatState(
       baseRecoveryMinutes,
       nextTurnAt: minutesUntilReady,
       lastTurnAt: participant.lastTurnAt,
+      activeTurnStartedAt: participant.activeTurnStartedAt,
+      activeJobId: participant.activeJobId,
       lastQueuedAt: participant.lastQueuedAt,
       queuedCount: Number.isFinite(participant.queuedCount) ? participant.queuedCount : 0,
       constraints: participant.constraints ?? [
