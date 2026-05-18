@@ -333,8 +333,8 @@ function buildHeartbeatPrompt(input: {
     })}.`,
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
-    "If this Face has at least one prior heartbeat pass and its Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted after this bearing-taking pass. Introduce the Face in its own voice, grounded in the repo, then record the post through the normal repo identity mouth.",
-    `If an in-channel note is genuinely warranted, post through post_repo_identity_message with identity "${input.identity.id}" and channelId "${input.channelId}".`,
+    "Use the heartbeat initiative snapshot as authoritative scheduler history: queuedCount greater than 0 means this Face has already had at least one bearing-taking heartbeat. If queuedCount is greater than 0 and the Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted now.",
+    `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","content":"..."}; the worker owns delivery and receipt recording.`,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
     .filter((line): line is string => typeof line === "string")

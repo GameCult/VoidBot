@@ -8,11 +8,13 @@ import {
   type AuditLog,
   buildVoidMcpServerConfig,
   createStateStorage,
+  applyVoidSelfStateOperation,
   findRepoDiscordIdentity,
   isRepoDiscordIdentityAllowedInChannel,
   type JobQueue,
   loadRepoDiscordIdentityRegistry,
   loadSystemMessageCatalog,
+  resolveRepoFaceStatePath,
   type SystemMessageCatalog,
 } from "@voidbot/core";
 import {
@@ -41,6 +43,7 @@ import {
 import { postDiscordMessage } from "./mcp-server-discord";
 
 const config = loadConfig();
+const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -347,7 +350,12 @@ async function processJob(job: JobRecord): Promise<void> {
     }
 
     if (job.command === "repo-face-rumination") {
-      await jobQueue.completeJobDirect(job.id, finalResponse);
+      const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
+      for (const post of repoIdentityPosts.slice(0, 1)) {
+        await postRepoIdentityIntent(job, post);
+      }
+      const cleanedFinalResponse = stripRepoIdentityPostIntents(finalResponse);
+      await jobQueue.completeJobDirect(job.id, cleanedFinalResponse || finalResponse);
       await deliverOwnerNotifications(job, response.notifications ?? []);
       await auditLog.record({
         type: "provider.completed",
@@ -356,8 +364,11 @@ async function processJob(job: JobRecord): Promise<void> {
         provider: job.provider,
         details: {
           summary: response.summary,
-          autoPosted: false,
-          reason: `${job.command}_must_post_through_mcp`,
+          autoPosted: repoIdentityPosts.length > 0,
+          reason:
+            repoIdentityPosts.length > 0
+              ? "repo_face_rumination_posted_as_registered_identity"
+              : `${job.command}_private_summary`,
         },
       });
       console.log(`Completed ${job.command} job ${job.id}.`);
@@ -534,7 +545,7 @@ async function postRepoIdentityJobResponse(job: JobRecord, content: string): Pro
     );
   }
 
-  await postDiscordMessage(
+  const posted = await postDiscordMessage(
     config.botToken,
     job.outputChannelId,
     content,
@@ -544,11 +555,152 @@ async function postRepoIdentityJobResponse(job: JobRecord, content: string): Pro
       personaAvatarUrl: identity.avatarUrl,
     },
   );
+  await recordRepoIdentityDeliveryReceipt({
+    identity,
+    channelId: job.outputChannelId,
+    content,
+    replyToMessageId: job.requestMessageId,
+    messageId: posted.id,
+    transport: posted.transport,
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Could not record repo identity delivery receipt for job ${job.id}: ${message}`);
+  });
 }
 
 function parseRepoIdentityIdFromPrompt(prompt: string): string | undefined {
   const match = prompt.match(/repo identity\s+.+?\(([^)]+)\)\s+for repo/i);
-  return match?.[1]?.trim();
+  return (
+    match?.[1]?.trim() ??
+    prompt.match(/repo Face heartbeat for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
+    prompt.match(/identity "([^"]+)"/i)?.[1]?.trim()
+  );
+}
+
+interface RepoIdentityPostIntent {
+  identity?: string;
+  channelId?: string;
+  content: string;
+  replyToMessageId?: string;
+}
+
+async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
+  if (!config.botToken) {
+    throw new Error("DISCORD_BOT_TOKEN is required for the worker to post repo identity responses.");
+  }
+
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for job ${job.id}.`);
+  }
+
+  const channelId = intent.channelId ?? job.outputChannelId;
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for job ${job.id}.`);
+  }
+
+  if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId)) {
+    throw new Error(`Repo identity ${identity.id} is not registered for Discord channel ${channelId}.`);
+  }
+
+  const posted = await postDiscordMessage(
+    config.botToken,
+    channelId,
+    fitDiscordMessage(intent.content),
+    intent.replyToMessageId,
+    {
+      personaName: identity.displayName,
+      personaAvatarUrl: identity.avatarUrl,
+    },
+  );
+  await recordRepoIdentityDeliveryReceipt({
+    identity,
+    channelId,
+    content: intent.content,
+    replyToMessageId: intent.replyToMessageId,
+    messageId: posted.id,
+    transport: posted.transport,
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Could not record repo identity delivery receipt for job ${job.id}: ${message}`);
+  });
+}
+
+function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
+  const intents: RepoIdentityPostIntent[] = [];
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL)) {
+      continue;
+    }
+
+    const payload = trimmed.slice(REPO_IDENTITY_POST_SENTINEL.length).trim();
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      if (!content) {
+        continue;
+      }
+      intents.push({
+        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
+        replyToMessageId:
+          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+        content,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return intents;
+}
+
+function stripRepoIdentityPostIntents(finalResponse: string): string {
+  return finalResponse
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith(REPO_IDENTITY_POST_SENTINEL))
+    .join("\n")
+    .trim();
+}
+
+async function recordRepoIdentityDeliveryReceipt(input: {
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+  messageId: string;
+  transport: "bot" | "webhook";
+}): Promise<void> {
+  await applyVoidSelfStateOperation(
+    {
+      canonicalPath: resolveRepoFaceStatePath(input.identity, config.storageRoot),
+      identity: {
+        agentId: input.identity.id,
+        publicName: input.identity.displayName,
+        publicDescription: input.identity.description,
+      },
+    },
+    {
+      operation: "record_delivery_receipt",
+      receipt: {
+        receiptKey: `repo-identity:${input.identity.id}:${input.messageId}`,
+        sentAt: new Date().toISOString(),
+        mode: "repo_identity",
+        transport: input.transport,
+        channelId: input.channelId,
+        replyToMessageId: input.replyToMessageId,
+        personaName: input.identity.displayName,
+        personaAvatarUrl: input.identity.avatarUrl,
+        contentLength: input.content.length,
+        chunkCount: 1,
+        preview: input.content.slice(0, 1000),
+      },
+    },
+  );
 }
 
 async function postOwnerNotification(content: string): Promise<void> {

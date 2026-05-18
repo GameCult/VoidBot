@@ -193,6 +193,18 @@ export function renderVoidSelfStateSummary(
     .slice(-3)
     .reverse()
     .map((entry) => `- ${entry.summary}: ${entry.draft}`);
+  const speechReceipts = state.speechReceipts.recentReceipts
+    .slice(-3)
+    .reverse()
+    .map((receipt) => {
+      const target = receipt.replyToMessageId
+        ? `reply to ${receipt.replyToMessageId}`
+        : receipt.channelId
+          ? `channel ${receipt.channelId}`
+          : "unspecified target";
+      const preview = receipt.preview ? `: ${receipt.preview}` : "";
+      return `- ${receipt.sentAt} via ${receipt.transport ?? "unknown transport"} at ${target}${preview}`;
+    });
   const agencyPressures = state.agencyPressure.pressures
     .filter((entry) => ["active", "cooling", "ready_to_act"].includes(entry.status))
     .sort((left, right) => right.intensity - left.intensity)
@@ -227,6 +239,9 @@ export function renderVoidSelfStateSummary(
     interventions.length > 0
       ? [`- Things ${identityName} may say soon:`, ...interventions].join("\n")
       : `- Things ${identityName} may say soon: none queued.`,
+    speechReceipts.length > 0
+      ? [`- What ${identityName} has said recently:`, ...speechReceipts].join("\n")
+      : `- What ${identityName} has said recently: nothing recorded.`,
     renderTransientRoomLog(options),
   ].join("\n");
 }
