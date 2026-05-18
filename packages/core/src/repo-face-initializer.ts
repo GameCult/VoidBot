@@ -174,10 +174,12 @@ async function writeRepoFaceIdentity(
   repoPath: string,
   identityPath: string,
 ): Promise<void> {
+  const existing = await readExistingIdentity(identityPath);
   await writeFile(
     identityPath,
     `${JSON.stringify(
       {
+        ...existing,
         schemaVersion: "voidbot.repo_face_identity.v0",
         identityId: identity.id,
         repoName: identity.repoName,
@@ -192,6 +194,17 @@ async function writeRepoFaceIdentity(
     )}\n`,
     "utf8",
   );
+}
+
+async function readExistingIdentity(identityPath: string): Promise<Record<string, unknown>> {
+  try {
+    const parsed = JSON.parse(stripLeadingBom(await readFile(identityPath, "utf8"))) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 async function writeReadmeIfMissing(path: string, content: string): Promise<void> {
