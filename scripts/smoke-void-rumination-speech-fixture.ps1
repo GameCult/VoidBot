@@ -157,6 +157,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   $previousStatusDir = $env:VOID_RUMINATION_STATUS_DIR
   $previousLogDir = $env:VOID_RUMINATION_LOG_DIR
   $previousSendScript = $env:VOID_SEND_DISCORD_SCRIPT
+  $previousDisableRepoCursorAdvance = $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE
 
   try {
     $env:CODEX_EXECUTABLE = "node"
@@ -165,6 +166,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_RUMINATION_STATUS_DIR = $fixtureStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $fixtureLogDir
     $env:VOID_SEND_DISCORD_SCRIPT = $fakeSendPath
+    $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = "1"
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-void-moderator-rumination.ps1 -StateFilePath $stateFilePath | Out-Null
   } finally {
@@ -174,6 +176,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_RUMINATION_STATUS_DIR = $previousStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $previousLogDir
     $env:VOID_SEND_DISCORD_SCRIPT = $previousSendScript
+    $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = $previousDisableRepoCursorAdvance
   }
 
   $status = Get-Content -LiteralPath $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json

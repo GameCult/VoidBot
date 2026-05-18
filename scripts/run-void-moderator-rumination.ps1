@@ -139,6 +139,25 @@ function Read-DotEnv {
   return $values
 }
 
+function Get-ConfigValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Name,
+    [hashtable] $Values
+  )
+
+  $environmentValue = [Environment]::GetEnvironmentVariable($Name)
+  if (-not [string]::IsNullOrWhiteSpace($environmentValue)) {
+    return $environmentValue
+  }
+
+  if ($null -ne $Values -and $Values.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace($Values[$Name])) {
+    return $Values[$Name]
+  }
+
+  return $null
+}
+
 function Split-CommandArgs {
   param(
     [string] $Value
@@ -222,6 +241,44 @@ function Invoke-CodexExec {
   } finally {
     $process.Dispose()
   }
+}
+
+function Get-RepoActivityCursorOperations {
+  param(
+    $RepoActivity,
+    [DateTime] $ObservedAt
+  )
+
+  if ($null -eq $RepoActivity) {
+    return @()
+  }
+
+  $repos = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $RepoActivity -Name "repos"))
+  return @(
+    $repos |
+      Where-Object {
+        $repoStatus = Get-ObjectPropertyString -Value $_ -Name "status"
+        $recentCount = Get-ObjectPropertyValue -Value $_ -Name "recentCommitCount"
+        $latestCommit = Get-ObjectPropertyValue -Value $_ -Name "latestCommit"
+        $repoStatus -eq "ok" -and
+          $null -ne $recentCount -and
+          [int]$recentCount -gt 0 -and
+          $null -ne $latestCommit -and
+          -not [string]::IsNullOrWhiteSpace((Get-ObjectPropertyString -Value $latestCommit -Name "hash"))
+      } |
+      ForEach-Object {
+        $latestCommit = Get-ObjectPropertyValue -Value $_ -Name "latestCommit"
+        @{
+          operation = "update_repo_activity_cursor"
+          cursor = @{
+            repo = Get-ObjectPropertyString -Value $_ -Name "repoName"
+            lastCommitAt = Get-ObjectPropertyString -Value $latestCommit -Name "committedAt"
+            lastCommitSha = Get-ObjectPropertyString -Value $latestCommit -Name "hash"
+            updatedAt = $ObservedAt.ToString("o")
+          }
+        }
+      }
+  )
 }
 
 function Invoke-NodeJson {
@@ -718,6 +775,9 @@ $codexExecArgs = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXEC_ARGS)) {
 } else {
   @()
 }
+$publicRoomChannelId = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_CHANNEL_ID" -Values $envValues
+$publicRoomPersonaName = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_PERSONA_NAME" -Values $envValues
+$publicRoomPersonaAvatarUrl = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_PERSONA_AVATAR_URL" -Values $envValues
 
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
@@ -778,6 +838,7 @@ Write-JsonFile -Path $contextPath -Data @{
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
   speechPressureObligations = $speechPressureObligations
+  publicSpeechTarget = Project-PublicSpeechTargetForRumination -ChannelId $publicRoomChannelId -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
   deliverableCandidateCount = [int]$deliverableCandidates.Count
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
   scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
@@ -907,6 +968,18 @@ if (
   }
 }
 
+$repoCursorOperations = @()
+$disableRepoCursorAdvance = -not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE)
+if (-not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
+  $repoCursorOperations = @(Get-RepoActivityCursorOperations -RepoActivity $repoActivity -ObservedAt ([DateTime]::UtcNow))
+  if ($repoCursorOperations.Count -gt 0) {
+    Append-RunLog ("recording repo activity cursors: {0}" -f $repoCursorOperations.Count)
+    foreach ($operation in $repoCursorOperations) {
+      $appliedOperations += Apply-TypedOperation -Operation $operation
+    }
+  }
+}
+
 $deliveredCandidateCount = 0
 if (-not $NoPost) {
   $refreshedTypedContext = Get-TypedSelfState
@@ -955,6 +1028,7 @@ $finalStatus = [ordered]@{
   observedCursorTimestamp = [string]$observedCursorTimestamp
   proposedOperationCount = [int]@($proposedOperations).Count
   appliedOperationCount = [int]@($appliedOperations).Count
+  repoCursorOperationCount = [int]@($repoCursorOperations).Count
   deliveredCandidateCount = [int]$deliveredCandidateCount
   stateUpdated = [bool](@($appliedOperations).Count -gt 0)
   tracePath = [string]$tracePath

@@ -273,6 +273,31 @@ function Project-InterventionsForRumination {
   )
 }
 
+function Project-PublicSpeechTargetForRumination {
+  param(
+    [string] $ChannelId,
+    [string] $PersonaName,
+    [string] $PersonaAvatarUrl
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ChannelId)) {
+    return $null
+  }
+
+  $target = @{
+    mode = "channel"
+    channelId = $ChannelId.Trim()
+    personaName = if ([string]::IsNullOrWhiteSpace($PersonaName)) { "Void" } else { $PersonaName.Trim() }
+    reason = "Configured public room for Void to present self-authored public artifacts and other ripe public thoughts."
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($PersonaAvatarUrl)) {
+    $target.personaAvatarUrl = $PersonaAvatarUrl.Trim()
+  }
+
+  return $target
+}
+
 function Project-AgencyPressureForRumination {
   param($Pressures, [DateTime] $Now)
 
@@ -346,6 +371,30 @@ function Project-CursorForRumination {
   }
 }
 
+function Get-VoidAuthoredArtifactsFromContentHints {
+  param($ContentHints)
+
+  return @(
+    @(Convert-ToValueArray -Value $ContentHints) |
+      Where-Object {
+        $frontmatter = Get-ObjectPropertyValue -Value $_ -Name "frontmatter"
+        $author = Get-ObjectPropertyValue -Value $frontmatter -Name "author"
+        @(Convert-ToValueArray -Value $author) |
+          Where-Object { ([string]$_).Trim().ToLowerInvariant() -eq "void" } |
+          Select-Object -First 1
+      } |
+      ForEach-Object {
+        $frontmatter = Get-ObjectPropertyValue -Value $_ -Name "frontmatter"
+        @{
+          path = Get-ObjectPropertyString -Value $_ -Name "path"
+          title = Get-ObjectPropertyString -Value $frontmatter -Name "title"
+          description = Get-ObjectPropertyString -Value $frontmatter -Name "description"
+          socialDeck = Get-ObjectPropertyString -Value $frontmatter -Name "socialDeck"
+        }
+      }
+  )
+}
+
 function Project-RepoCommitForRumination {
   param($Commit, [DateTime] $Now)
 
@@ -354,6 +403,8 @@ function Project-RepoCommitForRumination {
   }
 
   $hash = Get-ObjectPropertyString -Value $Commit -Name "hash"
+  $contentHints = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "contentHints"))
+  $authoredPublicArtifacts = @(Get-VoidAuthoredArtifactsFromContentHints -ContentHints $contentHints)
   return @{
     hash = if ($hash -and $hash.Length -gt 12) { $hash.Substring(0, 12) } else { $hash }
     committed = Project-RelativeTimestamp -Value $Commit -Name "committedAt" -Now $Now
@@ -361,8 +412,23 @@ function Project-RepoCommitForRumination {
     subject = Get-ObjectPropertyString -Value $Commit -Name "subject"
     diffstat = Get-ObjectPropertyValue -Value $Commit -Name "diffstat"
     changedPaths = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "changedPaths"))
-    contentHints = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "contentHints"))
+    contentHints = $contentHints
+    authoredPublicArtifacts = $authoredPublicArtifacts
   }
+}
+
+function Test-RepoHasVoidAuthoredArtifact {
+  param($Repo)
+
+  $commits = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Repo -Name "commits"))
+  foreach ($commit in $commits) {
+    $contentHints = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $commit -Name "contentHints"))
+    if (@(Get-VoidAuthoredArtifactsFromContentHints -ContentHints $contentHints).Count -gt 0) {
+      return $true
+    }
+  }
+
+  return $false
 }
 
 function Select-RuminationRepoActivity {
@@ -387,6 +453,9 @@ function Select-RuminationRepoActivity {
         $recent = Get-ObjectPropertyValue -Value $_ -Name "recentCommitCount"
         $repoStatus = Get-ObjectPropertyString -Value $_ -Name "status"
         $null -ne $recent -and $repoStatus -eq "ok" -and [int]$recent -gt 0
+      } |
+      Sort-Object -Property @{
+        Expression = { if (Test-RepoHasVoidAuthoredArtifact -Repo $_) { 0 } else { 1 } }
       } |
       Select-Object -First 8
   )

@@ -40,6 +40,10 @@ process.stdin.on("end", () => {
     console.error("fixture prompt did not contain the self-orbit guard");
     process.exit(3);
   }
+  if (!prompt.includes("publicSpeechTarget")) {
+    console.error("fixture prompt did not contain the public speech target contract");
+    process.exit(3);
+  }
   if (prompt.includes("moderation-agent-state.json") && !prompt.includes("Do not read or write")) {
     console.error("fixture prompt referenced legacy state outside the boundary warning");
     process.exit(4);
@@ -181,6 +185,8 @@ process.stdin.on("end", () => {
   $previousFixtureOutput = $env:VOID_RUMINATION_FIXTURE_OPERATION_OUTPUT
   $previousStatusDir = $env:VOID_RUMINATION_STATUS_DIR
   $previousLogDir = $env:VOID_RUMINATION_LOG_DIR
+  $previousPublicRoomChannelId = $env:VOID_PUBLIC_ROOM_CHANNEL_ID
+  $previousPublicRoomPersonaName = $env:VOID_PUBLIC_ROOM_PERSONA_NAME
 
   try {
     $env:CODEX_EXECUTABLE = "node"
@@ -188,6 +194,8 @@ process.stdin.on("end", () => {
     $env:VOID_RUMINATION_FIXTURE_OPERATION_OUTPUT = $statusOperationPath
     $env:VOID_RUMINATION_STATUS_DIR = $fixtureStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $fixtureLogDir
+    $env:VOID_PUBLIC_ROOM_CHANNEL_ID = "fixture-public-room"
+    $env:VOID_PUBLIC_ROOM_PERSONA_NAME = "Void"
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-void-moderator-rumination.ps1 -StateFilePath $stateFilePath -NoPost | Out-Null
   } finally {
@@ -196,6 +204,8 @@ process.stdin.on("end", () => {
     $env:VOID_RUMINATION_FIXTURE_OPERATION_OUTPUT = $previousFixtureOutput
     $env:VOID_RUMINATION_STATUS_DIR = $previousStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $previousLogDir
+    $env:VOID_PUBLIC_ROOM_CHANNEL_ID = $previousPublicRoomChannelId
+    $env:VOID_PUBLIC_ROOM_PERSONA_NAME = $previousPublicRoomPersonaName
   }
 
   $status = Get-Content -LiteralPath $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -209,6 +219,10 @@ process.stdin.on("end", () => {
   $contextRaw = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8
   if ($contextRaw -match '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}') {
     throw "Rumination fixture context leaked exact ISO timestamps into the prompt-facing packet."
+  }
+  $context = $contextRaw | ConvertFrom-Json
+  if ($context.publicSpeechTarget.channelId -ne "fixture-public-room") {
+    throw "Rumination fixture context did not project the configured public speech target."
   }
 
   $stateJson = node -e "const core=require('./packages/core/dist/index.js'); core.loadVoidSelfStateTypedDocuments({canonicalPath: process.argv[1]}).then((state)=>console.log(JSON.stringify(state))).catch((error)=>{ console.error(error); process.exit(1); })" $stateFilePath
