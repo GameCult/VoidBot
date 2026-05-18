@@ -110,6 +110,10 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
   REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(2),
   REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID: optionalNonEmptyString,
+  REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES: z.coerce.number().positive().default(10),
+  REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
+  REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
+  REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
   EPIPHANY_AGENT_ROOT: z.string().min(1).default("E:/Projects/EpiphanyAgent"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
@@ -155,6 +159,10 @@ export interface AppConfig {
     intervalMinutes: number;
     maxJobsPerTick: number;
     defaultChannelId?: string;
+    baseRecoveryMinutes: number;
+    globalHeat: number;
+    speedOverrides: Record<string, number>;
+    heatOverrides: Record<string, number>;
   };
   epiphanyAgentRoot: string;
   indexAllChannels: boolean;
@@ -274,6 +282,34 @@ function parseRepoPrefixRules(value: string): Record<string, string[]> {
   return rules;
 }
 
+function parseNumericMap(value: string): Record<string, number> {
+  const result: Record<string, number> = {};
+
+  for (const entry of value.split(",")) {
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) {
+      throw new Error(`Invalid numeric map entry "${trimmed}". Expected key=value.`);
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim().toLowerCase();
+    const valueText = trimmed.slice(separatorIndex + 1).trim();
+    const numericValue = Number.parseFloat(valueText);
+
+    if (key.length === 0 || !Number.isFinite(numericValue)) {
+      throw new Error(`Invalid numeric map entry "${trimmed}". Expected key=value with a finite number.`);
+    }
+
+    result[key] = numericValue;
+  }
+
+  return result;
+}
+
 function parseOwnerCodexMode(value: string): OwnerCodexMode {
   if (!isOwnerCodexMode(value)) {
     throw new Error(
@@ -341,6 +377,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       intervalMinutes: parsed.REPO_FACE_HEARTBEAT_INTERVAL_MINUTES,
       maxJobsPerTick: parsed.REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK,
       defaultChannelId: parsed.REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID,
+      baseRecoveryMinutes: parsed.REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES,
+      globalHeat: parsed.REPO_FACE_HEARTBEAT_GLOBAL_HEAT,
+      speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
+      heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
     },
     epiphanyAgentRoot: resolve(parsed.EPIPHANY_AGENT_ROOT),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,

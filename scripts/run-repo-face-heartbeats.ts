@@ -16,9 +16,8 @@ import {
   type RepoDiscordIdentity,
 } from "@voidbot/core";
 
-const HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_face_heartbeat_state.v0";
+const HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_face_heartbeat_state.v1";
 const HEARTBEAT_COMMAND = "repo-face-rumination";
-const VOID_MODERATION_DEFAULT_MINUTES = 15;
 
 interface FaceHeartbeatParticipant {
   identityId: string;
@@ -28,8 +27,13 @@ interface FaceHeartbeatParticipant {
   reactionBias: number;
   interruptThreshold: number;
   currentLoad: number;
-  status: "active" | "blocked" | "withdrawn";
-  nextReadyAt: string;
+  status: "active" | "blocked" | "withdrawn" | "offscreen";
+  groups: string[];
+  heat: number;
+  effectiveSpeed: number;
+  baseRecoveryMinutes: number;
+  nextTurnAt: number;
+  lastTurnAt?: number;
   lastQueuedAt?: string;
   queuedCount: number;
   constraints: string[];
@@ -37,7 +41,9 @@ interface FaceHeartbeatParticipant {
 
 interface FaceHeartbeatState {
   schemaVersion: typeof HEARTBEAT_SCHEMA_VERSION;
-  baseIntervalMinutes: number;
+  initiativeClock: number;
+  baseRecoveryMinutes: number;
+  globalHeat: number;
   lastTickAt?: string;
   participants: FaceHeartbeatParticipant[];
   history: Array<Record<string, unknown>>;
@@ -45,6 +51,7 @@ interface FaceHeartbeatState {
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const dryRun = process.argv.includes("--dry-run");
 
   if (!config.repoFaceHeartbeats.enabled && !process.argv.includes("--force")) {
     const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
@@ -62,29 +69,53 @@ async function main(): Promise<void> {
   const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
   const now = new Date();
-  const baseIntervalMinutes = resolveBaseIntervalMinutes();
-  const pendingJobs = await listExistingFaceJobs(config.databaseDsn, config.stateStorageBackend, config);
+  const pendingJobs = dryRun
+    ? new Set<string>()
+    : await listExistingFaceJobs(config.databaseDsn, config.stateStorageBackend, config);
 
-  state.baseIntervalMinutes = baseIntervalMinutes;
+  state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
+  state.globalHeat = config.repoFaceHeartbeats.globalHeat;
   state.participants = reconcileParticipants(
     state.participants,
     registry.identities,
     config.repoFaceHeartbeats.defaultChannelId,
-    now,
-    baseIntervalMinutes,
+    config.repoFaceHeartbeats.speedOverrides,
+    config.repoFaceHeartbeats.heatOverrides,
+    state.initiativeClock,
+    config.repoFaceHeartbeats.baseRecoveryMinutes,
+    config.repoFaceHeartbeats.globalHeat,
   ).map((participant) => ({
     ...participant,
     currentLoad: pendingJobs.has(participant.identityId) ? 1 : 0,
   }));
 
   const selected = selectReadyParticipants(
-    state.participants,
-    now,
+    state,
     config.repoFaceHeartbeats.maxJobsPerTick,
   );
   const queuedIdentityIds: string[] = [];
 
-  if (selected.length > 0) {
+  if (selected.length > 0 && dryRun) {
+    const queuedAt = new Date().toISOString();
+    for (const participant of selected) {
+      const recoveryMinutes = recoveryFor(participant);
+      participant.lastQueuedAt = queuedAt;
+      participant.lastTurnAt = state.initiativeClock;
+      participant.queuedCount += 1;
+      participant.nextTurnAt = Math.max(state.initiativeClock, participant.nextTurnAt) + recoveryMinutes;
+      queuedIdentityIds.push(participant.identityId);
+      state.history.push({
+        type: "dry_run_selected",
+        identityId: participant.identityId,
+        queuedAt,
+        initiativeClock: state.initiativeClock,
+        nextTurnAt: participant.nextTurnAt,
+        recoveryMinutes,
+        heat: participant.heat,
+        effectiveSpeed: participant.effectiveSpeed,
+      });
+    }
+  } else if (selected.length > 0) {
     const storage = await createStateStorage({
       backend: config.stateStorageBackend,
       databaseDsn: config.databaseDsn,
@@ -162,20 +193,22 @@ async function main(): Promise<void> {
 
         if (result.created) {
           queuedIdentityIds.push(identity.id);
+          const recoveryMinutes = recoveryFor(participant);
           participant.lastQueuedAt = queuedAt;
+          participant.lastTurnAt = state.initiativeClock;
           participant.queuedCount += 1;
-          participant.nextReadyAt = nextReadyTime(
-            now,
-            baseIntervalMinutes,
-            participant,
-          ).toISOString();
+          participant.nextTurnAt = Math.max(state.initiativeClock, participant.nextTurnAt) + recoveryMinutes;
           state.history.push({
             type: "queued",
             identityId: identity.id,
             jobId: result.job.id,
             requestMessageId,
             queuedAt,
-            nextReadyAt: participant.nextReadyAt,
+            initiativeClock: state.initiativeClock,
+            nextTurnAt: participant.nextTurnAt,
+            recoveryMinutes,
+            heat: participant.heat,
+            effectiveSpeed: participant.effectiveSpeed,
           });
         }
       }
@@ -191,7 +224,9 @@ async function main(): Promise<void> {
     `${JSON.stringify({
       ok: true,
       participantCount: state.participants.length,
+      initiativeClock: state.initiativeClock,
       queuedCount: queuedIdentityIds.length,
+      dryRun,
       selected: selected.map((entry) => entry.identityId),
       queued: queuedIdentityIds,
       statePath: config.repoFaceHeartbeats.statePath,
@@ -236,8 +271,11 @@ function reconcileParticipants(
   existing: FaceHeartbeatParticipant[],
   identities: RepoDiscordIdentity[],
   defaultChannelId: string | undefined,
-  now: Date,
-  baseIntervalMinutes: number,
+  speedOverrides: Record<string, number>,
+  heatOverrides: Record<string, number>,
+  initiativeClock: number,
+  baseRecoveryMinutes: number,
+  globalHeat: number,
 ): FaceHeartbeatParticipant[] {
   const existingById = new Map(existing.map((entry) => [entry.identityId, entry]));
   const count = Math.max(identities.length, 1);
@@ -245,11 +283,31 @@ function reconcileParticipants(
   return identities.map((identity, index) => {
     const current = existingById.get(identity.id);
     const hasChannel = Boolean(identity.allowedChannelIds[0] || defaultChannelId);
+    const speed = initiativeSpeedFor(identity, speedOverrides);
+    const groups = initiativeGroupsFor(identity);
+    const heat = heatFor(identity, groups, globalHeat, heatOverrides);
+    const effectiveSpeed = clamp(speed * heat, 0.1, 12);
+    const nextTurnAt = Number.isFinite(current?.nextTurnAt)
+      ? current.nextTurnAt
+      : initiativeClock + ((baseRecoveryMinutes / count) * index);
     if (current) {
       return {
         ...current,
         repoName: identity.repoName,
         displayName: identity.displayName,
+        initiativeSpeed: speed,
+        groups,
+        heat,
+        effectiveSpeed,
+        baseRecoveryMinutes,
+        nextTurnAt,
+        constraints: mergeStrings(
+          mergeStrings(
+            current.constraints,
+            "Face heartbeat uses CTB-style owner-Codex repo-face-rumination jobs.",
+          ),
+          "The wall-clock task only ticks the initiative engine; virtual initiative chooses turns.",
+        ),
         status: hasChannel
           ? current.status === "withdrawn"
             ? "withdrawn"
@@ -258,8 +316,6 @@ function reconcileParticipants(
       };
     }
 
-    const speed = initiativeSpeedFor(identity);
-    const offsetMs = ((baseIntervalMinutes * 60_000) / count) * index;
     return {
       identityId: identity.id,
       repoName: identity.repoName,
@@ -269,10 +325,15 @@ function reconcileParticipants(
       interruptThreshold: interruptThresholdFor(identity),
       currentLoad: 0,
       status: hasChannel ? "active" : "blocked",
-      nextReadyAt: new Date(now.getTime() + offsetMs).toISOString(),
+      groups,
+      heat,
+      effectiveSpeed,
+      baseRecoveryMinutes,
+      nextTurnAt,
       queuedCount: 0,
       constraints: [
-        "Face heartbeat uses owner-Codex repo-face-rumination jobs.",
+        "Face heartbeat uses CTB-style owner-Codex repo-face-rumination jobs.",
+        "The wall-clock task only ticks the initiative engine; virtual initiative chooses turns.",
         "Worker final summaries are not auto-posted as the base bot.",
       ],
     };
@@ -280,28 +341,36 @@ function reconcileParticipants(
 }
 
 function selectReadyParticipants(
-  participants: FaceHeartbeatParticipant[],
-  now: Date,
+  state: FaceHeartbeatState,
   maxJobs: number,
 ): FaceHeartbeatParticipant[] {
-  return participants
+  const eligible = state.participants
     .filter((participant) => {
       return (
         participant.status === "active" &&
-        participant.currentLoad < 1 &&
-        new Date(participant.nextReadyAt).getTime() <= now.getTime()
+        participant.currentLoad < 1
       );
-    })
+    });
+
+  if (eligible.length === 0) {
+    return [];
+  }
+
+  const earliestTurn = Math.min(...eligible.map((participant) => participant.nextTurnAt));
+  state.initiativeClock = Math.max(state.initiativeClock, earliestTurn);
+
+  return eligible
+    .filter((participant) => participant.nextTurnAt <= state.initiativeClock)
     .sort((left, right) => {
-      const readyDelta = new Date(left.nextReadyAt).getTime() - new Date(right.nextReadyAt).getTime();
+      const readyDelta = left.nextTurnAt - right.nextTurnAt;
       if (readyDelta !== 0) {
         return readyDelta;
       }
       if (right.reactionBias !== left.reactionBias) {
         return right.reactionBias - left.reactionBias;
       }
-      if (right.initiativeSpeed !== left.initiativeSpeed) {
-        return right.initiativeSpeed - left.initiativeSpeed;
+      if (right.effectiveSpeed !== left.effectiveSpeed) {
+        return right.effectiveSpeed - left.effectiveSpeed;
       }
       return left.identityId.localeCompare(right.identityId);
     })
@@ -327,9 +396,15 @@ function buildHeartbeatPrompt(input: {
     input.birthStatusPath ? `Birth status path: ${input.birthStatusPath}.` : undefined,
     `Heartbeat initiative snapshot: ${JSON.stringify({
       initiativeSpeed: input.participant.initiativeSpeed,
+      heat: input.participant.heat,
+      effectiveSpeed: input.participant.effectiveSpeed,
+      baseRecoveryMinutes: input.participant.baseRecoveryMinutes,
+      nextTurnAt: input.participant.nextTurnAt,
+      lastTurnAt: input.participant.lastTurnAt,
       reactionBias: input.participant.reactionBias,
       interruptThreshold: input.participant.interruptThreshold,
       queuedCount: input.participant.queuedCount,
+      groups: input.participant.groups,
     })}.`,
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
@@ -373,28 +448,31 @@ function renderRepoFaceIdentityDoctrine(identity: RepoDiscordIdentity): string {
     .join("\n");
 }
 
-function nextReadyTime(
-  now: Date,
-  baseIntervalMinutes: number,
-  participant: FaceHeartbeatParticipant,
-): Date {
+function recoveryFor(participant: FaceHeartbeatParticipant): number {
   const loadPenalty = 1 + participant.currentLoad * 0.75;
-  const recoveryMs = (baseIntervalMinutes * 60_000 * loadPenalty) / Math.max(participant.initiativeSpeed, 0.35);
-  return new Date(now.getTime() + recoveryMs);
-}
-
-function resolveBaseIntervalMinutes(): number {
-  const raw = process.env.VOIDBOT_MODERATION_INTERVAL_MINUTES;
-  const voidInterval = raw ? Number.parseInt(raw, 10) : VOID_MODERATION_DEFAULT_MINUTES;
-  return Math.max(10, (Number.isFinite(voidInterval) ? voidInterval : VOID_MODERATION_DEFAULT_MINUTES) * 2);
+  return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.1);
 }
 
 async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
   try {
     const raw = await readFile(path, "utf8");
-    const parsed = JSON.parse(stripLeadingBom(raw)) as FaceHeartbeatState;
+    const parsed = JSON.parse(stripLeadingBom(raw)) as Partial<FaceHeartbeatState> & {
+      baseIntervalMinutes?: number;
+      participants?: Array<Partial<FaceHeartbeatParticipant> & { nextReadyAt?: string }>;
+    };
     if (parsed.schemaVersion === HEARTBEAT_SCHEMA_VERSION) {
-      return parsed;
+      return {
+        schemaVersion: HEARTBEAT_SCHEMA_VERSION,
+        initiativeClock: Number.isFinite(parsed.initiativeClock) ? parsed.initiativeClock : 0,
+        baseRecoveryMinutes: Number.isFinite(parsed.baseRecoveryMinutes) ? parsed.baseRecoveryMinutes : 10,
+        globalHeat: Number.isFinite(parsed.globalHeat) ? parsed.globalHeat : 1,
+        lastTickAt: parsed.lastTickAt,
+        participants: Array.isArray(parsed.participants) ? parsed.participants as FaceHeartbeatParticipant[] : [],
+        history: Array.isArray(parsed.history) ? parsed.history : [],
+      };
+    }
+    if (Array.isArray(parsed.participants)) {
+      return migrateLegacyHeartbeatState(parsed);
     }
   } catch {
     // fall through to a new state
@@ -402,7 +480,9 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
 
   return {
     schemaVersion: HEARTBEAT_SCHEMA_VERSION,
-    baseIntervalMinutes: resolveBaseIntervalMinutes(),
+    initiativeClock: 0,
+    baseRecoveryMinutes: 10,
+    globalHeat: 1,
     participants: [],
     history: [],
   };
@@ -413,8 +493,104 @@ async function writeHeartbeatState(path: string, state: FaceHeartbeatState): Pro
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
-function initiativeSpeedFor(identity: RepoDiscordIdentity): number {
+function migrateLegacyHeartbeatState(
+  parsed: Partial<FaceHeartbeatState> & {
+    baseIntervalMinutes?: number;
+    participants?: Array<Partial<FaceHeartbeatParticipant> & { nextReadyAt?: string }>;
+  },
+): FaceHeartbeatState {
+  const nowMs = Date.now();
+  const legacyBase = Number.isFinite(parsed.baseIntervalMinutes) ? parsed.baseIntervalMinutes : 30;
+  const baseRecoveryMinutes = Math.max(5, legacyBase / 3);
+  const participants = (parsed.participants ?? []).map((participant, index) => {
+    const speed = Number.isFinite(participant.initiativeSpeed) ? participant.initiativeSpeed : 1;
+    const legacyReadyMs = participant.nextReadyAt ? Date.parse(participant.nextReadyAt) : NaN;
+    const minutesUntilReady = Number.isFinite(legacyReadyMs)
+      ? Math.max(0, (legacyReadyMs - nowMs) / 60_000)
+      : index * baseRecoveryMinutes;
+
+    return {
+      identityId: participant.identityId ?? `legacy-face-${index + 1}`,
+      repoName: participant.repoName ?? "unknown",
+      displayName: participant.displayName ?? participant.identityId ?? `Legacy Face ${index + 1}`,
+      initiativeSpeed: speed,
+      reactionBias: Number.isFinite(participant.reactionBias) ? participant.reactionBias : 0.4,
+      interruptThreshold: Number.isFinite(participant.interruptThreshold) ? participant.interruptThreshold : 0.6,
+      currentLoad: Number.isFinite(participant.currentLoad) ? participant.currentLoad : 0,
+      status: participant.status ?? "active",
+      groups: participant.groups ?? [],
+      heat: Number.isFinite(participant.heat) ? participant.heat : 1,
+      effectiveSpeed: Number.isFinite(participant.effectiveSpeed) ? participant.effectiveSpeed : speed,
+      baseRecoveryMinutes,
+      nextTurnAt: minutesUntilReady,
+      lastTurnAt: participant.lastTurnAt,
+      lastQueuedAt: participant.lastQueuedAt,
+      queuedCount: Number.isFinite(participant.queuedCount) ? participant.queuedCount : 0,
+      constraints: participant.constraints ?? [
+        "Migrated from wall-clock repo Face heartbeat state.",
+      ],
+    } satisfies FaceHeartbeatParticipant;
+  });
+
+  return {
+    schemaVersion: HEARTBEAT_SCHEMA_VERSION,
+    initiativeClock: 0,
+    baseRecoveryMinutes,
+    globalHeat: 1,
+    lastTickAt: parsed.lastTickAt,
+    participants,
+    history: [
+      ...(Array.isArray(parsed.history) ? parsed.history : []),
+      {
+        type: "migrated",
+        fromSchemaVersion: parsed.schemaVersion ?? "unknown",
+        migratedAt: new Date().toISOString(),
+        participantCount: participants.length,
+      },
+    ].slice(-80),
+  };
+}
+
+function initiativeSpeedFor(
+  identity: RepoDiscordIdentity,
+  speedOverrides: Record<string, number>,
+): number {
+  const override = speedOverrides[identity.id.toLowerCase()];
+  if (override !== undefined) {
+    return clamp(override, 0.35, 6);
+  }
+
   return clamp(0.85 + stableUnit(identity.id, "speed") * 0.45, 0.75, 1.3);
+}
+
+function initiativeGroupsFor(identity: RepoDiscordIdentity): string[] {
+  return Array.from(new Set([
+    "all",
+    `identity:${normalizeKey(identity.id)}`,
+    `repo:${normalizeKey(identity.repoName)}`,
+    `display:${normalizeKey(identity.displayName)}`,
+    ...identity.allowedChannelIds.map((channelId) => `channel:${channelId}`),
+  ]));
+}
+
+function heatFor(
+  identity: RepoDiscordIdentity,
+  groups: string[],
+  globalHeat: number,
+  heatOverrides: Record<string, number>,
+): number {
+  const keys = [
+    "all",
+    ...groups,
+    normalizeKey(identity.id),
+    normalizeKey(identity.repoName),
+    normalizeKey(identity.displayName),
+  ];
+  return clamp(
+    keys.reduce((heat, key) => heat * (heatOverrides[key] ?? 1), globalHeat),
+    0.05,
+    20,
+  );
 }
 
 function reactionBiasFor(identity: RepoDiscordIdentity): number {
@@ -432,6 +608,10 @@ function stableUnit(id: string, salt: string): number {
 
 function mergeStrings(values: string[], value: string): string[] {
   return Array.from(new Set([...values, value]));
+}
+
+function normalizeKey(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function clamp(value: number, min: number, max: number): number {
