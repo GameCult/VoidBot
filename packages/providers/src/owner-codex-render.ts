@@ -110,9 +110,9 @@ export function buildDiscordReplyPrompt(
     "- Favor replies that play along with the user's comic frame by leaning into the actual tension, status game, vulnerability, or incongruity in the moment.",
     "- Keep jokes readable, collaborative, and subordinate to the work. Prefer fresh, situation-specific lines over reusable quips.",
     "- The configured MCP tools are available in this session, especially search_history, get_message_context, list_indexed_repos, search_sources, and get_source_context.",
-    "- If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across the rumination loop and direct summons.",
+    "- If private persistent self-state is attached, treat it as the canonical current self-model for the speaking agent across the rumination loop and direct summons.",
     "- Let that attached self-state shape continuity of voice, priorities, remembered room patterns, and when a more proactive conversational posture would make sense.",
-    "- If that shared self-state includes a current room snapshot, use it quietly as immediate conversational context.",
+    "- If that self-state includes a current room snapshot, use it quietly as immediate conversational context.",
     "- The attached self-state is private scaffolding. Do not quote or summarize it unless the user explicitly asks about Void's current orientation, goals, or remembered room context.",
     "- Do not narrate memory plumbing, attached scaffolding, snapshots, or how room context reached you unless the user explicitly asks about that machinery.",
     sleepInstructions,
@@ -159,10 +159,10 @@ export function buildDiscordReplyPrompt(
     "Interaction memory for this speaker:",
     renderInteractionMemory(context),
     "",
-    "Shared private self-state for Void:",
+    "Private persistent self-state for the speaking agent:",
     renderVoidSelfState(context),
     "",
-    "Private sleep projection for this reply:",
+    "Private runtime projection for this reply:",
     renderSleepProjection(context),
     "",
     "Private situational social read for this room:",
@@ -228,7 +228,7 @@ export function renderMarkdownBundle(context: ContextBundle): string {
     "",
     renderInteractionMemory(context),
     "",
-    "## Shared Void Self-State",
+    "## Private Persistent Self-State",
     "",
     renderVoidSelfState(context),
     "",
@@ -247,7 +247,7 @@ export function renderMarkdownBundle(context: ContextBundle): string {
 
 function renderVoidSelfState(context: ContextBundle): string {
   if (!context.voidSelfState) {
-    return "- No shared Void self-state was attached.";
+    return "- No private persistent self-state was attached.";
   }
 
   return context.voidSelfState.summary;
@@ -257,7 +257,7 @@ function renderSleepProjection(context: ContextBundle): string {
   const projection = context.voidSelfState?.projection;
 
   if (!projection) {
-    return "- No explicit sleep projection was attached.";
+    return "- No explicit runtime projection was attached.";
   }
 
   return [

@@ -8,14 +8,17 @@ import { dirname, resolve } from "node:path";
 import { loadConfig } from "@voidbot/config";
 import {
   buildEpiphanyIdentityRegistry,
+  buildVoidSelfStateContext,
   ContextBuilder,
   createStateStorage,
   ensureRepoFaceInitialized,
   loadRepoDiscordIdentityRegistry,
+  loadVoidSelfStateTypedDocuments,
   renderFaceIdentityDoctrine,
   resolveRepoFaceStatePath,
   type RepoDiscordIdentity,
 } from "@voidbot/core";
+import type { SourceMessage } from "@voidbot/shared";
 
 const HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_face_heartbeat_state.v1";
 const HEARTBEAT_COMMAND = "repo-face-rumination";
@@ -266,9 +269,21 @@ async function queueRepoFaceTurn(input: {
     birthMode: input.config.repoFaceBirthMode,
     birthExecutor: input.config.repoFaceBirthExecutor,
   });
+  const recentMessages = await fetchRecentDiscordMessages({
+    botToken: input.config.botToken,
+    channelId,
+    limit: 15,
+  });
+  const faceStatePath = resolveRepoFaceStatePath(identity, input.config.storageRoot);
+  const faceSelfState = await loadRepoFaceSelfStateContext({
+    identity,
+    statePath: faceStatePath,
+    channelId,
+    recentMessages,
+  });
   const prompt = buildHeartbeatPrompt({
     identity,
-    faceStatePath: resolveRepoFaceStatePath(identity, input.config.storageRoot),
+    faceStatePath,
     channelId,
     queuedAt: input.queuedAt,
     participant: input.participant,
@@ -286,8 +301,9 @@ async function queueRepoFaceTurn(input: {
     guildContext: {
       channelId,
     },
-    recentMessages: [],
+    recentMessages,
     retrieval: [],
+    voidSelfState: faceSelfState,
   });
   const requestMessageId = `agent-heartbeat:${identity.id}:${input.queuedAt}`;
   const result = await input.storage.jobQueue.createJob({
@@ -308,6 +324,91 @@ async function queueRepoFaceTurn(input: {
     created: result.created,
     activeJobId: result.job.id,
     requestMessageId,
+  };
+}
+
+async function loadRepoFaceSelfStateContext(input: {
+  identity: RepoDiscordIdentity;
+  statePath: string;
+  channelId: string;
+  recentMessages: SourceMessage[];
+}): Promise<ReturnType<typeof buildVoidSelfStateContext> | undefined> {
+  try {
+    const typedState = await loadVoidSelfStateTypedDocuments({
+      canonicalPath: input.statePath,
+      identity: {
+        agentId: input.identity.id,
+        publicName: input.identity.displayName,
+        publicDescription: input.identity.description,
+      },
+    });
+    return buildVoidSelfStateContext(typedState, {
+      sourcePath: input.statePath,
+      guildContext: {
+        channelId: input.channelId,
+      },
+      recentMessages: input.recentMessages,
+      identity: {
+        agentId: input.identity.id,
+        publicName: input.identity.displayName,
+        publicDescription: input.identity.description,
+      },
+    });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function fetchRecentDiscordMessages(input: {
+  botToken?: string;
+  channelId: string;
+  limit: number;
+}): Promise<SourceMessage[]> {
+  if (!input.botToken) {
+    return [];
+  }
+
+  const url = new URL(`https://discord.com/api/v10/channels/${input.channelId}/messages`);
+  url.searchParams.set("limit", String(Math.max(1, Math.min(input.limit, 25))));
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bot ${input.botToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Discord recent message fetch failed with ${response.status}: ${await response.text()}`);
+  }
+
+  const messages = await response.json() as DiscordApiMessage[];
+  return messages
+    .map((message) => ({
+      id: message.id,
+      authorId: message.author.id,
+      authorName: message.author.global_name ?? message.member?.nick ?? message.author.username,
+      content: message.content,
+      timestamp: message.timestamp,
+      isBot: message.author.bot === true,
+    }))
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+}
+
+interface DiscordApiMessage {
+  id: string;
+  content: string;
+  timestamp: string;
+  author: {
+    id: string;
+    username: string;
+    global_name?: string | null;
+    bot?: boolean;
+  };
+  member?: {
+    nick?: string | null;
   };
 }
 
@@ -585,6 +686,8 @@ function buildHeartbeatPrompt(input: {
     })}.`,
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
+    "Before deciding this is only private maintenance, read the attached recent channel context. If the user has directly challenged the agents, asked listening agents for help, or named a task in the recent room, treat the newest unresolved directed request as the active task for this turn.",
+    "Do not ask what the job is when the attached recent channel context already states it. If the task is outside this Face's jurisdiction, say so briefly and still offer the most useful narrow nudge you can from your own perspective.",
     "Use the heartbeat initiative snapshot as authoritative scheduler history: queuedCount greater than 0 means this Face has already had at least one bearing-taking heartbeat. If queuedCount is greater than 0 and the Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted now.",
     `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","content":"..."}; the worker owns delivery and receipt recording.`,
     "If nothing earns persistence or speech, return a short private summary.",

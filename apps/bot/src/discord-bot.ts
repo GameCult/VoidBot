@@ -17,6 +17,7 @@ import {
   createStateStorage,
   ensureRepoFaceInitialized,
   findRepoDiscordIdentityByRoleIds,
+  loadVoidSelfState,
   loadRepoDiscordIdentityRegistry,
   renderFaceIdentityDoctrine,
   type RepoDiscordIdentity,
@@ -676,6 +677,10 @@ async function queueRepoFaceRuminationPasses(options: {
     options.identity,
     options.config.storageRoot,
   );
+  const faceSelfState = await loadVoidSelfState(faceStatePath, {
+    guildContext: options.guildContext,
+    recentMessages,
+  });
 
   for (let passIndex = 1; passIndex <= options.config.repoFaceRuminationPasses; passIndex += 1) {
     const prompt = buildRepoFaceRuminationPrompt({
@@ -694,6 +699,7 @@ async function queueRepoFaceRuminationPasses(options: {
       guildContext: options.guildContext,
       recentMessages,
       retrieval: [],
+      voidSelfState: faceSelfState,
     });
 
     await options.jobQueue.createJob({
@@ -906,6 +912,7 @@ function buildRepoFaceRuminationPrompt(input: {
     })}`,
     `If an in-channel reply or follow-up action is warranted, post through post_repo_identity_message with identity "${input.identity.id}", channelId "${input.channelId}", and replyToMessageId "${input.replyToMessageId}".`,
     "Use the recent conversation as an anchor. Record short-term memory, incubation, agency pressure, or candidate interventions only when the thought is concrete enough to affect future repo work.",
+    "If the recent conversation already contains a directed task for agents or this Face, answer that task instead of asking what the task is.",
     "If nothing earns persistence or speech, return a short private summary and do not post.",
     "",
     "Recent addressed prompt:",

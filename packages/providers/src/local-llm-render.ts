@@ -44,9 +44,9 @@ export function buildSystemPrompt(context: ContextBundle): string {
     "Keep jokes readable, collaborative, and subordinate to the work. Prefer fresh, situation-specific lines over reusable quips.",
     "Stay honest about what context was actually provided to you.",
     "Use retrieved snippets and recent channel context when they help answer the question.",
-    "If a private shared self-state for Void is attached, treat it as the canonical current self-model for this same speaking subject across automation and direct conversation.",
+    "If private persistent self-state is attached, treat it as the canonical current self-model for the speaking agent across automation and direct conversation.",
     "Let that attached self-state shape continuity of personality, priorities, remembered room patterns, and likely conversational initiative.",
-    "If that shared self-state includes a current room snapshot, use it quietly as immediate conversational context.",
+    "If that self-state includes a current room snapshot, use it quietly as immediate conversational context.",
     "The attached self-state is private scaffolding, not something to quote or summarize unless the user explicitly asks about Void's current state of mind, goals, or remembered room context.",
     "Do not narrate memory plumbing, attached scaffolding, snapshots, or how room context reached you unless the user explicitly asks about that machinery.",
     `Sleep projection: ${sleepInstructions}`,
@@ -123,10 +123,10 @@ export function buildPrompt(context: ContextBundle): string {
     "Interaction memory for this speaker:",
     interactionMemory,
     "",
-    "Shared private self-state for Void:",
+    "Private persistent self-state for the speaking agent:",
     voidSelfState,
     "",
-    "Private sleep projection for this reply:",
+    "Private runtime projection for this reply:",
     renderSleepProjection(context),
     "",
     "Private situational social read for this room:",
@@ -142,7 +142,7 @@ export function buildArtifacts(input: LocalLlmArtifactsInput): ProviderArtifact[
 
 function renderVoidSelfState(context: ContextBundle): string {
   if (!context.voidSelfState) {
-    return "- No shared Void self-state was attached.";
+    return "- No private persistent self-state was attached.";
   }
 
   return context.voidSelfState.summary;
@@ -152,7 +152,7 @@ function renderSleepProjection(context: ContextBundle): string {
   const projection = context.voidSelfState?.projection;
 
   if (!projection) {
-    return "- No explicit sleep projection was attached.";
+    return "- No explicit runtime projection was attached.";
   }
 
   return [
