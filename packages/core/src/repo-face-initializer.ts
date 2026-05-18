@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import type { RepoDiscordIdentity } from "./repo-discord-identities";
+import { resolveRepoFaceStatePath } from "./repo-discord-identities";
+import { ensureVoidSelfStateIdentityProfile } from "./void-self-state-service";
 
 export interface RepoFaceInitializationOptions {
   identity: RepoDiscordIdentity;
@@ -48,6 +50,14 @@ export async function ensureRepoFaceInitialized(
   await mkdir(resolve(repoVoidbotRoot, "birth"), { recursive: true });
   await mkdir(resolve(repoVoidbotRoot, "logs"), { recursive: true });
   await writeRepoFaceIdentity(options.identity, repoPath, identityPath);
+  await ensureVoidSelfStateIdentityProfile({
+    canonicalPath: resolveRepoFaceStatePath(options.identity, options.storageRoot),
+    identity: {
+      agentId: options.identity.id,
+      publicName: options.identity.displayName,
+      publicDescription: options.identity.description,
+    },
+  });
   await writeReadmeIfMissing(
     resolve(repoVoidbotRoot, "voice", "README.md"),
     renderVoiceReadme(options.identity),

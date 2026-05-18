@@ -43,16 +43,27 @@ export interface VoidSelfStateProjectionOptions {
   };
 }
 
+export interface VoidSelfStateIdentityDefaults {
+  agentId: string;
+  publicName: string;
+  publicDescription?: string;
+}
+
 export function createEmptyVoidSelfState(
-  options: { createdAt?: string } = {},
+  options: { createdAt?: string; identity?: VoidSelfStateIdentityDefaults } = {},
 ): VoidSelfStateTypedProjection {
   const createdAt = options.createdAt ?? new Date().toISOString();
+  const identity = options.identity ?? {
+    agentId: "void-moderator",
+    publicName: "Void",
+  };
 
   return {
     selfProfile: voidSelfProfileSchema.parse({
       schemaVersion: 1,
-      agentId: "void-moderator",
-      publicName: "Void",
+      agentId: identity.agentId,
+      publicName: identity.publicName,
+      publicDescription: identity.publicDescription,
       privateNotes: [],
       values: [],
       activationProfile: {

@@ -555,6 +555,11 @@ export function registerVoidbotTools(
 
       const typedState = await loadVoidSelfStateTypedDocuments({
         canonicalPath: resolved.faceStatePath,
+        identity: {
+          agentId: resolved.identity.id,
+          publicName: resolved.identity.displayName,
+          publicDescription: resolved.identity.description,
+        },
       });
       const rendered = buildVoidSelfStateContext(typedState, {
         sourcePath: resolved.faceStatePath,
@@ -609,7 +614,14 @@ export function registerVoidbotTools(
       }
 
       const result = await applyVoidSelfStateOperation(
-        { canonicalPath: resolved.faceStatePath },
+        {
+          canonicalPath: resolved.faceStatePath,
+          identity: {
+            agentId: resolved.identity.id,
+            publicName: resolved.identity.displayName,
+            publicDescription: resolved.identity.description,
+          },
+        },
         input.operation,
       );
 

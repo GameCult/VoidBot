@@ -22,15 +22,17 @@ import {
 } from "./void-self-state-domain";
 import {
   createEmptyVoidSelfState,
+  type VoidSelfStateIdentityDefaults,
   type VoidSelfStateTypedProjection,
 } from "./void-self-state-projection";
 
 export interface VoidSelfStateServiceOptions {
   canonicalPath: string;
+  identity?: VoidSelfStateIdentityDefaults;
 }
 
 export interface VoidSelfStateOperationResult {
-  operation: VoidSelfStateOperation["operation"];
+  operation: VoidSelfStateOperation["operation"] | "ensure_identity_profile";
   canonicalPath: string;
   typedDocumentsWritten: number;
 }
@@ -41,7 +43,7 @@ export async function loadVoidSelfStateTypedDocuments(
   const canonicalPath = resolve(options.canonicalPath);
   const cache = createVoidSelfStateCache(canonicalPath);
   await cache.pullAllBackingStores();
-  return readTypedStateOrEmpty(cache);
+  return readTypedStateOrEmpty(cache, options.identity);
 }
 
 export async function applyVoidSelfStateOperation(
@@ -53,12 +55,30 @@ export async function applyVoidSelfStateOperation(
   const cache = createVoidSelfStateCache(canonicalPath);
   await cache.pullAllBackingStores();
 
-  const typedState = readTypedStateOrEmpty(cache);
+  const typedState = readTypedStateOrEmpty(cache, options.identity);
   applyTypedOperation(typedState, operation);
   await writeTypedState(cache, typedState);
 
   return {
     operation: operation.operation,
+    canonicalPath,
+    typedDocumentsWritten: 7,
+  };
+}
+
+export async function ensureVoidSelfStateIdentityProfile(
+  options: VoidSelfStateServiceOptions & { identity: VoidSelfStateIdentityDefaults },
+): Promise<VoidSelfStateOperationResult> {
+  const canonicalPath = resolve(options.canonicalPath);
+  const cache = createVoidSelfStateCache(canonicalPath);
+  await cache.pullAllBackingStores();
+
+  const typedState = readTypedStateOrEmpty(cache, options.identity);
+  repairSelfProfileIdentity(typedState, options.identity);
+  await writeTypedState(cache, typedState);
+
+  return {
+    operation: "ensure_identity_profile",
     canonicalPath,
     typedDocumentsWritten: 7,
   };
@@ -73,9 +93,10 @@ function createVoidSelfStateCache(canonicalPath: string): CultCache {
 
 function readTypedStateOrEmpty(
   cache: CultCache,
+  identity?: VoidSelfStateIdentityDefaults,
 ): VoidSelfStateTypedProjection {
-  const empty = createEmptyVoidSelfState();
-  return {
+  const empty = createEmptyVoidSelfState({ identity });
+  const state = {
     selfProfile: cache.getGlobal(voidSelfProfileDocument) ?? empty.selfProfile,
     moderationCursor: cache.getGlobal(voidModerationCursorDocument) ?? empty.moderationCursor,
     speechReceipts: cache.getGlobal(voidSpeechReceiptsDocument) ?? empty.speechReceipts,
@@ -85,12 +106,18 @@ function readTypedStateOrEmpty(
     candidateInterventions:
       cache.getGlobal(voidCandidateInterventionsDocument) ?? empty.candidateInterventions,
   };
+  if (identity) {
+    repairSelfProfileIdentity(state, identity);
+  }
+  normalizeDeliveryReceipts(state);
+  return state;
 }
 
 async function writeTypedState(
   cache: CultCache,
   state: VoidSelfStateTypedProjection,
 ): Promise<void> {
+  normalizeDeliveryReceipts(state);
   await cache.putGlobal(voidSelfProfileDocument, stripUndefined(state.selfProfile));
   await cache.putGlobal(voidModerationCursorDocument, stripUndefined(state.moderationCursor));
   await cache.putGlobal(voidSpeechReceiptsDocument, stripUndefined(state.speechReceipts));
@@ -98,6 +125,57 @@ async function writeTypedState(
   await cache.putGlobal(voidScheduledRuntimeDocument, stripUndefined(state.scheduledRuntime));
   await cache.putGlobal(voidAgencyPressureDocument, stripUndefined(state.agencyPressure));
   await cache.putGlobal(voidCandidateInterventionsDocument, stripUndefined(state.candidateInterventions));
+}
+
+function repairSelfProfileIdentity(
+  state: VoidSelfStateTypedProjection,
+  identity: VoidSelfStateIdentityDefaults,
+): void {
+  let changed = false;
+
+  if (state.selfProfile.agentId !== identity.agentId) {
+    state.selfProfile.agentId = identity.agentId;
+    changed = true;
+  }
+  if (state.selfProfile.publicName !== identity.publicName) {
+    state.selfProfile.publicName = identity.publicName;
+    changed = true;
+  }
+  if (
+    identity.publicDescription &&
+    state.selfProfile.publicDescription !== identity.publicDescription
+  ) {
+    state.selfProfile.publicDescription = identity.publicDescription;
+    changed = true;
+  }
+
+  if (changed) {
+    state.selfProfile.updatedAt = new Date().toISOString();
+  }
+}
+
+function normalizeDeliveryReceipts(state: VoidSelfStateTypedProjection): void {
+  const byTarget = new Map<string, VoidSpeechReceipts["recentReceipts"][number]>();
+  const noTarget: VoidSpeechReceipts["recentReceipts"] = [];
+
+  for (const receipt of state.speechReceipts.recentReceipts) {
+    const targetKey = receipt.channelId && receipt.replyToMessageId
+      ? `${receipt.channelId}\u0000${receipt.replyToMessageId}`
+      : undefined;
+    if (!targetKey) {
+      noTarget.push(receipt);
+      continue;
+    }
+
+    const existing = byTarget.get(targetKey);
+    if (!existing || receipt.sentAt.localeCompare(existing.sentAt) < 0) {
+      byTarget.set(targetKey, receipt);
+    }
+  }
+
+  state.speechReceipts.recentReceipts = [...noTarget, ...byTarget.values()]
+    .sort((left, right) => left.sentAt.localeCompare(right.sentAt))
+    .slice(-24);
 }
 
 function applyTypedOperation(
