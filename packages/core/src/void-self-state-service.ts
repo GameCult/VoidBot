@@ -33,7 +33,7 @@ export interface VoidSelfStateServiceOptions {
 }
 
 export interface VoidSelfStateOperationResult {
-  operation: VoidSelfStateOperation["operation"] | "ensure_identity_profile";
+  operation: VoidSelfStateOperation["operation"] | "ensure_identity_profile" | "repair_typed_state";
   canonicalPath: string;
   typedDocumentsWritten: number;
 }
@@ -85,6 +85,23 @@ export async function ensureVoidSelfStateIdentityProfile(
   };
 }
 
+export async function repairVoidSelfStateTypedDocuments(
+  options: VoidSelfStateServiceOptions,
+): Promise<VoidSelfStateOperationResult> {
+  const canonicalPath = resolve(options.canonicalPath);
+  const cache = createVoidSelfStateCache(canonicalPath);
+  await cache.pullAllBackingStores();
+
+  const typedState = readTypedStateOrEmpty(cache, options.identity);
+  await writeTypedState(cache, typedState);
+
+  return {
+    operation: "repair_typed_state",
+    canonicalPath,
+    typedDocumentsWritten: 7,
+  };
+}
+
 function createVoidSelfStateCache(canonicalPath: string): CultCache {
   return CultCache.builder()
     .withRegistry(voidSelfStateDocumentRegistry)
@@ -118,6 +135,7 @@ async function writeTypedState(
   cache: CultCache,
   state: VoidSelfStateTypedProjection,
 ): Promise<void> {
+  normalizeTypedStateForWrite(state);
   normalizeDeliveryReceipts(state);
   await cache.putGlobal(voidSelfProfileDocument, stripUndefined(state.selfProfile));
   await cache.putGlobal(voidModerationCursorDocument, stripUndefined(state.moderationCursor));
@@ -180,10 +198,75 @@ function normalizeDeliveryReceipts(state: VoidSelfStateTypedProjection): void {
     .slice(-24);
 }
 
+function normalizeTypedStateForWrite(
+  state: VoidSelfStateTypedProjection,
+  observedAt = new Date().toISOString(),
+): void {
+  let thoughtMemoryChanged = false;
+  for (const memory of state.thoughtMemory.shortTerm) {
+    thoughtMemoryChanged = clampFutureTimestampFields(memory, observedAt, [
+      "createdAt",
+      "updatedAt",
+      "retiredAt",
+    ]) || thoughtMemoryChanged;
+  }
+  if (isFutureTimestamp(state.thoughtMemory.updatedAt, observedAt)) {
+    state.thoughtMemory.updatedAt = observedAt;
+    thoughtMemoryChanged = true;
+  }
+  if (thoughtMemoryChanged && isFutureTimestamp(state.thoughtMemory.updatedAt, observedAt)) {
+    state.thoughtMemory.updatedAt = observedAt;
+  }
+
+  let candidateInterventionsChanged = false;
+  for (const intervention of state.candidateInterventions.interventions) {
+    candidateInterventionsChanged = normalizeQueuedCandidateIntervention(intervention, observedAt)
+      || candidateInterventionsChanged;
+    candidateInterventionsChanged = clampFutureTimestampFields(intervention, observedAt, [
+      "createdAt",
+      "updatedAt",
+      "spokenAt",
+      "retiredAt",
+    ]) || candidateInterventionsChanged;
+  }
+  if (isFutureTimestamp(state.candidateInterventions.updatedAt, observedAt)) {
+    state.candidateInterventions.updatedAt = observedAt;
+    candidateInterventionsChanged = true;
+  }
+  if (candidateInterventionsChanged) {
+    state.candidateInterventions.updatedAt = observedAt;
+  }
+}
+
+function clampFutureTimestampFields<T extends Record<string, unknown>>(
+  value: T,
+  observedAt: string,
+  fields: string[],
+): boolean {
+  let changed = false;
+  for (const field of fields) {
+    const timestamp = value[field];
+    if (typeof timestamp === "string" && isFutureTimestamp(timestamp, observedAt)) {
+      value[field as keyof T] = observedAt as T[keyof T];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function isFutureTimestamp(timestamp: string, observedAt: string): boolean {
+  const timestampMs = Date.parse(timestamp);
+  const observedAtMs = Date.parse(observedAt);
+  return Number.isFinite(timestampMs) &&
+    Number.isFinite(observedAtMs) &&
+    timestampMs > observedAtMs;
+}
+
 function applyTypedOperation(
   state: VoidSelfStateTypedProjection,
   operation: VoidSelfStateOperation,
 ): void {
+  const appliedAt = new Date().toISOString();
   switch (operation.operation) {
     case "record_reviewed_messages":
       state.moderationCursor.lastReviewedMessageId = operation.lastReviewedMessageId;
@@ -214,11 +297,14 @@ function applyTypedOperation(
       closeCasesForReceipt(state.moderationCursor, operation.receipt);
       return;
     case "record_short_term_memory":
-      recordShortTermMemory(state.thoughtMemory, operation.memory);
+      recordShortTermMemory(
+        state.thoughtMemory,
+        normalizeShortTermMemoryOperation(state.thoughtMemory, operation.memory, appliedAt),
+      );
       state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm
         .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
         .slice(-48);
-      state.thoughtMemory.updatedAt = operation.memory.updatedAt;
+      state.thoughtMemory.updatedAt = appliedAt;
       return;
     case "prune_short_term_memories":
       state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(
@@ -255,8 +341,12 @@ function applyTypedOperation(
       state.thoughtMemory.updatedAt = operation.thread.updatedAt;
       return;
     case "queue_candidate_intervention":
-      upsertBy(state.candidateInterventions.interventions, operation.intervention, (entry) => entry.interventionId);
-      state.candidateInterventions.updatedAt = operation.intervention.updatedAt;
+      upsertBy(
+        state.candidateInterventions.interventions,
+        normalizeCandidateInterventionOperation(state.candidateInterventions, operation.intervention, appliedAt),
+        (entry) => entry.interventionId,
+      );
+      state.candidateInterventions.updatedAt = appliedAt;
       return;
     case "retire_candidate_intervention":
       retireCandidateIntervention(state.candidateInterventions, operation);
@@ -293,6 +383,50 @@ function applyTypedOperation(
       state.thoughtMemory.updatedAt = operation.appliedAt;
       return;
   }
+}
+
+function normalizeShortTermMemoryOperation(
+  thoughtMemory: VoidThoughtMemory,
+  memory: VoidThoughtMemory["shortTerm"][number],
+  appliedAt: string,
+): VoidThoughtMemory["shortTerm"][number] {
+  const existing = thoughtMemory.shortTerm.find((entry) => entry.memoryId === memory.memoryId);
+  return {
+    ...memory,
+    createdAt: existing?.createdAt ?? appliedAt,
+    updatedAt: appliedAt,
+  };
+}
+
+function normalizeCandidateInterventionOperation(
+  candidates: VoidCandidateInterventions,
+  intervention: VoidCandidateInterventions["interventions"][number],
+  appliedAt: string,
+): VoidCandidateInterventions["interventions"][number] {
+  const existing = candidates.interventions.find((entry) => entry.interventionId === intervention.interventionId);
+  const normalized = {
+    ...intervention,
+    createdAt: existing?.createdAt ?? appliedAt,
+    updatedAt: appliedAt,
+  };
+  normalizeQueuedCandidateIntervention(normalized, appliedAt);
+  return normalized;
+}
+
+function normalizeQueuedCandidateIntervention(
+  intervention: VoidCandidateInterventions["interventions"][number],
+  observedAt: string,
+): boolean {
+  if (intervention.status !== "queued" || intervention.deliveryTarget) {
+    return false;
+  }
+  intervention.status = "deferred";
+  intervention.updatedAt = observedAt;
+  intervention.tags = Array.from(new Set([
+    ...intervention.tags,
+    "normalized:targetless-queued-to-deferred",
+  ]));
+  return true;
 }
 
 function recordShortTermMemory(

@@ -40,6 +40,7 @@
     "moderation:memory-maintenance": "powershell -ExecutionPolicy Bypass -File scripts/run-void-memory-maintenance.ps1",
     "moderation:memory-maintenance:sleep-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-memory-maintenance-sleep-fixture.ps1",
     "moderation:memory-lifecycle:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-memory-lifecycle-fixture.ps1",
+    "moderation:state-boundary-normalization:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-state-boundary-normalization-fixture.ps1",
     "moderation:short-term-clustering:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-short-term-clustering-fixture.ps1",
     "moderation:agency-pressure:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-agency-pressure-fixture.ps1",
     "moderation:rumination:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-fixture.ps1",
