@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { z } from "zod";
 
@@ -9,6 +10,7 @@ const repoDiscordIdentitySchema = z.object({
   roleId: z.string().trim().min(1).optional(),
   allowedChannelIds: z.array(z.string().trim().min(1)).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
+  faceStatePath: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
 });
 
@@ -88,6 +90,17 @@ export function isRepoDiscordIdentityAllowedInChannel(
   return identity.allowedChannelIds.length === 0 || identity.allowedChannelIds.includes(channelId);
 }
 
+export function resolveRepoFaceStatePath(
+  identity: RepoDiscordIdentity,
+  storageRoot: string,
+): string {
+  if (identity.faceStatePath) {
+    return resolve(identity.faceStatePath);
+  }
+
+  return resolve(storageRoot, "private", "repo-faces", `${sanitizePathSegment(identity.id)}.cc`);
+}
+
 function normalizeRepoDiscordIdentities(
   identities: RepoDiscordIdentity[],
 ): RepoDiscordIdentity[] {
@@ -110,9 +123,18 @@ function normalizeRepoDiscordIdentities(
       roleId: identity.roleId?.trim(),
       allowedChannelIds: [...new Set(identity.allowedChannelIds.map((entry) => entry.trim()))],
       avatarUrl: identity.avatarUrl?.trim(),
+      faceStatePath: identity.faceStatePath?.trim(),
       description: identity.description?.trim(),
     };
   });
+}
+
+function sanitizePathSegment(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "repo-face";
 }
 
 function normalizeIdentityKey(value: string): string {

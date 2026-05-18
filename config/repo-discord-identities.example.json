@@ -9,6 +9,7 @@
         "AQUARIUM_CHANNEL_ID"
       ],
       "avatarUrl": "https://example.com/aquarium-synth-host-avatar.png",
+      "faceStatePath": ".voidbot/private/repo-faces/aquarium-synth-host.cc",
       "description": "Role mention is the address; webhook persona is the mouth."
     }
   ]

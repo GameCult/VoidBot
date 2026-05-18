@@ -13,6 +13,7 @@ export const commandNames = [
   "reindex-channel",
   "set-style",
   "repo-identity-mention",
+  "repo-face-rumination",
 ] as const;
 
 export type CommandName = (typeof commandNames)[number];

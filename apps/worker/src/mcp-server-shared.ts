@@ -39,6 +39,15 @@ export const postRepoIdentityMessageInputSchema = {
   replyToMessageId: z.string().min(1).optional(),
 };
 
+export const repoFaceStateInputSchema = {
+  identity: z.string().min(1),
+};
+
+export const applyRepoFaceStateOperationInputSchema = {
+  identity: z.string().min(1),
+  operation: z.record(z.unknown()),
+};
+
 export const searchSourcesInputSchema = {
   query: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(MAX_RETRIEVAL_RESULT_LIMIT).optional(),
@@ -85,6 +94,15 @@ export interface PostRepoIdentityMessageArgs {
   channelId: string;
   content: string;
   replyToMessageId?: string;
+}
+
+export interface RepoFaceStateArgs {
+  identity: string;
+}
+
+export interface ApplyRepoFaceStateOperationArgs {
+  identity: string;
+  operation: Record<string, unknown>;
 }
 
 export interface ListIndexedReposArgs {

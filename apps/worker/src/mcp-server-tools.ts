@@ -4,9 +4,13 @@ import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 import {
+  applyVoidSelfStateOperation,
+  buildVoidSelfStateContext,
   findRepoDiscordIdentity,
   isRepoDiscordIdentityAllowedInChannel,
   loadRepoDiscordIdentityRegistry,
+  loadVoidSelfStateTypedDocuments,
+  resolveRepoFaceStatePath,
 } from "@voidbot/core";
 
 import { type VoidbotMcpContext } from "./mcp-server-context";
@@ -15,18 +19,22 @@ import {
   type ListIndexedReposArgs,
   type MessageContextArgs,
   type NotifyOwnerArgs,
+  type ApplyRepoFaceStateOperationArgs,
   type PostDiscordMessageArgs,
   type PostRepoIdentityMessageArgs,
+  type RepoFaceStateArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
   type SourceContextArgs,
   formatArchivedMessage,
   formatHistoryResults,
   formatSourceResults,
+  applyRepoFaceStateOperationInputSchema,
   messageContextInputSchema,
   notifyOwnerInputSchema,
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
+  repoFaceStateInputSchema,
   renderJsonBlock,
   searchHistoryInputSchema,
   searchSourcesInputSchema,
@@ -528,6 +536,99 @@ export function registerVoidbotTools(
   );
 
   server.registerTool(
+    "read_repo_face_state",
+    {
+      title: "Read Repo Face State",
+      description:
+        "Read the typed persistent Face state for a registered repo identity. Face state uses the same typed operation machinery as Void, but the state file belongs to the repo identity.",
+      inputSchema: repoFaceStateInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: RepoFaceStateArgs): Promise<CallToolResult> => {
+      const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+      if (!resolved.identity) {
+        return resolved.error;
+      }
+
+      const typedState = await loadVoidSelfStateTypedDocuments({
+        canonicalPath: resolved.faceStatePath,
+      });
+      const rendered = buildVoidSelfStateContext(typedState, {
+        sourcePath: resolved.faceStatePath,
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              identity: identityForToolResult(resolved.identity),
+              faceStatePath: resolved.faceStatePath,
+              summary: rendered.summary,
+              typedState,
+            }),
+          },
+        ],
+        structuredContent: {
+          identity: identityForToolResult(resolved.identity),
+          faceStatePath: resolved.faceStatePath,
+          summary: rendered.summary,
+          typedState,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
+    "apply_repo_face_state_operation",
+    {
+      title: "Apply Repo Face State Operation",
+      description:
+        "Apply one typed state operation to a registered repo identity's Face state. Use this for Face memory, incubation, agency pressure, candidate interventions, and receipts; do not edit the Face state file directly.",
+      inputSchema: applyRepoFaceStateOperationInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input: ApplyRepoFaceStateOperationArgs): Promise<CallToolResult> => {
+      const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+      if (!resolved.identity) {
+        return resolved.error;
+      }
+
+      const result = await applyVoidSelfStateOperation(
+        { canonicalPath: resolved.faceStatePath },
+        input.operation,
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              applied: true,
+              identity: identityForToolResult(resolved.identity),
+              faceStatePath: resolved.faceStatePath,
+              result,
+            }),
+          },
+        ],
+        structuredContent: {
+          applied: true,
+          identity: identityForToolResult(resolved.identity),
+          faceStatePath: resolved.faceStatePath,
+          result,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
     "notify_owner",
     {
       title: "Notify Owner",
@@ -577,4 +678,57 @@ export function registerVoidbotTools(
       };
     },
   );
+}
+
+async function resolveRepoIdentityForTool(
+  context: VoidbotMcpContext,
+  identitySelector: string,
+): Promise<
+  | {
+      identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+      faceStatePath: string;
+    }
+  | {
+      identity?: undefined;
+      error: CallToolResult;
+    }
+> {
+  const registry = await loadRepoDiscordIdentityRegistry(
+    context.config.repoDiscordIdentitiesPath,
+  );
+  const identity = findRepoDiscordIdentity(registry, identitySelector);
+
+  if (!identity) {
+    return {
+      error: {
+        content: [
+          {
+            type: "text",
+            text: `No registered repo Discord identity matched "${identitySelector}".`,
+          },
+        ],
+        structuredContent: {
+          found: false,
+          reason: "unknown_identity",
+          identity: identitySelector,
+        },
+        isError: true,
+      },
+    };
+  }
+
+  return {
+    identity,
+    faceStatePath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
+  };
+}
+
+function identityForToolResult(identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>) {
+  return {
+    id: identity.id,
+    repoName: identity.repoName,
+    displayName: identity.displayName,
+    roleId: identity.roleId ?? null,
+    mention: identity.roleId ? `<@&${identity.roleId}>` : null,
+  };
 }

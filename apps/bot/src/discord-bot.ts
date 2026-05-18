@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
 
 import {
   Client,
@@ -15,6 +16,8 @@ import {
   createStateStorage,
   findRepoDiscordIdentityByRoleIds,
   loadRepoDiscordIdentityRegistry,
+  type RepoDiscordIdentity,
+  resolveRepoFaceStatePath,
   loadStylePack,
   loadSystemMessageCatalog,
   VoidUsageRateLimiter,
@@ -60,6 +63,7 @@ import {
   formatHistoryResults,
   formatProviderStatuses,
   formatSourceResults,
+  getRecentMessages,
   getRoleIdsFromInteraction,
   getRoleIdsFromMessage,
   ingestIfIndexed,
@@ -86,9 +90,15 @@ export async function startBot(): Promise<void> {
       GatewayIntentBits.MessageContent,
     ],
   });
-  const repoDiscordIdentities = await loadRepoDiscordIdentityRegistry(
+  let repoDiscordIdentities = await loadRepoDiscordIdentityRegistry(
     config.repoDiscordIdentitiesPath,
   );
+  repoDiscordIdentities = await ensureRepoIdentityRoles({
+    botToken: config.botToken,
+    guildId: config.developmentGuildId,
+    registryPath: config.repoDiscordIdentitiesPath,
+    identities: repoDiscordIdentities.identities,
+  });
   const botDirectedRoleIds = [
     ...new Set([
       ...config.botTriggerRoleIds,
@@ -374,6 +384,18 @@ export async function startBot(): Promise<void> {
         silentOwnerQueueAck: !isDirectMessage,
         forceProvider: addressedRepoIdentity ? "owner_codex" : undefined,
       });
+      if (addressedRepoIdentity) {
+        await queueRepoFaceRuminationPasses({
+          identity: addressedRepoIdentity,
+          message,
+          actor: buildActorFromMessage(message),
+          guildContext: buildGuildContextFromMessage(message),
+          visiblePrompt,
+          config,
+          contextBuilder,
+          jobQueue,
+        });
+      }
     } catch (error) {
       console.error(error);
       await notifyOwnerOfBotIssue(
@@ -609,6 +631,202 @@ export async function startBot(): Promise<void> {
   await client.login(config.botToken);
 }
 
+async function queueRepoFaceRuminationPasses(options: {
+  identity: {
+    id: string;
+    repoName: string;
+    displayName: string;
+    roleId?: string;
+    avatarUrl?: string;
+    allowedChannelIds: string[];
+    faceStatePath?: string;
+  };
+  message: Parameters<typeof buildActorFromMessage>[0];
+  actor: ReturnType<typeof buildActorFromMessage>;
+  guildContext: ReturnType<typeof buildGuildContextFromMessage>;
+  visiblePrompt: string;
+  config: ReturnType<typeof loadConfig>;
+  contextBuilder: ContextBuilder;
+  jobQueue: Awaited<ReturnType<typeof createStateStorage>>["jobQueue"];
+}): Promise<void> {
+  if (options.config.repoFaceRuminationPasses <= 0) {
+    return;
+  }
+
+  const recentMessages = await getRecentMessages(
+    options.message.channel.isTextBased() ? options.message.channel : null,
+    10,
+  );
+  const faceStatePath = resolveRepoFaceStatePath(
+    options.identity,
+    options.config.storageRoot,
+  );
+
+  for (let passIndex = 1; passIndex <= options.config.repoFaceRuminationPasses; passIndex += 1) {
+    const prompt = buildRepoFaceRuminationPrompt({
+      identity: options.identity,
+      visiblePrompt: options.visiblePrompt,
+      faceStatePath,
+      passIndex,
+      totalPasses: options.config.repoFaceRuminationPasses,
+      channelId: options.message.channelId,
+      replyToMessageId: options.message.id,
+    });
+    const contextBundle = options.contextBuilder.build({
+      prompt,
+      actor: options.actor,
+      guildContext: options.guildContext,
+      recentMessages,
+      retrieval: [],
+    });
+
+    await options.jobQueue.createJob({
+      command: "repo-face-rumination",
+      provider: "owner_codex",
+      runApprovalRequired: false,
+      postApprovalRequired: false,
+      requester: options.actor,
+      guildContext: options.guildContext,
+      prompt,
+      contextBundle,
+      outputChannelId: options.message.channelId,
+      requestMessageId: `${options.message.id}:repo-face:${options.identity.id}:${passIndex}`,
+      initialState: "approved",
+    });
+  }
+}
+
+async function ensureRepoIdentityRoles(options: {
+  botToken: string;
+  guildId?: string;
+  registryPath: string;
+  identities: RepoDiscordIdentity[];
+}): Promise<{ identities: RepoDiscordIdentity[] }> {
+  const identitiesMissingRoles = options.identities.filter((identity) => !identity.roleId);
+
+  if (identitiesMissingRoles.length === 0) {
+    return { identities: options.identities };
+  }
+
+  if (!options.guildId) {
+    console.warn(
+      `Repo Discord identities missing roles, but DISCORD_GUILD_ID is not configured: ${
+        identitiesMissingRoles.map((identity) => identity.id).join(", ")
+      }`,
+    );
+    return { identities: options.identities };
+  }
+
+  try {
+    const existingRoles = await fetchGuildRoles(options.botToken, options.guildId);
+    const nextIdentities = [...options.identities];
+    let changed = false;
+
+    for (const identity of identitiesMissingRoles) {
+      const existingRole = existingRoles.find((role) => role.name === identity.displayName);
+      const roleId = existingRole?.id ?? await createRepoIdentityRole(
+        options.botToken,
+        options.guildId,
+        identity.displayName,
+      );
+      const index = nextIdentities.findIndex((entry) => entry.id === identity.id);
+
+      if (index !== -1) {
+        nextIdentities[index] = {
+          ...nextIdentities[index],
+          roleId,
+        };
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await writeRepoIdentityRegistry(options.registryPath, nextIdentities);
+    }
+
+    return { identities: nextIdentities };
+  } catch (error) {
+    console.warn(
+      `Failed to ensure repo identity Discord roles: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return { identities: options.identities };
+  }
+}
+
+async function fetchGuildRoles(
+  botToken: string,
+  guildId: string,
+): Promise<Array<{ id: string; name: string }>> {
+  const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Discord role lookup failed: ${response.status} ${await response.text()}`);
+  }
+
+  const payload = await response.json() as Array<{ id?: string; name?: string }>;
+  return payload
+    .filter((role): role is { id: string; name: string } => Boolean(role.id && role.name));
+}
+
+async function createRepoIdentityRole(
+  botToken: string,
+  guildId: string,
+  name: string,
+): Promise<string> {
+  const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      mentionable: true,
+      hoist: false,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Discord role creation failed for ${name}: ${response.status} ${await response.text()}`);
+  }
+
+  const payload = await response.json() as { id?: string };
+  if (!payload.id) {
+    throw new Error(`Discord role creation for ${name} returned no role id.`);
+  }
+
+  return payload.id;
+}
+
+async function writeRepoIdentityRegistry(
+  registryPath: string,
+  identities: RepoDiscordIdentity[],
+): Promise<void> {
+  let existing: unknown;
+
+  try {
+    existing = JSON.parse(stripLeadingBom(await readFile(registryPath, "utf8"))) as unknown;
+  } catch {
+    existing = {};
+  }
+
+  const payload = Array.isArray(existing)
+    ? identities
+    : {
+        ...(isRecord(existing) ? existing : {}),
+        identities,
+      };
+  await writeFile(registryPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
 function stripAddressingMentions(content: string, roleId?: string): string {
   if (!roleId) {
     return content;
@@ -638,6 +856,41 @@ function buildRepoIdentityPrompt(
   ].join("\n");
 }
 
+function buildRepoFaceRuminationPrompt(input: {
+  identity: {
+    id: string;
+    repoName: string;
+    displayName: string;
+    roleId?: string;
+    avatarUrl?: string;
+  };
+  visiblePrompt: string;
+  faceStatePath: string;
+  passIndex: number;
+  totalPasses: number;
+  channelId: string;
+  replyToMessageId: string;
+}): string {
+  return [
+    `Perform repo Face rumination pass ${input.passIndex} of ${input.totalPasses} for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
+    `This Face state is persistent and typed. Read it with read_repo_face_state for identity "${input.identity.id}" and write only through apply_repo_face_state_operation. Do not edit ${input.faceStatePath} directly.`,
+    `If an in-channel reply or follow-up action is warranted, post through post_repo_identity_message with identity "${input.identity.id}", channelId "${input.channelId}", and replyToMessageId "${input.replyToMessageId}".`,
+    "Use the recent conversation as an anchor. Record short-term memory, incubation, agency pressure, or candidate interventions only when the thought is concrete enough to affect future repo work.",
+    "If nothing earns persistence or speech, return a short private summary and do not post.",
+    "",
+    "Recent addressed prompt:",
+    input.visiblePrompt,
+  ].join("\n");
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripLeadingBom(input: string): string {
+  return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

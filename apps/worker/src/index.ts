@@ -322,7 +322,7 @@ async function processJob(job: JobRecord): Promise<void> {
       return;
     }
 
-    if (job.command === "repo-identity-mention") {
+    if (job.command === "repo-identity-mention" || job.command === "repo-face-rumination") {
       await jobQueue.completeJobDirect(job.id, finalResponse);
       await deliverOwnerNotifications(job, response.notifications ?? []);
       await auditLog.record({
@@ -333,10 +333,10 @@ async function processJob(job: JobRecord): Promise<void> {
         details: {
           summary: response.summary,
           autoPosted: false,
-          reason: "repo_identity_must_post_through_mcp",
+          reason: `${job.command}_must_post_through_mcp`,
         },
       });
-      console.log(`Completed repo identity mention job ${job.id}.`);
+      console.log(`Completed ${job.command} job ${job.id}.`);
       return;
     }
 
