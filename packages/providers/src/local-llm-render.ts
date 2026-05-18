@@ -12,7 +12,7 @@ export function buildSystemPrompt(context: ContextBundle): string {
       ? context.stylePack.instructions.trim()
       : "No extra persona instructions were supplied.";
   const repoFaceInstruction = context.prompt.includes("Repo Face identity doctrine:")
-    ? "This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak and reason as that Face."
+    ? "This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak and reason as that Face. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files here."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
   const sleepInstructions =
