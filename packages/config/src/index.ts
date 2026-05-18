@@ -104,6 +104,12 @@ const envSchema = z.object({
   REPO_FACE_RUMINATION_PASSES: z.coerce.number().int().min(0).max(6).default(3),
   REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
   REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
+  REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
+  REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
+  REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
+  REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
+  REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(2),
+  REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID: optionalNonEmptyString,
   EPIPHANY_AGENT_ROOT: z.string().min(1).default("E:/Projects/EpiphanyAgent"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
@@ -142,6 +148,14 @@ export interface AppConfig {
   repoFaceRuminationPasses: number;
   repoFaceBirthMode: "plan" | "run";
   repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
+  repoFaceHeartbeats: {
+    enabled: boolean;
+    statePath: string;
+    taskName: string;
+    intervalMinutes: number;
+    maxJobsPerTick: number;
+    defaultChannelId?: string;
+  };
   epiphanyAgentRoot: string;
   indexAllChannels: boolean;
   indexedChannelIds: string[];
@@ -320,6 +334,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     repoFaceRuminationPasses: parsed.REPO_FACE_RUMINATION_PASSES,
     repoFaceBirthMode: parsed.REPO_FACE_BIRTH_MODE,
     repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
+    repoFaceHeartbeats: {
+      enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
+      statePath: resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH),
+      taskName: parsed.REPO_FACE_HEARTBEAT_TASK_NAME,
+      intervalMinutes: parsed.REPO_FACE_HEARTBEAT_INTERVAL_MINUTES,
+      maxJobsPerTick: parsed.REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK,
+      defaultChannelId: parsed.REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID,
+    },
     epiphanyAgentRoot: resolve(parsed.EPIPHANY_AGENT_ROOT),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,
     indexedChannelIds,
