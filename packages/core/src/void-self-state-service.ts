@@ -22,6 +22,7 @@ import {
 } from "./void-self-state-domain";
 import {
   createEmptyVoidSelfState,
+  normalizeVoidSelfStateIdentityDefaults,
   type VoidSelfStateIdentityDefaults,
   type VoidSelfStateTypedProjection,
 } from "./void-self-state-projection";
@@ -131,6 +132,7 @@ function repairSelfProfileIdentity(
   state: VoidSelfStateTypedProjection,
   identity: VoidSelfStateIdentityDefaults,
 ): void {
+  identity = normalizeVoidSelfStateIdentityDefaults(identity);
   let changed = false;
 
   if (state.selfProfile.agentId !== identity.agentId) {

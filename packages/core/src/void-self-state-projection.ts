@@ -49,14 +49,30 @@ export interface VoidSelfStateIdentityDefaults {
   publicDescription?: string;
 }
 
+const MAX_PUBLIC_DESCRIPTION_LENGTH = 1000;
+
+export function normalizeVoidSelfStateIdentityDefaults(
+  identity: VoidSelfStateIdentityDefaults,
+): VoidSelfStateIdentityDefaults {
+  return {
+    ...identity,
+    publicDescription: truncateOptionalText(
+      identity.publicDescription,
+      MAX_PUBLIC_DESCRIPTION_LENGTH,
+    ),
+  };
+}
+
 export function createEmptyVoidSelfState(
   options: { createdAt?: string; identity?: VoidSelfStateIdentityDefaults } = {},
 ): VoidSelfStateTypedProjection {
   const createdAt = options.createdAt ?? new Date().toISOString();
-  const identity = options.identity ?? {
-    agentId: "void-moderator",
-    publicName: "Void",
-  };
+  const identity = normalizeVoidSelfStateIdentityDefaults(
+    options.identity ?? {
+      agentId: "void-moderator",
+      publicName: "Void",
+    },
+  );
 
   return {
     selfProfile: voidSelfProfileSchema.parse({
@@ -117,6 +133,17 @@ export function createEmptyVoidSelfState(
       updatedAt: createdAt,
     }),
   };
+}
+
+function truncateOptionalText(value: string | undefined, maxLength: number): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return trimmed.slice(0, maxLength - 1).trimEnd();
 }
 
 export function buildVoidSelfStateContext(
