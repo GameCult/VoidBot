@@ -865,8 +865,8 @@ function buildRepoIdentityPrompt(
   return [
     `You were addressed on Discord as repo identity ${identity.displayName} (${identity.id}) for repo ${identity.repoName}.`,
     renderRepoFaceIdentityDoctrine(identity),
-    `The Discord role mention ${mention} is the addressable identity; the voice must speak through the VoidBot MCP tool post_repo_identity_message with identity "${identity.id}" if an in-channel answer is warranted.`,
-    "Do not answer as base VoidBot. If you post with the tool, keep your final provider response to a private delivery summary; the worker will not auto-post this command's final text.",
+    `The Discord role mention ${mention} is the addressable identity. Write the direct in-channel reply as ${identity.displayName}; the worker will post your final answer through the registered repo identity persona.`,
+    "Do not answer as base VoidBot. Do not call post_repo_identity_message for this direct mention; that tool is for background rumination or proactive follow-up, not the immediate summons reply.",
     "",
     "User prompt:",
     visiblePrompt,

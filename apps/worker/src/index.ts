@@ -8,7 +8,10 @@ import {
   type AuditLog,
   buildVoidMcpServerConfig,
   createStateStorage,
+  findRepoDiscordIdentity,
+  isRepoDiscordIdentityAllowedInChannel,
   type JobQueue,
+  loadRepoDiscordIdentityRegistry,
   loadSystemMessageCatalog,
   type SystemMessageCatalog,
 } from "@voidbot/core";
@@ -34,6 +37,8 @@ import {
   type ProviderArtifact,
   type ProviderNotificationIntent,
 } from "@voidbot/shared";
+
+import { postDiscordMessage } from "./mcp-server-discord";
 
 const config = loadConfig();
 
@@ -322,7 +327,26 @@ async function processJob(job: JobRecord): Promise<void> {
       return;
     }
 
-    if (job.command === "repo-identity-mention" || job.command === "repo-face-rumination") {
+    if (job.command === "repo-identity-mention") {
+      await postRepoIdentityJobResponse(job, finalResponse);
+      await jobQueue.completeJobDirect(job.id, finalResponse);
+      await deliverOwnerNotifications(job, response.notifications ?? []);
+      await auditLog.record({
+        type: "provider.completed",
+        actorId: job.requester.id,
+        jobId: job.id,
+        provider: job.provider,
+        details: {
+          summary: response.summary,
+          autoPosted: true,
+          reason: "repo_identity_mention_posted_as_registered_identity",
+        },
+      });
+      console.log(`Completed repo-identity-mention job ${job.id}.`);
+      return;
+    }
+
+    if (job.command === "repo-face-rumination") {
       await jobQueue.completeJobDirect(job.id, finalResponse);
       await deliverOwnerNotifications(job, response.notifications ?? []);
       await auditLog.record({
@@ -486,6 +510,45 @@ async function postJobResponse(job: JobRecord, content: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Discord post failed with ${response.status}: ${await response.text()}`);
   }
+}
+
+async function postRepoIdentityJobResponse(job: JobRecord, content: string): Promise<void> {
+  if (!config.botToken) {
+    throw new Error("DISCORD_BOT_TOKEN is required for the worker to post repo identity responses.");
+  }
+
+  const identityId = parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for job ${job.id}.`);
+  }
+
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for job ${job.id}.`);
+  }
+
+  if (!isRepoDiscordIdentityAllowedInChannel(identity, job.outputChannelId)) {
+    throw new Error(
+      `Repo identity ${identity.id} is not registered for Discord channel ${job.outputChannelId}.`,
+    );
+  }
+
+  await postDiscordMessage(
+    config.botToken,
+    job.outputChannelId,
+    content,
+    job.requestMessageId,
+    {
+      personaName: identity.displayName,
+      personaAvatarUrl: identity.avatarUrl,
+    },
+  );
+}
+
+function parseRepoIdentityIdFromPrompt(prompt: string): string | undefined {
+  const match = prompt.match(/repo identity\s+.+?\(([^)]+)\)\s+for repo/i);
+  return match?.[1]?.trim();
 }
 
 async function postOwnerNotification(content: string): Promise<void> {
