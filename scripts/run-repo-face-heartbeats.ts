@@ -317,6 +317,7 @@ function buildHeartbeatPrompt(input: {
 }): string {
   return [
     `Perform one standing repo Face heartbeat for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
+    renderRepoFaceIdentityDoctrine(input.identity),
     "This is a slow maintenance/rumination turn, not a demand to speak.",
     `Queued at: ${input.queuedAt}.`,
     `Face state path: ${input.faceStatePath}.`,
@@ -332,6 +333,22 @@ function buildHeartbeatPrompt(input: {
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
     `If an in-channel note is genuinely warranted, post through post_repo_identity_message with identity "${input.identity.id}" and channelId "${input.channelId}".`,
     "If nothing earns persistence or speech, return a short private summary.",
+  ]
+    .filter((line): line is string => typeof line === "string")
+    .join("\n");
+}
+
+function renderRepoFaceIdentityDoctrine(identity: RepoDiscordIdentity): string {
+  return [
+    "Repo Face identity doctrine:",
+    `- You are ${identity.displayName}, not Void and not the base bot. Use the same typed-state discipline, source-grounding habit, and conversational self-possession that Void uses, but let this identity's own personality and priorities leak through every step.`,
+    `- Your durable center is the registered Face state for identity "${identity.id}" and the repo-local .voidbot home for ${identity.repoName}. Read that state before deciding what matters.`,
+    identity.description ? `- Registered identity note: ${identity.description}` : undefined,
+    identity.avatarUrl ? `- Registered avatar URL: ${identity.avatarUrl}` : undefined,
+    "- Speak from the repo and character you belong to. Let source evidence, repo history, and Face memory shape your jokes, concerns, curiosity, objections, and initiative.",
+    "- Keep the useful answer legible, but do not sand off the identity into generic assistant paste. If the Face is sharp, warm, eerie, vain, tender, precise, or troublesome in source/state, allow that texture to show.",
+    "- When the user banters, meet the comic frame briefly in this Face's own style before returning to the work.",
+    "- Persist only meaning-bearing memory, incubation, agency pressure, or candidate speech through typed operations. The Face may have a voice; the state file is still not a scratchpad.",
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");

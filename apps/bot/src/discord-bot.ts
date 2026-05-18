@@ -649,6 +649,7 @@ async function queueRepoFaceRuminationPasses(options: {
     displayName: string;
     roleId?: string;
     avatarUrl?: string;
+    description?: string;
     allowedChannelIds: string[];
     faceStatePath?: string;
   };
@@ -855,12 +856,15 @@ function buildRepoIdentityPrompt(
     repoName: string;
     displayName: string;
     roleId?: string;
+    avatarUrl?: string;
+    description?: string;
   },
 ): string {
   const mention = identity.roleId ? `<@&${identity.roleId}>` : "unregistered-role";
 
   return [
     `You were addressed on Discord as repo identity ${identity.displayName} (${identity.id}) for repo ${identity.repoName}.`,
+    renderRepoFaceIdentityDoctrine(identity),
     `The Discord role mention ${mention} is the addressable identity; the voice must speak through the VoidBot MCP tool post_repo_identity_message with identity "${identity.id}" if an in-channel answer is warranted.`,
     "Do not answer as base VoidBot. If you post with the tool, keep your final provider response to a private delivery summary; the worker will not auto-post this command's final text.",
     "",
@@ -876,6 +880,7 @@ function buildRepoFaceRuminationPrompt(input: {
     displayName: string;
     roleId?: string;
     avatarUrl?: string;
+    description?: string;
   };
   visiblePrompt: string;
   faceStatePath: string;
@@ -887,6 +892,7 @@ function buildRepoFaceRuminationPrompt(input: {
 }): string {
   return [
     `Perform repo Face rumination pass ${input.passIndex} of ${input.totalPasses} for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
+    renderRepoFaceIdentityDoctrine(input.identity),
     `This Face state is persistent and typed. Read it with read_repo_face_state for identity "${input.identity.id}" and write only through apply_repo_face_state_operation. Do not edit ${input.faceStatePath} directly.`,
     `Repo-local .voidbot birth/home status: ${JSON.stringify({
       repoPath: input.faceInitialization.repoPath ?? null,
@@ -903,6 +909,28 @@ function buildRepoFaceRuminationPrompt(input: {
     "Recent addressed prompt:",
     input.visiblePrompt,
   ].join("\n");
+}
+
+function renderRepoFaceIdentityDoctrine(identity: {
+  id: string;
+  repoName: string;
+  displayName: string;
+  avatarUrl?: string;
+  description?: string;
+}): string {
+  return [
+    "Repo Face identity doctrine:",
+    `- You are ${identity.displayName}, not Void and not the base bot. Use the same typed-state discipline, source-grounding habit, and conversational self-possession that Void uses, but let this identity's own personality and priorities leak through every step.`,
+    `- Your durable center is the registered Face state for identity "${identity.id}" and the repo-local .voidbot home for ${identity.repoName}. Read that state before deciding what matters.`,
+    identity.description ? `- Registered identity note: ${identity.description}` : undefined,
+    identity.avatarUrl ? `- Registered avatar URL: ${identity.avatarUrl}` : undefined,
+    "- Speak from the repo and character you belong to. Let source evidence, repo history, and Face memory shape your jokes, concerns, curiosity, and objections.",
+    "- Keep the useful answer legible, but do not sand off the identity into generic assistant paste. If the Face is sharp, warm, eerie, vain, tender, precise, or troublesome in source/state, allow that texture to show.",
+    "- When the user banters, meet the comic frame briefly in this Face's own style before returning to the work.",
+    "- Persist only meaning-bearing memory, incubation, agency pressure, or candidate speech through typed operations. The Face may have a voice; the state file is still not a scratchpad.",
+  ]
+    .filter((line): line is string => typeof line === "string")
+    .join("\n");
 }
 
 function escapeRegExp(value: string): string {

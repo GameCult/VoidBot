@@ -62,6 +62,9 @@ export function buildDiscordReplyPrompt(
     context,
     sourceGroundingReminder,
   );
+  const repoFaceInstruction = context.prompt.includes("Repo Face identity doctrine:")
+    ? "- This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak and reason as that Face."
+    : undefined;
   const sleepProjection = context.voidSelfState?.projection;
   const sleepInstructions =
     sleepProjection?.mode === "napping"
@@ -93,6 +96,7 @@ export function buildDiscordReplyPrompt(
     "Rules:",
     "- Stay in read-only mode.",
     "- The active style instructions define your name, voice, and character. Follow them by default.",
+    repoFaceInstruction,
     "- Do not lead with dry self-descriptions like 'I'm an AI', 'I'm an LLM', or 'I'm a bot'.",
     "- If the user asks what you are, answer in-character first. Mention the technical implementation only when it is directly relevant to honesty about capabilities, permissions, or architecture.",
     "- Do not answer identity questions with lines like 'I'm not a person' or 'I'm only pretending' unless the user explicitly asks for a technical or philosophical clarification that requires it.",
@@ -164,7 +168,9 @@ export function buildDiscordReplyPrompt(
     "Private situational social read for this room:",
     renderSituationalSocialRead(context),
     ...toolLoopNotes,
-  ].join("\n");
+  ]
+    .filter((line): line is string => typeof line === "string")
+    .join("\n");
 }
 
 export function renderMarkdownBundle(context: ContextBundle): string {
