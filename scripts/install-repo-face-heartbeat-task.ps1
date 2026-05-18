@@ -48,8 +48,8 @@ $intervalMinutesValue = if ($PSBoundParameters.ContainsKey("IntervalMinutes")) {
   15
 }
 
-if ($intervalMinutesValue -lt 5) {
-  throw "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES must be at least 5."
+if ($intervalMinutesValue -lt 1) {
+  throw "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES must be at least 1."
 }
 
 $tsxPath = Join-Path $repoRoot "node_modules\.bin\tsx.cmd"
