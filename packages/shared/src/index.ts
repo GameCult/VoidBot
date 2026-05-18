@@ -12,6 +12,7 @@ export const commandNames = [
   "profile",
   "reindex-channel",
   "set-style",
+  "repo-identity-mention",
 ] as const;
 
 export type CommandName = (typeof commandNames)[number];

@@ -322,6 +322,24 @@ async function processJob(job: JobRecord): Promise<void> {
       return;
     }
 
+    if (job.command === "repo-identity-mention") {
+      await jobQueue.completeJobDirect(job.id, finalResponse);
+      await deliverOwnerNotifications(job, response.notifications ?? []);
+      await auditLog.record({
+        type: "provider.completed",
+        actorId: job.requester.id,
+        jobId: job.id,
+        provider: job.provider,
+        details: {
+          summary: response.summary,
+          autoPosted: false,
+          reason: "repo_identity_must_post_through_mcp",
+        },
+      });
+      console.log(`Completed repo identity mention job ${job.id}.`);
+      return;
+    }
+
     await postJobResponse(job, finalResponse);
     await jobQueue.completeJobDirect(job.id, finalResponse);
     await deliverOwnerNotifications(job, response.notifications ?? []);

@@ -32,6 +32,13 @@ export const postDiscordMessageInputSchema = {
   personaAvatarUrl: z.string().url().max(512).optional(),
 };
 
+export const postRepoIdentityMessageInputSchema = {
+  identity: z.string().min(1),
+  channelId: z.string().min(1),
+  content: z.string().min(1).max(1800),
+  replyToMessageId: z.string().min(1).optional(),
+};
+
 export const searchSourcesInputSchema = {
   query: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(MAX_RETRIEVAL_RESULT_LIMIT).optional(),
@@ -71,6 +78,13 @@ export interface PostDiscordMessageArgs {
   replyToMessageId?: string;
   personaName?: string;
   personaAvatarUrl?: string;
+}
+
+export interface PostRepoIdentityMessageArgs {
+  identity: string;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
 }
 
 export interface ListIndexedReposArgs {

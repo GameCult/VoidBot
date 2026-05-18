@@ -13,6 +13,8 @@ import {
   OllamaSituationalSocialReadInferer,
   PermissionEngine,
   createStateStorage,
+  findRepoDiscordIdentityByRoleIds,
+  loadRepoDiscordIdentityRegistry,
   loadStylePack,
   loadSystemMessageCatalog,
   VoidUsageRateLimiter,
@@ -84,6 +86,17 @@ export async function startBot(): Promise<void> {
       GatewayIntentBits.MessageContent,
     ],
   });
+  const repoDiscordIdentities = await loadRepoDiscordIdentityRegistry(
+    config.repoDiscordIdentitiesPath,
+  );
+  const botDirectedRoleIds = [
+    ...new Set([
+      ...config.botTriggerRoleIds,
+      ...repoDiscordIdentities.identities
+        .map((identity) => identity.roleId)
+        .filter((roleId): roleId is string => typeof roleId === "string" && roleId.length > 0),
+    ]),
+  ];
 
   const permissionEngine = new PermissionEngine(config.ownerDiscordId, {
     localLlmAllowPublic: config.localLlm.allowPublic,
@@ -296,17 +309,34 @@ export async function startBot(): Promise<void> {
       config.channelIndexing,
       ragPipeline,
       client.user?.id,
-      config.botTriggerRoleIds,
+      botDirectedRoleIds,
     );
     await rememberAmbientVoidReference(message, client.user?.id, interactionMemory);
 
-    if (!client.user || (!isDirectMessage && !message.mentions.has(client.user))) {
+    const addressedRepoIdentity = isDirectMessage
+      ? undefined
+      : findRepoDiscordIdentityByRoleIds(
+          repoDiscordIdentities,
+          message.mentions.roles.keys(),
+          message.channelId,
+        );
+    const isBotMentioned = Boolean(client.user && message.mentions.has(client.user));
+
+    if (!client.user || (!isDirectMessage && !isBotMentioned && !addressedRepoIdentity)) {
       return;
     }
 
-    const prompt = isDirectMessage ? message.content.trim() : stripBotMention(message.content).trim();
+    const visiblePrompt = isDirectMessage
+      ? message.content.trim()
+      : stripAddressingMentions(
+          stripBotMention(message.content),
+          addressedRepoIdentity?.roleId,
+        ).trim();
+    const prompt = addressedRepoIdentity
+      ? buildRepoIdentityPrompt(visiblePrompt, addressedRepoIdentity)
+      : visiblePrompt;
 
-    if (!prompt) {
+    if (!visiblePrompt) {
       await replyToMessage(
         message,
         renderSystemMessage(activeSystemMessages, "mention.missing_prompt"),
@@ -317,7 +347,7 @@ export async function startBot(): Promise<void> {
     try {
       await handlePrompt({
         prompt,
-        command: "ask",
+        command: addressedRepoIdentity ? "repo-identity-mention" : "ask",
         actor: buildActorFromMessage(message),
         roleIds: getRoleIdsFromMessage(message),
         guildContext: buildGuildContextFromMessage(message),
@@ -342,6 +372,7 @@ export async function startBot(): Promise<void> {
         stylePack: activeStylePack,
         systemMessages: activeSystemMessages,
         silentOwnerQueueAck: !isDirectMessage,
+        forceProvider: addressedRepoIdentity ? "owner_codex" : undefined,
       });
     } catch (error) {
       console.error(error);
@@ -372,7 +403,7 @@ export async function startBot(): Promise<void> {
       config.channelIndexing,
       ragPipeline,
       client.user?.id,
-      config.botTriggerRoleIds,
+      botDirectedRoleIds,
     );
     await rememberAmbientVoidReference(
       materializedMessage,
@@ -523,7 +554,7 @@ export async function startBot(): Promise<void> {
             permissionEngine,
             ragPipeline,
             client.user?.id,
-            config.botTriggerRoleIds,
+            botDirectedRoleIds,
             activeSystemMessages,
           );
           break;
@@ -576,4 +607,37 @@ export async function startBot(): Promise<void> {
   });
 
   await client.login(config.botToken);
+}
+
+function stripAddressingMentions(content: string, roleId?: string): string {
+  if (!roleId) {
+    return content;
+  }
+
+  return content.replace(new RegExp(`<@&${escapeRegExp(roleId)}>`, "g"), "").trim();
+}
+
+function buildRepoIdentityPrompt(
+  visiblePrompt: string,
+  identity: {
+    id: string;
+    repoName: string;
+    displayName: string;
+    roleId?: string;
+  },
+): string {
+  const mention = identity.roleId ? `<@&${identity.roleId}>` : "unregistered-role";
+
+  return [
+    `You were addressed on Discord as repo identity ${identity.displayName} (${identity.id}) for repo ${identity.repoName}.`,
+    `The Discord role mention ${mention} is the addressable identity; the voice must speak through the VoidBot MCP tool post_repo_identity_message with identity "${identity.id}" if an in-channel answer is warranted.`,
+    "Do not answer as base VoidBot. If you post with the tool, keep your final provider response to a private delivery summary; the worker will not auto-post this command's final text.",
+    "",
+    "User prompt:",
+    visiblePrompt,
+  ].join("\n");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

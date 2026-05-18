@@ -3,6 +3,11 @@ import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
+import {
+  findRepoDiscordIdentity,
+  isRepoDiscordIdentityAllowedInChannel,
+  loadRepoDiscordIdentityRegistry,
+} from "@voidbot/core";
 
 import { type VoidbotMcpContext } from "./mcp-server-context";
 import { openOwnerDmChannel, postDiscordMessage } from "./mcp-server-discord";
@@ -11,6 +16,7 @@ import {
   type MessageContextArgs,
   type NotifyOwnerArgs,
   type PostDiscordMessageArgs,
+  type PostRepoIdentityMessageArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
   type SourceContextArgs,
@@ -20,6 +26,7 @@ import {
   messageContextInputSchema,
   notifyOwnerInputSchema,
   postDiscordMessageInputSchema,
+  postRepoIdentityMessageInputSchema,
   renderJsonBlock,
   searchHistoryInputSchema,
   searchSourcesInputSchema,
@@ -358,6 +365,162 @@ export function registerVoidbotTools(
           transport: posted.transport,
           personaName: personaName ?? null,
           personaAvatarUrl: personaAvatarUrl ?? null,
+          replyToMessageId: replyToMessageId ?? null,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
+    "list_repo_discord_identities",
+    {
+      title: "List Repo Discord Identities",
+      description:
+        "List registered repo identities that can be addressed by Discord roles and speak through the shared webhook persona pipe.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (): Promise<CallToolResult> => {
+      const registry = await loadRepoDiscordIdentityRegistry(
+        context.config.repoDiscordIdentitiesPath,
+      );
+      const identities = registry.identities.map((identity) => ({
+        id: identity.id,
+        repoName: identity.repoName,
+        displayName: identity.displayName,
+        roleId: identity.roleId ?? null,
+        mention: identity.roleId ? `<@&${identity.roleId}>` : null,
+        allowedChannelIds: identity.allowedChannelIds,
+        hasAvatarUrl: Boolean(identity.avatarUrl),
+        description: identity.description ?? null,
+      }));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              identities.length > 0
+                ? renderJsonBlock({
+                    identityCount: identities.length,
+                    identities,
+                  })
+                : "No repo Discord identities are registered.",
+          },
+        ],
+        structuredContent: {
+          identityCount: identities.length,
+          identities,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
+    "post_repo_identity_message",
+    {
+      title: "Post Repo Identity Message",
+      description:
+        "Post in Discord as a registered repo identity. The identity's Discord role is the mention target; this tool speaks through the shared webhook persona pipe using the registered display name and avatar.",
+      inputSchema: postRepoIdentityMessageInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (input: PostRepoIdentityMessageArgs): Promise<CallToolResult> => {
+      const { identity: identitySelector, channelId, content, replyToMessageId } = input;
+      const registry = await loadRepoDiscordIdentityRegistry(
+        context.config.repoDiscordIdentitiesPath,
+      );
+      const identity = findRepoDiscordIdentity(registry, identitySelector);
+
+      if (!identity) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No registered repo Discord identity matched "${identitySelector}".`,
+            },
+          ],
+          structuredContent: {
+            sent: false,
+            reason: "unknown_identity",
+            identity: identitySelector,
+          },
+          isError: true,
+        };
+      }
+
+      if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Repo identity ${identity.id} is not registered for Discord channel ${channelId}.`,
+            },
+          ],
+          structuredContent: {
+            sent: false,
+            reason: "channel_not_allowed",
+            identity: identity.id,
+            channelId,
+            allowedChannelIds: identity.allowedChannelIds,
+          },
+          isError: true,
+        };
+      }
+
+      if (!context.config.botToken) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "DISCORD_BOT_TOKEN is not configured, so Discord posting is unavailable.",
+            },
+          ],
+          structuredContent: {
+            sent: false,
+            reason: "missing_bot_token",
+            channelId,
+            identity: identity.id,
+          },
+          isError: true,
+        };
+      }
+
+      const posted = await postDiscordMessage(
+        context.config.botToken,
+        channelId,
+        content,
+        replyToMessageId,
+        {
+          personaName: identity.displayName,
+          personaAvatarUrl: identity.avatarUrl,
+        },
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: replyToMessageId
+              ? `Posted a reply in Discord channel ${channelId} as ${identity.displayName} (${identity.id}) message ${posted.id} via ${posted.transport}.`
+              : `Posted a message in Discord channel ${channelId} as ${identity.displayName} (${identity.id}) message ${posted.id} via ${posted.transport}.`,
+          },
+        ],
+        structuredContent: {
+          sent: true,
+          channelId,
+          messageId: posted.id,
+          transport: posted.transport,
+          identity: identity.id,
+          repoName: identity.repoName,
+          personaName: identity.displayName,
+          roleId: identity.roleId ?? null,
+          mention: identity.roleId ? `<@&${identity.roleId}>` : null,
           replyToMessageId: replyToMessageId ?? null,
         },
       };

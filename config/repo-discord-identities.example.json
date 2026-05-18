@@ -1,0 +1,15 @@
+{
+  "identities": [
+    {
+      "id": "aquarium-synth-host",
+      "repoName": "AquariumSynthCSharp",
+      "displayName": "AquariumSynthHost",
+      "roleId": "DISCORD_ROLE_ID_FOR_ADDRESSING",
+      "allowedChannelIds": [
+        "AQUARIUM_CHANNEL_ID"
+      ],
+      "avatarUrl": "https://example.com/aquarium-synth-host-avatar.png",
+      "description": "Role mention is the address; webhook persona is the mouth."
+    }
+  ]
+}

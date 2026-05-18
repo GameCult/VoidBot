@@ -19,7 +19,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `apps/worker/src/mcp-server-resources.ts`
   - MCP resource registration for indexed repos plus history/source semantic-search resource templates.
 - `apps/worker/src/mcp-server-tools.ts`
-  - MCP tool registration for archived history search, indexed source/lore search, context windows, repo listing, and owner notifications.
+  - MCP tool registration for archived history search, indexed source/lore search, context windows, repo listing, registered repo-identity Discord speech, and owner notifications.
 - `apps/worker/src/mcp-server-shared.ts`
   - MCP input schemas, argument types, and shared result-formatting/resource helper functions.
 - `apps/worker/src/mcp-server-discord.ts`
@@ -148,6 +148,10 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - scheduled rumination skips during naps when there are no new room messages and no open cases, so sleep can distill the short-term surface without awake rumination immediately adding fresh residue.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
+- Repo Discord identities
+  - `REPO_DISCORD_IDENTITIES_PATH` points at a private JSON registry of repo id, repo name, display name, optional avatar URL, optional role id, and allowed channel ids. The role is the Discord mention target; the webhook persona is the speech transport.
+  - `list_repo_discord_identities` exposes the registered address book to Codex agents, and `post_repo_identity_message` enforces identity/channel registration before posting through the shared webhook pipe.
+  - Role mentions create `repo-identity-mention` owner-Codex jobs with instructions to answer through `post_repo_identity_message`; the worker does not auto-post those final provider summaries as the base bot.
 - `scripts/run-void-mood-drift.ps1`
   - hidden-task wrapper for the mood-drift organ; writes status/log pulse files and respects the moderation lock so the two state writers do not stomp each other for sport.
 - `scripts/install-void-mood-drift-task.ps1`

@@ -97,6 +97,10 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default(".voidbot/private/void-self-state.cc"),
+  REPO_DISCORD_IDENTITIES_PATH: z
+    .string()
+    .min(1)
+    .default(".voidbot/private/repo-discord-identities.json"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
   EXCLUDED_CHANNEL_IDS: z.string().default(""),
@@ -130,6 +134,7 @@ export interface AppConfig {
   stylePackPath: string;
   systemMessagesPath: string;
   moderationAgentStatePath: string;
+  repoDiscordIdentitiesPath: string;
   indexAllChannels: boolean;
   indexedChannelIds: string[];
   excludedChannelIds: string[];
@@ -303,6 +308,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     stylePackPath: resolve(parsed.STYLE_PACK_PATH),
     systemMessagesPath: resolve(parsed.SYSTEM_MESSAGES_PATH),
     moderationAgentStatePath: resolve(parsed.MODERATION_AGENT_STATE_PATH),
+    repoDiscordIdentitiesPath: resolve(parsed.REPO_DISCORD_IDENTITIES_PATH),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,
     indexedChannelIds,
     excludedChannelIds,
