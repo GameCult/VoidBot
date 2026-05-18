@@ -1,8 +1,9 @@
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
@@ -21,6 +22,8 @@ const HEARTBEAT_COMMAND = "repo-face-rumination";
 
 interface FaceHeartbeatParticipant {
   identityId: string;
+  participantKind: "repo_face" | "system_agent";
+  turnKind: "repo_face_rumination" | "void_moderation";
   repoName: string;
   displayName: string;
   initiativeSpeed: number;
@@ -73,14 +76,14 @@ async function main(): Promise<void> {
   const now = new Date();
   const pendingJobs = dryRun
     ? new Map<string, string>()
-    : await listExistingFaceJobs(config.databaseDsn, config.stateStorageBackend, config);
+    : await listExistingActiveTurns(config.databaseDsn, config.stateStorageBackend, config);
 
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
   state.globalHeat = config.repoFaceHeartbeats.globalHeat;
   const completedThisTick = new Set<string>();
   state.participants = reconcileParticipants(
     state.participants,
-    registry.identities,
+    buildParticipantSpecs(registry.identities),
     config.repoFaceHeartbeats.defaultChannelId,
     config.repoFaceHeartbeats.speedOverrides,
     config.repoFaceHeartbeats.heatOverrides,
@@ -129,84 +132,31 @@ async function main(): Promise<void> {
     });
 
     try {
-      const contextBuilder = new ContextBuilder();
       for (const participant of selected) {
-        const identity = registry.identities.find((entry) => entry.id === participant.identityId);
-        if (!identity) {
-          continue;
-        }
-
-        const channelId = identity.allowedChannelIds[0] ?? config.repoFaceHeartbeats.defaultChannelId;
-        if (!channelId) {
-          participant.status = "blocked";
-          participant.constraints = mergeStrings(
-            participant.constraints,
-            "No heartbeat channel is configured for this Face.",
-          );
-          continue;
-        }
-
         const queuedAt = new Date().toISOString();
-        const initialization = await ensureRepoFaceInitialized({
-          identity,
-          storageRoot: config.storageRoot,
-          sourceRepoRoot: config.sourceRepoRoot,
-          epiphanyAgentRoot: config.epiphanyAgentRoot,
-          workspaceRoot: process.cwd(),
-          birthMode: config.repoFaceBirthMode,
-          birthExecutor: config.repoFaceBirthExecutor,
-        });
-        const prompt = buildHeartbeatPrompt({
-          identity,
-          faceStatePath: resolveRepoFaceStatePath(identity, config.storageRoot),
-          channelId,
-          queuedAt,
+        const turn = await queueParticipantTurn({
           participant,
-          repoVoidbotRoot: initialization.repoVoidbotRoot,
-          birthStatusPath: initialization.birthStatusPath,
-        });
-        const contextBundle = contextBuilder.build({
-          prompt,
-          actor: {
-            id: "voidbot-repo-face-heartbeat",
-            displayName: "VoidBot Repo Face Heartbeat",
-            isAdmin: true,
-            isBot: true,
-          },
-          guildContext: {
-            channelId,
-          },
-          recentMessages: [],
-          retrieval: [],
-        });
-        const requestMessageId = `repo-face-heartbeat:${identity.id}:${queuedAt}`;
-        const result = await storage.jobQueue.createJob({
-          command: HEARTBEAT_COMMAND,
-          provider: "owner_codex",
-          runApprovalRequired: false,
-          postApprovalRequired: false,
-          requester: contextBundle.actor,
-          guildContext: contextBundle.guildContext,
-          prompt,
-          contextBundle,
-          outputChannelId: channelId,
-          requestMessageId,
-          initialState: "approved",
+          registryIdentities: registry.identities,
+          config,
+          storage,
+          queuedAt,
         });
 
-        if (result.created) {
-          queuedIdentityIds.push(identity.id);
+        if (turn.created) {
+          queuedIdentityIds.push(participant.identityId);
           participant.lastQueuedAt = queuedAt;
           participant.activeTurnStartedAt = state.initiativeClock;
-          participant.activeJobId = result.job.id;
+          participant.activeJobId = turn.activeJobId;
           participant.lastTurnAt = state.initiativeClock;
           participant.queuedCount += 1;
           participant.currentLoad = 1;
           state.history.push({
             type: "queued",
-            identityId: identity.id,
-            jobId: result.job.id,
-            requestMessageId,
+            identityId: participant.identityId,
+            participantKind: participant.participantKind,
+            turnKind: participant.turnKind,
+            activeJobId: turn.activeJobId,
+            requestMessageId: turn.requestMessageId,
             queuedAt,
             initiativeClock: state.initiativeClock,
             frozen: true,
@@ -237,7 +187,163 @@ async function main(): Promise<void> {
   );
 }
 
-async function listExistingFaceJobs(
+interface ParticipantSpec {
+  id: string;
+  participantKind: FaceHeartbeatParticipant["participantKind"];
+  turnKind: FaceHeartbeatParticipant["turnKind"];
+  repoName: string;
+  displayName: string;
+  allowedChannelIds: string[];
+  identity?: RepoDiscordIdentity;
+}
+
+function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSpec[] {
+  return [
+    {
+      id: "void",
+      participantKind: "system_agent",
+      turnKind: "void_moderation",
+      repoName: "VoidBot",
+      displayName: "Void",
+      allowedChannelIds: [],
+    },
+    ...identities.map((identity) => ({
+      id: identity.id,
+      participantKind: "repo_face" as const,
+      turnKind: "repo_face_rumination" as const,
+      repoName: identity.repoName,
+      displayName: identity.displayName,
+      allowedChannelIds: identity.allowedChannelIds,
+      identity,
+    })),
+  ];
+}
+
+async function queueParticipantTurn(input: {
+  participant: FaceHeartbeatParticipant;
+  registryIdentities: RepoDiscordIdentity[];
+  config: ReturnType<typeof loadConfig>;
+  storage: Awaited<ReturnType<typeof createStateStorage>>;
+  queuedAt: string;
+}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string }> {
+  switch (input.participant.turnKind) {
+    case "repo_face_rumination":
+      return queueRepoFaceTurn(input);
+    case "void_moderation":
+      return startVoidModerationTurn(input.queuedAt);
+  }
+}
+
+async function queueRepoFaceTurn(input: {
+  participant: FaceHeartbeatParticipant;
+  registryIdentities: RepoDiscordIdentity[];
+  config: ReturnType<typeof loadConfig>;
+  storage: Awaited<ReturnType<typeof createStateStorage>>;
+  queuedAt: string;
+}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string }> {
+  const identity = input.registryIdentities.find((entry) => entry.id === input.participant.identityId);
+  if (!identity) {
+    return { created: false };
+  }
+
+  const channelId = identity.allowedChannelIds[0] ?? input.config.repoFaceHeartbeats.defaultChannelId;
+  if (!channelId) {
+    input.participant.status = "blocked";
+    input.participant.constraints = mergeStrings(
+      input.participant.constraints,
+      "No heartbeat channel is configured for this Face.",
+    );
+    return { created: false };
+  }
+
+  const contextBuilder = new ContextBuilder();
+  const initialization = await ensureRepoFaceInitialized({
+    identity,
+    storageRoot: input.config.storageRoot,
+    sourceRepoRoot: input.config.sourceRepoRoot,
+    epiphanyAgentRoot: input.config.epiphanyAgentRoot,
+    workspaceRoot: process.cwd(),
+    birthMode: input.config.repoFaceBirthMode,
+    birthExecutor: input.config.repoFaceBirthExecutor,
+  });
+  const prompt = buildHeartbeatPrompt({
+    identity,
+    faceStatePath: resolveRepoFaceStatePath(identity, input.config.storageRoot),
+    channelId,
+    queuedAt: input.queuedAt,
+    participant: input.participant,
+    repoVoidbotRoot: initialization.repoVoidbotRoot,
+    birthStatusPath: initialization.birthStatusPath,
+  });
+  const contextBundle = contextBuilder.build({
+    prompt,
+    actor: {
+      id: "voidbot-agent-heartbeat",
+      displayName: "VoidBot Agent Heartbeat",
+      isAdmin: true,
+      isBot: true,
+    },
+    guildContext: {
+      channelId,
+    },
+    recentMessages: [],
+    retrieval: [],
+  });
+  const requestMessageId = `agent-heartbeat:${identity.id}:${input.queuedAt}`;
+  const result = await input.storage.jobQueue.createJob({
+    command: HEARTBEAT_COMMAND,
+    provider: "owner_codex",
+    runApprovalRequired: false,
+    postApprovalRequired: false,
+    requester: contextBundle.actor,
+    guildContext: contextBundle.guildContext,
+    prompt,
+    contextBundle,
+    outputChannelId: channelId,
+    requestMessageId,
+    initialState: "approved",
+  });
+
+  return {
+    created: result.created,
+    activeJobId: result.job.id,
+    requestMessageId,
+  };
+}
+
+function startVoidModerationTurn(
+  queuedAt: string,
+): { created: boolean; activeJobId?: string; requestMessageId?: string } {
+  const runnerScript = resolve(process.cwd(), "scripts", "run-void-moderator-rumination.ps1");
+  const child = spawn(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle",
+      "Hidden",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      runnerScript,
+    ],
+    {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
+  child.unref();
+
+  return {
+    created: true,
+    activeJobId: child.pid ? `process:${child.pid}` : `process:void-moderation:${queuedAt}`,
+    requestMessageId: `agent-heartbeat:void:${queuedAt}`,
+  };
+}
+
+async function listExistingActiveTurns(
   databaseDsn: string,
   stateStorageBackend: "file" | "postgres",
   config: ReturnType<typeof loadConfig>,
@@ -258,11 +364,16 @@ async function listExistingFaceJobs(
         continue;
       }
       const match =
+        job.requestMessageId?.match(/^agent-heartbeat:([^:]+):/) ??
         job.requestMessageId?.match(/^repo-face-heartbeat:([^:]+):/) ??
         job.requestMessageId?.match(/:repo-face:([^:]+):\d+$/);
       if (match) {
         active.set(match[1], job.id);
       }
+    }
+    const voidLock = await readRecentLock(resolve(config.storageRoot, "status", "moderation-rumination.lock"), 20);
+    if (voidLock) {
+      active.set("void", "lock:moderation-rumination");
     }
     return active;
   } finally {
@@ -270,9 +381,19 @@ async function listExistingFaceJobs(
   }
 }
 
+async function readRecentLock(path: string, maxAgeMinutes: number): Promise<boolean> {
+  try {
+    const info = await stat(path);
+    const ageMs = Date.now() - info.mtimeMs;
+    return ageMs >= 0 && ageMs < maxAgeMinutes * 60_000;
+  } catch {
+    return false;
+  }
+}
+
 function reconcileParticipants(
   existing: FaceHeartbeatParticipant[],
-  identities: RepoDiscordIdentity[],
+  specs: ParticipantSpec[],
   defaultChannelId: string | undefined,
   speedOverrides: Record<string, number>,
   heatOverrides: Record<string, number>,
@@ -281,14 +402,14 @@ function reconcileParticipants(
   globalHeat: number,
 ): FaceHeartbeatParticipant[] {
   const existingById = new Map(existing.map((entry) => [entry.identityId, entry]));
-  const count = Math.max(identities.length, 1);
+  const count = Math.max(specs.length, 1);
 
-  return identities.map((identity, index) => {
-    const current = existingById.get(identity.id);
-    const hasChannel = Boolean(identity.allowedChannelIds[0] || defaultChannelId);
-    const speed = initiativeSpeedFor(identity, speedOverrides);
-    const groups = initiativeGroupsFor(identity);
-    const heat = heatFor(identity, groups, globalHeat, heatOverrides);
+  return specs.map((spec, index) => {
+    const current = existingById.get(spec.id);
+    const hasChannel = spec.participantKind === "system_agent" || Boolean(spec.allowedChannelIds[0] || defaultChannelId);
+    const speed = initiativeSpeedFor(spec, speedOverrides);
+    const groups = initiativeGroupsFor(spec);
+    const heat = heatFor(spec, groups, globalHeat, heatOverrides);
     const effectiveSpeed = clamp(speed * heat, 0.1, 12);
     const nextTurnAt = Number.isFinite(current?.nextTurnAt)
       ? current.nextTurnAt
@@ -296,8 +417,10 @@ function reconcileParticipants(
     if (current) {
       return {
         ...current,
-        repoName: identity.repoName,
-        displayName: identity.displayName,
+        participantKind: spec.participantKind,
+        turnKind: spec.turnKind,
+        repoName: spec.repoName,
+        displayName: spec.displayName,
         initiativeSpeed: speed,
         groups,
         heat,
@@ -307,7 +430,7 @@ function reconcileParticipants(
         constraints: mergeStrings(
           mergeStrings(
             current.constraints,
-            "Face heartbeat uses CTB-style owner-Codex repo-face-rumination jobs.",
+            "Agent heartbeat uses CTB-style turns.",
           ),
           "The wall-clock task only ticks the initiative engine; virtual initiative chooses turns.",
         ),
@@ -320,12 +443,14 @@ function reconcileParticipants(
     }
 
     return {
-      identityId: identity.id,
-      repoName: identity.repoName,
-      displayName: identity.displayName,
+      identityId: spec.id,
+      participantKind: spec.participantKind,
+      turnKind: spec.turnKind,
+      repoName: spec.repoName,
+      displayName: spec.displayName,
       initiativeSpeed: speed,
-      reactionBias: reactionBiasFor(identity),
-      interruptThreshold: interruptThresholdFor(identity),
+      reactionBias: reactionBiasFor(spec),
+      interruptThreshold: interruptThresholdFor(spec),
       currentLoad: 0,
       status: hasChannel ? "active" : "blocked",
       groups,
@@ -335,7 +460,7 @@ function reconcileParticipants(
       nextTurnAt,
       queuedCount: 0,
       constraints: [
-        "Face heartbeat uses CTB-style owner-Codex repo-face-rumination jobs.",
+        "Agent heartbeat uses CTB-style turns.",
         "The wall-clock task only ticks the initiative engine; virtual initiative chooses turns.",
         "Worker final summaries are not auto-posted as the base bot.",
       ],
@@ -606,29 +731,35 @@ function migrateLegacyHeartbeatState(
 }
 
 function initiativeSpeedFor(
-  identity: RepoDiscordIdentity,
+  spec: ParticipantSpec,
   speedOverrides: Record<string, number>,
 ): number {
-  const override = speedOverrides[identity.id.toLowerCase()];
+  const override = speedOverrides[spec.id.toLowerCase()];
   if (override !== undefined) {
     return clamp(override, 0.35, 6);
   }
 
-  return clamp(0.85 + stableUnit(identity.id, "speed") * 0.45, 0.75, 1.3);
+  if (spec.id === "void") {
+    return 1;
+  }
+
+  return clamp(0.85 + stableUnit(spec.id, "speed") * 0.45, 0.75, 1.3);
 }
 
-function initiativeGroupsFor(identity: RepoDiscordIdentity): string[] {
+function initiativeGroupsFor(spec: ParticipantSpec): string[] {
   return Array.from(new Set([
     "all",
-    `identity:${normalizeKey(identity.id)}`,
-    `repo:${normalizeKey(identity.repoName)}`,
-    `display:${normalizeKey(identity.displayName)}`,
-    ...identity.allowedChannelIds.map((channelId) => `channel:${channelId}`),
+    `kind:${spec.participantKind}`,
+    `turn:${spec.turnKind}`,
+    `identity:${normalizeKey(spec.id)}`,
+    `repo:${normalizeKey(spec.repoName)}`,
+    `display:${normalizeKey(spec.displayName)}`,
+    ...spec.allowedChannelIds.map((channelId) => `channel:${channelId}`),
   ]));
 }
 
 function heatFor(
-  identity: RepoDiscordIdentity,
+  spec: ParticipantSpec,
   groups: string[],
   globalHeat: number,
   heatOverrides: Record<string, number>,
@@ -636,9 +767,9 @@ function heatFor(
   const keys = [
     "all",
     ...groups,
-    normalizeKey(identity.id),
-    normalizeKey(identity.repoName),
-    normalizeKey(identity.displayName),
+    normalizeKey(spec.id),
+    normalizeKey(spec.repoName),
+    normalizeKey(spec.displayName),
   ];
   return clamp(
     keys.reduce((heat, key) => heat * (heatOverrides[key] ?? 1), globalHeat),
@@ -647,12 +778,16 @@ function heatFor(
   );
 }
 
-function reactionBiasFor(identity: RepoDiscordIdentity): number {
-  return clamp(0.2 + stableUnit(identity.id, "reaction") * 0.55, 0.2, 0.75);
+function reactionBiasFor(spec: ParticipantSpec): number {
+  return spec.id === "void"
+    ? 0.55
+    : clamp(0.2 + stableUnit(spec.id, "reaction") * 0.55, 0.2, 0.75);
 }
 
-function interruptThresholdFor(identity: RepoDiscordIdentity): number {
-  return clamp(0.45 + stableUnit(identity.id, "threshold") * 0.35, 0.45, 0.8);
+function interruptThresholdFor(spec: ParticipantSpec): number {
+  return spec.id === "void"
+    ? 0.5
+    : clamp(0.45 + stableUnit(spec.id, "threshold") * 0.35, 0.45, 0.8);
 }
 
 function stableUnit(id: string, salt: string): number {
