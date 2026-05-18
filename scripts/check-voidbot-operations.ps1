@@ -666,8 +666,8 @@ function Build-OwnerNotificationMessage {
   param(
     [Parameter(Mandatory = $true)]
     [string] $Status,
-    [Parameter(Mandatory = $true)]
-    [string[]] $IssueLines,
+    [Parameter(Mandatory = $false)]
+    [string[]] $IssueLines = @(),
     [Parameter(Mandatory = $true)]
     [string] $HealthStatusPath
   )
