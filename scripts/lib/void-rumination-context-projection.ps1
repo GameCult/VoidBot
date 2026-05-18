@@ -151,7 +151,11 @@ function Project-OpenCasesForRumination {
   param($Cases, [DateTime] $Now)
 
   return @(
-    @(Convert-ToValueArray -Value $Cases) | ForEach-Object {
+    @(Convert-ToValueArray -Value $Cases) |
+      Where-Object {
+        -not (Test-RuminationCaseTerminal -Status (Get-ObjectPropertyString -Value $_ -Name "status"))
+      } |
+      ForEach-Object {
       @{
         sourceMessageId = Get-ObjectPropertyString -Value $_ -Name "sourceMessageId"
         status = Get-ObjectPropertyString -Value $_ -Name "status"
@@ -167,6 +171,12 @@ function Project-OpenCasesForRumination {
       }
     }
   )
+}
+
+function Test-RuminationCaseTerminal {
+  param([string] $Status)
+
+  return @("answered", "resolved", "closed", "retired", "dropped").Contains($Status)
 }
 
 function Project-SpeechReceiptsForRumination {
@@ -351,6 +361,7 @@ function Project-RepoCommitForRumination {
     subject = Get-ObjectPropertyString -Value $Commit -Name "subject"
     diffstat = Get-ObjectPropertyValue -Value $Commit -Name "diffstat"
     changedPaths = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "changedPaths"))
+    contentHints = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "contentHints"))
   }
 }
 

@@ -392,14 +392,118 @@ function enrichCommit(repoPath, commit) {
       ...commit,
       diffstat: parseDiffstat(summaryLine),
       changedPaths,
+      contentHints: buildCommitContentHints(repoPath, commit.hash, changedPaths),
     };
   } catch {
     return {
       ...commit,
       diffstat: null,
       changedPaths: [],
+      contentHints: [],
     };
   }
+}
+
+function buildCommitContentHints(repoPath, commitHash, changedPaths) {
+  return changedPaths
+    .filter((path) => isHintableTextPath(path))
+    .slice(0, 4)
+    .map((path) => buildFileContentHint(repoPath, commitHash, path))
+    .filter(Boolean);
+}
+
+function isHintableTextPath(path) {
+  return /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ts|tsx|js|jsx|mjs|cjs|rs|cs|ps1|py|html|css|scss)$/i.test(path);
+}
+
+function buildFileContentHint(repoPath, commitHash, path) {
+  const currentText = readCommittedFile(repoPath, commitHash, path);
+  const addedLines = readAddedLines(repoPath, commitHash, path);
+  const frontmatter = parseFrontmatter(currentText);
+  const headings = readMarkdownHeadings(currentText).slice(0, 4);
+  const excerpts = addedLines
+    .filter((line) => line.trim().length > 0 && !line.trim().startsWith("---"))
+    .slice(0, 6);
+
+  if (!frontmatter && headings.length === 0 && excerpts.length === 0) {
+    return undefined;
+  }
+
+  return {
+    path,
+    frontmatter,
+    headings,
+    addedExcerpts: excerpts,
+  };
+}
+
+function readCommittedFile(repoPath, commitHash, path) {
+  try {
+    return execGit(repoPath, ["show", `${commitHash}:${path}`]);
+  } catch {
+    return "";
+  }
+}
+
+function readAddedLines(repoPath, commitHash, path) {
+  try {
+    return execGit(repoPath, ["show", commitHash, "--format=", "--unified=0", "--", path])
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+      .map((line) => line.slice(1).trim())
+      .filter(Boolean)
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+function parseFrontmatter(text) {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) {
+    return undefined;
+  }
+
+  const result = {};
+  let activeListKey;
+  for (const rawLine of match[1].split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    const listItem = line.match(/^\s*-\s+(.*)$/);
+    if (listItem && activeListKey) {
+      result[activeListKey].push(stripWrappingQuotes(listItem[1].trim()));
+      continue;
+    }
+
+    activeListKey = undefined;
+    const pair = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!pair) {
+      continue;
+    }
+
+    const [, key, rawValue] = pair;
+    if (rawValue.trim().length === 0) {
+      result[key] = [];
+      activeListKey = key;
+      continue;
+    }
+
+    if (["title", "description", "author", "date", "socialDeck"].includes(key)) {
+      result[key] = stripWrappingQuotes(rawValue.trim());
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function readMarkdownHeadings(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.match(/^(#{1,3})\s+(.+)$/)?.[2]?.trim())
+    .filter(Boolean);
+}
+
+function stripWrappingQuotes(value) {
+  return value.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
 }
 
 function parseDiffstat(summaryLine) {
