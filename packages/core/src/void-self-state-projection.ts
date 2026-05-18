@@ -36,6 +36,11 @@ export interface VoidSelfStateProjectionOptions {
   loadedAt?: string;
   recentMessages?: SourceMessage[];
   guildContext?: GuildContext;
+  identity?: {
+    agentId?: string;
+    publicName: string;
+    publicDescription?: string;
+  };
 }
 
 export function createEmptyVoidSelfState(
@@ -117,9 +122,11 @@ export function buildVoidSelfStateContext(
 
 export function renderVoidSelfStateSummary(
   state: VoidSelfStateTypedProjection,
-  options: Pick<VoidSelfStateProjectionOptions, "guildContext" | "recentMessages"> = {},
+  options: Pick<VoidSelfStateProjectionOptions, "guildContext" | "recentMessages" | "identity"> = {},
 ): string {
   const profile = state.selfProfile;
+  const identityName = options.identity?.publicName ?? profile.publicName;
+  const identityDescription = options.identity?.publicDescription ?? profile.publicDescription;
   const topValues = state.selfProfile.values
     .sort((left, right) => right.priority - left.priority)
     .slice(0, 4)
@@ -128,11 +135,11 @@ export function renderVoidSelfStateSummary(
     .filter((memory) => !memory.retiredAt)
     .slice(-6)
     .reverse()
-    .map((memory) => renderTypedMemory(memory));
+    .map((memory) => renderTypedMemory(memory, identityName));
   const shortTermMemories = state.thoughtMemory.shortTerm
     .slice(-6)
     .reverse()
-    .map((memory) => renderTypedMemory(memory));
+    .map((memory) => renderTypedMemory(memory, identityName));
   const incubation = state.thoughtMemory.incubation
     .filter((thread) => thread.status !== "retired")
     .sort((left, right) => right.maturation - left.maturation)
@@ -152,10 +159,10 @@ export function renderVoidSelfStateSummary(
     .filter((entry) => ["active", "cooling", "ready_to_act"].includes(entry.status))
     .sort((left, right) => right.intensity - left.intensity)
     .slice(0, 4)
-    .map((entry) => renderAgencyPressure(entry));
+    .map((entry) => renderAgencyPressure(entry, identityName));
 
   return [
-    `- Identity: ${profile.publicName}${profile.publicDescription ? ` - ${profile.publicDescription}` : ""}`,
+    `- Identity: ${identityName}${identityDescription ? ` - ${identityDescription}` : ""}`,
     profile.privateNotes.length > 0
       ? `- Private notes: ${profile.privateNotes.slice(0, 4).join(" | ")}`
       : "- Private notes: none recorded.",
@@ -165,11 +172,11 @@ export function renderVoidSelfStateSummary(
     renderTypedSleepCycleSummary(state.scheduledRuntime, state.thoughtMemory),
     renderTypedSpeakingPressureSummary(state.scheduledRuntime),
     openCases.length > 0
-      ? ["- What Void owes the room:", ...openCases].join("\n")
-      : "- What Void owes the room: nothing unresolved.",
+      ? [`- What ${identityName} owes the room:`, ...openCases].join("\n")
+      : `- What ${identityName} owes the room: nothing unresolved.`,
     memories.length > 0
-      ? ["- What Void remembers:", ...memories].join("\n")
-      : "- What Void remembers: nothing durable yet.",
+      ? [`- What ${identityName} remembers:`, ...memories].join("\n")
+      : `- What ${identityName} remembers: nothing durable yet.`,
     shortTermMemories.length > 0
       ? ["- Short-term residue awaiting sleep:", ...shortTermMemories].join("\n")
       : "- Short-term residue awaiting sleep: none.",
@@ -180,20 +187,23 @@ export function renderVoidSelfStateSummary(
       ? ["- Agency pressure:", ...agencyPressures].join("\n")
       : "- Agency pressure: none active.",
     interventions.length > 0
-      ? ["- Things Void may say soon:", ...interventions].join("\n")
-      : "- Things Void may say soon: none queued.",
+      ? [`- Things ${identityName} may say soon:`, ...interventions].join("\n")
+      : `- Things ${identityName} may say soon: none queued.`,
     renderTransientRoomLog(options),
   ].join("\n");
 }
 
-function renderAgencyPressure(pressure: VoidAgencyPressure["pressures"][number]): string {
+function renderAgencyPressure(
+  pressure: VoidAgencyPressure["pressures"][number],
+  identityName: string,
+): string {
   const target = pressure.target.label ?? pressure.target.id;
   const lines = [`- ${target}: ${pressure.summary}`];
   if (pressure.claim) {
-    lines.push(`  What Void is asserting: ${pressure.claim}`);
+    lines.push(`  What ${identityName} is asserting: ${pressure.claim}`);
   }
   if (pressure.question) {
-    lines.push(`  What Void needs answered: ${pressure.question}`);
+    lines.push(`  What ${identityName} needs answered: ${pressure.question}`);
   }
   if (pressure.tension) {
     lines.push(`  What makes it difficult: ${pressure.tension}`);
@@ -231,11 +241,14 @@ export function buildVoidSelfStateProjection(
   };
 }
 
-function renderTypedMemory(memory: VoidThoughtMemory["memories"][number]): string {
+function renderTypedMemory(
+  memory: VoidThoughtMemory["memories"][number],
+  identityName: string,
+): string {
   const target = memory.target.label ?? memory.target.id;
   const lines = [`- ${target}: ${memory.summary}`];
   if (memory.claim) {
-    lines.push(`  Void's read: ${memory.claim}`);
+    lines.push(`  ${identityName}'s read: ${memory.claim}`);
   }
   if (memory.question) {
     lines.push(`  The question it keeps open: ${memory.question}`);

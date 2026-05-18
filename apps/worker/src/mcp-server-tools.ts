@@ -558,6 +558,11 @@ export function registerVoidbotTools(
       });
       const rendered = buildVoidSelfStateContext(typedState, {
         sourcePath: resolved.faceStatePath,
+        identity: {
+          agentId: resolved.identity.id,
+          publicName: resolved.identity.displayName,
+          publicDescription: resolved.identity.description,
+        },
       });
 
       return {
