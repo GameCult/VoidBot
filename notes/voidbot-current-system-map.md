@@ -200,15 +200,16 @@ Within the Postgres path, the implementation is split on purpose now too:
 6. Codex may use retrieval and analysis tools, but its durable state output is restricted to `.voidbot/status/moderation-rumination-operations.json`.
 7. The parent runner applies those typed operations through `scripts/void-self-state.mjs`, then records reviewed-message cursor and, on successful normal posting-enabled passes, advances repo-activity cursors from the observed repo weather through typed `update_repo_activity_cursor` operations.
 8. If posting is enabled and typed state contains a queued candidate intervention with a delivery target, the parent runner sends at most one candidate, records the delivery receipt, and marks the candidate spoken through typed state. The candidate may have been proposed in the current pass or already queued from an earlier pass. The child prompt forbids direct send-script calls.
-9. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
-10. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
-11. Before applying model output, the runner enforces speech-pressure accountability. High-intensity active self/world advocacy pressures with no matching queued/spoken candidate are projected as `speechPressureObligations`; model output must queue a candidate or cool/retire the pressure instead of returning silent `[]`. Deferred candidates do not satisfy that pressure by themselves.
+9. Before that delivery step, the parent runner now retires queued candidates whose `channelId + replyToMessageId` already appear in canonical typed speech receipts, so a later pass cannot answer an already-answered direct question just because the same message is still visible or the seam still feels warm.
+10. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
+11. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
+12. Before applying model output, the runner enforces speech-pressure accountability. Active self/world advocacy pressures at 0.55 intensity or higher with no matching live queued candidate are projected as `speechPressureObligations`; model output must queue a candidate or cool/retire the pressure instead of returning silent `[]`. Deferred candidates do not satisfy that pressure by themselves, and an older spoken candidate does not keep satisfying a still-active pressure forever.
 
 ## Flow 6: Mood And Sleep Runtime
 
 1. The Windows scheduled task `Void Mood Drift` is enabled.
 2. `scripts/simulate-void-mood.mjs` reads typed documents from `.voidbot/private/void-self-state.cc`.
-3. It updates `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations.
+3. It updates `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations, with active advocacy pressure weighted strongly enough to raise speaking pressure earlier instead of staying a private sulk until the seam is already overripe.
 4. It writes `.voidbot/status/void-mood-drift.json`.
 5. When sleep is active, the script invokes `scripts/run-void-memory-maintenance.ps1` once per nap to force typed distillation/pruning.
 6. The old memory-organ script family, legacy state template, and legacy context exporter have been deleted.

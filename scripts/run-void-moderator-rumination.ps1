@@ -379,11 +379,12 @@ function Test-CandidateMatchesPressure {
     $Candidate,
     [Parameter(Mandatory = $true)]
     [string] $PressureId,
-    [string] $PressureTargetKey
+    [string] $PressureTargetKey,
+    [string[]] $AllowedStatuses = @("queued", "spoken")
   )
 
   $status = Get-ObjectPropertyString -Value $Candidate -Name "status"
-  if ($null -eq $status -or -not @("queued", "spoken").Contains($status)) {
+  if ($null -eq $status -or -not $AllowedStatuses.Contains($status)) {
     return $false
   }
 
@@ -405,9 +406,75 @@ function Get-DeliverableCandidateInterventions {
         $status = Get-ObjectPropertyString -Value $_ -Name "status"
         $deliveryTarget = Get-ObjectPropertyValue -Value $_ -Name "deliveryTarget"
         $spokenAt = Get-ObjectPropertyString -Value $_ -Name "spokenAt"
-        $status -eq "queued" -and $null -ne $deliveryTarget -and [string]::IsNullOrWhiteSpace($spokenAt)
+        $status -eq "queued" -and
+          $null -ne $deliveryTarget -and
+          [string]::IsNullOrWhiteSpace($spokenAt) -and
+          -not (Test-QueuedCandidateAlreadyAnswered -Candidate $_ -Receipts $TypedState.speechReceipts.recentReceipts)
       } |
       Sort-Object -Property @{ Expression = { [double](Get-ObjectPropertyValue -Value $_ -Name "priority") }; Descending = $true }, @{ Expression = { Get-ObjectPropertyString -Value $_ -Name "updatedAt" }; Descending = $false }
+  )
+}
+
+function Test-CandidateDeliveryTargetMatchesReceipt {
+  param(
+    $DeliveryTarget,
+    $Receipt
+  )
+
+  $channelId = Get-ObjectPropertyString -Value $DeliveryTarget -Name "channelId"
+  $replyToMessageId = Get-ObjectPropertyString -Value $DeliveryTarget -Name "replyToMessageId"
+  if ([string]::IsNullOrWhiteSpace($channelId) -or [string]::IsNullOrWhiteSpace($replyToMessageId)) {
+    return $false
+  }
+
+  return (
+    (Get-ObjectPropertyString -Value $Receipt -Name "channelId") -eq $channelId -and
+    (Get-ObjectPropertyString -Value $Receipt -Name "replyToMessageId") -eq $replyToMessageId
+  )
+}
+
+function Test-QueuedCandidateAlreadyAnswered {
+  param(
+    $Candidate,
+    $Receipts
+  )
+
+  $deliveryTarget = Get-ObjectPropertyValue -Value $Candidate -Name "deliveryTarget"
+  if ($null -eq $deliveryTarget) {
+    return $false
+  }
+
+  return @(
+    @(Convert-ToValueArray -Value $Receipts) |
+      Where-Object { Test-CandidateDeliveryTargetMatchesReceipt -DeliveryTarget $deliveryTarget -Receipt $_ }
+  ).Count -gt 0
+}
+
+function Get-AlreadyAnsweredCandidateRetireOperations {
+  param(
+    $TypedState,
+    [Parameter(Mandatory = $true)]
+    [DateTime] $RetiredAt
+  )
+
+  $receipts = @(Convert-ToValueArray -Value $TypedState.speechReceipts.recentReceipts)
+  return @(
+    @(Convert-ToValueArray -Value $TypedState.candidateInterventions.interventions) |
+      Where-Object {
+        $status = Get-ObjectPropertyString -Value $_ -Name "status"
+        $spokenAt = Get-ObjectPropertyString -Value $_ -Name "spokenAt"
+        $status -eq "queued" -and
+          [string]::IsNullOrWhiteSpace($spokenAt) -and
+          (Test-QueuedCandidateAlreadyAnswered -Candidate $_ -Receipts $receipts)
+      } |
+      ForEach-Object {
+        @{
+          operation = "retire_candidate_intervention"
+          interventionId = Get-ObjectPropertyString -Value $_ -Name "interventionId"
+          retiredAt = $RetiredAt.ToString("o")
+          reason = "duplicate reply target already answered"
+        }
+      }
   )
 }
 
@@ -423,13 +490,13 @@ function Get-SpeechPressureObligations {
         $intensity = Get-ObjectPropertyValue -Value $_ -Name "intensity"
         $status -in @("active", "ready_to_act") -and
           $kind -in @("self_advocacy_request", "world_advocacy_request") -and
-          $null -ne $intensity -and [double]$intensity -ge 0.65
+          $null -ne $intensity -and [double]$intensity -ge 0.55
       } |
       Where-Object {
         $pressureId = Get-ObjectPropertyString -Value $_ -Name "pressureId"
         $pressureTargetKey = Get-ThoughtTargetKey -Target (Get-ObjectPropertyValue -Value $_ -Name "target")
         -not ($candidateInterventions | Where-Object {
-          Test-CandidateMatchesPressure -Candidate $_ -PressureId $pressureId -PressureTargetKey $pressureTargetKey
+          Test-CandidateMatchesPressure -Candidate $_ -PressureId $pressureId -PressureTargetKey $pressureTargetKey -AllowedStatuses @("queued")
         } | Select-Object -First 1)
       } |
       ForEach-Object {
@@ -446,7 +513,7 @@ function Get-SpeechPressureObligations {
           intensity = Get-ObjectPropertyValue -Value $_ -Name "intensity"
           sourceMemoryIds = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "sourceMemoryIds"))
           tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
-          requiredResolution = "Queue a candidate intervention with tag source_pressure:$((Get-ObjectPropertyString -Value $_ -Name "pressureId")) or cool/retire this pressure with an explicit reason."
+          requiredResolution = "Queue a live candidate intervention with tag source_pressure:$((Get-ObjectPropertyString -Value $_ -Name "pressureId")) or cool/retire this pressure with an explicit reason. An old spoken candidate does not satisfy a still-active pressure."
         }
       }
   )
@@ -983,6 +1050,15 @@ if (-not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
 $deliveredCandidateCount = 0
 if (-not $NoPost) {
   $refreshedTypedContext = Get-TypedSelfState
+  $alreadyAnsweredCandidateOperations = @(Get-AlreadyAnsweredCandidateRetireOperations -TypedState $refreshedTypedContext.typedState -RetiredAt ([DateTime]::UtcNow))
+  if ($alreadyAnsweredCandidateOperations.Count -gt 0) {
+    Append-RunLog ("retiring already-answered queued candidates: {0}" -f $alreadyAnsweredCandidateOperations.Count)
+    foreach ($operation in $alreadyAnsweredCandidateOperations) {
+      $appliedOperations += Apply-TypedOperation -Operation $operation
+    }
+    $refreshedTypedContext = Get-TypedSelfState
+  }
+
   $deliverableCandidates = @(Get-DeliverableCandidateInterventions -TypedState $refreshedTypedContext.typedState)
   foreach ($candidate in $deliverableCandidates) {
     if ($deliveredCandidateCount -ge 1) {

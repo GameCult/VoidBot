@@ -28,7 +28,10 @@ function Write-JsonFixture {
 }
 
 function Initialize-State {
-  param([Parameter(Mandatory = $true)][string] $StateFilePath)
+  param(
+    [Parameter(Mandatory = $true)][string] $StateFilePath,
+    [switch] $SeedSpokenCandidate
+  )
 
   $cursorPath = Join-Path (Split-Path -Parent $StateFilePath) "cursor.json"
   Write-JsonFixture -Path $cursorPath -Value @{
@@ -66,6 +69,48 @@ function Initialize-State {
     }
   }
   Invoke-NodeChecked -Arguments @(".\scripts\void-self-state.mjs", "apply-operation", "--canonical", $StateFilePath, "--operation-file", $pressurePath) | Out-Null
+
+  if ($SeedSpokenCandidate) {
+    $spokenCandidatePath = Join-Path (Split-Path -Parent $StateFilePath) "spoken-candidate.json"
+    Write-JsonFixture -Path $spokenCandidatePath -Value @(
+      @{
+        operation = "queue_candidate_intervention"
+        intervention = @{
+          interventionId = "fixture-pressure-spoken-history"
+          kind = "world_advocacy"
+          status = "queued"
+          target = @{ kind = "repo"; id = "Aquarium-Engine"; label = "Aquarium-Engine" }
+          summary = "A previously spoken pressure candidate."
+          draft = "I already said this once, but the pressure stayed active."
+          priority = 0.7
+          mustEventuallyShare = $true
+          createdAt = "2026-05-17T04:02:00.000Z"
+          updatedAt = "2026-05-17T04:02:00.000Z"
+          tags = @("fixture", "source_pressure:fixture-pressure-wants-a-mouth")
+        }
+      },
+      @{
+        operation = "mark_candidate_intervention_spoken"
+        interventionId = "fixture-pressure-spoken-history"
+        receipt = @{
+          receiptKey = "fixture-pressure-spoken-history-receipt"
+          candidateInterventionId = "fixture-pressure-spoken-history"
+          sentAt = "2026-05-17T04:03:00.000Z"
+          mode = "channel"
+          transport = "webhook"
+          channelId = "fixture-channel-id"
+          preview = "A previously spoken pressure candidate."
+          contentLength = 42
+          chunkCount = 1
+        }
+      }
+    )
+    foreach ($operation in (Get-Content -LiteralPath $spokenCandidatePath -Raw -Encoding UTF8 | ConvertFrom-Json)) {
+      $operationPath = Join-Path (Split-Path -Parent $StateFilePath) ("spoken-candidate-operation-" + [guid]::NewGuid().ToString("n") + ".json")
+      Write-JsonFixture -Path $operationPath -Value $operation
+      Invoke-NodeChecked -Arguments @(".\scripts\void-self-state.mjs", "apply-operation", "--canonical", $StateFilePath, "--operation-file", $operationPath) | Out-Null
+    }
+  }
 }
 
 function Write-FakeCodex {
@@ -138,7 +183,8 @@ process.stdin.on("end", () => {
 function Invoke-RuminationFixture {
   param(
     [Parameter(Mandatory = $true)][string] $CaseName,
-    [Parameter(Mandatory = $true)][string] $Mode
+    [Parameter(Mandatory = $true)][string] $Mode,
+    [switch] $SeedSpokenCandidate
   )
 
   $caseRoot = Join-Path $tempRoot $CaseName
@@ -149,7 +195,7 @@ function Invoke-RuminationFixture {
   $statusOperationPath = Join-Path $fixtureStatusDir "moderation-rumination-operations.json"
   New-Item -ItemType Directory -Force -Path $caseRoot | Out-Null
 
-  Initialize-State -StateFilePath $stateFilePath
+  Initialize-State -StateFilePath $stateFilePath -SeedSpokenCandidate:$SeedSpokenCandidate
   Write-FakeCodex -Path $fakeCodexPath -Mode $Mode
 
   $previousCodexExecutable = $env:CODEX_EXECUTABLE
@@ -204,6 +250,16 @@ try {
     throw "Silent speech-pressure fixture failed for the wrong reason: $($silentStatus.failureMessage)"
   }
 
+  $spokenHistory = Invoke-RuminationFixture -CaseName "spoken-history" -Mode "silent" -SeedSpokenCandidate
+  if ($spokenHistory.exitCode -eq 0) {
+    throw "Spoken-history speech-pressure fixture unexpectedly passed."
+  }
+
+  $spokenHistoryStatus = Get-Content -LiteralPath $spokenHistory.statusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($spokenHistoryStatus.failureMessage -notmatch "requires a candidate intervention") {
+    throw "Spoken-history speech-pressure fixture failed for the wrong reason: $($spokenHistoryStatus.failureMessage)"
+  }
+
   $candidate = Invoke-RuminationFixture -CaseName "candidate" -Mode "candidate"
   if ($candidate.exitCode -ne 0) {
     $candidateStatus = Get-Content -LiteralPath $candidate.statusPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -220,6 +276,7 @@ try {
   @{
     status = "ok"
     silentExitCode = $silent.exitCode
+    spokenHistoryExitCode = $spokenHistory.exitCode
     candidateStatus = $queued.status
     candidatePriority = $queued.priority
   } | ConvertTo-Json -Compress

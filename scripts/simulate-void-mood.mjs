@@ -144,8 +144,8 @@ function updateSpeakingPressure({ typedState, previous, sleepCycle, now }) {
     .filter((entry) => entry.status === "active" || entry.status === "ready_to_act")
     .reduce((sum, entry) => {
       const advocacyWeight =
-        entry.kind === "self_advocacy_request" || entry.kind === "world_advocacy_request" ? 0.22 : 0.12;
-      const readinessWeight = entry.status === "ready_to_act" ? 1.2 : 1;
+        entry.kind === "self_advocacy_request" || entry.kind === "world_advocacy_request" ? 0.3 : 0.14;
+      const readinessWeight = entry.status === "ready_to_act" ? 1.25 : 1.08;
       return sum + entry.intensity * advocacyWeight * readinessWeight;
     }, 0);
   const topThreadPressure = typedState.thoughtMemory.incubation
@@ -157,13 +157,13 @@ function updateSpeakingPressure({ typedState, previous, sleepCycle, now }) {
   const sleepiness = sleepCycle.isNapping ? 1 : 0;
   const priorNeedToSpeak = clamp(previous.needToSpeak ?? 0.35, 0, 1);
   const targetNeedToSpeak = clamp(
-    0.16 + silencePressure * 0.32 + queuedInterventionPressure + topThreadPressure + agencySpeechPressure - recentSpeechDamping * 0.42 - sleepiness * 0.26,
+    0.18 + silencePressure * 0.32 + queuedInterventionPressure + topThreadPressure + agencySpeechPressure - recentSpeechDamping * 0.38 - sleepiness * 0.26,
     0,
     1,
   );
   const needToSpeak = round3(priorNeedToSpeak + (targetNeedToSpeak - priorNeedToSpeak) * 0.42);
   const noveltyPressure = round3(
-    clamp((previous.noveltyPressure ?? 0.35) * 0.62 + topThreadPressure * 0.72 + queuedInterventionPressure * 0.28 + agencySpeechPressure * 0.35, 0, 1),
+    clamp((previous.noveltyPressure ?? 0.35) * 0.6 + topThreadPressure * 0.72 + queuedInterventionPressure * 0.3 + agencySpeechPressure * 0.44, 0, 1),
   );
   const confessionPressure = round3(
     clamp((previous.confessionPressure ?? 0.25) * 0.68 + silencePressure * 0.12 + sleepiness * 0.1, 0, 1),
