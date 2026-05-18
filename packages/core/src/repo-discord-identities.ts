@@ -23,6 +23,7 @@ export type RepoDiscordIdentity = z.infer<typeof repoDiscordIdentitySchema>;
 
 export interface RepoDiscordIdentityRegistry {
   identities: RepoDiscordIdentity[];
+  epiphanies?: unknown;
 }
 
 export async function loadRepoDiscordIdentityRegistry(
@@ -47,6 +48,7 @@ export async function loadRepoDiscordIdentityRegistry(
 
   return {
     identities: normalizeRepoDiscordIdentities(registry.identities),
+    epiphanies: isRecord(parsed) ? parsed.epiphanies : undefined,
   };
 }
 
@@ -145,4 +147,8 @@ function normalizeIdentityKey(value: string): string {
 
 function stripLeadingBom(input: string): string {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

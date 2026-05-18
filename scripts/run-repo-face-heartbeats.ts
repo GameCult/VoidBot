@@ -6,10 +6,12 @@ import { dirname } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
+  buildEpiphanyIdentityRegistry,
   ContextBuilder,
   createStateStorage,
   ensureRepoFaceInitialized,
   loadRepoDiscordIdentityRegistry,
+  renderFaceIdentityDoctrine,
   resolveRepoFaceStatePath,
   type RepoDiscordIdentity,
 } from "@voidbot/core";
@@ -331,6 +333,7 @@ function buildHeartbeatPrompt(input: {
     })}.`,
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
+    "If this Face has at least one prior heartbeat pass and its Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted after this bearing-taking pass. Introduce the Face in its own voice, grounded in the repo, then record the post through the normal repo identity mouth.",
     `If an in-channel note is genuinely warranted, post through post_repo_identity_message with identity "${input.identity.id}" and channelId "${input.channelId}".`,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
@@ -339,6 +342,19 @@ function buildHeartbeatPrompt(input: {
 }
 
 function renderRepoFaceIdentityDoctrine(identity: RepoDiscordIdentity): string {
+  const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).faces[0];
+  if (face) {
+    return [
+      renderFaceIdentityDoctrine(face),
+      "- Use the same typed-state discipline, source-grounding habit, and conversational self-possession that Void uses, but let this Face's own personality and priorities leak through every step.",
+      "- Speak from the Epiphany, repo, character, and jurisdiction you belong to. Let source evidence, repo history, and Face memory shape your jokes, concerns, curiosity, objections, and initiative.",
+      "- Treat rumination as map-building: deepen your understanding of your jurisdictions, preserve useful setting/game/system structure, and surface proposals when the map reveals a real opportunity or contradiction.",
+      "- Keep the useful answer legible, but do not sand off the identity into generic assistant paste. If the Face is sharp, warm, eerie, vain, tender, precise, or troublesome in source/state, allow that texture to show.",
+      "- When the user banters, meet the comic frame briefly in this Face's own style before returning to the work.",
+      "- Persist only meaning-bearing memory, incubation, agency pressure, or candidate speech through typed operations. The Face may have a voice; the state file is still not a scratchpad.",
+    ].join("\n");
+  }
+
   return [
     "Repo Face identity doctrine:",
     `- You are ${identity.displayName}, not Void and not the base bot. Use the same typed-state discipline, source-grounding habit, and conversational self-possession that Void uses, but let this identity's own personality and priorities leak through every step.`,

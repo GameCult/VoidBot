@@ -10,6 +10,7 @@ import {
 import { loadConfig } from "@voidbot/config";
 import {
   buildVoidMcpServerConfig,
+  buildEpiphanyIdentityRegistry,
   ContextBuilder,
   OllamaSituationalSocialReadInferer,
   PermissionEngine,
@@ -17,6 +18,7 @@ import {
   ensureRepoFaceInitialized,
   findRepoDiscordIdentityByRoleIds,
   loadRepoDiscordIdentityRegistry,
+  renderFaceIdentityDoctrine,
   type RepoDiscordIdentity,
   resolveRepoFaceStatePath,
   loadStylePack,
@@ -915,9 +917,37 @@ function renderRepoFaceIdentityDoctrine(identity: {
   id: string;
   repoName: string;
   displayName: string;
+  allowedChannelIds?: string[];
   avatarUrl?: string;
   description?: string;
 }): string {
+  const repoIdentity: RepoDiscordIdentity = {
+    id: identity.id,
+    repoName: identity.repoName,
+    displayName: identity.displayName,
+    allowedChannelIds: identity.allowedChannelIds ?? [],
+  };
+  if (identity.avatarUrl) {
+    repoIdentity.avatarUrl = identity.avatarUrl;
+  }
+  if (identity.description) {
+    repoIdentity.description = identity.description;
+  }
+  const face = buildEpiphanyIdentityRegistry({
+    identities: [repoIdentity],
+  }).faces[0];
+  if (face) {
+    return [
+      renderFaceIdentityDoctrine(face),
+      "- Use the same typed-state discipline, source-grounding habit, and conversational self-possession that Void uses, but let this Face's own personality and priorities leak through every step.",
+      "- Speak from the Epiphany, repo, character, and jurisdiction you belong to. Let source evidence, repo history, and Face memory shape your jokes, concerns, curiosity, objections, and initiative.",
+      "- Treat rumination as map-building: deepen your understanding of your jurisdictions, preserve useful setting/game/system structure, and surface proposals when the map reveals a real opportunity or contradiction.",
+      "- Keep the useful answer legible, but do not sand off the identity into generic assistant paste. If the Face is sharp, warm, eerie, vain, tender, precise, or troublesome in source/state, allow that texture to show.",
+      "- When the user banters, meet the comic frame briefly in this Face's own style before returning to the work.",
+      "- Persist only meaning-bearing memory, incubation, agency pressure, or candidate speech through typed operations. The Face may have a voice; the state file is still not a scratchpad.",
+    ].join("\n");
+  }
+
   return [
     "Repo Face identity doctrine:",
     `- You are ${identity.displayName}, not Void and not the base bot. Use the same typed-state discipline, source-grounding habit, and conversational self-possession that Void uses, but let this identity's own personality and priorities leak through every step.`,

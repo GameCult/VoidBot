@@ -6,10 +6,13 @@ import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 import {
   applyVoidSelfStateOperation,
   buildVoidSelfStateContext,
+  buildEpiphanyIdentityRegistry,
   findRepoDiscordIdentity,
   isRepoDiscordIdentityAllowedInChannel,
   loadRepoDiscordIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
+  renderFaceIdentityDoctrine,
+  resolveFaceStatePath,
   resolveRepoFaceStatePath,
 } from "@voidbot/core";
 
@@ -392,6 +395,7 @@ export function registerVoidbotTools(
       const registry = await loadRepoDiscordIdentityRegistry(
         context.config.repoDiscordIdentitiesPath,
       );
+      const epiphanyRegistry = buildEpiphanyIdentityRegistry(registry);
       const identities = registry.identities.map((identity) => ({
         id: identity.id,
         repoName: identity.repoName,
@@ -404,6 +408,26 @@ export function registerVoidbotTools(
         hasAvatarUrl: Boolean(identity.avatarUrl),
         description: identity.description ?? null,
       }));
+      const epiphanies = epiphanyRegistry.epiphanies.map((epiphany) => ({
+        id: epiphany.id,
+        displayName: epiphany.displayName,
+        description: epiphany.description ?? null,
+        repoNames: epiphany.repoNames,
+        jurisdictions: epiphany.jurisdictions,
+        faces: epiphany.faces.map((face) => face.id),
+      }));
+      const faces = epiphanyRegistry.faces.map((face) => ({
+        id: face.id,
+        displayName: face.displayName,
+        epiphanyId: face.epiphanyId,
+        epiphanyDisplayName: face.epiphanyDisplayName,
+        roleId: face.roleId ?? null,
+        mention: face.roleId ? `<@&${face.roleId}>` : null,
+        allowedChannelIds: face.allowedChannelIds,
+        grants: face.grants,
+        jurisdictions: [...face.inheritedJurisdictions, ...face.jurisdictions],
+        faceStatePath: resolveFaceStatePath(face, context.config.storageRoot),
+      }));
 
       return {
         content: [
@@ -414,6 +438,10 @@ export function registerVoidbotTools(
                 ? renderJsonBlock({
                     identityCount: identities.length,
                     identities,
+                    epiphanyCount: epiphanies.length,
+                    epiphanies,
+                    faceCount: faces.length,
+                    faces,
                   })
                 : "No repo Discord identities are registered.",
           },
@@ -421,6 +449,10 @@ export function registerVoidbotTools(
         structuredContent: {
           identityCount: identities.length,
           identities,
+          epiphanyCount: epiphanies.length,
+          epiphanies,
+          faceCount: faces.length,
+          faces,
         },
       };
     },
@@ -511,6 +543,15 @@ export function registerVoidbotTools(
           personaAvatarUrl: identity.avatarUrl,
         },
       );
+      await recordRepoIdentityDeliveryReceipt({
+        context,
+        identity,
+        channelId,
+        content,
+        replyToMessageId,
+        messageId: posted.id,
+        transport: posted.transport,
+      });
 
       return {
         content: [
@@ -742,12 +783,55 @@ async function resolveRepoIdentityForTool(
   };
 }
 
+async function recordRepoIdentityDeliveryReceipt(input: {
+  context: VoidbotMcpContext;
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+  messageId: string;
+  transport: "bot" | "webhook";
+}): Promise<void> {
+  await applyVoidSelfStateOperation(
+    {
+      canonicalPath: resolveRepoFaceStatePath(input.identity, input.context.config.storageRoot),
+      identity: {
+        agentId: input.identity.id,
+        publicName: input.identity.displayName,
+        publicDescription: input.identity.description,
+      },
+    },
+    {
+      operation: "record_delivery_receipt",
+      receipt: {
+        receiptKey: `repo-identity:${input.identity.id}:${input.messageId}`,
+        sentAt: new Date().toISOString(),
+        mode: "repo_identity",
+        transport: input.transport,
+        channelId: input.channelId,
+        replyToMessageId: input.replyToMessageId,
+        personaName: input.identity.displayName,
+        personaAvatarUrl: input.identity.avatarUrl,
+        contentLength: input.content.length,
+        chunkCount: 1,
+        preview: input.content.slice(0, 1000),
+      },
+    },
+  );
+}
+
 function identityForToolResult(identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>) {
+  const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).faces[0];
   return {
     id: identity.id,
     repoName: identity.repoName,
     displayName: identity.displayName,
     roleId: identity.roleId ?? null,
     mention: identity.roleId ? `<@&${identity.roleId}>` : null,
+    epiphanyId: face?.epiphanyId ?? identity.repoName,
+    epiphanyDisplayName: face?.epiphanyDisplayName ?? identity.repoName,
+    grants: face?.grants ?? [],
+    jurisdictions: face ? [...face.inheritedJurisdictions, ...face.jurisdictions] : [],
+    doctrine: face ? renderFaceIdentityDoctrine(face) : null,
   };
 }
