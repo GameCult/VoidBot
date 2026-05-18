@@ -5,6 +5,7 @@ export * from "./interaction-memory";
 export * from "./job-queue";
 export * from "./permission-engine";
 export * from "./repo-discord-identities";
+export * from "./repo-face-initializer";
 export * from "./situational-social-read";
 export * from "./state-storage";
 export * from "./style-pack-loader";

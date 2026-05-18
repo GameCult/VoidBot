@@ -395,10 +395,12 @@ export function registerVoidbotTools(
       const identities = registry.identities.map((identity) => ({
         id: identity.id,
         repoName: identity.repoName,
+        repoPath: identity.repoPath ?? null,
         displayName: identity.displayName,
         roleId: identity.roleId ?? null,
         mention: identity.roleId ? `<@&${identity.roleId}>` : null,
         allowedChannelIds: identity.allowedChannelIds,
+        faceStatePath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
         hasAvatarUrl: Boolean(identity.avatarUrl),
         description: identity.description ?? null,
       }));

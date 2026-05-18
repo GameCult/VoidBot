@@ -14,6 +14,7 @@ import {
   OllamaSituationalSocialReadInferer,
   PermissionEngine,
   createStateStorage,
+  ensureRepoFaceInitialized,
   findRepoDiscordIdentityByRoleIds,
   loadRepoDiscordIdentityRegistry,
   type RepoDiscordIdentity,
@@ -385,12 +386,22 @@ export async function startBot(): Promise<void> {
         forceProvider: addressedRepoIdentity ? "owner_codex" : undefined,
       });
       if (addressedRepoIdentity) {
+        const faceInitialization = await ensureRepoFaceInitialized({
+          identity: addressedRepoIdentity,
+          storageRoot: config.storageRoot,
+          sourceRepoRoot: config.sourceRepoRoot,
+          epiphanyAgentRoot: config.epiphanyAgentRoot,
+          workspaceRoot: process.cwd(),
+          birthMode: config.repoFaceBirthMode,
+          birthExecutor: config.repoFaceBirthExecutor,
+        });
         await queueRepoFaceRuminationPasses({
           identity: addressedRepoIdentity,
           message,
           actor: buildActorFromMessage(message),
           guildContext: buildGuildContextFromMessage(message),
           visiblePrompt,
+          faceInitialization,
           config,
           contextBuilder,
           jobQueue,
@@ -645,6 +656,7 @@ async function queueRepoFaceRuminationPasses(options: {
   actor: ReturnType<typeof buildActorFromMessage>;
   guildContext: ReturnType<typeof buildGuildContextFromMessage>;
   visiblePrompt: string;
+  faceInitialization: Awaited<ReturnType<typeof ensureRepoFaceInitialized>>;
   config: ReturnType<typeof loadConfig>;
   contextBuilder: ContextBuilder;
   jobQueue: Awaited<ReturnType<typeof createStateStorage>>["jobQueue"];
@@ -667,6 +679,7 @@ async function queueRepoFaceRuminationPasses(options: {
       identity: options.identity,
       visiblePrompt: options.visiblePrompt,
       faceStatePath,
+      faceInitialization: options.faceInitialization,
       passIndex,
       totalPasses: options.config.repoFaceRuminationPasses,
       channelId: options.message.channelId,
@@ -866,6 +879,7 @@ function buildRepoFaceRuminationPrompt(input: {
   };
   visiblePrompt: string;
   faceStatePath: string;
+  faceInitialization: Awaited<ReturnType<typeof ensureRepoFaceInitialized>>;
   passIndex: number;
   totalPasses: number;
   channelId: string;
@@ -874,6 +888,14 @@ function buildRepoFaceRuminationPrompt(input: {
   return [
     `Perform repo Face rumination pass ${input.passIndex} of ${input.totalPasses} for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
     `This Face state is persistent and typed. Read it with read_repo_face_state for identity "${input.identity.id}" and write only through apply_repo_face_state_operation. Do not edit ${input.faceStatePath} directly.`,
+    `Repo-local .voidbot birth/home status: ${JSON.stringify({
+      repoPath: input.faceInitialization.repoPath ?? null,
+      repoVoidbotRoot: input.faceInitialization.repoVoidbotRoot ?? null,
+      identityPath: input.faceInitialization.identityPath ?? null,
+      birthStatusPath: input.faceInitialization.birthStatusPath ?? null,
+      birthLogPath: input.faceInitialization.birthLogPath ?? null,
+      skippedReason: input.faceInitialization.skippedReason ?? null,
+    })}`,
     `If an in-channel reply or follow-up action is warranted, post through post_repo_identity_message with identity "${input.identity.id}", channelId "${input.channelId}", and replyToMessageId "${input.replyToMessageId}".`,
     "Use the recent conversation as an anchor. Record short-term memory, incubation, agency pressure, or candidate interventions only when the thought is concrete enough to affect future repo work.",
     "If nothing earns persistence or speech, return a short private summary and do not post.",

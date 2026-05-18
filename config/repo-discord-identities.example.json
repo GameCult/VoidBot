@@ -4,6 +4,7 @@
       "id": "aquarium-synth-host",
       "repoName": "AquariumSynthCSharp",
       "displayName": "AquariumSynthHost",
+      "repoPath": "E:/Projects/AquariumSynthCSharp",
       "roleId": "DISCORD_ROLE_ID_FOR_ADDRESSING",
       "allowedChannelIds": [
         "AQUARIUM_CHANNEL_ID"

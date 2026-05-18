@@ -102,6 +102,9 @@ const envSchema = z.object({
     .min(1)
     .default(".voidbot/private/repo-discord-identities.json"),
   REPO_FACE_RUMINATION_PASSES: z.coerce.number().int().min(0).max(6).default(3),
+  REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
+  REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
+  EPIPHANY_AGENT_ROOT: z.string().min(1).default("E:/Projects/EpiphanyAgent"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
   EXCLUDED_CHANNEL_IDS: z.string().default(""),
@@ -137,6 +140,9 @@ export interface AppConfig {
   moderationAgentStatePath: string;
   repoDiscordIdentitiesPath: string;
   repoFaceRuminationPasses: number;
+  repoFaceBirthMode: "plan" | "run";
+  repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
+  epiphanyAgentRoot: string;
   indexAllChannels: boolean;
   indexedChannelIds: string[];
   excludedChannelIds: string[];
@@ -312,6 +318,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     moderationAgentStatePath: resolve(parsed.MODERATION_AGENT_STATE_PATH),
     repoDiscordIdentitiesPath: resolve(parsed.REPO_DISCORD_IDENTITIES_PATH),
     repoFaceRuminationPasses: parsed.REPO_FACE_RUMINATION_PASSES,
+    repoFaceBirthMode: parsed.REPO_FACE_BIRTH_MODE,
+    repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
+    epiphanyAgentRoot: resolve(parsed.EPIPHANY_AGENT_ROOT),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,
     indexedChannelIds,
     excludedChannelIds,
