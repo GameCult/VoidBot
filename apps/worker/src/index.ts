@@ -560,10 +560,11 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     throw new Error(`Repo identity ${identity.id} is not registered for Discord channel ${channelId}.`);
   }
 
+  const content = sanitizeRepoIdentityPostContent(identity, intent.content);
   const posted = await postDiscordMessage(
     config.botToken,
     channelId,
-    fitDiscordMessage(intent.content),
+    fitDiscordMessage(content),
     intent.replyToMessageId,
     {
       personaName: identity.displayName,
@@ -573,7 +574,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   await recordRepoIdentityDeliveryReceipt({
     identity,
     channelId,
-    content: intent.content,
+    content,
     replyToMessageId: intent.replyToMessageId,
     messageId: posted.id,
     transport: posted.transport,
@@ -581,6 +582,28 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`Could not record repo identity delivery receipt for job ${job.id}: ${message}`);
   });
+}
+
+function sanitizeRepoIdentityPostContent(identity: { displayName: string; repoName: string }, content: string): string {
+  let sanitized = content.trim();
+  const escapedRepo = escapeRegExp(identity.repoName);
+  const escapedDisplay = escapeRegExp(identity.displayName);
+  const prefixPatterns = [
+    new RegExp(`^(?:repo[- ]?face\\s+)?heartbeat\\s+from\\s+${escapedRepo}\\s*:\\s*`, "i"),
+    new RegExp(`^${escapedRepo}\\s+heartbeat(?:\\s+complete)?\\s*:\\s*`, "i"),
+    new RegExp(`^${escapedDisplay}\\s+heartbeat(?:\\s+complete)?\\s*:\\s*`, "i"),
+    /^(?:repo[- ]?face\s+)?heartbeat\s+from\s+[^:]{1,80}\s*:\s*/i,
+  ];
+
+  for (const pattern of prefixPatterns) {
+    sanitized = sanitized.replace(pattern, "").trim();
+  }
+
+  return sanitized.length > 0 ? sanitized : content.trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {

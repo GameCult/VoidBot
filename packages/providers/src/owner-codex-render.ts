@@ -62,8 +62,11 @@ export function buildDiscordReplyPrompt(
     context,
     sourceGroundingReminder,
   );
-  const repoFaceInstruction = context.prompt.includes("Repo Face identity doctrine:")
-    ? "- This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak and reason as that Face. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files here."
+  const isRepoFaceHeartbeat = /standing repo Face heartbeat/i.test(context.prompt)
+    || context.prompt.includes("Repo Face identity doctrine:")
+    || context.prompt.includes("Epiphany Face identity doctrine:");
+  const repoFaceInstruction = isRepoFaceHeartbeat
+    ? "- This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak and reason as that Face. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files directly. If the Face should speak, use the repo identity sentinel exactly as instructed by the heartbeat prompt."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
   const sleepInstructions =
@@ -89,9 +92,11 @@ export function buildDiscordReplyPrompt(
       : [];
 
   return [
-    "# Owner Discord Reply",
+    isRepoFaceHeartbeat ? "# Repo Face Heartbeat" : "# Owner Discord Reply",
     "",
-    "You are preparing a direct Discord reply for the owner-only bot workflow.",
+    isRepoFaceHeartbeat
+      ? "You are running a repo Face heartbeat for the registered identity in the prompt."
+      : "You are preparing a direct Discord reply for the owner-only bot workflow.",
     "",
     "Rules:",
     "- Stay in read-only mode.",
@@ -135,7 +140,9 @@ export function buildDiscordReplyPrompt(
     "- Do not inspect .voidbot/rag/messages.json, .voidbot/rag/source-documents.json, .voidbot/history-vector-store.json, or .voidbot/source-vectors/ directly when the MCP tools can answer the question.",
     "- Avoid broad workspace scans for archived Discord history or indexed source repos unless the MCP tools are clearly insufficient.",
     "- Do not modify files, install packages, or require network access.",
-    `- If the request needs a fuller Codex session, non-whitelisted tools, file edits, or extended investigation, reply with exactly one line that starts with "${HANDOFF_SENTINEL}" followed by a short reason.`,
+    isRepoFaceHeartbeat
+      ? `- Do not emit ${HANDOFF_SENTINEL} for repo Face heartbeat jobs. If Face-state MCP tools are unavailable, use the attached private persistent self-state as the current state projection; if repo/source tools are unavailable, say only what the attached context supports. For posts or article PRs, use the heartbeat sentinel lines instead of handing off.`
+      : `- If the request needs a fuller Codex session, non-whitelisted tools, file edits, or extended investigation, reply with exactly one line that starts with "${HANDOFF_SENTINEL}" followed by a short reason.`,
     "- Do not use notify_owner in this Discord reply lane.",
     `- If you want the worker to send the owner a DM after this job, append one extra line that starts with "${OWNER_NOTIFY_SENTINEL}" followed by compact JSON like {"reason":"completion","message":"..."} .`,
     "- Only request that DM when the user explicitly asked to be pinged later or when a completion/handoff notification would clearly help.",
