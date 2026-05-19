@@ -166,6 +166,21 @@ async function main(): Promise<void> {
             heat: participant.heat,
             effectiveSpeed: participant.effectiveSpeed,
           });
+        } else if (turn.failureReason) {
+          participant.currentLoad = 0;
+          state.history.push({
+            type: "turn_failed_to_start",
+            identityId: participant.identityId,
+            participantKind: participant.participantKind,
+            turnKind: participant.turnKind,
+            activeJobId: turn.activeJobId,
+            requestMessageId: turn.requestMessageId,
+            queuedAt,
+            initiativeClock: state.initiativeClock,
+            reason: turn.failureReason,
+            heat: participant.heat,
+            effectiveSpeed: participant.effectiveSpeed,
+          });
         }
       }
     } finally {
@@ -228,12 +243,12 @@ async function queueParticipantTurn(input: {
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
   queuedAt: string;
-}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string }> {
+}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   switch (input.participant.turnKind) {
     case "repo_face_rumination":
       return queueRepoFaceTurn(input);
     case "void_moderation":
-      return startVoidModerationTurn(input.queuedAt);
+      return startVoidModerationTurn(input.queuedAt, input.config.storageRoot);
   }
 }
 
@@ -412,36 +427,103 @@ interface DiscordApiMessage {
   };
 }
 
-function startVoidModerationTurn(
+async function startVoidModerationTurn(
   queuedAt: string,
-): { created: boolean; activeJobId?: string; requestMessageId?: string } {
+  storageRoot: string,
+): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   const runnerScript = resolve(process.cwd(), "scripts", "run-void-moderator-rumination.ps1");
+  const lockPath = resolve(storageRoot, "status", "moderation-rumination.lock");
+  const statusPath = resolve(storageRoot, "status", "moderation-rumination.json");
+  const launchedAt = Date.now();
+  const launchCommand = [
+    `$arguments = @(${[
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      runnerScript,
+    ].map(toPowerShellSingleQuotedString).join(", ")});`,
+    `Start-Process -FilePath ${toPowerShellSingleQuotedString("powershell.exe")} -ArgumentList $arguments -WorkingDirectory ${toPowerShellSingleQuotedString(process.cwd())} -WindowStyle Hidden;`,
+  ].join(" ");
   const child = spawn(
     "powershell.exe",
     [
       "-NoProfile",
       "-NonInteractive",
-      "-WindowStyle",
-      "Hidden",
       "-ExecutionPolicy",
       "Bypass",
-      "-File",
-      runnerScript,
+      "-Command",
+      launchCommand,
     ],
     {
       cwd: process.cwd(),
-      detached: true,
       stdio: "ignore",
       windowsHide: true,
     },
   );
   child.unref();
+  const handshake = await waitForVoidModerationHandshake({
+    lockPath,
+    statusPath,
+    launchedAt,
+    timeoutMs: 60000,
+  });
+
+  if (!handshake.started) {
+    return {
+      created: false,
+      activeJobId: child.pid ? `launcher-process:${child.pid}` : undefined,
+      requestMessageId: `agent-heartbeat:void:${queuedAt}`,
+      failureReason: handshake.reason,
+    };
+  }
 
   return {
     created: true,
-    activeJobId: child.pid ? `process:${child.pid}` : `process:void-moderation:${queuedAt}`,
+    activeJobId: `process:void-moderation:${queuedAt}`,
     requestMessageId: `agent-heartbeat:void:${queuedAt}`,
   };
+}
+
+function toPowerShellSingleQuotedString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function waitForVoidModerationHandshake(input: {
+  lockPath: string;
+  statusPath: string;
+  launchedAt: number;
+  timeoutMs: number;
+}): Promise<{ started: true } | { started: false; reason: string }> {
+  const deadline = Date.now() + input.timeoutMs;
+  while (Date.now() < deadline) {
+    if (await wasTouchedAfter(input.lockPath, input.launchedAt)) {
+      return { started: true };
+    }
+    if (await wasTouchedAfter(input.statusPath, input.launchedAt)) {
+      return { started: true };
+    }
+    await sleep(250);
+  }
+
+  return {
+    started: false,
+    reason: "void_moderation_launch_handshake_missing",
+  };
+}
+
+async function wasTouchedAfter(path: string, timestampMs: number): Promise<boolean> {
+  try {
+    const info = await stat(path);
+    return info.mtimeMs >= timestampMs - 500;
+  } catch {
+    return false;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
 async function listExistingActiveTurns(
