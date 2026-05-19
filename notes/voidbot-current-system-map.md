@@ -170,7 +170,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/export-random-discord-history.mjs`
   - plain Node helper for novelty excursions that samples one random archived Discord seam, returns a local context window around the anchor message, and skips bot-directed prompt rows by default.
 - `scripts/feed-codex-chat-consensus.mjs`
-  - plain Node helper that turns recent archived Discord messages, defaulting to text `#aquarium`, into a markdown consensus packet plus a target Codex prompt. By default it writes files under `.voidbot/artifacts/chat-consensus/`; with `--execute`, it feeds the generated prompt to `codex exec` in the requested workspace.
+  - plain Node helper that turns recent archived Discord messages, defaulting to text `#aquarium`, into a markdown consensus packet plus a target Codex prompt. By default it writes files under `.voidbot/artifacts/chat-consensus/`; with `--execute`, it feeds the generated prompt to `codex exec` in the requested workspace. With `--enqueue-bifrost`, it also calls `E:/Projects/Bifrost/tools/agent-transport.mjs enqueue` so the packet becomes a CultCache-backed Bifrost intake request for the target repo Face instead of remaining an inert local artifact.
 - `scripts/backup-voidbot-state.ps1`
   - local backup of Postgres, Qdrant snapshots, and RAG archives.
 - `scripts/restore-voidbot-state.ps1`

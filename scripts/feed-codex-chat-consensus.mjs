@@ -37,6 +37,16 @@ function main() {
     `Target: ${options.agent}; cwd=${resolve(options.cwd)}; messages=${selected.length}\n`,
   );
 
+  if (options.enqueueBifrost) {
+    enqueueBifrostRequest({
+      options,
+      packet,
+      outputPath,
+      promptPath,
+      selected,
+    });
+  }
+
   if (!options.execute) {
     process.stdout.write(
       `Dry run. Re-run with --execute to feed this to Codex, or pass the prompt file to the target agent.\n`,
@@ -139,6 +149,18 @@ function parseArgs(args) {
       case "--execute":
         options.execute = true;
         break;
+      case "--enqueue-bifrost":
+        options.enqueueBifrost = true;
+        break;
+      case "--bifrost-root":
+        options.bifrostRoot = requireValue(args, ++index, arg);
+        break;
+      case "--bifrost-priority":
+        options.bifrostPriority = parsePositiveInteger(requireValue(args, ++index, arg), arg);
+        break;
+      case "--bifrost-store":
+        options.bifrostStore = requireValue(args, ++index, arg);
+        break;
       case "--include-bot-prompts":
         options.includeBotPrompts = true;
         break;
@@ -155,6 +177,73 @@ function parseArgs(args) {
   }
 
   return options;
+}
+
+function enqueueBifrostRequest({ options, packet, outputPath, promptPath, selected }) {
+  const bifrostRoot = resolve(options.bifrostRoot ?? "E:/Projects/Bifrost");
+  const transportCli = resolve(bifrostRoot, "tools/agent-transport.mjs");
+  if (!existsSync(transportCli)) {
+    throw new Error(`Bifrost transport CLI was not found at ${transportCli}.`);
+  }
+
+  const targetRepo = options.repo ?? inferRepoNameFromCwd(options.cwd);
+  if (!targetRepo) {
+    throw new Error("--enqueue-bifrost requires --repo or a target --cwd with a final path segment.");
+  }
+
+  const title = `Recent ${targetRepo} consensus for ${options.agent}`;
+  const priority = String(options.bifrostPriority ?? 70);
+  const sourceMessageIds = selected
+    .map((message) => message.id)
+    .filter(Boolean)
+    .join(",");
+
+  const args = [
+    transportCli,
+    "enqueue",
+    "--repo",
+    targetRepo,
+    "--agent",
+    options.agent,
+    "--title",
+    title,
+    "--request-file",
+    outputPath,
+    "--priority",
+    priority,
+    "--source-kind",
+    "discord_consensus",
+    "--source-channel-id",
+    options.channelId,
+    "--packet-path",
+    outputPath,
+    "--prompt-path",
+    promptPath,
+    "--created-by",
+    "voidbot",
+  ];
+
+  if (sourceMessageIds.length > 0) {
+    args.push("--source-message-ids", sourceMessageIds);
+  }
+  if (options.bifrostStore) {
+    args.push("--store", resolve(options.bifrostStore));
+  }
+
+  const result = spawnSync(process.execPath, args, {
+    cwd: bifrostRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      `Bifrost enqueue failed with exit ${result.status ?? "unknown"}: ${result.stderr || result.stdout}`,
+    );
+  }
+
+  process.stdout.write(`Enqueued Bifrost intake request:\n${result.stdout}`);
 }
 
 function buildConsensusPacket(messages, options, archivePath) {
@@ -348,6 +437,11 @@ function parsePositiveInteger(value, flag) {
   return parsed;
 }
 
+function inferRepoNameFromCwd(cwd) {
+  const normalized = resolve(cwd);
+  return normalized.split(/[\\/]+/).filter(Boolean).at(-1);
+}
+
 function timestampSlug(date) {
   return date.toISOString().replace(/[:.]/g, "-");
 }
@@ -382,6 +476,10 @@ Options:
   --limit <number>            Max messages. Defaults to 80.
   --out <path>                Packet output path.
   --execute                   Feed the generated prompt to codex exec.
+  --enqueue-bifrost           Enqueue the generated packet into Bifrost intake.
+  --bifrost-root <path>       Bifrost repo root. Defaults to E:/Projects/Bifrost.
+  --bifrost-priority <number> Priority for --enqueue-bifrost. Defaults to 70.
+  --bifrost-store <path>      Override Bifrost .cc store path, mainly for tests.
   --sandbox <profile>         Codex sandbox for --execute. Defaults to read-only.
 `);
   process.exit(0);
