@@ -336,9 +336,18 @@ async function processJob(job: JobRecord): Promise<void> {
 
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
-      const repoIdentityArticles = parseRepoIdentityArticleIntents(finalResponse);
-      const repoIdentityProposals = parseRepoIdentityProposalPrIntents(finalResponse);
-      const repoIdentityPrComments = parseRepoIdentityPrCommentIntents(finalResponse);
+      const repoIdentityArticles = config.repoFaceGithubActionsEnabled
+        ? parseRepoIdentityArticleIntents(finalResponse)
+        : [];
+      const repoIdentityProposals = config.repoFaceGithubActionsEnabled
+        ? parseRepoIdentityProposalPrIntents(finalResponse)
+        : [];
+      const repoIdentityPrComments = config.repoFaceGithubActionsEnabled
+        ? parseRepoIdentityPrCommentIntents(finalResponse)
+        : [];
+      const ignoredGithubActionIntents = config.repoFaceGithubActionsEnabled
+        ? 0
+        : countRepoIdentityGithubActionIntents(finalResponse);
       const proposalPrSubmitted = repoIdentityProposals.length > 0;
       const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
       const articlePrSubmitted =
@@ -373,6 +382,7 @@ async function processJob(job: JobRecord): Promise<void> {
           articlePrSubmitted,
           proposalPrSubmitted,
           prCommentSubmitted,
+          ignoredGithubActionIntents,
           reason:
             proposalPrSubmitted
               ? "repo_face_rumination_submitted_registered_identity_proposal_pr"
@@ -988,6 +998,23 @@ function parseRepoIdentityPrCommentIntents(finalResponse: string): RepoIdentityP
   }
 
   return intents;
+}
+
+function countRepoIdentityGithubActionIntents(finalResponse: string): number {
+  let count = 0;
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (
+      trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL) ||
+      trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL) ||
+      trimmed.startsWith(REPO_IDENTITY_PR_COMMENT_SENTINEL)
+    ) {
+      count += 1;
+    }
+  }
+
+  return count;
 }
 
 function resolveRepoRoot(identity: { repoName: string; repoPath?: string }): string {

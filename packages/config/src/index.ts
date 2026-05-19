@@ -103,6 +103,7 @@ const envSchema = z.object({
     .default(".voidbot/private/repo-discord-identities.json"),
   REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
   REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
+  REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
@@ -150,6 +151,7 @@ export interface AppConfig {
   repoDiscordIdentitiesPath: string;
   repoFaceBirthMode: "plan" | "run";
   repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
+  repoFaceGithubActionsEnabled: boolean;
   repoFaceHeartbeats: {
     enabled: boolean;
     statePath: string;
@@ -367,6 +369,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     repoDiscordIdentitiesPath: resolve(parsed.REPO_DISCORD_IDENTITIES_PATH),
     repoFaceBirthMode: parsed.REPO_FACE_BIRTH_MODE,
     repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
+    repoFaceGithubActionsEnabled: parsed.REPO_FACE_GITHUB_ACTIONS_ENABLED,
     repoFaceHeartbeats: {
       enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
       statePath: resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH),

@@ -319,6 +319,7 @@ async function queueRepoFaceTurn(input: {
     participant: input.participant,
     pendingMentions: input.pendingMentions,
     jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
+    githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
     repoVoidbotRoot: initialization.repoVoidbotRoot,
     birthStatusPath: initialization.birthStatusPath,
   });
@@ -799,6 +800,7 @@ function buildHeartbeatPrompt(input: {
   participant: FaceHeartbeatParticipant;
   pendingMentions: RepoFacePendingMention[];
   jurisdictionDive: JurisdictionDiveDirective;
+  githubActionsEnabled: boolean;
   repoVoidbotRoot?: string;
   birthStatusPath?: string;
 }): string {
@@ -836,12 +838,20 @@ function buildHeartbeatPrompt(input: {
     "Do not ask what the job is when the attached recent channel context already states it. If the task is outside this Face's jurisdiction, say so briefly and still offer the most useful narrow nudge you can from your own perspective.",
     "Introduction duty: if Face state shows no public speech receipt and no clear memory/private note that this Face already introduced itself in-channel, the next public post should include a brief natural introduction in this Face's own voice. This applies even when queuedCount is 0.",
     "A new source-grounded opinion, concrete proposal, bylined essay/article plan, or agency pressure can earn persistence or speech even when the room has not asked a fresh direct question.",
-    "A concrete change proposal is not done because you talked about it in Discord. If the proposal has enough shape for review, put it on GitHub: draft a short markdown proposal and emit the proposal-PR sentinel below. Use Discord to announce and argue around the PR, not as the only proposal surface.",
+    input.githubActionsEnabled
+      ? "A concrete change proposal is not done because you talked about it in Discord. If the proposal has enough shape for review, put it on GitHub: draft a short markdown proposal and emit the proposal-PR sentinel below. Use Discord to announce and argue around the PR, not as the only proposal surface."
+      : "GitHub proposal/comment/article side effects are currently disabled. Do not emit GitHub PR, PR comment, or article sentinels. Keep concrete proposals as in-character Discord discussion plus Face-state memory/incubation/agency pressure until the GitHub rail is re-enabled.",
     "Public speech style invariant: never start public content with scheduler/provenance labels such as \"Repo-face heartbeat from ...\", \"heartbeat complete\", \"maintenance pass\", or the repo name as a diagnostic prefix. The webhook name/avatar already provide identity; the content should read like the Face chose to speak.",
     `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; the worker owns delivery and receipt recording. The content field must be only the in-character Discord message, not a job label or report header.`,
-    `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; the worker writes the proposal file on a new branch, opens a draft PR, and always posts the PR or branch through the registered identity. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`,
-    `If you are reacting to an existing proposal PR and have a concrete objection, endorsement, question, or competing framing, output one final line beginning with VOIDBOT_REPO_IDENTITY_PR_COMMENT: followed by compact JSON like {"identity":"${input.identity.id}","pr":"123 or https://github.com/.../pull/123","content":"...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I left notes on the PR."}; the worker posts a signed GitHub PR comment and then announces it through the registered identity. Use this when the argument belongs on the review artifact, not only in Discord.`,
-    `If a bylined article is ready to draft, output one final line beginning with VOIDBOT_REPO_IDENTITY_ARTICLE: followed by compact JSON like {"identity":"${input.identity.id}","path":"Aetheria/Articles/${input.identity.displayName}/title-slug.md","title":"...","content":"---\\ntitle: ...\\nauthor: ${input.identity.displayName}\\n---\\n\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I drafted ..."}; the worker writes the repo file on a new branch, opens a draft PR, and always posts the PR or branch through the registered identity. Provide shareContent if you want control of the announcement tone. Use this for bylined perspective/worldbuilding articles, not consensus-gated canon edits.`,
+    input.githubActionsEnabled
+      ? `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; the worker writes the proposal file on a new branch, opens a draft PR, and always posts the PR or branch through the registered identity. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`
+      : undefined,
+    input.githubActionsEnabled
+      ? `If you are reacting to an existing proposal PR and have a concrete objection, endorsement, question, or competing framing, output one final line beginning with VOIDBOT_REPO_IDENTITY_PR_COMMENT: followed by compact JSON like {"identity":"${input.identity.id}","pr":"123 or https://github.com/.../pull/123","content":"...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I left notes on the PR."}; the worker posts a signed GitHub PR comment and then announces it through the registered identity. Use this when the argument belongs on the review artifact, not only in Discord.`
+      : undefined,
+    input.githubActionsEnabled
+      ? `If a bylined article is ready to draft, output one final line beginning with VOIDBOT_REPO_IDENTITY_ARTICLE: followed by compact JSON like {"identity":"${input.identity.id}","path":"Aetheria/Articles/${input.identity.displayName}/title-slug.md","title":"...","content":"---\\ntitle: ...\\nauthor: ${input.identity.displayName}\\n---\\n\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I drafted ..."}; the worker writes the repo file on a new branch, opens a draft PR, and always posts the PR or branch through the registered identity. Provide shareContent if you want control of the announcement tone. Use this for bylined perspective/worldbuilding articles, not consensus-gated canon edits.`
+      : undefined,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
     .filter((line): line is string => typeof line === "string")
