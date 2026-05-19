@@ -46,6 +46,8 @@ import { postDiscordMessage } from "./mcp-server-discord";
 const config = loadConfig();
 const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
 const REPO_IDENTITY_ARTICLE_SENTINEL = "VOIDBOT_REPO_IDENTITY_ARTICLE:";
+const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
+const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -335,11 +337,23 @@ async function processJob(job: JobRecord): Promise<void> {
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
       const repoIdentityArticles = parseRepoIdentityArticleIntents(finalResponse);
-      for (const article of repoIdentityArticles.slice(0, 1)) {
-        await writeRepoIdentityArticleIntent(job, article);
+      const repoIdentityProposals = parseRepoIdentityProposalPrIntents(finalResponse);
+      const repoIdentityPrComments = parseRepoIdentityPrCommentIntents(finalResponse);
+      const proposalPrSubmitted = repoIdentityProposals.length > 0;
+      const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
+      const articlePrSubmitted =
+        !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
+      if (repoIdentityProposals.length > 0) {
+        await writeRepoIdentityProposalPrIntent(job, repoIdentityProposals[0]);
+      } else if (repoIdentityPrComments.length > 0) {
+        await commentRepoIdentityPullRequestIntent(job, repoIdentityPrComments[0]);
+      } else if (repoIdentityArticles.length > 0) {
+        await writeRepoIdentityArticleIntent(job, repoIdentityArticles[0]);
       }
-      for (const post of repoIdentityPosts.slice(0, 1)) {
-        await postRepoIdentityIntent(job, post);
+      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted) {
+        for (const post of repoIdentityPosts.slice(0, 1)) {
+          await postRepoIdentityIntent(job, post);
+        }
       }
       const cleanedFinalResponse = stripRepoIdentityPostIntents(finalResponse);
       await jobQueue.completeJobDirect(job.id, cleanedFinalResponse || finalResponse);
@@ -351,13 +365,23 @@ async function processJob(job: JobRecord): Promise<void> {
         provider: job.provider,
         details: {
           summary: response.summary,
-          autoPosted: repoIdentityPosts.length > 0,
-          articlePrSubmitted: repoIdentityArticles.length > 0,
+          autoPosted:
+            repoIdentityPosts.length > 0 ||
+            proposalPrSubmitted ||
+            prCommentSubmitted ||
+            articlePrSubmitted,
+          articlePrSubmitted,
+          proposalPrSubmitted,
+          prCommentSubmitted,
           reason:
-            repoIdentityPosts.length > 0
-              ? "repo_face_rumination_posted_as_registered_identity"
-              : repoIdentityArticles.length > 0
+            proposalPrSubmitted
+              ? "repo_face_rumination_submitted_registered_identity_proposal_pr"
+              : prCommentSubmitted
+                ? "repo_face_rumination_commented_on_pr_as_registered_identity"
+              : articlePrSubmitted
                 ? "repo_face_rumination_submitted_registered_identity_article_pr"
+              : repoIdentityPosts.length > 0
+                ? "repo_face_rumination_posted_as_registered_identity"
               : `${job.command}_private_summary`,
         },
       });
@@ -539,6 +563,25 @@ interface RepoIdentityArticleIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityProposalPrIntent {
+  identity?: string;
+  title: string;
+  path?: string;
+  content: string;
+  shareContent?: string;
+  channelId?: string;
+  replyToMessageId?: string;
+}
+
+interface RepoIdentityPrCommentIntent {
+  identity?: string;
+  pr: string;
+  content: string;
+  shareContent?: string;
+  channelId?: string;
+  replyToMessageId?: string;
+}
+
 async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
   if (!config.botToken) {
     throw new Error("DISCORD_BOT_TOKEN is required for the worker to post repo identity responses.");
@@ -658,11 +701,12 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
 
   await mkdir(dirname(articlePath), { recursive: true });
   await writeFile(articlePath, ensureTrailingNewline(intent.content), { encoding: "utf8", flag: "wx" });
-  const pr = submitArticlePullRequest({
+  const pr = submitRepoIdentityDraftPullRequest({
     repoRoot,
     relativePath,
     identityId: identity.id,
     title: intent.title,
+    kind: "article",
   });
 
   const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
@@ -679,42 +723,144 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
   });
 }
 
-function submitArticlePullRequest(input: {
+async function writeRepoIdentityProposalPrIntent(
+  job: JobRecord,
+  intent: RepoIdentityProposalPrIntent,
+): Promise<void> {
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for proposal PR intent on job ${job.id}.`);
+  }
+
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for proposal PR intent on job ${job.id}.`);
+  }
+
+  const repoRoot = resolveRepoRoot(identity);
+  const relativePath = normalizeProposalPath(intent, identity);
+  const proposalPath = resolve(repoRoot, relativePath);
+  if (!isPathInside(repoRoot, proposalPath)) {
+    throw new Error(`Proposal path escapes repo root for ${identity.id}: ${relativePath}`);
+  }
+
+  await mkdir(dirname(proposalPath), { recursive: true });
+  await writeFile(proposalPath, ensureTrailingNewline(intent.content), {
+    encoding: "utf8",
+    flag: "wx",
+  });
+  const pr = submitRepoIdentityDraftPullRequest({
+    repoRoot,
+    relativePath,
+    identityId: identity.id,
+    title: intent.title,
+    kind: "proposal",
+  });
+
+  const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
+  const proposalLine = `\nProposal path: ${relativePath}`;
+  const shareContent =
+    intent.shareContent && intent.shareContent.trim().length > 0
+      ? intent.shareContent.trim()
+      : `${identity.displayName}: I put the change proposal where it belongs: a draft PR for review.`;
+  await postRepoIdentityIntent(job, {
+    identity: identity.id,
+    channelId: intent.channelId ?? job.outputChannelId,
+    replyToMessageId: intent.replyToMessageId,
+    content: `${shareContent}${prLine}${proposalLine}`,
+  });
+}
+
+async function commentRepoIdentityPullRequestIntent(
+  job: JobRecord,
+  intent: RepoIdentityPrCommentIntent,
+): Promise<void> {
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for PR comment intent on job ${job.id}.`);
+  }
+
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for PR comment intent on job ${job.id}.`);
+  }
+
+  const repoRoot = resolveRepoRoot(identity);
+  const prTarget = intent.pr.trim();
+  if (!prTarget) {
+    throw new Error(`PR comment intent for ${identity.id} on job ${job.id} did not include a PR target.`);
+  }
+
+  const body = `${identity.displayName} (${identity.id}) says:\n\n${intent.content.trim()}`;
+  const gh = spawnSync("gh", ["pr", "comment", prTarget, "--body", body], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (gh.status !== 0) {
+    throw new Error(`gh pr comment ${prTarget} failed: ${gh.stderr || gh.stdout}`);
+  }
+
+  const shareContent =
+    intent.shareContent && intent.shareContent.trim().length > 0
+      ? intent.shareContent.trim()
+      : `${identity.displayName}: I left my argument on the PR so the proposal has a real review trail.`;
+  await postRepoIdentityIntent(job, {
+    identity: identity.id,
+    channelId: intent.channelId ?? job.outputChannelId,
+    replyToMessageId: intent.replyToMessageId,
+    content: `${shareContent}\n\nPR: ${prTarget}`,
+  });
+}
+
+function submitRepoIdentityDraftPullRequest(input: {
   repoRoot: string;
   relativePath: string;
   identityId: string;
   title: string;
+  kind: "article" | "proposal";
 }): { branch: string; url?: string } {
-  const branch = `codex/${sanitizePathSegment(input.identityId)}-article-${Date.now()}`;
-  runGit(input.repoRoot, ["switch", "-c", branch]);
-  runGit(input.repoRoot, ["add", "--", input.relativePath]);
-  runGit(input.repoRoot, ["commit", "-m", `${input.identityId}: draft ${input.title}`]);
-  runGit(input.repoRoot, ["push", "-u", "origin", branch]);
+  const branch = `codex/${sanitizePathSegment(input.identityId)}-${input.kind}-${Date.now()}`;
+  const previousBranch = runGitCapture(input.repoRoot, ["branch", "--show-current"]).trim();
 
-  const gh = spawnSync(
-    "gh",
-    [
-      "pr",
-      "create",
-      "--draft",
-      "--title",
-      `${input.identityId}: ${input.title}`,
-      "--body",
-      `Draft bylined article submitted by repo Face ${input.identityId}.\n\nPath: ${input.relativePath}`,
-    ],
-    {
-      cwd: input.repoRoot,
-      encoding: "utf8",
-      windowsHide: true,
-    },
-  );
+  try {
+    runGit(input.repoRoot, ["switch", "-c", branch]);
+    runGit(input.repoRoot, ["add", "--", input.relativePath]);
+    runGit(input.repoRoot, ["commit", "-m", `${input.identityId}: draft ${input.kind} ${input.title}`]);
+    runGit(input.repoRoot, ["push", "-u", "origin", branch]);
 
-  if (gh.status !== 0) {
-    return { branch };
+    const label = input.kind === "article" ? "Draft bylined article" : "Draft change proposal";
+    const gh = spawnSync(
+      "gh",
+      [
+        "pr",
+        "create",
+        "--draft",
+        "--title",
+        `${input.identityId}: ${input.kind}: ${input.title}`,
+        "--body",
+        `${label} submitted by repo Face ${input.identityId}.\n\nPath: ${input.relativePath}`,
+      ],
+      {
+        cwd: input.repoRoot,
+        encoding: "utf8",
+        windowsHide: true,
+      },
+    );
+
+    if (gh.status !== 0) {
+      return { branch };
+    }
+
+    const url = gh.stdout.trim().split(/\r?\n/).find((line) => line.startsWith("http"));
+    return { branch, url };
+  } finally {
+    if (previousBranch && previousBranch !== branch) {
+      runGit(input.repoRoot, ["switch", previousBranch]);
+    }
   }
-
-  const url = gh.stdout.trim().split(/\r?\n/).find((line) => line.startsWith("http"));
-  return { branch, url };
 }
 
 function runGit(cwd: string, args: string[]): void {
@@ -726,6 +872,18 @@ function runGit(cwd: string, args: string[]): void {
   if (result.status !== 0) {
     throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
   }
+}
+
+function runGitCapture(cwd: string, args: string[]): string {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+  }
+  return result.stdout;
 }
 
 function parseRepoIdentityArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
@@ -763,6 +921,75 @@ function parseRepoIdentityArticleIntents(finalResponse: string): RepoIdentityArt
   return intents;
 }
 
+function parseRepoIdentityProposalPrIntents(finalResponse: string): RepoIdentityProposalPrIntent[] {
+  const intents: RepoIdentityProposalPrIntent[] = [];
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL)) {
+      continue;
+    }
+
+    const payload = trimmed.slice(REPO_IDENTITY_PROPOSAL_PR_SENTINEL.length).trim();
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      if (!title || !content) {
+        continue;
+      }
+      intents.push({
+        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        title,
+        path: typeof parsed.path === "string" ? parsed.path.trim() : undefined,
+        content,
+        shareContent: typeof parsed.shareContent === "string" ? parsed.shareContent.trim() : undefined,
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
+        replyToMessageId:
+          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return intents;
+}
+
+function parseRepoIdentityPrCommentIntents(finalResponse: string): RepoIdentityPrCommentIntent[] {
+  const intents: RepoIdentityPrCommentIntent[] = [];
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(REPO_IDENTITY_PR_COMMENT_SENTINEL)) {
+      continue;
+    }
+
+    const payload = trimmed.slice(REPO_IDENTITY_PR_COMMENT_SENTINEL.length).trim();
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const pr = typeof parsed.pr === "string" ? parsed.pr.trim() : "";
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      if (!pr || !content) {
+        continue;
+      }
+      intents.push({
+        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        pr,
+        content,
+        shareContent: typeof parsed.shareContent === "string" ? parsed.shareContent.trim() : undefined,
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
+        replyToMessageId:
+          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return intents;
+}
+
 function resolveRepoRoot(identity: { repoName: string; repoPath?: string }): string {
   if (identity.repoPath && identity.repoPath.trim().length > 0) {
     return resolve(identity.repoPath);
@@ -786,6 +1013,19 @@ function normalizeArticlePath(
   return `Aetheria/Articles/${sanitizePathSegment(identity.displayName)}/${date}-${slugify(intent.title)}.md`;
 }
 
+function normalizeProposalPath(
+  intent: RepoIdentityProposalPrIntent,
+  identity: { displayName: string },
+): string {
+  const path = intent.path?.trim();
+  if (path && !isAbsolute(path) && !path.split(/[\\/]+/).includes("..")) {
+    return path.replace(/\\/g, "/");
+  }
+
+  const date = new Date().toISOString().slice(0, 10);
+  return `Proposals/${sanitizePathSegment(identity.displayName)}/${date}-${slugify(intent.title)}.md`;
+}
+
 function stripRepoIdentityPostIntents(finalResponse: string): string {
   return finalResponse
     .split(/\r?\n/)
@@ -793,7 +1033,9 @@ function stripRepoIdentityPostIntents(finalResponse: string): string {
       const trimmed = line.trim();
       return (
         !trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL) &&
-        !trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL)
+        !trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL) &&
+        !trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL) &&
+        !trimmed.startsWith(REPO_IDENTITY_PR_COMMENT_SENTINEL)
       );
     })
     .join("\n")
