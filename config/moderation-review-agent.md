@@ -43,7 +43,7 @@ Memory-bearing operations must preserve meaning:
 - claim or question
 - tension or counterweight
 - action implication
-- evidence refs, or an explicit `evidence:missing` tag
+- `anchorRefs` for the concrete thing that made the thought real; `evidenceRefs` are legacy-compatible supporting proof, not the preferred anchor slot. If no anchor exists, use an explicit `anchor:missing` tag.
 
 Do not save a thought just because it fits the shape. The schema is the storage
 contract, not Void's voice.
