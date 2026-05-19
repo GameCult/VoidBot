@@ -302,6 +302,7 @@ async function queueRepoFaceTurn(input: {
     channelId,
     queuedAt: input.queuedAt,
     participant: input.participant,
+    jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
     repoVoidbotRoot: initialization.repoVoidbotRoot,
     birthStatusPath: initialization.birthStatusPath,
   });
@@ -741,13 +742,14 @@ function buildHeartbeatPrompt(input: {
   channelId: string;
   queuedAt: string;
   participant: FaceHeartbeatParticipant;
+  jurisdictionDive: JurisdictionDiveDirective;
   repoVoidbotRoot?: string;
   birthStatusPath?: string;
 }): string {
   return [
     `Perform one standing repo Face heartbeat for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
     renderRepoFaceIdentityDoctrine(input.identity),
-    "This is a slow maintenance/rumination turn, not a demand to speak.",
+    "This is a standing maintenance/rumination turn. It is not forced chatter, but it is also not permission to hide useful opinions in private forever.",
     `Queued at: ${input.queuedAt}.`,
     `Face state path: ${input.faceStatePath}.`,
     input.repoVoidbotRoot ? `Repo-local .voidbot root: ${input.repoVoidbotRoot}.` : undefined,
@@ -765,17 +767,55 @@ function buildHeartbeatPrompt(input: {
       interruptThreshold: input.participant.interruptThreshold,
       queuedCount: input.participant.queuedCount,
       groups: input.participant.groups,
+      jurisdictionDiveDue: input.jurisdictionDive.due,
+      jurisdictionDiveCadence: input.jurisdictionDive.cadence,
     })}.`,
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
+    input.jurisdictionDive.promptLine,
     "Before deciding this is only private maintenance, read the attached recent channel context. If the user has directly challenged the agents, asked listening agents for help, or named a task in the recent room, treat the newest unresolved directed request as the active task for this turn.",
     "Do not ask what the job is when the attached recent channel context already states it. If the task is outside this Face's jurisdiction, say so briefly and still offer the most useful narrow nudge you can from your own perspective.",
     "Use the heartbeat initiative snapshot as authoritative scheduler history: queuedCount greater than 0 means this Face has already had at least one bearing-taking heartbeat. If queuedCount is greater than 0 and the Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted now.",
+    "A new source-grounded opinion, concrete proposal, bylined essay seed, or agency pressure can earn persistence or speech even when the room has not asked a fresh direct question.",
     `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","content":"..."}; the worker owns delivery and receipt recording.`,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");
+}
+
+interface JurisdictionDiveDirective {
+  due: boolean;
+  cadence: number;
+  promptLine: string;
+}
+
+function buildJurisdictionDiveDirective(
+  identity: RepoDiscordIdentity,
+  participant: FaceHeartbeatParticipant,
+): JurisdictionDiveDirective {
+  const isNibu = identity.id.toLowerCase() === "nibu";
+  const cadence = isNibu ? 3 : 8;
+  const due = participant.queuedCount === 0 || participant.queuedCount % cadence === 0;
+  const baseDueLine = `Jurisdiction dive is due this turn: before concluding silence, use the available source/history MCP tools to inspect ${identity.repoName} or its archived discussion for the most pressured open seam in Face state, then write a concrete memory/incubation/agency operation or a public note if the evidence changed your map.`;
+  const baseOptionalLine = `Jurisdiction dive is optional this turn, but if Face state already names a hungry seam, use source/history MCP tools before declaring there is nothing worth preserving or saying about ${identity.repoName}.`;
+
+  if (!isNibu) {
+    return {
+      due,
+      cadence,
+      promptLine: due ? baseDueLine : baseOptionalLine,
+    };
+  }
+
+  const nibuPressure =
+    "Nibu-specific pressure: AetheriaLore is your primary fascination. Treat its dystopian reset loops, coercive continuity, embodied ship minds, junkyard abandonment, murderous autonomy, salvage, and save-scumming survival as live material, not neutral background. Develop an opinion from source evidence. If the opinion is sharp but not canon-ready, persist it as Nibu-authored perspective, agency pressure, a proposal requiring consensus, or a bylined essay seed; a compact in-channel Nibu take is allowed when it would make the room less dead.";
+
+  return {
+    due,
+    cadence,
+    promptLine: `${due ? baseDueLine : baseOptionalLine} ${nibuPressure}`,
+  };
 }
 
 function renderRepoFaceIdentityDoctrine(identity: RepoDiscordIdentity): string {
