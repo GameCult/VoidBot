@@ -642,15 +642,18 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     title: intent.title,
   });
 
-  if (intent.shareContent && intent.shareContent.trim().length > 0) {
-    const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
-    await postRepoIdentityIntent(job, {
-      identity: identity.id,
-      channelId: intent.channelId ?? job.outputChannelId,
-      replyToMessageId: intent.replyToMessageId,
-      content: `${intent.shareContent}${prLine}`,
-    });
-  }
+  const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
+  const articleLine = `\nArticle path: ${relativePath}`;
+  const shareContent =
+    intent.shareContent && intent.shareContent.trim().length > 0
+      ? intent.shareContent.trim()
+      : `${identity.displayName}: I drafted "${intent.title}" as a bylined article and submitted it for review.`;
+  await postRepoIdentityIntent(job, {
+    identity: identity.id,
+    channelId: intent.channelId ?? job.outputChannelId,
+    replyToMessageId: intent.replyToMessageId,
+    content: `${shareContent}${prLine}${articleLine}`,
+  });
 }
 
 function submitArticlePullRequest(input: {
