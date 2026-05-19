@@ -66,7 +66,7 @@ export function buildDiscordReplyPrompt(
     || context.prompt.includes("Repo Face identity doctrine:")
     || context.prompt.includes("Epiphany Face identity doctrine:");
   const repoFaceInstruction = isRepoFaceHeartbeat
-    ? "- This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak and reason as that Face. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files directly. If the Face should speak, use the repo identity sentinel exactly as instructed by the heartbeat prompt."
+    ? "- This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak, reason, remember, object, and choose as that Face first. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files directly. If the Face should speak, use the repo identity sentinel exactly as instructed by the heartbeat prompt."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
   const sleepInstructions =

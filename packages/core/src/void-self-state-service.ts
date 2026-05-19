@@ -296,6 +296,9 @@ function applyTypedOperation(
       state.speechReceipts.updatedAt = operation.receipt.sentAt;
       closeCasesForReceipt(state.moderationCursor, operation.receipt);
       return;
+    case "retire_delivery_receipts":
+      retireDeliveryReceipts(state.speechReceipts, operation);
+      return;
     case "record_short_term_memory":
       recordShortTermMemory(
         state.thoughtMemory,
@@ -635,6 +638,17 @@ function markCandidateInterventionSpoken(
   }
   retireSiblingCandidatesForReceipt(state.candidateInterventions, operation);
   state.candidateInterventions.updatedAt = operation.receipt.sentAt;
+}
+
+function retireDeliveryReceipts(
+  speechReceipts: VoidSpeechReceipts,
+  operation: Extract<VoidSelfStateOperation, { operation: "retire_delivery_receipts" }>,
+): void {
+  const receiptKeys = new Set(operation.receiptKeys);
+  speechReceipts.recentReceipts = speechReceipts.recentReceipts.filter(
+    (receipt) => !receiptKeys.has(receipt.receiptKey),
+  );
+  speechReceipts.updatedAt = operation.retiredAt;
 }
 
 function retireSiblingCandidatesForReceipt(

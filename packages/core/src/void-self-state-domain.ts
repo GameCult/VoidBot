@@ -387,6 +387,12 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     receipt: deliveryReceiptSchema,
   }).strict(),
   z.object({
+    operation: z.literal("retire_delivery_receipts"),
+    receiptKeys: z.array(nonEmptyStringSchema).min(1),
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
     operation: z.literal("record_short_term_memory"),
     memory: meaningPreservingMemorySchema,
   }).strict(),
