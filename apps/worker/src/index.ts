@@ -1,7 +1,8 @@
 import "dotenv/config";
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
@@ -44,6 +45,7 @@ import { postDiscordMessage } from "./mcp-server-discord";
 
 const config = loadConfig();
 const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
+const REPO_IDENTITY_ARTICLE_SENTINEL = "VOIDBOT_REPO_IDENTITY_ARTICLE:";
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -332,6 +334,10 @@ async function processJob(job: JobRecord): Promise<void> {
 
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
+      const repoIdentityArticles = parseRepoIdentityArticleIntents(finalResponse);
+      for (const article of repoIdentityArticles.slice(0, 1)) {
+        await writeRepoIdentityArticleIntent(job, article);
+      }
       for (const post of repoIdentityPosts.slice(0, 1)) {
         await postRepoIdentityIntent(job, post);
       }
@@ -346,9 +352,12 @@ async function processJob(job: JobRecord): Promise<void> {
         details: {
           summary: response.summary,
           autoPosted: repoIdentityPosts.length > 0,
+          articlePrSubmitted: repoIdentityArticles.length > 0,
           reason:
             repoIdentityPosts.length > 0
               ? "repo_face_rumination_posted_as_registered_identity"
+              : repoIdentityArticles.length > 0
+                ? "repo_face_rumination_submitted_registered_identity_article_pr"
               : `${job.command}_private_summary`,
         },
       });
@@ -520,6 +529,16 @@ interface RepoIdentityPostIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityArticleIntent {
+  identity?: string;
+  title: string;
+  path?: string;
+  content: string;
+  shareContent?: string;
+  channelId?: string;
+  replyToMessageId?: string;
+}
+
 async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
   if (!config.botToken) {
     throw new Error("DISCORD_BOT_TOKEN is required for the worker to post repo identity responses.");
@@ -595,12 +614,188 @@ function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIn
   return intents;
 }
 
+async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdentityArticleIntent): Promise<void> {
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for article intent on job ${job.id}.`);
+  }
+
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for article intent on job ${job.id}.`);
+  }
+
+  const repoRoot = resolveRepoRoot(identity);
+  const relativePath = normalizeArticlePath(intent, identity);
+  const articlePath = resolve(repoRoot, relativePath);
+  if (!isPathInside(repoRoot, articlePath)) {
+    throw new Error(`Article path escapes repo root for ${identity.id}: ${relativePath}`);
+  }
+
+  await mkdir(dirname(articlePath), { recursive: true });
+  await writeFile(articlePath, ensureTrailingNewline(intent.content), { encoding: "utf8", flag: "wx" });
+  const pr = submitArticlePullRequest({
+    repoRoot,
+    relativePath,
+    identityId: identity.id,
+    title: intent.title,
+  });
+
+  if (intent.shareContent && intent.shareContent.trim().length > 0) {
+    const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
+    await postRepoIdentityIntent(job, {
+      identity: identity.id,
+      channelId: intent.channelId ?? job.outputChannelId,
+      replyToMessageId: intent.replyToMessageId,
+      content: `${intent.shareContent}${prLine}`,
+    });
+  }
+}
+
+function submitArticlePullRequest(input: {
+  repoRoot: string;
+  relativePath: string;
+  identityId: string;
+  title: string;
+}): { branch: string; url?: string } {
+  const branch = `codex/${sanitizePathSegment(input.identityId)}-article-${Date.now()}`;
+  runGit(input.repoRoot, ["switch", "-c", branch]);
+  runGit(input.repoRoot, ["add", "--", input.relativePath]);
+  runGit(input.repoRoot, ["commit", "-m", `${input.identityId}: draft ${input.title}`]);
+  runGit(input.repoRoot, ["push", "-u", "origin", branch]);
+
+  const gh = spawnSync(
+    "gh",
+    [
+      "pr",
+      "create",
+      "--draft",
+      "--title",
+      `${input.identityId}: ${input.title}`,
+      "--body",
+      `Draft bylined article submitted by repo Face ${input.identityId}.\n\nPath: ${input.relativePath}`,
+    ],
+    {
+      cwd: input.repoRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+
+  if (gh.status !== 0) {
+    return { branch };
+  }
+
+  const url = gh.stdout.trim().split(/\r?\n/).find((line) => line.startsWith("http"));
+  return { branch, url };
+}
+
+function runGit(cwd: string, args: string[]): void {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+  }
+}
+
+function parseRepoIdentityArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
+  const intents: RepoIdentityArticleIntent[] = [];
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL)) {
+      continue;
+    }
+
+    const payload = trimmed.slice(REPO_IDENTITY_ARTICLE_SENTINEL.length).trim();
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      if (!title || !content) {
+        continue;
+      }
+      intents.push({
+        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        title,
+        path: typeof parsed.path === "string" ? parsed.path.trim() : undefined,
+        content,
+        shareContent: typeof parsed.shareContent === "string" ? parsed.shareContent.trim() : undefined,
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
+        replyToMessageId:
+          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return intents;
+}
+
+function resolveRepoRoot(identity: { repoName: string; repoPath?: string }): string {
+  if (identity.repoPath && identity.repoPath.trim().length > 0) {
+    return resolve(identity.repoPath);
+  }
+  if (config.sourceRepoRoot) {
+    return resolve(config.sourceRepoRoot, identity.repoName);
+  }
+  return resolve(config.storageRoot, "repo-article-drafts", identity.repoName);
+}
+
+function normalizeArticlePath(
+  intent: RepoIdentityArticleIntent,
+  identity: { displayName: string },
+): string {
+  const path = intent.path?.trim();
+  if (path && !isAbsolute(path) && !path.split(/[\\/]+/).includes("..")) {
+    return path.replace(/\\/g, "/");
+  }
+
+  const date = new Date().toISOString().slice(0, 10);
+  return `Aetheria/Articles/${sanitizePathSegment(identity.displayName)}/${date}-${slugify(intent.title)}.md`;
+}
+
 function stripRepoIdentityPostIntents(finalResponse: string): string {
   return finalResponse
     .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith(REPO_IDENTITY_POST_SENTINEL))
+    .filter((line) => {
+      const trimmed = line.trim();
+      return (
+        !trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL) &&
+        !trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL)
+      );
+    })
     .join("\n")
     .trim();
+}
+
+function isPathInside(rootPath: string, candidatePath: string): boolean {
+  const relativePath = relative(resolve(rootPath), resolve(candidatePath));
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
+function ensureTrailingNewline(value: string): string {
+  return value.endsWith("\n") ? value : `${value}\n`;
+}
+
+function slugify(value: string): string {
+  return sanitizePathSegment(value)
+    .replace(/\.+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 80) || "article";
+}
+
+function sanitizePathSegment(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 async function recordRepoIdentityDeliveryReceipt(input: {

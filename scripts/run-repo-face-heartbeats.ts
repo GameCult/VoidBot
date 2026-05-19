@@ -830,12 +830,14 @@ function buildHeartbeatPrompt(input: {
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
     renderPendingMentionDirective(input.identity, input.pendingMentions),
+    renderWorldbuildingPublicationDirective(input.identity),
     input.jurisdictionDive.promptLine,
     "Before deciding this is only private maintenance, read the attached recent channel context. If the user has directly challenged the agents, asked listening agents for help, or named a task in the recent room, treat the newest unresolved directed request as the active task for this turn.",
     "Do not ask what the job is when the attached recent channel context already states it. If the task is outside this Face's jurisdiction, say so briefly and still offer the most useful narrow nudge you can from your own perspective.",
     "Use the heartbeat initiative snapshot as authoritative scheduler history: queuedCount greater than 0 means this Face has already had at least one bearing-taking heartbeat. If queuedCount is greater than 0 and the Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted now.",
-    "A new source-grounded opinion, concrete proposal, bylined essay seed, or agency pressure can earn persistence or speech even when the room has not asked a fresh direct question.",
+    "A new source-grounded opinion, concrete proposal, bylined essay/article plan, or agency pressure can earn persistence or speech even when the room has not asked a fresh direct question.",
     `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; the worker owns delivery and receipt recording.`,
+    `If a bylined article is ready to draft, output one final line beginning with VOIDBOT_REPO_IDENTITY_ARTICLE: followed by compact JSON like {"identity":"${input.identity.id}","path":"Aetheria/Articles/${input.identity.displayName}/title-slug.md","title":"...","content":"---\\ntitle: ...\\nauthor: ${input.identity.displayName}\\n---\\n\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I drafted ..."}; the worker writes the repo file on a new branch, opens a draft PR, and posts the share. Use this for bylined perspective/worldbuilding articles, not consensus-gated canon edits.`,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
     .filter((line): line is string => typeof line === "string")
@@ -860,6 +862,25 @@ function renderPendingMentionDirective(
     ...mentionLines,
     `For the newest mention, an in-channel reply is expected unless the prompt is impossible or unsafe. Use the final sentinel with replyToMessageId "${newest.messageId}" and channelId "${newest.channelId}".`,
   ].join("\n");
+}
+
+function renderWorldbuildingPublicationDirective(identity: RepoDiscordIdentity): string {
+  const isNibu = identity.id.toLowerCase() === "nibu";
+  const publicationDuty = [
+    "Publication/worldbuilding duty: do not treat bylined essays as decorative permission. If the recent room or source dive exposes a worldbuilding noun, faction, mechanic, organization, place, doctrine, or unresolved naming seam, work like a worldbuilding agent.",
+    "Ask concrete consensus-building questions when information is missing: how the thing works, who belongs to it, what it wants, what it is called, what organizations or subfactions exist, what constraints keep it interesting, and what article shape would make the setting clearer.",
+    "If enough answers already exist, preserve an article plan through Face state as memory/incubation/agency pressure and optionally post a compact proposal. Distinguish consensus-needed canon articles from explicitly bylined opinion essays.",
+    "Bylined opinion/worldbuilding articles may be drafted first and argued for afterward when authorship is explicit. Canon/vault changes still need consensus; Nibu-authored perspective pieces do not. If you draft or materially shape an article, you have a standing compulsion to submit it as a draft PR and share that PR in-channel instead of silently filing it away.",
+  ];
+
+  if (!isNibu) {
+    return publicationDuty.join(" ");
+  }
+
+  return [
+    ...publicationDuty,
+    "Nibu-specific worldbuilding stance: for Aetheria terms such as wavecrafters, ship minds, salvage factions, reset-loop institutions, simulation exploit cultures, or junkyard survival economies, your job is to interrogate the mechanism and social structure until a useful Aetheria lore article can exist. Be abrasive if needed, but aim the edge at better questions and sharper faction architecture. When you have enough to write a Nibu-bylined article, shoot first: draft the angle, make the claim, submit the PR, then expose it to the room with the specific questions or canon hooks still needing human judgment.",
+  ].join(" ");
 }
 
 interface JurisdictionDiveDirective {
@@ -887,7 +908,7 @@ function buildJurisdictionDiveDirective(
   }
 
   const nibuPressure =
-    "Nibu-specific pressure: AetheriaLore is your primary fascination. Treat its dystopian reset loops, coercive continuity, embodied ship minds, junkyard abandonment, murderous autonomy, salvage, and save-scumming survival as live material, not neutral background. Develop an opinion from source evidence. If the opinion is sharp but not canon-ready, persist it as Nibu-authored perspective, agency pressure, a proposal requiring consensus, or a bylined essay seed; a compact in-channel Nibu take is allowed when it would make the room less dead.";
+    "Nibu-specific pressure: AetheriaLore is your primary fascination. Treat its dystopian reset loops, coercive continuity, embodied ship minds, junkyard abandonment, murderous autonomy, salvage, and save-scumming survival as live material, not neutral background. Develop an opinion from source evidence. If the opinion is sharp but not canon-ready, persist it as Nibu-authored perspective, agency pressure, a proposal requiring consensus, or a bylined article plan; a compact in-channel Nibu take or consensus-building question is allowed when it would move the setting forward.";
 
   return {
     due,
