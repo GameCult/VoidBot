@@ -995,6 +995,12 @@ if ($SkipModel) {
   $combinedText = (($execution.StdOut, $execution.StdErr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
 }
 
+if ([string]::IsNullOrWhiteSpace($combinedText)) {
+  [System.IO.File]::WriteAllText($tracePath, "Codex rumination produced no stdout/stderr trace." + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+} else {
+  [System.IO.File]::WriteAllText($tracePath, $combinedText + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+}
+
 if ($exitCode -ne 0) {
   $failureMessage = if ([string]::IsNullOrWhiteSpace($combinedText)) { "Codex rumination failed with exit code $exitCode." } else { $combinedText }
   throw $failureMessage

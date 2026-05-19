@@ -26,16 +26,33 @@ async function main() {
   const now = new Date();
 
   await withLock(async () => {
+    const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
+
     if (isRecentLockPresent(moderationLockPath, 20 * 60 * 1000)) {
+      const speakingPressure = updateSpeakingPressure({
+        typedState,
+        previous: typedState.scheduledRuntime.speakingPressure,
+        sleepCycle: typedState.scheduledRuntime.sleepCycle,
+        now,
+      });
+      await applyVoidSelfStateOperation(
+        { canonicalPath: statePath },
+        {
+          operation: "update_speaking_pressure",
+          speakingPressure,
+        },
+      );
       writeStatus({
         status: "skipped",
         reason: "moderation_loop_active",
         observedAt: now.toISOString(),
+        statePath,
+        speakingPressure,
+        sleepCycle: typedState.scheduledRuntime.sleepCycle,
       });
       return;
     }
 
-    const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
     const sleepCycle = updateSleepCycle(typedState.scheduledRuntime.sleepCycle, now);
     const speakingPressure = updateSpeakingPressure({
       typedState,
