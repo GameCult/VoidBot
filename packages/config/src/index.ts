@@ -101,7 +101,6 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default(".voidbot/private/repo-discord-identities.json"),
-  REPO_FACE_RUMINATION_PASSES: z.coerce.number().int().min(0).max(6).default(3),
   REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
   REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
@@ -149,7 +148,6 @@ export interface AppConfig {
   systemMessagesPath: string;
   moderationAgentStatePath: string;
   repoDiscordIdentitiesPath: string;
-  repoFaceRuminationPasses: number;
   repoFaceBirthMode: "plan" | "run";
   repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
   repoFaceHeartbeats: {
@@ -367,7 +365,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     systemMessagesPath: resolve(parsed.SYSTEM_MESSAGES_PATH),
     moderationAgentStatePath: resolve(parsed.MODERATION_AGENT_STATE_PATH),
     repoDiscordIdentitiesPath: resolve(parsed.REPO_DISCORD_IDENTITIES_PATH),
-    repoFaceRuminationPasses: parsed.REPO_FACE_RUMINATION_PASSES,
     repoFaceBirthMode: parsed.REPO_FACE_BIRTH_MODE,
     repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
     repoFaceHeartbeats: {

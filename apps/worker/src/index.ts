@@ -330,25 +330,6 @@ async function processJob(job: JobRecord): Promise<void> {
       return;
     }
 
-    if (job.command === "repo-identity-mention") {
-      await postRepoIdentityJobResponse(job, finalResponse);
-      await jobQueue.completeJobDirect(job.id, finalResponse);
-      await deliverOwnerNotifications(job, response.notifications ?? []);
-      await auditLog.record({
-        type: "provider.completed",
-        actorId: job.requester.id,
-        jobId: job.id,
-        provider: job.provider,
-        details: {
-          summary: response.summary,
-          autoPosted: true,
-          reason: "repo_identity_mention_posted_as_registered_identity",
-        },
-      });
-      console.log(`Completed repo-identity-mention job ${job.id}.`);
-      return;
-    }
-
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
       for (const post of repoIdentityPosts.slice(0, 1)) {
@@ -521,51 +502,6 @@ async function postJobResponse(job: JobRecord, content: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Discord post failed with ${response.status}: ${await response.text()}`);
   }
-}
-
-async function postRepoIdentityJobResponse(job: JobRecord, content: string): Promise<void> {
-  if (!config.botToken) {
-    throw new Error("DISCORD_BOT_TOKEN is required for the worker to post repo identity responses.");
-  }
-
-  const identityId = parseRepoIdentityIdFromPrompt(job.prompt);
-  if (!identityId) {
-    throw new Error(`Could not resolve repo identity for job ${job.id}.`);
-  }
-
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
-  const identity = findRepoDiscordIdentity(registry, identityId);
-  if (!identity) {
-    throw new Error(`No registered repo identity matched "${identityId}" for job ${job.id}.`);
-  }
-
-  if (!isRepoDiscordIdentityAllowedInChannel(identity, job.outputChannelId)) {
-    throw new Error(
-      `Repo identity ${identity.id} is not registered for Discord channel ${job.outputChannelId}.`,
-    );
-  }
-
-  const posted = await postDiscordMessage(
-    config.botToken,
-    job.outputChannelId,
-    content,
-    job.requestMessageId,
-    {
-      personaName: identity.displayName,
-      personaAvatarUrl: identity.avatarUrl,
-    },
-  );
-  await recordRepoIdentityDeliveryReceipt({
-    identity,
-    channelId: job.outputChannelId,
-    content,
-    replyToMessageId: job.requestMessageId,
-    messageId: posted.id,
-    transport: posted.transport,
-  }).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`Could not record repo identity delivery receipt for job ${job.id}: ${message}`);
-  });
 }
 
 function parseRepoIdentityIdFromPrompt(prompt: string): string | undefined {

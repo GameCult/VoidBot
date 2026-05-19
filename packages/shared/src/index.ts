@@ -12,7 +12,6 @@ export const commandNames = [
   "profile",
   "reindex-channel",
   "set-style",
-  "repo-identity-mention",
   "repo-face-rumination",
 ] as const;
 

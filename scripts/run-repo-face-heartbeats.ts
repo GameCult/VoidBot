@@ -14,13 +14,15 @@ import {
   ensureRepoFaceInitialized,
   loadRepoDiscordIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
+  REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
   renderFaceIdentityDoctrine,
   resolveRepoFaceStatePath,
+  type RepoFacePendingMention,
   type RepoDiscordIdentity,
 } from "@voidbot/core";
 import type { SourceMessage } from "@voidbot/shared";
 
-const HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_face_heartbeat_state.v1";
+const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
 
 interface FaceHeartbeatParticipant {
@@ -55,6 +57,7 @@ interface FaceHeartbeatState {
   lastTickAt?: string;
   participants: FaceHeartbeatParticipant[];
   history: Array<Record<string, unknown>>;
+  pendingMentions: RepoFacePendingMention[];
 }
 
 async function main(): Promise<void> {
@@ -96,6 +99,7 @@ async function main(): Promise<void> {
   ).map((participant) =>
     applyActiveTurnFreeze(participant, pendingJobs.get(participant.identityId), state, completedThisTick),
   );
+  applyPendingMentionPriority(state);
 
   const selected = selectReadyParticipants(
     state,
@@ -107,6 +111,7 @@ async function main(): Promise<void> {
   if (selected.length > 0 && dryRun) {
     const queuedAt = new Date().toISOString();
     for (const participant of selected) {
+      const pendingMentions = pendingMentionsForParticipant(state, participant.identityId);
       const recoveryMinutes = recoveryFor(participant);
       participant.lastQueuedAt = queuedAt;
       participant.lastTurnAt = state.initiativeClock;
@@ -122,6 +127,7 @@ async function main(): Promise<void> {
         recoveryMinutes,
         heat: participant.heat,
         effectiveSpeed: participant.effectiveSpeed,
+        pendingMentionCount: pendingMentions.length,
       });
     }
   } else if (selected.length > 0) {
@@ -137,8 +143,10 @@ async function main(): Promise<void> {
     try {
       for (const participant of selected) {
         const queuedAt = new Date().toISOString();
+        const pendingMentions = pendingMentionsForParticipant(state, participant.identityId);
         const turn = await queueParticipantTurn({
           participant,
+          pendingMentions,
           registryIdentities: registry.identities,
           config,
           storage,
@@ -153,6 +161,10 @@ async function main(): Promise<void> {
           participant.lastTurnAt = state.initiativeClock;
           participant.queuedCount += 1;
           participant.currentLoad = 1;
+          if (pendingMentions.length > 0) {
+            const consumedIds = new Set(pendingMentions.map((entry) => entry.id));
+            state.pendingMentions = state.pendingMentions.filter((entry) => !consumedIds.has(entry.id));
+          }
           state.history.push({
             type: "queued",
             identityId: participant.identityId,
@@ -165,6 +177,7 @@ async function main(): Promise<void> {
             frozen: true,
             heat: participant.heat,
             effectiveSpeed: participant.effectiveSpeed,
+            pendingMentionCount: pendingMentions.length,
           });
         } else if (turn.failureReason) {
           participant.currentLoad = 0;
@@ -239,6 +252,7 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
 
 async function queueParticipantTurn(input: {
   participant: FaceHeartbeatParticipant;
+  pendingMentions: RepoFacePendingMention[];
   registryIdentities: RepoDiscordIdentity[];
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
@@ -254,6 +268,7 @@ async function queueParticipantTurn(input: {
 
 async function queueRepoFaceTurn(input: {
   participant: FaceHeartbeatParticipant;
+  pendingMentions: RepoFacePendingMention[];
   registryIdentities: RepoDiscordIdentity[];
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
@@ -302,6 +317,7 @@ async function queueRepoFaceTurn(input: {
     channelId,
     queuedAt: input.queuedAt,
     participant: input.participant,
+    pendingMentions: input.pendingMentions,
     jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
     repoVoidbotRoot: initialization.repoVoidbotRoot,
     birthStatusPath: initialization.birthStatusPath,
@@ -702,6 +718,7 @@ function selectReadyParticipants(
   maxJobs: number,
   completedThisTick: Set<string>,
 ): FaceHeartbeatParticipant[] {
+  const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
   const eligible = state.participants
     .filter((participant) => {
       return (
@@ -721,6 +738,12 @@ function selectReadyParticipants(
   return eligible
     .filter((participant) => participant.nextTurnAt <= state.initiativeClock)
     .sort((left, right) => {
+      const pendingDelta =
+        (pendingMentionCounts.get(right.identityId) ?? 0) -
+        (pendingMentionCounts.get(left.identityId) ?? 0);
+      if (pendingDelta !== 0) {
+        return pendingDelta;
+      }
       const readyDelta = left.nextTurnAt - right.nextTurnAt;
       if (readyDelta !== 0) {
         return readyDelta;
@@ -736,12 +759,45 @@ function selectReadyParticipants(
     .slice(0, maxJobs);
 }
 
+function applyPendingMentionPriority(state: FaceHeartbeatState): void {
+  const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
+  for (const participant of state.participants) {
+    if (
+      participant.status === "active" &&
+      participant.currentLoad < 1 &&
+      (pendingMentionCounts.get(participant.identityId) ?? 0) > 0
+    ) {
+      participant.nextTurnAt = Math.min(participant.nextTurnAt, state.initiativeClock);
+    }
+  }
+}
+
+function pendingMentionsForParticipant(
+  state: FaceHeartbeatState,
+  identityId: string,
+): RepoFacePendingMention[] {
+  return state.pendingMentions
+    .filter((mention) => mention.identityId === identityId)
+    .sort((left, right) => Date.parse(left.queuedAt) - Date.parse(right.queuedAt));
+}
+
+function countPendingMentionsByIdentity(
+  pendingMentions: RepoFacePendingMention[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const mention of pendingMentions) {
+    counts.set(mention.identityId, (counts.get(mention.identityId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 function buildHeartbeatPrompt(input: {
   identity: RepoDiscordIdentity;
   faceStatePath: string;
   channelId: string;
   queuedAt: string;
   participant: FaceHeartbeatParticipant;
+  pendingMentions: RepoFacePendingMention[];
   jurisdictionDive: JurisdictionDiveDirective;
   repoVoidbotRoot?: string;
   birthStatusPath?: string;
@@ -767,21 +823,43 @@ function buildHeartbeatPrompt(input: {
       interruptThreshold: input.participant.interruptThreshold,
       queuedCount: input.participant.queuedCount,
       groups: input.participant.groups,
+      pendingMentionCount: input.pendingMentions.length,
       jurisdictionDiveDue: input.jurisdictionDive.due,
       jurisdictionDiveCadence: input.jurisdictionDive.cadence,
     })}.`,
     `Read Face state with read_repo_face_state for identity "${input.identity.id}".`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation.",
+    renderPendingMentionDirective(input.identity, input.pendingMentions),
     input.jurisdictionDive.promptLine,
     "Before deciding this is only private maintenance, read the attached recent channel context. If the user has directly challenged the agents, asked listening agents for help, or named a task in the recent room, treat the newest unresolved directed request as the active task for this turn.",
     "Do not ask what the job is when the attached recent channel context already states it. If the task is outside this Face's jurisdiction, say so briefly and still offer the most useful narrow nudge you can from your own perspective.",
     "Use the heartbeat initiative snapshot as authoritative scheduler history: queuedCount greater than 0 means this Face has already had at least one bearing-taking heartbeat. If queuedCount is greater than 0 and the Face state shows no public speech receipt or clear memory that it already introduced itself, a brief in-channel introduction is warranted now.",
     "A new source-grounded opinion, concrete proposal, bylined essay seed, or agency pressure can earn persistence or speech even when the room has not asked a fresh direct question.",
-    `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","content":"..."}; the worker owns delivery and receipt recording.`,
+    `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; the worker owns delivery and receipt recording.`,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");
+}
+
+function renderPendingMentionDirective(
+  identity: RepoDiscordIdentity,
+  pendingMentions: RepoFacePendingMention[],
+): string {
+  if (pendingMentions.length === 0) {
+    return "No queued direct mentions are attached to this turn.";
+  }
+
+  const newest = pendingMentions[pendingMentions.length - 1];
+  const mentionLines = pendingMentions.map((mention, index) =>
+    `${index + 1}. messageId=${mention.messageId}; channelId=${mention.channelId}; author=${mention.authorName ?? mention.authorId}; queuedAt=${mention.queuedAt}; prompt=${JSON.stringify(mention.visiblePrompt)}`,
+  );
+
+  return [
+    `Queued direct mentions for ${identity.displayName} are attached to this heartbeat. These are obligations, not ambient chat. Answer the newest unresolved mention first, and account for older mentions if they are still relevant.`,
+    ...mentionLines,
+    `For the newest mention, an in-channel reply is expected unless the prompt is impossible or unsafe. Use the final sentinel with replyToMessageId "${newest.messageId}" and channelId "${newest.channelId}".`,
+  ].join("\n");
 }
 
 interface JurisdictionDiveDirective {
@@ -871,6 +949,9 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
         lastTickAt: parsed.lastTickAt,
         participants: Array.isArray(parsed.participants) ? parsed.participants as FaceHeartbeatParticipant[] : [],
         history: Array.isArray(parsed.history) ? parsed.history : [],
+        pendingMentions: Array.isArray(parsed.pendingMentions)
+          ? parsed.pendingMentions.filter(isRepoFacePendingMention)
+          : [],
       };
     }
     if (Array.isArray(parsed.participants)) {
@@ -887,6 +968,7 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
     globalHeat: 1,
     participants: [],
     history: [],
+    pendingMentions: [],
   };
 }
 
@@ -943,6 +1025,9 @@ function migrateLegacyHeartbeatState(
     globalHeat: 1,
     lastTickAt: parsed.lastTickAt,
     participants,
+    pendingMentions: Array.isArray(parsed.pendingMentions)
+      ? parsed.pendingMentions.filter(isRepoFacePendingMention)
+      : [],
     history: [
       ...(Array.isArray(parsed.history) ? parsed.history : []),
       {
@@ -953,6 +1038,24 @@ function migrateLegacyHeartbeatState(
       },
     ].slice(-80),
   };
+}
+
+function isRepoFacePendingMention(value: unknown): value is RepoFacePendingMention {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.identityId === "string" &&
+    typeof record.channelId === "string" &&
+    typeof record.messageId === "string" &&
+    typeof record.authorId === "string" &&
+    typeof record.content === "string" &&
+    typeof record.visiblePrompt === "string" &&
+    typeof record.queuedAt === "string"
+  );
 }
 
 function initiativeSpeedFor(
