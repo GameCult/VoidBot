@@ -28,6 +28,7 @@ import type { SourceMessage } from "@voidbot/shared";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
+const MIN_STALE_ACTIVE_JOB_MS = 45 * 60_000;
 
 interface FaceHeartbeatParticipant {
   identityId: string;
@@ -62,6 +63,20 @@ interface FaceHeartbeatState {
   participants: FaceHeartbeatParticipant[];
   history: Array<Record<string, unknown>>;
   pendingMentions: RepoFacePendingMention[];
+}
+
+interface ActiveTurnScan {
+  active: Map<string, string>;
+  staleRecovered: StaleActiveTurn[];
+}
+
+interface StaleActiveTurn {
+  identityId: string;
+  jobId: string;
+  requestMessageId?: string;
+  state: string;
+  updatedAt?: string;
+  ageMinutes: number;
 }
 
 interface RepoFaceChannelPlan {
@@ -135,9 +150,21 @@ async function main(): Promise<void> {
   const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state);
   const now = new Date();
   advanceInitiativeClockFromWallClock(state, now);
-  const pendingJobs = dryRun
-    ? new Map<string, string>()
+  const activeTurnScan = dryRun
+    ? { active: new Map<string, string>(), staleRecovered: [] }
     : await listExistingActiveTurns(config.databaseDsn, config.stateStorageBackend, config);
+  for (const stale of activeTurnScan.staleRecovered) {
+    state.history.push({
+      type: "stale_active_turn_recovered",
+      identityId: stale.identityId,
+      activeJobId: stale.jobId,
+      requestMessageId: stale.requestMessageId,
+      jobState: stale.state,
+      jobUpdatedAt: stale.updatedAt,
+      ageMinutes: stale.ageMinutes,
+      recoveredAt: now.toISOString(),
+    });
+  }
 
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
   state.globalHeat = config.repoFaceHeartbeats.globalHeat;
@@ -152,7 +179,12 @@ async function main(): Promise<void> {
     config.repoFaceHeartbeats.baseRecoveryMinutes,
     config.repoFaceHeartbeats.globalHeat,
   ).map((participant) =>
-    applyActiveTurnFreeze(participant, pendingJobs.get(participant.identityId), state, completedThisTick),
+    applyActiveTurnFreeze(
+      participant,
+      activeTurnScan.active.get(participant.identityId),
+      state,
+      completedThisTick,
+    ),
   );
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
@@ -957,7 +989,7 @@ async function listExistingActiveTurns(
   databaseDsn: string,
   stateStorageBackend: "file" | "postgres",
   config: ReturnType<typeof loadConfig>,
-): Promise<Map<string, string>> {
+): Promise<ActiveTurnScan> {
   const storage = await createStateStorage({
     backend: stateStorageBackend,
     databaseDsn,
@@ -969,6 +1001,9 @@ async function listExistingActiveTurns(
   try {
     const jobs = await storage.jobQueue.listByStates(["approved", "running"]);
     const active = new Map<string, string>();
+    const staleRecovered: StaleActiveTurn[] = [];
+    const staleAfterMs = Math.max(MIN_STALE_ACTIVE_JOB_MS, config.codexExecTimeoutMs * 3);
+    const nowMs = Date.now();
     for (const job of jobs) {
       if (job.command !== HEARTBEAT_COMMAND) {
         continue;
@@ -978,6 +1013,24 @@ async function listExistingActiveTurns(
         job.requestMessageId?.match(/^repo-face-heartbeat:([^:]+):/) ??
         job.requestMessageId?.match(/:repo-face:([^:]+):\d+$/);
       if (match) {
+        const updatedMs = Date.parse(job.updatedAt);
+        const ageMs = Number.isFinite(updatedMs) ? nowMs - updatedMs : Number.POSITIVE_INFINITY;
+        if (ageMs > staleAfterMs) {
+          const ageMinutes = Number.isFinite(ageMs) ? Math.round((ageMs / 60_000) * 10) / 10 : -1;
+          await storage.jobQueue.markFailed(
+            job.id,
+            `Repo Face CTB recovered stale active heartbeat job after ${ageMinutes} minutes without progress.`,
+          );
+          staleRecovered.push({
+            identityId: match[1],
+            jobId: job.id,
+            requestMessageId: job.requestMessageId,
+            state: job.state,
+            updatedAt: job.updatedAt,
+            ageMinutes,
+          });
+          continue;
+        }
         active.set(match[1], job.id);
       }
     }
@@ -985,7 +1038,7 @@ async function listExistingActiveTurns(
     if (voidLock) {
       active.set("void", "lock:moderation-rumination");
     }
-    return active;
+    return { active, staleRecovered };
   } finally {
     await storage.close();
   }
