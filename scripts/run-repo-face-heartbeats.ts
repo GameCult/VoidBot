@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -78,6 +78,34 @@ interface RepoFaceChannelOption {
   speechThreshold: "very_low" | "low" | "medium" | "high";
   speedMultiplier: number;
   posture?: string;
+}
+
+interface BifrostGovernanceDigest {
+  generatedAt: string;
+  topics: BifrostGovernanceTopic[];
+}
+
+interface BifrostGovernanceTopic {
+  id: string;
+  title: string;
+  jurisdictionRepoName: string;
+  jurisdictionAgentIdentity?: string;
+  status: string;
+  summaryMarkdown: string;
+  priority: number;
+  updatedAt: string;
+  approvedByAgent?: string;
+  dispatchRequestId?: string;
+  comments?: BifrostGovernanceComment[];
+}
+
+interface BifrostGovernanceComment {
+  id: string;
+  authorKind: string;
+  authorId: string;
+  stance: string;
+  bodyMarkdown: string;
+  createdAt: string;
 }
 
 interface ChannelSnapshot {
@@ -340,12 +368,19 @@ async function queueRepoFaceTurn(input: {
     botToken: input.config.botToken,
     channelId,
     limit: 15,
+    ignoreBotMessages: channelId === input.config.bifrostDiscordChannelId,
   });
   const channelSnapshots = await fetchChannelSnapshots({
     botToken: input.config.botToken,
     channelIds: channelPlan.snapshotChannelIds,
     primaryChannelId: channelId,
     limit: 6,
+    bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
+  });
+  const bifrostDigest = await fetchBifrostGovernanceDigest({
+    bifrostRoot: input.config.bifrostRoot,
+    repoName: identity.repoName,
+    agentIdentity: identity.id,
   });
   const faceStatePath = resolveRepoFaceStatePath(identity, input.config.storageRoot);
   const faceSelfState = await loadRepoFaceSelfStateContext({
@@ -361,6 +396,7 @@ async function queueRepoFaceTurn(input: {
     channelPlan,
     channelSnapshots,
     recentMessages,
+    bifrostDigest,
     queuedAt: input.queuedAt,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -659,6 +695,7 @@ async function fetchRecentDiscordMessages(input: {
   botToken?: string;
   channelId: string;
   limit: number;
+  ignoreBotMessages?: boolean;
 }): Promise<SourceMessage[]> {
   if (!input.botToken) {
     return [];
@@ -678,6 +715,7 @@ async function fetchRecentDiscordMessages(input: {
 
   const messages = await response.json() as DiscordApiMessage[];
   return messages
+    .filter((message) => !(input.ignoreBotMessages && message.author.bot === true))
     .map((message) => ({
       id: message.id,
       authorId: message.author.id,
@@ -694,6 +732,7 @@ async function fetchChannelSnapshots(input: {
   channelIds: string[];
   primaryChannelId: string;
   limit: number;
+  bifrostDiscordChannelId?: string;
 }): Promise<ChannelSnapshot[]> {
   const snapshots: ChannelSnapshot[] = [];
   for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId).slice(0, 5)) {
@@ -704,6 +743,7 @@ async function fetchChannelSnapshots(input: {
           botToken: input.botToken,
           channelId,
           limit: input.limit,
+          ignoreBotMessages: channelId === input.bifrostDiscordChannelId,
         }),
       });
     } catch (error) {
@@ -722,6 +762,68 @@ async function fetchChannelSnapshots(input: {
     }
   }
   return snapshots;
+}
+
+async function fetchBifrostGovernanceDigest(input: {
+  bifrostRoot: string;
+  repoName: string;
+  agentIdentity: string;
+}): Promise<BifrostGovernanceDigest | undefined> {
+  const scriptPath = resolve(input.bifrostRoot, "tools", "governance-threads.mjs");
+  const result = spawnSync(
+    process.execPath,
+    [
+      scriptPath,
+      "digest",
+      "--repo", input.repoName,
+      "--agent", input.agentIdentity,
+      "--limit", "6",
+    ],
+    {
+      cwd: input.bifrostRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      timeout: 30000,
+    },
+  );
+
+  if (result.status !== 0) {
+    return {
+      generatedAt: new Date().toISOString(),
+      topics: [{
+        id: "bifrost-digest-error",
+        title: "Bifrost governance digest unavailable",
+        jurisdictionRepoName: input.repoName,
+        jurisdictionAgentIdentity: input.agentIdentity,
+        status: "error",
+        summaryMarkdown: `Could not read Bifrost governance digest: ${result.stderr || result.error?.message || result.stdout || "unknown failure"}`,
+        priority: 0,
+        updatedAt: new Date().toISOString(),
+        comments: [],
+      }],
+    };
+  }
+
+  try {
+    return JSON.parse(result.stdout) as BifrostGovernanceDigest;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      generatedAt: new Date().toISOString(),
+      topics: [{
+        id: "bifrost-digest-parse-error",
+        title: "Bifrost governance digest parse failure",
+        jurisdictionRepoName: input.repoName,
+        jurisdictionAgentIdentity: input.agentIdentity,
+        status: "error",
+        summaryMarkdown: `Could not parse Bifrost governance digest: ${message}`,
+        priority: 0,
+        updatedAt: new Date().toISOString(),
+        comments: [],
+      }],
+    };
+  }
 }
 
 interface DiscordApiMessage {
@@ -1150,6 +1252,7 @@ function buildHeartbeatPrompt(input: {
   channelPlan: RepoFaceChannelPlan;
   channelSnapshots: ChannelSnapshot[];
   recentMessages: SourceMessage[];
+  bifrostDigest?: BifrostGovernanceDigest;
   queuedAt: string;
   participant: FaceHeartbeatParticipant;
   pendingMentions: RepoFacePendingMention[];
@@ -1186,6 +1289,7 @@ function buildHeartbeatPrompt(input: {
     `Read Face state with read_repo_face_state for identity "${input.identity.id}" when that tool is available; otherwise use the attached private persistent self-state as the already-read state projection.`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation when that tool is available. If it is unavailable, summarize the intended state change privately instead of handing off.",
     renderPendingMentionDirective(input.identity, input.pendingMentions),
+    renderBifrostGovernanceDigestDirective(input.bifrostDigest),
     renderChannelPermissionDirective(input.channelPlan, input.channelSnapshots),
     renderSocialEmbodimentDirective(input.identity),
     renderJurisdictionRespectDirective(input.identity),
@@ -1205,7 +1309,8 @@ function buildHeartbeatPrompt(input: {
     "Anti-repetition invariant: recent Face posts are social context, not a phrase template. If your proposed public line shares the same setup/punchline shape, refrain, rewrite from a different angle, or stay private.",
     "Do not let recent work-heavy context hypnotize you into sounding like a meeting transcript. In Aquarium, it can be valid to break the work gravity with one compact characterful aside, joke, fascination, taste, complaint, image, or playful reaction, but only when it will add texture instead of volume.",
     "Not every public post needs to attach itself to the current work seam. If no direct obligation is pending, you may simply share a fun thing this Face has been thinking about, a taste/preference, a tiny gripe, a weird fascination, or a light reaction to the room. Let the Face be socially present, not only useful.",
-    `If you have a concrete repo-local request that should become a Codex turn in your own workspace, do not leave it as Discord chatter or wait for a slow inspector. Output one final line beginning with VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST: followed by compact JSON like {"identity":"${input.identity.id}","title":"Short actionable title","content":"Markdown request with context, desired change, and acceptance criteria","priority":86,"channelId":"${input.channelId}","replyToMessageId":"..."}; the worker writes this directly into Bifrost intake and Bifrost dispatch opens the target Codex turn. Use this for immediately actionable repo improvements, docs, tests, proposals, research passes, or implementation cuts that belong to your jurisdiction but are not already being submitted through the PR/article sentinels below.`,
+    `If your governed opinion belongs on Bifrost, output one final line beginning with VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC: followed by compact JSON like {"identity":"${input.identity.id}","topicId":"topic_...","stance":"support|objection|question|proposal|summary","content":"Markdown comment","channelId":"${input.channelId}","replyToMessageId":"..."}; omit topicId and include "title" plus "priority" to open a new Bifrost topic in your jurisdiction. Set "approve":true only when you are the jurisdiction Face approving the topic; set "dispatch":true only when that approved topic should become a Codex update request now. Bifrost typed CultCache docs are the canonical governance surface.`,
+    `If you have a concrete repo-local request that should become a Codex turn in your own workspace, prefer posting or approving it on the canonical Bifrost topic first. If this heartbeat has enough Face-owned authority to approve immediate dispatch, output one final line beginning with VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST: followed by compact JSON like {"identity":"${input.identity.id}","title":"Short actionable title","content":"Markdown request with context, desired change, and acceptance criteria","priority":86,"channelId":"${input.channelId}","replyToMessageId":"..."}; the worker writes this into Bifrost intake and Bifrost dispatch opens the target Codex turn. Use this only for immediately actionable repo improvements, docs, tests, proposals, research passes, or implementation cuts that belong to your jurisdiction and have enough consensus/approval to leave discussion.`,
     `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; choose channelId from the channel permission plan above. The worker owns delivery and receipt recording. The content field must be only the in-character Discord message, not a job label or report header.`,
     input.githubActionsEnabled
       ? `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; Bifrost writes the proposal file on a new branch, opens a draft PR, and the worker announces the PR or branch through Bifrost's registered Discord identity bridge. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`
@@ -1432,8 +1537,41 @@ function labelForChannel(plan: RepoFaceChannelPlan, channelId: string): string {
   return plan.options.find((option) => option.channelId === channelId)?.label ?? channelId;
 }
 
-function collapseWhitespace(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+function collapseWhitespace(value: string, maxLength?: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return maxLength && normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 3)}...`
+    : normalized;
+}
+
+function renderBifrostGovernanceDigestDirective(
+  digest: BifrostGovernanceDigest | undefined,
+): string {
+  const lines = [
+    "Bifrost governance digest:",
+    "Bifrost typed CultCache topics are the canonical home for feature requests, governance discussion, Face opinions, approvals, and dispatch receipts. Discord is a human-readable mirror and evidence source, not the primary governance state.",
+    "When you have a governed opinion, support, objection, missing question, approval, or receipt, prefer making it a Bifrost topic comment. Treat mirrored agent chatter in #bifrost as already represented here, not fresh Discord consensus.",
+  ];
+
+  if (!digest || digest.topics.length === 0) {
+    return [
+      ...lines,
+      "- No recent Bifrost topics are attached for your jurisdiction.",
+    ].join("\n");
+  }
+
+  for (const topic of digest.topics) {
+    lines.push(
+      `- ${topic.id}: ${topic.title} [${topic.status}; priority=${topic.priority}; updated=${topic.updatedAt}]`,
+      `  jurisdiction=${topic.jurisdictionRepoName}${topic.jurisdictionAgentIdentity ? `/${topic.jurisdictionAgentIdentity}` : ""}${topic.approvedByAgent ? `; approvedBy=${topic.approvedByAgent}` : ""}${topic.dispatchRequestId ? `; dispatch=${topic.dispatchRequestId}` : ""}`,
+      `  summary=${collapseWhitespace(topic.summaryMarkdown, 320)}`,
+    );
+    for (const comment of (topic.comments ?? []).slice(-3)) {
+      lines.push(`  - ${comment.stance} by ${comment.authorId}: ${collapseWhitespace(comment.bodyMarkdown, 220)}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function renderPendingMentionDirective(

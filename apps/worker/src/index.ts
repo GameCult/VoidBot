@@ -48,6 +48,7 @@ const REPO_IDENTITY_ARTICLE_SENTINEL = "VOIDBOT_REPO_IDENTITY_ARTICLE:";
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
+const REPO_IDENTITY_BIFROST_TOPIC_SENTINEL = "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC:";
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -336,6 +337,7 @@ async function processJob(job: JobRecord): Promise<void> {
 
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
+      const repoIdentityBifrostTopics = parseRepoIdentityBifrostTopicIntents(finalResponse);
       const repoIdentityUpdateRequests = parseRepoIdentityUpdateRequestIntents(finalResponse);
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
         ? parseRepoIdentityArticleIntents(finalResponse)
@@ -353,18 +355,32 @@ async function processJob(job: JobRecord): Promise<void> {
       const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
       const articlePrSubmitted =
         !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
+      const bifrostTopicSubmitted =
+        !proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && repoIdentityBifrostTopics.length > 0;
       const updateRequestSubmitted =
-        !proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && repoIdentityUpdateRequests.length > 0;
+        !proposalPrSubmitted &&
+        !prCommentSubmitted &&
+        !articlePrSubmitted &&
+        !bifrostTopicSubmitted &&
+        repoIdentityUpdateRequests.length > 0;
       if (repoIdentityProposals.length > 0) {
         await writeRepoIdentityProposalPrIntent(job, repoIdentityProposals[0]);
       } else if (repoIdentityPrComments.length > 0) {
         await commentRepoIdentityPullRequestIntent(job, repoIdentityPrComments[0]);
       } else if (repoIdentityArticles.length > 0) {
         await writeRepoIdentityArticleIntent(job, repoIdentityArticles[0]);
+      } else if (repoIdentityBifrostTopics.length > 0) {
+        await submitRepoIdentityBifrostTopicIntent(job, repoIdentityBifrostTopics[0]);
       } else if (repoIdentityUpdateRequests.length > 0) {
         await enqueueRepoIdentityUpdateRequestIntent(job, repoIdentityUpdateRequests[0]);
       }
-      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && !updateRequestSubmitted) {
+      if (
+        !proposalPrSubmitted &&
+        !prCommentSubmitted &&
+        !articlePrSubmitted &&
+        !bifrostTopicSubmitted &&
+        !updateRequestSubmitted
+      ) {
         for (const post of repoIdentityPosts.slice(0, 1)) {
           await postRepoIdentityIntent(job, post);
         }
@@ -384,10 +400,12 @@ async function processJob(job: JobRecord): Promise<void> {
             proposalPrSubmitted ||
             prCommentSubmitted ||
             articlePrSubmitted ||
+            bifrostTopicSubmitted ||
             updateRequestSubmitted,
           articlePrSubmitted,
           proposalPrSubmitted,
           prCommentSubmitted,
+          bifrostTopicSubmitted,
           updateRequestSubmitted,
           ignoredGithubActionIntents,
           reason:
@@ -397,6 +415,8 @@ async function processJob(job: JobRecord): Promise<void> {
                 ? "repo_face_rumination_commented_on_pr_as_registered_identity"
               : articlePrSubmitted
                 ? "repo_face_rumination_submitted_registered_identity_article_pr"
+              : bifrostTopicSubmitted
+                ? "repo_face_rumination_submitted_bifrost_topic"
               : updateRequestSubmitted
                 ? "repo_face_rumination_enqueued_bifrost_update_request"
               : repoIdentityPosts.length > 0
@@ -611,6 +631,20 @@ interface RepoIdentityUpdateRequestIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityBifrostTopicIntent {
+  identity?: string;
+  topicId?: string;
+  title?: string;
+  content: string;
+  stance?: string;
+  priority?: number;
+  approve?: boolean;
+  dispatch?: boolean;
+  sourceMessageIds: string[];
+  channelId?: string;
+  replyToMessageId?: string;
+}
+
 interface BifrostBridgeReceipt {
   action?: string;
   ok?: boolean;
@@ -627,6 +661,15 @@ interface BifrostUpdateRequestReceipt {
   targetRepoName: string;
   targetAgentIdentity?: string;
   priority: number;
+}
+
+interface BifrostGovernanceTopicReceipt {
+  id: string;
+  status: string;
+  title: string;
+  jurisdictionRepoName: string;
+  jurisdictionAgentIdentity?: string;
+  dispatchRequestId?: string;
 }
 
 async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
@@ -936,6 +979,102 @@ async function enqueueRepoIdentityUpdateRequestIntent(
   );
 }
 
+async function submitRepoIdentityBifrostTopicIntent(
+  job: JobRecord,
+  intent: RepoIdentityBifrostTopicIntent,
+): Promise<void> {
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for Bifrost topic intent on job ${job.id}.`);
+  }
+
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for Bifrost topic intent on job ${job.id}.`);
+  }
+
+  const contentFile = await writeBifrostPayloadFile(
+    job,
+    `${identity.id}-bifrost-topic.md`,
+    ensureTrailingNewline(intent.content),
+  );
+  const sourceMessageIds = Array.from(new Set([
+    ...intent.sourceMessageIds,
+    intent.replyToMessageId,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+
+  let topicId = intent.topicId;
+  if (!topicId) {
+    if (!intent.title) {
+      throw new Error(`Bifrost topic intent for ${identity.id} on job ${job.id} needs title when topicId is absent.`);
+    }
+
+    const opened = runBifrostGovernanceThreads([
+      "open",
+      "--repo",
+      identity.repoName,
+      "--agent",
+      identity.id,
+      "--title",
+      intent.title,
+      "--summary-file",
+      contentFile,
+      "--priority",
+      String(normalizeBifrostPriority(intent.priority)),
+      "--source-kind",
+      "repo_face_heartbeat",
+      "--created-by",
+      identity.id,
+      ...(intent.channelId ?? job.outputChannelId ? ["--source-channel-id", intent.channelId ?? job.outputChannelId] : []),
+      ...(sourceMessageIds.length > 0 ? ["--source-message-ids", sourceMessageIds.join(",")] : []),
+    ]) as BifrostGovernanceTopicReceipt;
+    topicId = opened.id;
+  } else if (!intent.approve) {
+    runBifrostGovernanceThreads([
+      "comment",
+      "--topic",
+      topicId,
+      "--author",
+      identity.id,
+      "--author-kind",
+      "face",
+      "--stance",
+      normalizeBifrostTopicStance(intent.stance),
+      "--body-file",
+      contentFile,
+      ...(intent.replyToMessageId ? ["--source-message-id", intent.replyToMessageId] : []),
+    ]);
+  }
+
+  if (intent.approve) {
+    runBifrostGovernanceThreads([
+      "approve",
+      "--topic",
+      topicId,
+      "--approved-by",
+      identity.id,
+      "--body-file",
+      contentFile,
+      ...(intent.replyToMessageId ? ["--source-message-id", intent.replyToMessageId] : []),
+    ]);
+  }
+
+  let promoted: { topic?: BifrostGovernanceTopicReceipt; request?: BifrostUpdateRequestReceipt } | undefined;
+  if (intent.dispatch) {
+    promoted = runBifrostGovernanceThreads(["promote", "--topic", topicId]) as {
+      topic?: BifrostGovernanceTopicReceipt;
+      request?: BifrostUpdateRequestReceipt;
+    };
+  }
+
+  console.log(
+    promoted?.request
+      ? `Promoted Bifrost topic ${topicId} to update request ${promoted.request.id} for ${identity.id}/${identity.repoName} from job ${job.id}.`
+      : `Updated Bifrost topic ${topicId} for ${identity.id}/${identity.repoName} from job ${job.id}.`,
+  );
+}
+
 async function writeBifrostPayloadFile(job: JobRecord, fileName: string, content: string): Promise<string> {
   const directory = resolve(config.storageRoot, "artifacts", job.id, "bifrost-bridge");
   await mkdir(directory, { recursive: true });
@@ -960,6 +1099,25 @@ function runBifrostAgentTransport(args: string[]): BifrostUpdateRequestReceipt {
     return JSON.parse(result.stdout) as BifrostUpdateRequestReceipt;
   } catch {
     throw new Error(`Bifrost agent transport returned non-JSON output: ${result.stdout}`);
+  }
+}
+
+function runBifrostGovernanceThreads(args: string[]): BifrostGovernanceTopicReceipt | Record<string, unknown> {
+  const governanceScript = resolve(config.bifrostRoot, "tools", "governance-threads.mjs");
+  const result = spawnSync(process.execPath, [governanceScript, ...args], {
+    cwd: config.bifrostRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Bifrost governance thread command failed: ${result.stderr || result.stdout}`);
+  }
+
+  try {
+    return JSON.parse(result.stdout) as BifrostGovernanceTopicReceipt | Record<string, unknown>;
+  } catch {
+    throw new Error(`Bifrost governance thread command returned non-JSON output: ${result.stdout}`);
   }
 }
 
@@ -1004,6 +1162,48 @@ function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdent
         title,
         content,
         priority: typeof parsed.priority === "number" ? parsed.priority : undefined,
+        sourceMessageIds: Array.isArray(parsed.sourceMessageIds)
+          ? parsed.sourceMessageIds.filter((entry): entry is string => typeof entry === "string")
+          : [],
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
+        replyToMessageId:
+          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return intents;
+}
+
+function parseRepoIdentityBifrostTopicIntents(finalResponse: string): RepoIdentityBifrostTopicIntent[] {
+  const intents: RepoIdentityBifrostTopicIntent[] = [];
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(REPO_IDENTITY_BIFROST_TOPIC_SENTINEL)) {
+      continue;
+    }
+
+    const payload = trimmed.slice(REPO_IDENTITY_BIFROST_TOPIC_SENTINEL.length).trim();
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      const title = typeof parsed.title === "string" ? parsed.title.trim() : undefined;
+      const topicId = typeof parsed.topicId === "string" ? parsed.topicId.trim() : undefined;
+      if (!content || (!topicId && !title)) {
+        continue;
+      }
+      intents.push({
+        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        topicId,
+        title,
+        content,
+        stance: typeof parsed.stance === "string" ? parsed.stance.trim() : undefined,
+        priority: typeof parsed.priority === "number" ? parsed.priority : undefined,
+        approve: parsed.approve === true,
+        dispatch: parsed.dispatch === true,
         sourceMessageIds: Array.isArray(parsed.sourceMessageIds)
           ? parsed.sourceMessageIds.filter((entry): entry is string => typeof entry === "string")
           : [],
@@ -1168,6 +1368,22 @@ function normalizeBifrostPriority(value: number | undefined): number {
   return Math.max(1, Math.min(100, Math.round(value)));
 }
 
+function normalizeBifrostTopicStance(value: string | undefined): string {
+  const normalized = value?.trim().toLowerCase();
+  return [
+    "comment",
+    "proposal",
+    "support",
+    "objection",
+    "question",
+    "approval",
+    "summary",
+    "receipt",
+  ].includes(normalized ?? "")
+    ? normalized!
+    : "comment";
+}
+
 function resolveRepoRoot(identity: { repoName: string; repoPath?: string }): string {
   if (identity.repoPath && identity.repoPath.trim().length > 0) {
     return resolve(identity.repoPath);
@@ -1211,6 +1427,7 @@ function stripRepoIdentityPostIntents(finalResponse: string): string {
       const trimmed = line.trim();
       return (
         !trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL) &&
+        !trimmed.startsWith(REPO_IDENTITY_BIFROST_TOPIC_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_UPDATE_REQUEST_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL) &&
