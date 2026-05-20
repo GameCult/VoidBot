@@ -15,9 +15,15 @@ function main() {
     repoRoot,
     options.archivePath ?? env.RAG_ARCHIVE_PATH ?? ".voidbot/rag/messages.json",
   );
-  const messages = readArchiveMessages(archivePath);
+  const messages = options.liveDiscord
+    ? readLiveDiscordMessages(env, options)
+    : readArchiveMessages(archivePath);
   const selected = filterMessages(messages, options).slice(-options.limit);
-  const packet = buildConsensusPacket(selected, options, archivePath);
+  const packet = buildConsensusPacket(
+    selected,
+    options,
+    options.liveDiscord ? "discord-api:live" : archivePath,
+  );
   const outputPath = resolve(
     repoRoot,
     options.out ??
@@ -131,6 +137,9 @@ function parseArgs(args) {
       case "--archive-path":
         options.archivePath = requireValue(args, ++index, arg);
         break;
+      case "--live-discord":
+        options.liveDiscord = true;
+        break;
       case "--codex-executable":
         options.codexExecutable = requireValue(args, ++index, arg);
         break;
@@ -157,6 +166,9 @@ function parseArgs(args) {
         break;
       case "--bifrost-priority":
         options.bifrostPriority = parsePositiveInteger(requireValue(args, ++index, arg), arg);
+        break;
+      case "--bifrost-title":
+        options.bifrostTitle = requireValue(args, ++index, arg);
         break;
       case "--bifrost-store":
         options.bifrostStore = requireValue(args, ++index, arg);
@@ -191,7 +203,7 @@ function enqueueBifrostRequest({ options, packet, outputPath, promptPath, select
     throw new Error("--enqueue-bifrost requires --repo or a target --cwd with a final path segment.");
   }
 
-  const title = `Recent ${targetRepo} consensus for ${options.agent}`;
+  const title = options.bifrostTitle ?? buildBifrostTitle(targetRepo, options.task, options.agent);
   const priority = String(options.bifrostPriority ?? 70);
   const sourceMessageIds = selected
     .map((message) => message.id)
@@ -244,6 +256,79 @@ function enqueueBifrostRequest({ options, packet, outputPath, promptPath, select
   }
 
   process.stdout.write(`Enqueued Bifrost intake request:\n${result.stdout}`);
+}
+
+function readLiveDiscordMessages(env, options) {
+  const token = process.env.DISCORD_BOT_TOKEN ?? env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    throw new Error("--live-discord requires DISCORD_BOT_TOKEN in the environment or .env.");
+  }
+
+  const limit = Math.max(1, Math.min(100, options.limit));
+  const url = new URL(`https://discord.com/api/v10/channels/${options.channelId}/messages`);
+  url.searchParams.set("limit", String(limit));
+
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+const response = await fetch(${JSON.stringify(url.toString())}, {
+  headers: { Authorization: ${JSON.stringify(`Bot ${token}`)} },
+});
+if (!response.ok) {
+  console.error(await response.text());
+  process.exit(response.status || 1);
+}
+process.stdout.write(JSON.stringify(await response.json()));
+`,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+
+  if (child.status !== 0) {
+    throw new Error(`Discord live fetch failed with exit ${child.status ?? "unknown"}: ${child.stderr || child.stdout}`);
+  }
+
+  return JSON.parse(child.stdout).map((message) => ({
+    id: message.id,
+    channelId: options.channelId,
+    authorId: message.author?.id ?? "",
+    authorName: message.author?.global_name ?? message.member?.nick ?? message.author?.username ?? "unknown",
+    content: message.content ?? "",
+    timestamp: message.timestamp,
+  }));
+}
+
+function buildBifrostTitle(repo, task, agent) {
+  const topic = summarizeTaskForTitle(task);
+  return topic || `update request for ${agent} in ${repo}`;
+}
+
+function summarizeTaskForTitle(task) {
+  const normalized = String(task ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const match =
+    normalized.match(/^Implement the ([^:]+?) as /i) ??
+    normalized.match(/^Update ([^:]+?) from /i) ??
+    normalized.match(/^Add (.+?)(?:\.|$)/i);
+  return truncateTitle(stripTrailingRepoName(match?.[1] ?? normalized), 96);
+}
+
+function truncateTitle(value, maxLength) {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+}
+
+function stripTrailingRepoName(value) {
+  return value.replace(/\s+for\s+[A-Z][A-Za-z0-9._-]+$/g, "");
 }
 
 function buildConsensusPacket(messages, options, archivePath) {
@@ -475,10 +560,12 @@ Options:
   --after <iso>               Use messages after an ISO timestamp instead of --hours.
   --limit <number>            Max messages. Defaults to 80.
   --out <path>                Packet output path.
+  --live-discord              Read the latest channel messages from Discord API instead of the archive.
   --execute                   Feed the generated prompt to codex exec.
   --enqueue-bifrost           Enqueue the generated packet into Bifrost intake.
   --bifrost-root <path>       Bifrost repo root. Defaults to E:/Projects/Bifrost.
   --bifrost-priority <number> Priority for --enqueue-bifrost. Defaults to 70.
+  --bifrost-title <text>      Explicit title for the queued Bifrost request.
   --bifrost-store <path>      Override Bifrost .cc store path, mainly for tests.
   --sandbox <profile>         Codex sandbox for --execute. Defaults to read-only.
 `);
