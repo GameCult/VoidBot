@@ -10,8 +10,9 @@ $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
-$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 $runnerScript = Join-Path $PSScriptRoot "run-repo-face-heartbeats.ts"
+$runnerWrapper = Join-Path $PSScriptRoot "run-repo-face-heartbeats.ps1"
+$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 
 function Read-DotEnv {
   param([Parameter(Mandatory = $true)][string] $Path)
@@ -52,13 +53,22 @@ if ($intervalMinutesValue -lt 1) {
   throw "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES must be at least 1."
 }
 
-$tsxPath = Join-Path $repoRoot "node_modules\.bin\tsx.cmd"
-if (-not (Test-Path -LiteralPath $tsxPath)) {
-  throw "Missing tsx launcher at $tsxPath. Run npm install first."
+$tsxCliPath = Join-Path $repoRoot "node_modules\tsx\dist\cli.mjs"
+if (-not (Test-Path -LiteralPath $tsxCliPath)) {
+  throw "Missing tsx CLI at $tsxCliPath. Run npm install first."
+}
+if (-not (Test-Path -LiteralPath $runnerWrapper)) {
+  throw "Missing repo Face heartbeat PowerShell wrapper at $runnerWrapper."
+}
+if (-not (Test-Path -LiteralPath $hiddenLauncher)) {
+  throw "Missing hidden PowerShell launcher at $hiddenLauncher."
 }
 
 $startAt = (Get-Date).AddMinutes(3)
-$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"& '$tsxPath' '$runnerScript'`"" -WorkingDirectory $repoRoot
+$action = New-ScheduledTaskAction `
+  -Execute "wscript.exe" `
+  -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runnerWrapper`"" `
+  -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutesValue) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
