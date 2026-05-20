@@ -33,6 +33,11 @@ $lastMessagePath = Join-Path $statusDir "moderation-rumination-last-message.txt"
 $operationOutputPath = Join-Path $statusDir "moderation-rumination-operations.json"
 $contextPath = Join-Path $statusDir "moderation-rumination-context.json"
 $lockPath = Join-Path $statusDir "moderation-rumination.lock"
+$pendingMentionsPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_PENDING_MENTIONS_PATH)) {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_RUMINATION_PENDING_MENTIONS_PATH)
+} else {
+  Join-Path $statusDir "void-moderation-pending-mentions.json"
+}
 $promptTemplatePath = Join-Path $repoRoot "prompts\void-moderator-rumination.md"
 $contextProjectionScriptPath = Join-Path $repoRoot "scripts\lib\void-rumination-context-projection.ps1"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
@@ -195,7 +200,9 @@ function Invoke-CodexExec {
     [Parameter(Mandatory = $true)]
     [string] $WorkingDirectory,
     [Parameter(Mandatory = $true)]
-    [string] $InputText
+    [string] $InputText,
+    [Parameter(Mandatory = $true)]
+    [int] $TimeoutSeconds
   )
 
   $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -229,7 +236,15 @@ function Invoke-CodexExec {
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
 
-    $process.WaitForExit()
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      try {
+        $process.Kill($true)
+      } catch {
+        $process.Kill()
+      }
+      $process.WaitForExit()
+      throw "Codex rumination exceeded timeout of $TimeoutSeconds seconds."
+    }
     $stdoutTask.Wait()
     $stderrTask.Wait()
 
@@ -757,6 +772,86 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
   return Convert-LastSpeechToSpokenCandidateOperation -InterventionId $interventionId -Speech $speech
 }
 
+function Test-LockProcessAlive {
+  param($LockRecord)
+
+  $lockPid = Get-ObjectPropertyValue -Value $LockRecord -Name "pid"
+  if ($null -eq $lockPid) {
+    return $false
+  }
+
+  try {
+    $process = Get-Process -Id ([int]$lockPid) -ErrorAction Stop
+    return $null -ne $process
+  } catch {
+    return $false
+  }
+}
+
+function Test-LockWithinRuntimeLimit {
+  param(
+    $LockRecord,
+    [Parameter(Mandatory = $true)]
+    [int] $MaxRuntimeMinutes
+  )
+
+  $startedAtRaw = Get-ObjectPropertyString -Value $LockRecord -Name "startedAt"
+  if ([string]::IsNullOrWhiteSpace($startedAtRaw)) {
+    return $false
+  }
+
+  try {
+    $startedAt = [DateTime]::Parse($startedAtRaw).ToUniversalTime()
+  } catch {
+    return $false
+  }
+
+  return (([DateTime]::UtcNow - $startedAt).TotalMinutes -lt $MaxRuntimeMinutes)
+}
+
+function Test-ActiveLock {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Path,
+    [Parameter(Mandatory = $true)]
+    [int] $MaxRuntimeMinutes
+  )
+
+  if (-not (Test-Path $Path)) {
+    return $false
+  }
+
+  $lockRecord = Read-JsonFile -Path $Path
+  return (Test-LockProcessAlive -LockRecord $lockRecord) -and
+    (Test-LockWithinRuntimeLimit -LockRecord $lockRecord -MaxRuntimeMinutes $MaxRuntimeMinutes)
+}
+
+function Assert-SpokenCandidateApplied {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $InterventionId,
+    [Parameter(Mandatory = $true)]
+    [string] $ReceiptKey
+  )
+
+  $state = (Get-TypedSelfState).typedState
+  $candidate = @(
+    @(Convert-ToValueArray -Value $state.candidateInterventions.interventions) |
+      Where-Object { (Get-ObjectPropertyString -Value $_ -Name "interventionId") -eq $InterventionId }
+  )[0]
+  $receipt = @(
+    @(Convert-ToValueArray -Value $state.speechReceipts.recentReceipts) |
+      Where-Object { (Get-ObjectPropertyString -Value $_ -Name "receiptKey") -eq $ReceiptKey }
+  )[0]
+
+  if ($null -eq $candidate -or (Get-ObjectPropertyString -Value $candidate -Name "status") -ne "spoken") {
+    throw "Delivery receipt '$ReceiptKey' was recorded without retiring candidate '$InterventionId' as spoken."
+  }
+  if ($null -eq $receipt -or (Get-ObjectPropertyString -Value $receipt -Name "candidateInterventionId") -ne $InterventionId) {
+    throw "Candidate '$InterventionId' was marked spoken without a linked delivery receipt '$ReceiptKey'."
+  }
+}
+
 trap {
   $finishedAtUtc = [DateTime]::UtcNow
   $failureMessage = $_.Exception.Message
@@ -781,14 +876,34 @@ trap {
 
 New-Item -ItemType Directory -Force -Path $statusDir, $logDir, (Split-Path -Parent $stateFilePath) | Out-Null
 
+$maxRuntimeMinutes = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_MAX_RUNTIME_MINUTES)) {
+  [int]$env:VOID_RUMINATION_MAX_RUNTIME_MINUTES
+} else {
+  15
+}
+
 if (Test-Path $lockPath) {
-  $lockAge = [DateTime]::UtcNow - (Get-Item $lockPath).LastWriteTimeUtc
-  if ($lockAge.TotalMinutes -lt 20) {
+  $existingLock = Read-JsonFile -Path $lockPath
+  $lockProcessAlive = Test-LockProcessAlive -LockRecord $existingLock
+  if ($lockProcessAlive -and (Test-LockWithinRuntimeLimit -LockRecord $existingLock -MaxRuntimeMinutes $maxRuntimeMinutes)) {
     Write-JsonFile -Path $statusPath -Data @{
       status = "skipped"
       reason = "lock_present"
       observedAt = ([DateTime]::UtcNow.ToString("o"))
       stateFile = $stateFilePath
+    }
+    return
+  }
+  if ($lockProcessAlive) {
+    Write-JsonFile -Path $statusPath -Data @{
+      status = "skipped"
+      reason = "lock_over_runtime_active"
+      observedAt = ([DateTime]::UtcNow.ToString("o"))
+      stateFile = $stateFilePath
+      lockPath = $lockPath
+      maxRuntimeMinutes = $maxRuntimeMinutes
+      pid = Get-ObjectPropertyValue -Value $existingLock -Name "pid"
+      startedAt = Get-ObjectPropertyString -Value $existingLock -Name "startedAt"
     }
     return
   }
@@ -798,6 +913,13 @@ if (Test-Path $lockPath) {
 Write-JsonFile -Path $lockPath -Data @{
   pid = $PID
   startedAt = $startedAtUtc.ToString("o")
+}
+Write-JsonFile -Path $statusPath -Data @{
+  status = "starting"
+  startedAt = $startedAtUtc.ToString("o")
+  stateFile = $stateFilePath
+  lockPath = $lockPath
+  pid = $PID
 }
 
 if (Test-Path $operationOutputPath) {
@@ -841,6 +963,13 @@ $codexExecArgs = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXEC_ARGS)) {
   Split-CommandArgs -Value $envValues["CODEX_EXEC_ARGS"]
 } else {
   @()
+}
+$codexTimeoutSeconds = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_CODEX_TIMEOUT_SECONDS)) {
+  [int]$env:VOID_RUMINATION_CODEX_TIMEOUT_SECONDS
+} elseif ($envValues.ContainsKey("VOID_RUMINATION_CODEX_TIMEOUT_SECONDS") -and -not [string]::IsNullOrWhiteSpace($envValues["VOID_RUMINATION_CODEX_TIMEOUT_SECONDS"])) {
+  [int]$envValues["VOID_RUMINATION_CODEX_TIMEOUT_SECONDS"]
+} else {
+  [Math]::Max(60, $maxRuntimeMinutes * 60)
 }
 $publicRoomChannelId = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_CHANNEL_ID" -Values $envValues
 $publicRoomPersonaName = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_PERSONA_NAME" -Values $envValues
@@ -892,6 +1021,15 @@ try {
   }
 }
 
+$pendingMentions = @()
+$pendingMentionPacket = Read-JsonFile -Path $pendingMentionsPath
+if ($null -ne $pendingMentionPacket) {
+  $pendingMentionsValue = Get-ObjectPropertyValue -Value $pendingMentionPacket -Name "pendingMentions"
+  if ($null -ne $pendingMentionsValue) {
+    $pendingMentions = @(Convert-ToValueArray -Value $pendingMentionsValue)
+  }
+}
+
 Write-JsonFile -Path $contextPath -Data @{
   generated = "now"
   stateFile = $stateFilePath
@@ -905,6 +1043,7 @@ Write-JsonFile -Path $contextPath -Data @{
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
   speechPressureObligations = $speechPressureObligations
+  pendingMentions = $pendingMentions
   publicSpeechTarget = Project-PublicSpeechTargetForRumination -ChannelId $publicRoomChannelId -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
   deliverableCandidateCount = [int]$deliverableCandidates.Count
   candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
@@ -990,7 +1129,7 @@ if ($SkipModel) {
     "-"
   )
 
-  $execution = Invoke-CodexExec -Executable $codexExecutable -Arguments $codexArgs -WorkingDirectory $repoRoot -InputText $prompt
+  $execution = Invoke-CodexExec -Executable $codexExecutable -Arguments $codexArgs -WorkingDirectory $repoRoot -InputText $prompt -TimeoutSeconds $codexTimeoutSeconds
   $exitCode = $execution.ExitCode
   $combinedText = (($execution.StdOut, $execution.StdErr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
 }
@@ -1073,6 +1212,7 @@ if (-not $NoPost) {
     $spokenOperation = Invoke-CandidateInterventionDeliveryFromIntervention -Intervention $candidate
     if ($null -ne $spokenOperation) {
       $appliedOperations += Apply-TypedOperation -Operation $spokenOperation
+      Assert-SpokenCandidateApplied -InterventionId $spokenOperation.interventionId -ReceiptKey $spokenOperation.receipt.receiptKey
       $deliveredCandidateCount += 1
     }
   }

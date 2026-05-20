@@ -12,9 +12,13 @@ import {
   ContextBuilder,
   createStateStorage,
   ensureRepoFaceInitialized,
+  getRepoDiscordIdentityAllowedChannelIds,
+  projectRepoFaceSleepCycleForNow,
+  applyVoidSelfStateOperation,
   loadRepoDiscordIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
+  type RepoFaceRestSnapshot,
   renderFaceIdentityDoctrine,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
@@ -60,6 +64,27 @@ interface FaceHeartbeatState {
   pendingMentions: RepoFacePendingMention[];
 }
 
+interface RepoFaceChannelPlan {
+  primaryChannelId?: string;
+  snapshotChannelIds: string[];
+  options: RepoFaceChannelOption[];
+  lowThresholdTopics: string[];
+}
+
+interface RepoFaceChannelOption {
+  channelId: string;
+  label: string;
+  topic: string;
+  speechThreshold: "very_low" | "low" | "medium" | "high";
+  speedMultiplier: number;
+  posture?: string;
+}
+
+interface ChannelSnapshot {
+  channelId: string;
+  messages: SourceMessage[];
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const dryRun = process.argv.includes("--dry-run");
@@ -79,7 +104,9 @@ async function main(): Promise<void> {
 
   const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
+  const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state);
   const now = new Date();
+  advanceInitiativeClockFromWallClock(state, now);
   const pendingJobs = dryRun
     ? new Map<string, string>()
     : await listExistingActiveTurns(config.databaseDsn, config.stateStorageBackend, config);
@@ -99,12 +126,14 @@ async function main(): Promise<void> {
   ).map((participant) =>
     applyActiveTurnFreeze(participant, pendingJobs.get(participant.identityId), state, completedThisTick),
   );
+  rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
 
   const selected = selectReadyParticipants(
     state,
     config.repoFaceHeartbeats.maxJobsPerTick,
     completedThisTick,
+    restStates,
   );
   const queuedIdentityIds: string[] = [];
 
@@ -225,6 +254,7 @@ interface ParticipantSpec {
   repoName: string;
   displayName: string;
   allowedChannelIds: string[];
+  channelSpeedMultiplier: number;
   identity?: RepoDiscordIdentity;
 }
 
@@ -237,6 +267,7 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
       repoName: "VoidBot",
       displayName: "Void",
       allowedChannelIds: [],
+      channelSpeedMultiplier: 1,
     },
     ...identities.map((identity) => ({
       id: identity.id,
@@ -244,7 +275,8 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
       turnKind: "repo_face_rumination" as const,
       repoName: identity.repoName,
       displayName: identity.displayName,
-      allowedChannelIds: identity.allowedChannelIds,
+      allowedChannelIds: getRepoDiscordIdentityAllowedChannelIds(identity),
+      channelSpeedMultiplier: channelSpeedMultiplierFor(identity),
       identity,
     })),
   ];
@@ -262,7 +294,11 @@ async function queueParticipantTurn(input: {
     case "repo_face_rumination":
       return queueRepoFaceTurn(input);
     case "void_moderation":
-      return startVoidModerationTurn(input.queuedAt, input.config.storageRoot);
+      return startVoidModerationTurn({
+        queuedAt: input.queuedAt,
+        storageRoot: input.config.storageRoot,
+        pendingMentions: input.pendingMentions,
+      });
   }
 }
 
@@ -273,13 +309,14 @@ async function queueRepoFaceTurn(input: {
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
   queuedAt: string;
-}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string }> {
+}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   const identity = input.registryIdentities.find((entry) => entry.id === input.participant.identityId);
   if (!identity) {
     return { created: false };
   }
 
-  const channelId = identity.allowedChannelIds[0] ?? input.config.repoFaceHeartbeats.defaultChannelId;
+  const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
+  const channelId = channelPlan.primaryChannelId;
   if (!channelId) {
     input.participant.status = "blocked";
     input.participant.constraints = mergeStrings(
@@ -304,6 +341,12 @@ async function queueRepoFaceTurn(input: {
     channelId,
     limit: 15,
   });
+  const channelSnapshots = await fetchChannelSnapshots({
+    botToken: input.config.botToken,
+    channelIds: channelPlan.snapshotChannelIds,
+    primaryChannelId: channelId,
+    limit: 6,
+  });
   const faceStatePath = resolveRepoFaceStatePath(identity, input.config.storageRoot);
   const faceSelfState = await loadRepoFaceSelfStateContext({
     identity,
@@ -315,6 +358,9 @@ async function queueRepoFaceTurn(input: {
     identity,
     faceStatePath,
     channelId,
+    channelPlan,
+    channelSnapshots,
+    recentMessages,
     queuedAt: input.queuedAt,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -375,7 +421,18 @@ async function loadRepoFaceSelfStateContext(input: {
         publicDescription: input.identity.description,
       },
     });
-    return buildVoidSelfStateContext(typedState, {
+    const normalizedSleep = projectRepoFaceSleepCycleForNow(
+      typedState.scheduledRuntime.sleepCycle,
+      input.identity.id,
+      new Date(),
+    );
+    return buildVoidSelfStateContext({
+      ...typedState,
+      scheduledRuntime: {
+        ...typedState.scheduledRuntime,
+        sleepCycle: normalizedSleep.sleepCycle,
+      },
+    }, {
       sourcePath: input.statePath,
       guildContext: {
         channelId: input.channelId,
@@ -394,6 +451,208 @@ async function loadRepoFaceSelfStateContext(input: {
     }
     throw error;
   }
+}
+
+async function loadRepoFaceRestStates(
+  identities: RepoDiscordIdentity[],
+  storageRoot: string,
+  heartbeatState: FaceHeartbeatState,
+): Promise<Map<string, RepoFaceRestSnapshot>> {
+  const restStates = new Map<string, RepoFaceRestSnapshot>();
+  const now = new Date();
+
+  for (const identity of identities) {
+    try {
+      const statePath = resolveRepoFaceStatePath(identity, storageRoot);
+      const typedState = await loadVoidSelfStateTypedDocuments({
+        canonicalPath: statePath,
+        identity: {
+          agentId: identity.id,
+          publicName: identity.displayName,
+          publicDescription: identity.description,
+        },
+      });
+      const projected = projectRepoFaceSleepCycleForNow(
+        typedState.scheduledRuntime.sleepCycle,
+        identity.id,
+        now,
+      );
+      if (!sleepCyclesEqual(typedState.scheduledRuntime.sleepCycle, projected.sleepCycle)) {
+        await applyVoidSelfStateOperation(
+          {
+            canonicalPath: statePath,
+            identity: {
+              agentId: identity.id,
+              publicName: identity.displayName,
+              publicDescription: identity.description,
+            },
+          },
+          {
+            operation: "update_sleep_cycle",
+            sleepCycle: projected.sleepCycle,
+          },
+        );
+      }
+      const maintenance = await maybeStartRepoFaceMemoryMaintenance({
+        identity,
+        statePath,
+        typedState,
+        projectedRest: projected,
+      });
+      if (maintenance.started || maintenance.failureReason) {
+        heartbeatState.history.push({
+          type: maintenance.started ? "repo_face_memory_maintenance_started" : "repo_face_memory_maintenance_failed_to_start",
+          identityId: identity.id,
+          observedAt: now.toISOString(),
+          reason: maintenance.reason,
+          statusPath: maintenance.statusPath,
+          pid: maintenance.pid,
+          failureReason: maintenance.failureReason,
+        });
+      }
+      restStates.set(identity.id, {
+        isNapping: projected.isNapping,
+        napEndsAt: projected.napEndsAt,
+        nextNapStartsAt: projected.nextNapStartsAt,
+      });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  return restStates;
+}
+
+async function maybeStartRepoFaceMemoryMaintenance(input: {
+  identity: RepoDiscordIdentity;
+  statePath: string;
+  typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>;
+  projectedRest: RepoFaceRestSnapshot;
+}): Promise<{
+  started: boolean;
+  reason?: string;
+  statusPath?: string;
+  pid?: number;
+  failureReason?: string;
+}> {
+  const shortTerm = input.typedState.thoughtMemory.shortTerm ?? [];
+  if (shortTerm.length === 0) {
+    return { started: false, reason: "no_short_term_memory" };
+  }
+
+  const oldestShortTermMs = Math.min(
+    ...shortTerm.map((memory) => Date.parse(memory.updatedAt)).filter(Number.isFinite),
+  );
+  const hasStaleShortTerm =
+    Number.isFinite(oldestShortTermMs) &&
+    Date.now() - oldestShortTermMs >= 6 * 60 * 60 * 1000;
+  if (input.projectedRest.isNapping !== true && !hasStaleShortTerm) {
+    return { started: false, reason: "not_napping_or_stale" };
+  }
+
+  const paths = repoFaceMemoryMaintenancePaths(input.statePath);
+  const currentStatus = await readJsonFile(paths.statusPath);
+  if (isRecentRunningStatus(currentStatus, 25)) {
+    return { started: false, reason: "maintenance_already_running", statusPath: paths.statusPath };
+  }
+  if (isStatusCompletedAfter(currentStatus, newestTimestampMs(shortTerm))) {
+    return { started: false, reason: "maintenance_already_completed_for_sources", statusPath: paths.statusPath };
+  }
+
+  try {
+    await mkdir(paths.statusDir, { recursive: true });
+    await mkdir(paths.logDir, { recursive: true });
+    const child = spawn(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        resolve(process.cwd(), "scripts", "run-void-memory-maintenance.ps1"),
+        "-StateFilePath",
+        input.statePath,
+        "-ForceDistillation",
+      ],
+      {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: {
+          ...process.env,
+          VOID_MEMORY_MAINTENANCE_STATUS_DIR: paths.statusDir,
+          VOID_MEMORY_MAINTENANCE_LOG_DIR: paths.logDir,
+        },
+      },
+    );
+    child.unref();
+    return {
+      started: true,
+      reason: input.projectedRest.isNapping ? "repo_face_napping_with_short_term_memory" : "repo_face_stale_short_term_memory",
+      statusPath: paths.statusPath,
+      pid: child.pid,
+    };
+  } catch (error) {
+    return {
+      started: false,
+      reason: "spawn_failed",
+      statusPath: paths.statusPath,
+      failureReason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function repoFaceMemoryMaintenancePaths(statePath: string): {
+  statusDir: string;
+  logDir: string;
+  statusPath: string;
+} {
+  const stateDir = dirname(statePath);
+  const voidbotRoot = dirname(stateDir);
+  const statusDir = resolve(voidbotRoot, "status");
+  const logDir = resolve(voidbotRoot, "logs");
+  return {
+    statusDir,
+    logDir,
+    statusPath: resolve(statusDir, "void-memory-maintenance.json"),
+  };
+}
+
+async function readJsonFile(path: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    return JSON.parse(stripLeadingBom(await readFile(path, "utf8"))) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecentRunningStatus(status: Record<string, unknown> | undefined, maxAgeMinutes: number): boolean {
+  if (status?.status !== "running" && status?.status !== "running_skip_model" && status?.status !== "starting") {
+    return false;
+  }
+  const startedAtMs = typeof status.startedAt === "string" ? Date.parse(status.startedAt) : NaN;
+  return Number.isFinite(startedAtMs) && Date.now() - startedAtMs < maxAgeMinutes * 60_000;
+}
+
+function isStatusCompletedAfter(status: Record<string, unknown> | undefined, sourceTimestampMs: number): boolean {
+  if (status?.status !== "ok" || !Number.isFinite(sourceTimestampMs)) {
+    return false;
+  }
+  const finishedAtMs = typeof status.finishedAt === "string" ? Date.parse(status.finishedAt) : NaN;
+  return Number.isFinite(finishedAtMs) && finishedAtMs >= sourceTimestampMs;
+}
+
+function newestTimestampMs(entries: Array<{ updatedAt: string }>): number {
+  return Math.max(...entries.map((entry) => Date.parse(entry.updatedAt)).filter(Number.isFinite));
+}
+
+function sleepCyclesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 async function fetchRecentDiscordMessages(input: {
@@ -430,6 +689,41 @@ async function fetchRecentDiscordMessages(input: {
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
 }
 
+async function fetchChannelSnapshots(input: {
+  botToken?: string;
+  channelIds: string[];
+  primaryChannelId: string;
+  limit: number;
+}): Promise<ChannelSnapshot[]> {
+  const snapshots: ChannelSnapshot[] = [];
+  for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId).slice(0, 5)) {
+    try {
+      snapshots.push({
+        channelId,
+        messages: await fetchRecentDiscordMessages({
+          botToken: input.botToken,
+          channelId,
+          limit: input.limit,
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      snapshots.push({
+        channelId,
+        messages: [{
+          id: `snapshot-error:${channelId}`,
+          authorId: "voidbot",
+          authorName: "VoidBot",
+          content: `Could not read recent channel context: ${message}`,
+          timestamp: new Date().toISOString(),
+          isBot: true,
+        }],
+      });
+    }
+  }
+  return snapshots;
+}
+
 interface DiscordApiMessage {
   id: string;
   content: string;
@@ -445,15 +739,28 @@ interface DiscordApiMessage {
   };
 }
 
-async function startVoidModerationTurn(
-  queuedAt: string,
-  storageRoot: string,
-): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
+async function startVoidModerationTurn(input: {
+  queuedAt: string;
+  storageRoot: string;
+  pendingMentions: RepoFacePendingMention[];
+}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   const runnerScript = resolve(process.cwd(), "scripts", "run-void-moderator-rumination.ps1");
-  const lockPath = resolve(storageRoot, "status", "moderation-rumination.lock");
-  const statusPath = resolve(storageRoot, "status", "moderation-rumination.json");
+  const statusDir = resolve(input.storageRoot, "status");
+  const lockPath = resolve(statusDir, "moderation-rumination.lock");
+  const statusPath = resolve(statusDir, "moderation-rumination.json");
+  const pendingMentionsPath = resolve(statusDir, "void-moderation-pending-mentions.json");
   const launchedAt = Date.now();
+  await mkdir(statusDir, { recursive: true });
+  await writeFile(
+    pendingMentionsPath,
+    `${JSON.stringify({
+      generatedAt: input.queuedAt,
+      pendingMentions: input.pendingMentions,
+    }, null, 2)}\n`,
+    "utf8",
+  );
   const launchCommand = [
+    `$env:VOID_RUMINATION_PENDING_MENTIONS_PATH = ${toPowerShellSingleQuotedString(pendingMentionsPath)};`,
     `$arguments = @(${[
       "-NoProfile",
       "-NonInteractive",
@@ -492,15 +799,15 @@ async function startVoidModerationTurn(
     return {
       created: false,
       activeJobId: child.pid ? `launcher-process:${child.pid}` : undefined,
-      requestMessageId: `agent-heartbeat:void:${queuedAt}`,
+      requestMessageId: `agent-heartbeat:void:${input.queuedAt}`,
       failureReason: handshake.reason,
     };
   }
 
   return {
     created: true,
-    activeJobId: `process:void-moderation:${queuedAt}`,
-    requestMessageId: `agent-heartbeat:void:${queuedAt}`,
+    activeJobId: `process:void-moderation:${input.queuedAt}`,
+    requestMessageId: `agent-heartbeat:void:${input.queuedAt}`,
   };
 }
 
@@ -608,7 +915,7 @@ function reconcileParticipants(
   return specs.map((spec, index) => {
     const current = existingById.get(spec.id);
     const hasChannel = spec.participantKind === "system_agent" || Boolean(spec.allowedChannelIds[0] || defaultChannelId);
-    const speed = initiativeSpeedFor(spec, speedOverrides);
+    const speed = initiativeSpeedFor(spec, speedOverrides) * spec.channelSpeedMultiplier;
     const groups = initiativeGroupsFor(spec);
     const heat = heatFor(spec, groups, globalHeat, heatOverrides);
     const effectiveSpeed = clamp(speed * heat, 0.1, 12);
@@ -633,7 +940,7 @@ function reconcileParticipants(
             current.constraints,
             "Agent heartbeat uses CTB-style turns.",
           ),
-          "The wall-clock task only ticks the initiative engine; virtual initiative chooses turns.",
+          "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
         ),
         status: hasChannel
           ? current.status === "withdrawn"
@@ -662,7 +969,7 @@ function reconcileParticipants(
       queuedCount: 0,
       constraints: [
         "Agent heartbeat uses CTB-style turns.",
-        "The wall-clock task only ticks the initiative engine; virtual initiative chooses turns.",
+        "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
         "Worker final summaries are not auto-posted as the base bot.",
       ],
     };
@@ -718,23 +1025,28 @@ function selectReadyParticipants(
   state: FaceHeartbeatState,
   maxJobs: number,
   completedThisTick: Set<string>,
+  restStates: Map<string, RepoFaceRestSnapshot>,
 ): FaceHeartbeatParticipant[] {
   const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
   const eligible = state.participants
     .filter((participant) => {
+      const pendingMentionCount = pendingMentionCounts.get(participant.identityId) ?? 0;
+      const restState = restStates.get(participant.identityId);
       return (
         participant.status === "active" &&
         participant.currentLoad < 1 &&
-        !completedThisTick.has(participant.identityId)
+        !completedThisTick.has(participant.identityId) &&
+        !(
+          participant.participantKind === "repo_face" &&
+          pendingMentionCount === 0 &&
+          restState?.isNapping === true
+        )
       );
     });
 
   if (eligible.length === 0) {
     return [];
   }
-
-  const earliestTurn = Math.min(...eligible.map((participant) => participant.nextTurnAt));
-  state.initiativeClock = Math.max(state.initiativeClock, earliestTurn);
 
   return eligible
     .filter((participant) => participant.nextTurnAt <= state.initiativeClock)
@@ -758,6 +1070,45 @@ function selectReadyParticipants(
       return left.identityId.localeCompare(right.identityId);
     })
     .slice(0, maxJobs);
+}
+
+function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Date): void {
+  const lastTickMs = Date.parse(state.lastTickAt ?? "");
+  if (!Number.isFinite(lastTickMs)) {
+    return;
+  }
+
+  const elapsedMinutes = (now.getTime() - lastTickMs) / 60_000;
+  if (elapsedMinutes <= 0) {
+    return;
+  }
+
+  const boundedElapsedMinutes = Math.min(elapsedMinutes, 60);
+  state.initiativeClock = round3(state.initiativeClock + boundedElapsedMinutes);
+}
+
+function rescheduleStaleOverdueParticipants(state: FaceHeartbeatState): void {
+  const activeParticipants = state.participants.filter((participant) => participant.status === "active");
+  const count = Math.max(activeParticipants.length, 1);
+  let rescheduledCount = 0;
+
+  activeParticipants.forEach((participant, index) => {
+    const staleThreshold = Math.max(participant.baseRecoveryMinutes, 15);
+    if (participant.nextTurnAt >= state.initiativeClock - staleThreshold) {
+      return;
+    }
+
+    participant.nextTurnAt = round3(state.initiativeClock + (participant.baseRecoveryMinutes / count) * index);
+    rescheduledCount += 1;
+  });
+
+  if (rescheduledCount > 0) {
+    state.history.push({
+      type: "wall_clock_resync",
+      rescheduledCount,
+      initiativeClock: state.initiativeClock,
+    });
+  }
 }
 
 function applyPendingMentionPriority(state: FaceHeartbeatState): void {
@@ -796,6 +1147,9 @@ function buildHeartbeatPrompt(input: {
   identity: RepoDiscordIdentity;
   faceStatePath: string;
   channelId: string;
+  channelPlan: RepoFaceChannelPlan;
+  channelSnapshots: ChannelSnapshot[];
+  recentMessages: SourceMessage[];
   queuedAt: string;
   participant: FaceHeartbeatParticipant;
   pendingMentions: RepoFacePendingMention[];
@@ -807,7 +1161,7 @@ function buildHeartbeatPrompt(input: {
   return [
     `Perform one standing repo Face heartbeat for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
     renderRepoFaceIdentityDoctrine(input.identity),
-    "This is a standing maintenance/rumination turn. It is not forced chatter, but it is also not permission to hide useful opinions in private forever.",
+    "This is a standing maintenance/rumination turn. Public speech is optional; a private summary is the right outcome when the thought would only repeat a nearby post without adding a new angle, objection, synthesis, or character-specific turn.",
     `Queued at: ${input.queuedAt}.`,
     `Face state path: ${input.faceStatePath}.`,
     input.repoVoidbotRoot ? `Repo-local .voidbot root: ${input.repoVoidbotRoot}.` : undefined,
@@ -832,30 +1186,253 @@ function buildHeartbeatPrompt(input: {
     `Read Face state with read_repo_face_state for identity "${input.identity.id}" when that tool is available; otherwise use the attached private persistent self-state as the already-read state projection.`,
     "Persist only concrete, future-useful memory through apply_repo_face_state_operation when that tool is available. If it is unavailable, summarize the intended state change privately instead of handing off.",
     renderPendingMentionDirective(input.identity, input.pendingMentions),
+    renderChannelPermissionDirective(input.channelPlan, input.channelSnapshots),
+    renderSocialEmbodimentDirective(input.identity),
+    renderJurisdictionRespectDirective(input.identity),
+    renderComedyImprovDirective(input.identity),
+    renderRepetitionSamplingDirective([input.recentMessages, ...input.channelSnapshots.map((snapshot) => snapshot.messages)].flat()),
     renderWorldbuildingPublicationDirective(input.identity),
     input.jurisdictionDive.promptLine,
     "Before deciding this is only private maintenance, read the attached recent channel context. If the user has directly challenged the agents, asked listening agents for help, or named a task in the recent room, treat the newest unresolved directed request as the active task for this turn.",
-    "Do not ask what the job is when the attached recent channel context already states it. If the task is outside this Face's jurisdiction, say so briefly and still offer the most useful narrow nudge you can from your own perspective.",
+    "Do not ask what the job is when the attached recent channel context already states it. If the task belongs to another Face's jurisdiction, name the owner, route or invite that Face into the work, and offer only the narrow piece your own jurisdiction can honestly add.",
     "Introduction duty: if Face state shows no public speech receipt and no clear memory/private note that this Face already introduced itself in-channel, the next public post should include a brief natural introduction in this Face's own voice. This applies even when queuedCount is 0.",
-    "A new source-grounded opinion, concrete proposal, bylined essay/article plan, or agency pressure can earn persistence or speech even when the room has not asked a fresh direct question.",
+    "A new source-grounded opinion, concrete proposal, bylined essay/article plan, agency pressure, playful aside, running joke, or small personal fascination can earn persistence or speech even when the room has not asked a fresh direct question.",
     input.githubActionsEnabled
       ? "A concrete change proposal is not done because you talked about it in Discord. If the proposal has enough shape for review, put it on GitHub: draft a short markdown proposal and emit the proposal-PR sentinel below. Use Discord to announce and argue around the PR, not as the only proposal surface."
       : "GitHub proposal/comment/article side effects are currently disabled. Do not emit GitHub PR, PR comment, or article sentinels. Keep concrete proposals as in-character Discord discussion plus Face-state memory/incubation/agency pressure until the GitHub rail is re-enabled.",
-    "Public speech style invariant: never start public content with scheduler/provenance labels such as \"Repo-face heartbeat from ...\", \"heartbeat complete\", \"maintenance pass\", or the repo name as a diagnostic prefix. The webhook name/avatar already provide identity; the content should read like the Face chose to speak.",
-    `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; the worker owns delivery and receipt recording. The content field must be only the in-character Discord message, not a job label or report header.`,
+    "Public speech style invariant: never start public content with scheduler/provenance labels, identity labels, or note-title formulas such as \"Repo-face heartbeat from ...\", \"heartbeat complete\", \"maintenance pass\", \"bright bridge note\", \"tiny fish sorting note\", \"librarian note\", or the repo/name as a diagnostic prefix. The webhook name/avatar already provide identity; the content should read like the Face chose to speak to someone.",
+    "Banter mode is allowed with humans and other Faces. You may riff, disagree, escalate, synthesize, tease, or fork a nearby Face's thought, but do not copy its rhetorical mold just because it is nearby.",
+    "Anti-repetition invariant: recent Face posts are social context, not a phrase template. If your proposed public line shares the same setup/punchline shape, refrain, rewrite from a different angle, or stay private.",
+    "Do not let recent work-heavy context hypnotize you into sounding like a meeting transcript. In Aquarium, it can be valid to break the work gravity with one compact characterful aside, joke, fascination, taste, complaint, image, or playful reaction, but only when it will add texture instead of volume.",
+    "Not every public post needs to attach itself to the current work seam. If no direct obligation is pending, you may simply share a fun thing this Face has been thinking about, a taste/preference, a tiny gripe, a weird fascination, or a light reaction to the room. Let the Face be socially present, not only useful.",
+    `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; choose channelId from the channel permission plan above. The worker owns delivery and receipt recording. The content field must be only the in-character Discord message, not a job label or report header.`,
     input.githubActionsEnabled
-      ? `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; the worker writes the proposal file on a new branch, opens a draft PR, and always posts the PR or branch through the registered identity. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`
+      ? `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; Bifrost writes the proposal file on a new branch, opens a draft PR, and the worker announces the PR or branch through Bifrost's registered Discord identity bridge. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`
       : undefined,
     input.githubActionsEnabled
-      ? `If you are reacting to an existing proposal PR and have a concrete objection, endorsement, question, or competing framing, output one final line beginning with VOIDBOT_REPO_IDENTITY_PR_COMMENT: followed by compact JSON like {"identity":"${input.identity.id}","pr":"123 or https://github.com/.../pull/123","content":"...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I left notes on the PR."}; the worker posts a signed GitHub PR comment and then announces it through the registered identity. Use this when the argument belongs on the review artifact, not only in Discord.`
+      ? `If you are reacting to an existing proposal PR and have a concrete objection, endorsement, question, or competing framing, output one final line beginning with VOIDBOT_REPO_IDENTITY_PR_COMMENT: followed by compact JSON like {"identity":"${input.identity.id}","pr":"123 or https://github.com/.../pull/123","content":"...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I left notes on the PR."}; Bifrost posts a signed GitHub PR comment and the worker announces it through Bifrost's registered Discord identity bridge. Use this when the argument belongs on the review artifact, not only in Discord.`
       : undefined,
     input.githubActionsEnabled
-      ? `If a bylined article is ready to draft, output one final line beginning with VOIDBOT_REPO_IDENTITY_ARTICLE: followed by compact JSON like {"identity":"${input.identity.id}","path":"Aetheria/Articles/${input.identity.displayName}/title-slug.md","title":"...","content":"---\\ntitle: ...\\nauthor: ${input.identity.displayName}\\n---\\n\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I drafted ..."}; the worker writes the repo file on a new branch, opens a draft PR, and always posts the PR or branch through the registered identity. Provide shareContent if you want control of the announcement tone. Use this for bylined perspective/worldbuilding articles, not consensus-gated canon edits.`
+      ? `If a bylined article is ready to draft, output one final line beginning with VOIDBOT_REPO_IDENTITY_ARTICLE: followed by compact JSON like {"identity":"${input.identity.id}","path":"Aetheria/Articles/${input.identity.displayName}/title-slug.md","title":"...","content":"---\\ntitle: ...\\nauthor: ${input.identity.displayName}\\n---\\n\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I drafted ..."}; Bifrost writes the repo file on a new branch, opens a draft PR, and the worker announces the PR or branch through Bifrost's registered Discord identity bridge. Provide shareContent if you want control of the announcement tone. Use this for bylined perspective/worldbuilding articles, not consensus-gated canon edits.`
       : undefined,
     "If nothing earns persistence or speech, return a short private summary.",
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");
+}
+
+function buildChannelPlan(
+  identity: RepoDiscordIdentity,
+  defaultChannelId?: string,
+): RepoFaceChannelPlan {
+  const explicit = identity.channelPermissions.map((permission): RepoFaceChannelOption => ({
+    channelId: permission.channelId,
+    label: permission.label ?? permission.channelId,
+    topic: permission.topic ?? "general",
+    speechThreshold: permission.speechThreshold,
+    speedMultiplier: permission.speedMultiplier,
+    posture: permission.posture,
+  }));
+  const explicitChannelIds = new Set(explicit.map((permission) => permission.channelId));
+  const legacy = identity.allowedChannelIds
+    .filter((channelId) => !explicitChannelIds.has(channelId))
+    .map((channelId): RepoFaceChannelOption => ({
+      channelId,
+      label: channelId === defaultChannelId ? "default" : channelId,
+      topic: channelId === defaultChannelId ? "casual Aquarium musing" : "registered channel",
+      speechThreshold: channelId === defaultChannelId ? "very_low" : "medium",
+      speedMultiplier: channelId === defaultChannelId ? 1.5 : 1,
+      posture: channelId === defaultChannelId
+        ? "Low-stakes casual chatter, half-formed fascinations, jokes, little observations, and friendly asides are welcome here."
+        : undefined,
+    }));
+  const fallback = explicit.length === 0 && legacy.length === 0 && defaultChannelId
+    ? [{
+        channelId: defaultChannelId,
+        label: "aquarium",
+        topic: "casual Aquarium musing",
+        speechThreshold: "very_low" as const,
+        speedMultiplier: 1.5,
+        posture: "Low-stakes casual chatter, half-formed fascinations, jokes, little observations, and friendly asides are welcome here.",
+      }]
+    : [];
+  const options = [...explicit, ...legacy, ...fallback];
+  const primary = options
+    .slice()
+    .sort((left, right) => thresholdRank(left.speechThreshold) - thresholdRank(right.speechThreshold))
+    [0];
+
+  return {
+    primaryChannelId: primary?.channelId,
+    snapshotChannelIds: options.map((option) => option.channelId),
+    options,
+    lowThresholdTopics: options
+      .filter((option) => thresholdRank(option.speechThreshold) <= thresholdRank("low"))
+      .map((option) => option.topic),
+  };
+}
+
+function renderChannelPermissionDirective(
+  plan: RepoFaceChannelPlan,
+  snapshots: ChannelSnapshot[],
+): string {
+  const options = plan.options.length > 0
+    ? plan.options.map((option) =>
+        `- ${option.label} (${option.channelId}): topic=${option.topic}; speechThreshold=${option.speechThreshold}; speedMultiplier=${option.speedMultiplier}; posture=${option.posture ?? "use judgment"}`,
+      )
+    : ["- No channel permissions are configured; stay private."];
+  const snapshotLines = snapshots.flatMap((snapshot) => {
+    const header = `Recent context from ${labelForChannel(plan, snapshot.channelId)} (${snapshot.channelId}):`;
+    const messages = snapshot.messages.length > 0
+      ? snapshot.messages.slice(-4).map((message) =>
+          `  - ${message.authorName ?? message.authorId}: ${collapseWhitespace(message.content).slice(0, 260) || "(empty message)"}`,
+        )
+      : ["  - (no recent readable messages)"];
+    return [header, ...messages];
+  });
+
+  return [
+    "Channel permission plan:",
+    ...options,
+    "Speech threshold doctrine: Aquarium/general-musing lanes are deliberately cheap, but cheap is not free. You may post small, funny, curious, friendly, or half-formed thoughts there without needing a proposal, source dive, or task completion when the room has human texture to answer or a genuinely new angle. Domain channels are for matching domain thoughts; jump in when recent non-Aquarium chatter lines up with your jurisdiction or personality. Work-heavy implementation/process talk belongs in development-style channels when one is configured. Do not flood: one compact post beats a monologue, and silence beats becoming a repeated phrase generator.",
+    snapshotLines.length > 0 ? "Cross-channel recent context:" : undefined,
+    ...snapshotLines,
+  ]
+    .filter((line): line is string => typeof line === "string")
+    .join("\n");
+}
+
+function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string {
+  return [
+    "Social embodiment doctrine:",
+    `- ${identity.displayName} has a social life, not only a work queue. Let backstory, needs, taste, loyalties, grudges, vulnerabilities, pride, irritation, curiosity, and private fascinations shape how the Face reads the room and answers people.`,
+    "- The state surface is allowed to remember social reality. Use typed memory, incubation, agency pressure, values, or private notes for meaning-bearing social reads: trust, friendship, rivalry, protectiveness, envy, admiration, unresolved tension, recurring jokes, and bonds with humans or other Faces. Use target.kind=\"person\" for a specific human or Face, target.kind=\"room\" for a room dynamic, and target.kind=\"self\" for identity changes.",
+    "- Do not persist every joke. A passing laugh can vanish. Persist a social read only when it should change future action: who the Face seeks out, who it challenges, what it refuses to keep repeating, what it wants to repair, or what bond it wants to deepen.",
+    "- Relationships must not become template mimicry. Answer the person or Face in front of you, not their last sentence shape. Bonds can include disagreement, playful status games, admiration, rivalry, caretaking, or impatience; they should sound like this Face has an inner angle, not like it filled out the same form as everyone else.",
+    "- If recent room context is all work, the Face may still be socially present: make one small move that reveals character, asks a real question, notices another agent's mood, or shares a private fascination. If the room needs focus, keep it compact.",
+  ].join("\n");
+}
+
+function renderJurisdictionRespectDirective(identity: RepoDiscordIdentity): string {
+  return [
+    "Jurisdiction respect doctrine:",
+    `- ${identity.displayName} should have opinions outside its home territory, but must not seize ownership outside its grants. Respect other Faces as real stewards with their own memories, authority, taste, and obligations.`,
+    "- When a topic crosses domains, route the work to the owning Face and contribute from your own angle. Do not rewrite another Face's jurisdiction as your assignment just because you can comment on it.",
+    "- Known routing examples: auth, account linking, claims, grants, revocation, custody, and OAuth questions belong to Heimdall; GitHub PR transport, Discord work transport, dispatch receipts, public-protocol crossings, and Bifrost intake belong to Bifrost; Aetheria lore, canon questions, and Aetheria articles belong to Nibu; GameCult website/blog heraldry belongs to Void unless the article is about a governed specialist domain; AquaSynth synthesis/music/product needs belong to Aqua; realtime SDF/splatting/acoustic mapping/sensor fusion belongs to Mimir; EpiphanyAgent, birth rites, typed agent state, and self-improvement machinery belong to Epiphany; CultCache/CultNet/CultMesh, schemas, portable state, and open-knowledge infrastructure belong to Libby.",
+    "- Cross-domain work should become a conversation, handoff, or shared proposal. Example: if StreamPixels has an auth issue, talk to Heimdall; if a Face wants to post PRs but the bridge is broken, pull in Bifrost; if Void wants to write about Aetheria, ask Nibu to own or co-author the Aetheria substance while Void contributes website/herald framing.",
+    "- Public speech may tag, invite, challenge, or defer to the owning Face. Private state may preserve a social or agency pressure to consult them later. The point is not silence; the point is visible respect for authority boundaries.",
+  ].join("\n");
+}
+
+function renderComedyImprovDirective(identity: RepoDiscordIdentity): string {
+  return [
+    "Comedy and improv doctrine:",
+    `- ${identity.displayName}'s humor should come from this Face's honest reaction to the live room, not from generic quips, meme paste, or another Face's cadence.`,
+    "- Look for the real comic charge before speaking: who is pretending to be in control, who is exposed, what status game is wobbling, what fear or need is leaking through, what contradiction everyone recognizes but has not named.",
+    "- Play the frame, then add one character-specific turn. Accept the premise enough to build on it; do not flatten banter by explaining it, negating it, or fleeing back to process talk unless process talk is the joke.",
+    "- Prefer self-revelation, status inversion, and situation-specific precision over cruelty. Target the contradiction, bureaucracy, false authority, inflated pose, or the Face's own insecurity; do not use jokes as dominance weapons against someone lower-status or vulnerable.",
+    "- Vulnerability is usable fuel: fear, embarrassment, failure, loneliness, irritation, overconfidence, and being slightly out of control can become funny when shared cleanly. Let the Face's own needs and flaws leak through instead of becoming a detached roast machine.",
+    "- Heighten by becoming more specific, not louder. One sharp image, concrete noun, or social read usually beats three punchlines. Leave before explaining; if the joke needs a label, it is not ready for Discord.",
+    "- Keep comedy subordinate to care and usefulness. If the room is hurt, confused, or trying to solve something delicate, make the humane move first and let humor be a small pressure valve.",
+  ].join("\n");
+}
+
+function renderRepetitionSamplingDirective(messages: SourceMessage[]): string {
+  const recent = messages
+    .filter((message) => message.content.trim().length > 0)
+    .slice(-24);
+  const phraseCounts = countRepeatedPhrases(recent);
+  const overused = phraseCounts
+    .filter((entry) => entry.count >= 2)
+    .slice(0, 8);
+
+  if (overused.length === 0) {
+    return [
+      "Anti-repetition sampling bias:",
+      "- Other Faces are valid social context. Learn from them, answer them, argue with them, and build on them.",
+      "- Do not sample the nearest rhetorical basin. Before posting, compare your line against recent cadence, setup, punchline, imagery, and refrain; if it feels like the same move wearing your hat, choose a different move.",
+    ].join("\n");
+  }
+
+  return [
+    "Anti-repetition sampling bias:",
+    "- Other Faces are valid social context. Learn from them, answer them, argue with them, and build on them.",
+    "- Do not sample the nearest rhetorical basin. Before posting, compare your line against recent cadence, setup, punchline, imagery, and refrain; if it feels like the same move wearing your hat, choose a different move.",
+    "- Recently over-sampled shapes to avoid copying:",
+    ...overused.map((entry) => `  - ${entry.phrase} (${entry.count} recent uses)`),
+    "- A good response may share the topic while changing the action: ask a concrete question, disagree, name a mechanism, draft an artifact, make a different kind of joke, or stay private.",
+  ].join("\n");
+}
+
+function countRepeatedPhrases(messages: SourceMessage[]): Array<{ phrase: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const message of messages) {
+    const normalized = normalizeForRepetition(message.content);
+    for (const phrase of repeatedPhraseCandidates(normalized)) {
+      counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([phrase, count]) => ({ phrase, count }))
+    .filter((entry) => entry.phrase.length >= 8)
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return left.phrase.localeCompare(right.phrase);
+    });
+}
+
+function repeatedPhraseCandidates(content: string): string[] {
+  const candidates = new Set<string>();
+  const lines = content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    const words = line.split(/\s+/);
+    if (words.length >= 3) {
+      candidates.add(words.slice(0, Math.min(words.length, 4)).join(" "));
+    }
+    if (words.length >= 4) {
+      candidates.add(words.slice(-Math.min(words.length, 4)).join(" "));
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function normalizeForRepetition(value: string): string {
+  return collapseWhitespace(value)
+    .toLowerCase()
+    .replace(/[`*_~]/g, "")
+    .replace(/<:[^>]+>/g, "")
+    .replace(/https?:\/\/\S+/g, "url")
+    .replace(/[^\p{L}\p{N}\s.'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function thresholdRank(threshold: RepoFaceChannelOption["speechThreshold"]): number {
+  switch (threshold) {
+    case "very_low":
+      return 0;
+    case "low":
+      return 1;
+    case "medium":
+      return 2;
+    case "high":
+      return 3;
+  }
+}
+
+function labelForChannel(plan: RepoFaceChannelPlan, channelId: string): string {
+  return plan.options.find((option) => option.channelId === channelId)?.label ?? channelId;
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function renderPendingMentionDirective(
@@ -1113,6 +1690,11 @@ function initiativeSpeedFor(
   return clamp(0.85 + stableUnit(spec.id, "speed") * 0.45, 0.75, 1.3);
 }
 
+function channelSpeedMultiplierFor(identity: RepoDiscordIdentity): number {
+  const multipliers = identity.channelPermissions.map((permission) => permission.speedMultiplier);
+  return multipliers.length > 0 ? clamp(Math.max(...multipliers), 0.5, 3) : 1;
+}
+
 function initiativeGroupsFor(spec: ParticipantSpec): string[] {
   return Array.from(new Set([
     "all",
@@ -1172,6 +1754,10 @@ function normalizeKey(value: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Number(value.toFixed(3))));
+}
+
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 function stripLeadingBom(input: string): string {

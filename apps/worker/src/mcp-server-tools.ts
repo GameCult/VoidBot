@@ -4,6 +4,7 @@ import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 import {
+  applyRepoFacePostFatigueAfterSpeech,
   applyVoidSelfStateOperation,
   buildVoidSelfStateContext,
   buildEpiphanyIdentityRegistry,
@@ -818,6 +819,17 @@ async function recordRepoIdentityDeliveryReceipt(input: {
       },
     },
   );
+
+  try {
+    await applyRepoFacePostFatigueAfterSpeech({
+      identity: input.identity,
+      storageRoot: input.context.config.storageRoot,
+      heartbeatStatePath: input.context.config.repoFaceHeartbeats.statePath,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Could not apply repo Face post fatigue for ${input.identity.id}: ${message}`);
+  }
 }
 
 function identityForToolResult(identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>) {

@@ -18,6 +18,7 @@ import {
   findRepoDiscordIdentityByRoleIds,
   findRepoDiscordIdentityByTextAddress,
   loadRepoDiscordIdentityRegistry,
+  queueAgentHeartbeatMention,
   queueRepoFaceMention,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
@@ -57,10 +58,8 @@ import {
 } from "./discord-bot-handlers";
 import {
   buildActorFromInteraction,
-  buildActorFromMessage,
   buildChannelIndexingTarget,
   buildGuildContextFromInteraction,
-  buildGuildContextFromMessage,
   filterPromptEchoHistoryResults,
   formatArchivedMessageContext,
   formatHistoryResults,
@@ -68,11 +67,9 @@ import {
   formatSourceResults,
   getRecentMessages,
   getRoleIdsFromInteraction,
-  getRoleIdsFromMessage,
   ingestIfIndexed,
   materializeMessage,
   notifyOwnerOfBotIssue,
-  replyToMessage,
   rememberAmbientVoidReference,
   renderSystemMessage,
   searchHistoryWithArchiveFallback,
@@ -359,16 +356,12 @@ export async function startBot(): Promise<void> {
           ).trim()
         : stripBotMention(message.content).trim();
 
-    if (!visiblePrompt) {
-      await replyToMessage(
-        message,
-        renderSystemMessage(activeSystemMessages, "mention.missing_prompt"),
-      );
-      return;
-    }
-
     try {
       if (addressedRepoIdentity) {
+        if (!visiblePrompt) {
+          console.log(`Ignored empty repo Face mention ${message.id} for ${addressedRepoIdentity.id}.`);
+          return;
+        }
         const faceInitialization = await ensureRepoFaceInitialized({
           identity: addressedRepoIdentity,
           storageRoot: config.storageRoot,
@@ -396,34 +389,19 @@ export async function startBot(): Promise<void> {
         return;
       }
 
-      await handlePrompt({
-        prompt: visiblePrompt,
-        command: "ask",
-        actor: buildActorFromMessage(message),
-        roleIds: getRoleIdsFromMessage(message),
-        guildContext: buildGuildContextFromMessage(message),
-        outputChannelId: message.channelId,
-        requestMessageId: message.id,
-        channel: message.channel.isTextBased() ? message.channel : null,
-        respond: async (content) => {
-          await replyToMessage(message, content);
-        },
-        config,
-        permissionEngine,
-        contextBuilder,
-        retrievalService,
-        archiveRepository,
-        sourceArchiveRepository,
-        jobQueue,
-        auditLog,
-        interactionMemory,
-        voidUsageRateLimiter,
-        providerRegistry,
-        situationalSocialReadInferer,
-        stylePack: activeStylePack,
-        systemMessages: activeSystemMessages,
-        silentOwnerQueueAck: !isDirectMessage,
+      const queuedMention = await queueAgentHeartbeatMention({
+        statePath: config.repoFaceHeartbeats.statePath,
+        identityId: "void",
+        channelId: message.channelId,
+        messageId: message.id,
+        authorId: message.author.id,
+        authorName: message.author.username,
+        content: message.content,
+        visiblePrompt: visiblePrompt || "Void was mentioned without a visible prompt; inspect recent room context and decide whether a response is warranted.",
       });
+      console.log(
+        `Queued Void mention ${message.id} via heartbeat CTB (${queuedMention.pendingCount} pending).`,
+      );
     } catch (error) {
       console.error(error);
       await notifyOwnerOfBotIssue(

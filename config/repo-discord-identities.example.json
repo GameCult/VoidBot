@@ -9,6 +9,24 @@
       "allowedChannelIds": [
         "AQUARIUM_CHANNEL_ID"
       ],
+      "channelPermissions": [
+        {
+          "channelId": "AQUARIUM_CHANNEL_ID",
+          "label": "aquarium",
+          "topic": "casual musings and low-stakes chatter",
+          "speechThreshold": "very_low",
+          "speedMultiplier": 1.5,
+          "posture": "Small thoughts, jokes, curiosities, and friendly asides are welcome here."
+        },
+        {
+          "channelId": "DEVELOPMENT_CHANNEL_ID",
+          "label": "development",
+          "topic": "work and implementation",
+          "speechThreshold": "low",
+          "speedMultiplier": 1.1,
+          "posture": "Use this for concrete build/process thoughts that would make Aquarium feel like a standup."
+        }
+      ],
       "avatarUrl": "https://example.com/aquarium-synth-host-avatar.png",
       "faceStatePath": ".voidbot/private/repo-faces/aquarium-synth-host.cc",
       "description": "Role mention is the address; webhook persona is the mouth."

@@ -2,10 +2,11 @@ import "dotenv/config";
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
+  applyRepoFacePostFatigueAfterSpeech,
   type AuditLog,
   buildVoidMcpServerConfig,
   createStateStorage,
@@ -40,8 +41,6 @@ import {
   type ProviderArtifact,
   type ProviderNotificationIntent,
 } from "@voidbot/shared";
-
-import { postDiscordMessage } from "./mcp-server-discord";
 
 const config = loadConfig();
 const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
@@ -592,9 +591,18 @@ interface RepoIdentityPrCommentIntent {
   replyToMessageId?: string;
 }
 
+interface BifrostBridgeReceipt {
+  action?: string;
+  ok?: boolean;
+  branch?: string;
+  prUrl?: string;
+  messageId?: string;
+  transport?: "bot" | "webhook";
+}
+
 async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
   if (!config.botToken) {
-    throw new Error("DISCORD_BOT_TOKEN is required for the worker to post repo identity responses.");
+    throw new Error("DISCORD_BOT_TOKEN is required for Bifrost to post repo identity responses.");
   }
 
   const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
@@ -614,22 +622,27 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   }
 
   const content = sanitizeRepoIdentityPostContent(identity, intent.content);
-  const posted = await postDiscordMessage(
-    config.botToken,
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, fitDiscordMessage(content));
+  const posted = runBifrostBridge([
+    "discord-post",
+    "--channel-id",
     channelId,
-    fitDiscordMessage(content),
-    intent.replyToMessageId,
-    {
-      personaName: identity.displayName,
-      personaAvatarUrl: identity.avatarUrl,
-    },
-  );
+    "--content-file",
+    contentFile,
+    "--persona-name",
+    identity.displayName,
+    ...(identity.avatarUrl ? ["--persona-avatar-url", identity.avatarUrl] : []),
+    ...(intent.replyToMessageId ? ["--reply-to-message-id", intent.replyToMessageId] : []),
+  ]);
+  if (!posted.messageId || !posted.transport) {
+    throw new Error(`Bifrost Discord bridge returned no message receipt for job ${job.id}.`);
+  }
   await recordRepoIdentityDeliveryReceipt({
     identity,
     channelId,
     content,
     replyToMessageId: intent.replyToMessageId,
-    messageId: posted.id,
+    messageId: posted.messageId,
     transport: posted.transport,
   }).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -709,17 +722,26 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     throw new Error(`Article path escapes repo root for ${identity.id}: ${relativePath}`);
   }
 
-  await mkdir(dirname(articlePath), { recursive: true });
-  await writeFile(articlePath, ensureTrailingNewline(intent.content), { encoding: "utf8", flag: "wx" });
-  const pr = submitRepoIdentityDraftPullRequest({
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-article.md`, ensureTrailingNewline(intent.content));
+  const pr = runBifrostBridge([
+    "github-draft-pr",
+    "--repo-root",
     repoRoot,
+    "--identity",
+    identity.id,
+    "--title",
+    `${identity.id}: article: ${intent.title}`,
+    "--path",
     relativePath,
-    identityId: identity.id,
-    title: intent.title,
-    kind: "article",
-  });
+    "--content-file",
+    contentFile,
+    "--body",
+    `Draft bylined article submitted by repo Face ${identity.id}.\n\nPath: ${relativePath}`,
+    "--commit-message",
+    `${identity.id}: draft article ${intent.title}`,
+  ]);
 
-  const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
+  const prLine = pr.prUrl ? `\n\nPR: ${pr.prUrl}` : `\n\nDraft branch: ${pr.branch}`;
   const articleLine = `\nArticle path: ${relativePath}`;
   const shareContent =
     intent.shareContent && intent.shareContent.trim().length > 0
@@ -755,20 +777,26 @@ async function writeRepoIdentityProposalPrIntent(
     throw new Error(`Proposal path escapes repo root for ${identity.id}: ${relativePath}`);
   }
 
-  await mkdir(dirname(proposalPath), { recursive: true });
-  await writeFile(proposalPath, ensureTrailingNewline(intent.content), {
-    encoding: "utf8",
-    flag: "wx",
-  });
-  const pr = submitRepoIdentityDraftPullRequest({
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-proposal.md`, ensureTrailingNewline(intent.content));
+  const pr = runBifrostBridge([
+    "github-draft-pr",
+    "--repo-root",
     repoRoot,
+    "--identity",
+    identity.id,
+    "--title",
+    `${identity.id}: proposal: ${intent.title}`,
+    "--path",
     relativePath,
-    identityId: identity.id,
-    title: intent.title,
-    kind: "proposal",
-  });
+    "--content-file",
+    contentFile,
+    "--body",
+    `Draft change proposal submitted by repo Face ${identity.id}.\n\nPath: ${relativePath}`,
+    "--commit-message",
+    `${identity.id}: draft proposal ${intent.title}`,
+  ]);
 
-  const prLine = pr.url ? `\n\nPR: ${pr.url}` : `\n\nDraft branch: ${pr.branch}`;
+  const prLine = pr.prUrl ? `\n\nPR: ${pr.prUrl}` : `\n\nDraft branch: ${pr.branch}`;
   const proposalLine = `\nProposal path: ${relativePath}`;
   const shareContent =
     intent.shareContent && intent.shareContent.trim().length > 0
@@ -804,14 +832,18 @@ async function commentRepoIdentityPullRequestIntent(
   }
 
   const body = `${identity.displayName} (${identity.id}) says:\n\n${intent.content.trim()}`;
-  const gh = spawnSync("gh", ["pr", "comment", prTarget, "--body", body], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (gh.status !== 0) {
-    throw new Error(`gh pr comment ${prTarget} failed: ${gh.stderr || gh.stdout}`);
-  }
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-pr-comment.md`, body);
+  runBifrostBridge([
+    "github-pr-comment",
+    "--repo-root",
+    repoRoot,
+    "--identity",
+    identity.id,
+    "--pr",
+    prTarget,
+    "--content-file",
+    contentFile,
+  ]);
 
   const shareContent =
     intent.shareContent && intent.shareContent.trim().length > 0
@@ -825,75 +857,31 @@ async function commentRepoIdentityPullRequestIntent(
   });
 }
 
-function submitRepoIdentityDraftPullRequest(input: {
-  repoRoot: string;
-  relativePath: string;
-  identityId: string;
-  title: string;
-  kind: "article" | "proposal";
-}): { branch: string; url?: string } {
-  const branch = `codex/${sanitizePathSegment(input.identityId)}-${input.kind}-${Date.now()}`;
-  const previousBranch = runGitCapture(input.repoRoot, ["branch", "--show-current"]).trim();
+async function writeBifrostPayloadFile(job: JobRecord, fileName: string, content: string): Promise<string> {
+  const directory = resolve(config.storageRoot, "artifacts", job.id, "bifrost-bridge");
+  await mkdir(directory, { recursive: true });
+  const path = join(directory, sanitizePathSegment(fileName) || "payload.md");
+  await writeFile(path, content, "utf8");
+  return path;
+}
+
+function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
+  const bridgeScript = resolve(config.bifrostRoot, "tools", "bifrost-bridge.mjs");
+  const result = spawnSync("node", [bridgeScript, ...args], {
+    cwd: config.bifrostRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Bifrost bridge failed: ${result.stderr || result.stdout}`);
+  }
 
   try {
-    runGit(input.repoRoot, ["switch", "-c", branch]);
-    runGit(input.repoRoot, ["add", "--", input.relativePath]);
-    runGit(input.repoRoot, ["commit", "-m", `${input.identityId}: draft ${input.kind} ${input.title}`]);
-    runGit(input.repoRoot, ["push", "-u", "origin", branch]);
-
-    const label = input.kind === "article" ? "Draft bylined article" : "Draft change proposal";
-    const gh = spawnSync(
-      "gh",
-      [
-        "pr",
-        "create",
-        "--draft",
-        "--title",
-        `${input.identityId}: ${input.kind}: ${input.title}`,
-        "--body",
-        `${label} submitted by repo Face ${input.identityId}.\n\nPath: ${input.relativePath}`,
-      ],
-      {
-        cwd: input.repoRoot,
-        encoding: "utf8",
-        windowsHide: true,
-      },
-    );
-
-    if (gh.status !== 0) {
-      return { branch };
-    }
-
-    const url = gh.stdout.trim().split(/\r?\n/).find((line) => line.startsWith("http"));
-    return { branch, url };
-  } finally {
-    if (previousBranch && previousBranch !== branch) {
-      runGit(input.repoRoot, ["switch", previousBranch]);
-    }
+    return JSON.parse(result.stdout) as BifrostBridgeReceipt;
+  } catch {
+    throw new Error(`Bifrost bridge returned non-JSON output: ${result.stdout}`);
   }
-}
-
-function runGit(cwd: string, args: string[]): void {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (result.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
-  }
-}
-
-function runGitCapture(cwd: string, args: string[]): string {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (result.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
-  }
-  return result.stdout;
 }
 
 function parseRepoIdentityArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
@@ -1127,6 +1115,17 @@ async function recordRepoIdentityDeliveryReceipt(input: {
       },
     },
   );
+
+  try {
+    await applyRepoFacePostFatigueAfterSpeech({
+      identity: input.identity,
+      storageRoot: config.storageRoot,
+      heartbeatStatePath: config.repoFaceHeartbeats.statePath,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Could not apply repo Face post fatigue for ${input.identity.id}: ${message}`);
+  }
 }
 
 async function postOwnerNotification(content: string): Promise<void> {

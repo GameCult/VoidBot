@@ -177,6 +177,23 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   $cursorOperation | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $cursorOperationPath -Encoding UTF8
   node .\scripts\void-self-state.mjs apply-operation --canonical $stateFilePath --operation-file $cursorOperationPath | Out-Null
 
+  $openCaseOperation = @{
+    operation = "upsert_open_case"
+    case = @{
+      sourceMessageId = "fixture-answered-message-id"
+      status = "pending"
+      summary = "Metacrat asked a fixture question, and Void has not answered yet."
+      authorId = "fixture-author"
+      authorName = "Metacrat"
+      channelId = "fixture-channel-id"
+      createdAt = "2026-05-17T02:57:00.000Z"
+      lastTouchedAt = "2026-05-17T02:57:00.000Z"
+      tags = @("fixture")
+    }
+  }
+  $openCaseOperation | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $cursorOperationPath -Encoding UTF8
+  node .\scripts\void-self-state.mjs apply-operation --canonical $stateFilePath --operation-file $cursorOperationPath | Out-Null
+
   $priorReceiptOperation = @{
     operation = "record_delivery_receipt"
     receipt = @{
@@ -258,6 +275,10 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   }
   if ($receipt.candidateInterventionId -ne "fixture-parent-owned-speech") {
     throw "Speech fixture did not link the delivery receipt back to the spoken candidate."
+  }
+  $answeredCase = @($state.moderationCursor.openCases | Where-Object { $_.sourceMessageId -eq "fixture-answered-message-id" })[0]
+  if ($answeredCase.status -ne "answered" -or $answeredCase.summary -match "not answered") {
+    throw "Speech fixture did not normalize the answered open-case summary."
   }
   $lastMessage = Get-Content -LiteralPath (Join-Path $fixtureStatusDir "moderation-rumination-last-message.txt") -Raw -Encoding UTF8
   if ($lastMessage -notmatch "deliveredCandidates=1") {

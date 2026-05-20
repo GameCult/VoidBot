@@ -33,14 +33,31 @@ export async function queueRepoFaceMention(input: {
   visiblePrompt: string;
   queuedAt?: string;
 }): Promise<{ queued: boolean; pendingCount: number }> {
+  return queueAgentHeartbeatMention({
+    ...input,
+    identityId: input.identity.id,
+  });
+}
+
+export async function queueAgentHeartbeatMention(input: {
+  statePath: string;
+  identityId: string;
+  channelId: string;
+  messageId: string;
+  authorId: string;
+  authorName?: string;
+  content: string;
+  visiblePrompt: string;
+  queuedAt?: string;
+}): Promise<{ queued: boolean; pendingCount: number }> {
   const state = await readHeartbeatQueueState(input.statePath);
-  const id = `${input.identity.id}:${input.channelId}:${input.messageId}`;
+  const id = `${input.identityId}:${input.channelId}:${input.messageId}`;
   const existing = state.pendingMentions.find((entry) => entry.id === id);
 
   if (!existing) {
     state.pendingMentions.push({
       id,
-      identityId: input.identity.id,
+      identityId: input.identityId,
       channelId: input.channelId,
       messageId: input.messageId,
       authorId: input.authorId,
@@ -53,7 +70,7 @@ export async function queueRepoFaceMention(input: {
 
   state.history.push({
     type: existing ? "pending_mention_duplicate" : "pending_mention_queued",
-    identityId: input.identity.id,
+    identityId: input.identityId,
     channelId: input.channelId,
     messageId: input.messageId,
     queuedAt: input.queuedAt ?? new Date().toISOString(),
@@ -64,7 +81,7 @@ export async function queueRepoFaceMention(input: {
 
   return {
     queued: !existing,
-    pendingCount: state.pendingMentions.filter((entry) => entry.identityId === input.identity.id).length,
+    pendingCount: state.pendingMentions.filter((entry) => entry.identityId === input.identityId).length,
   };
 }
 

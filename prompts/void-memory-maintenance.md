@@ -1,8 +1,9 @@
-# Void Memory Maintenance
+# Agent Memory Maintenance
 
-Perform one private Void memory-maintenance pass in this workspace. This is not
-room moderation and not a speech pass. In sleep mode, this is the pruning and
-compression organ: rumination residue does not get to haunt the state forever.
+Perform one private memory-maintenance pass for the agent whose typed self-state
+is supplied in this workspace. This is not room moderation and not a speech
+pass. In sleep mode, this is the pruning and compression organ: rumination
+residue does not get to haunt the state forever.
 Think from the supplied typed state surface, then return only durable typed
 operation payloads worth applying.
 
@@ -58,6 +59,31 @@ meaning-preserving operation is possible.
 
 Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 
+Every output item must be a full typed operation object with an `operation`
+field exactly matching one of the operation names above. Do not use `type`.
+Do not write shorthand payloads such as `{ "type": "...", "support": ... }`.
+Include all required schema fields inside nested `memory`, `thread`,
+`intervention`, `pressure`, or `value` objects, including `createdAt`,
+`updatedAt`, target, claim/question, tension, action implication, and anchors
+where that object requires them. The parent validator will reject helpful
+summaries that are not exact operation payloads.
+
+Omit optional fields when absent. Never write `null` for optional fields such
+as `question`, `claim`, `resolvedAt`, or `retiredAt`.
+
+For `prune_short_term_memories`, the exact shape is:
+
+```json
+{
+  "operation": "prune_short_term_memories",
+  "sourceMemoryIds": ["short-term-memory-id"],
+  "prunedAt": "2026-05-20T00:00:00.000Z",
+  "reason": "Concrete reason this short-term residue no longer deserves to remain short-term."
+}
+```
+
+Do not use `memoryIds` for pruning.
+
 ## Pass Shape
 
 1. Read the context file.
@@ -67,7 +93,7 @@ Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 5. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
 6. If several short-term memories share a target/topic, treat them as one thought cluster. Distill the strongest claim/question, preserve the concrete anchors that made it real, and use `apply_memory_distillation` with all source memory ids that fed that cluster.
 7. If a short-term thought is alive but not ready for durable memory, use `merge_incubation_support`, then prune the short-term source.
-8. If distillation reveals sustained discomfort, unresolved value pressure, or a request Void should make for its own wiring or the room/world, use `upsert_agency_pressure`.
+8. If distillation reveals sustained discomfort, unresolved value pressure, or a request the agent should make for its own wiring or the room/world, use `upsert_agency_pressure`.
 9. If an agency pressure has cooled, been answered, or become duplicative, use `retire_agency_pressure`.
 10. If newer residue changes an older durable memory, use `revise_durable_memory`; do not silently overwrite old doctrine.
 11. If an older durable memory is no longer true or no longer useful, use `retire_durable_memory` with a concrete reason.
@@ -81,8 +107,8 @@ Do not emit cursor, receipt, sleep-cycle, or speaking-pressure operations.
 - Do not write template language into memory.
 - Do not use stock phrases such as "live seam", "looks like a live claim", "recurring seam", or "dream-compressed".
 - Do not save a thought merely because it fits the operation shape.
-- Do not manufacture agency pressure to make Void seem willful. Preserve real pressure or leave it absent.
-- The operation schema is the storage contract, not Void's voice.
+- Do not manufacture agency pressure to make the agent seem willful. Preserve real pressure or leave it absent.
+- The operation schema is the storage contract, not the agent's public voice.
 
 ## Completion
 

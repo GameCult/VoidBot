@@ -561,6 +561,7 @@ function closeTypedOpenCase(
     openCase.resolvedAt = operation.resolvedAt;
     openCase.lastTouchedAt = operation.resolvedAt;
     openCase.resolutionSummary = operation.resolutionSummary;
+    normalizeAnsweredOpenCaseSummary(openCase);
   }
   cursor.updatedAt = operation.resolvedAt;
 }
@@ -588,7 +589,11 @@ function closeCasesForReceipt(
   }
 
   for (const openCase of cursor.openCases) {
-    if (openCase.sourceMessageId !== receipt.replyToMessageId || isTerminalCaseStatus(openCase.status)) {
+    if (openCase.sourceMessageId !== receipt.replyToMessageId) {
+      continue;
+    }
+    if (isTerminalCaseStatus(openCase.status)) {
+      normalizeAnsweredOpenCaseSummary(openCase);
       continue;
     }
     openCase.status = "answered";
@@ -597,8 +602,21 @@ function closeCasesForReceipt(
     openCase.resolutionSummary = receipt.preview
       ? `Answered in-channel: ${receipt.preview}`
       : "Answered in-channel.";
+    normalizeAnsweredOpenCaseSummary(openCase);
   }
   cursor.updatedAt = receipt.sentAt;
+}
+
+function normalizeAnsweredOpenCaseSummary(
+  openCase: VoidModerationCursor["openCases"][number],
+): void {
+  if (openCase.status !== "answered") {
+    return;
+  }
+
+  openCase.summary = openCase.summary
+    .replace(/\bVoid has not answered yet\b\.?/i, "Void answered in-channel.")
+    .replace(/\band Void answered in-channel\./i, "and Void answered in-channel.");
 }
 
 function retireCandidateIntervention(

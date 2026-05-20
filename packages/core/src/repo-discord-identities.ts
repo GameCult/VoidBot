@@ -10,6 +10,14 @@ const repoDiscordIdentitySchema = z.object({
   repoPath: z.string().trim().min(1).optional(),
   roleId: z.string().trim().min(1).optional(),
   allowedChannelIds: z.array(z.string().trim().min(1)).default([]),
+  channelPermissions: z.array(z.object({
+    channelId: z.string().trim().min(1),
+    label: z.string().trim().min(1).optional(),
+    topic: z.string().trim().min(1).optional(),
+    speechThreshold: z.enum(["very_low", "low", "medium", "high"]).default("medium"),
+    speedMultiplier: z.number().positive().default(1),
+    posture: z.string().trim().min(1).optional(),
+  })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
   faceStatePath: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
@@ -90,7 +98,20 @@ export function isRepoDiscordIdentityAllowedInChannel(
   identity: RepoDiscordIdentity,
   channelId: string,
 ): boolean {
-  return identity.allowedChannelIds.length === 0 || identity.allowedChannelIds.includes(channelId);
+  const allowed = identity.allowedChannelIds.includes(channelId) ||
+    identity.channelPermissions.some((permission) => permission.channelId === channelId);
+  return identity.allowedChannelIds.length === 0 && identity.channelPermissions.length === 0
+    ? true
+    : allowed;
+}
+
+export function getRepoDiscordIdentityAllowedChannelIds(identity: RepoDiscordIdentity): string[] {
+  return [
+    ...new Set([
+      ...identity.allowedChannelIds,
+      ...identity.channelPermissions.map((permission) => permission.channelId),
+    ]),
+  ];
 }
 
 export function resolveRepoFaceStatePath(
@@ -126,11 +147,38 @@ function normalizeRepoDiscordIdentities(
       repoPath: identity.repoPath?.trim(),
       roleId: identity.roleId?.trim(),
       allowedChannelIds: [...new Set(identity.allowedChannelIds.map((entry) => entry.trim()))],
+      channelPermissions: normalizeChannelPermissions(identity.channelPermissions),
       avatarUrl: identity.avatarUrl?.trim(),
       faceStatePath: identity.faceStatePath?.trim(),
       description: identity.description?.trim(),
     };
   });
+}
+
+function normalizeChannelPermissions(
+  permissions: RepoDiscordIdentity["channelPermissions"],
+): RepoDiscordIdentity["channelPermissions"] {
+  const seen = new Set<string>();
+  const normalized: RepoDiscordIdentity["channelPermissions"] = [];
+
+  for (const permission of permissions) {
+    const channelId = permission.channelId.trim();
+    const key = `${channelId}:${permission.topic?.trim().toLowerCase() ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push({
+      channelId,
+      label: permission.label?.trim(),
+      topic: permission.topic?.trim(),
+      speechThreshold: permission.speechThreshold,
+      speedMultiplier: permission.speedMultiplier,
+      posture: permission.posture?.trim(),
+    });
+  }
+
+  return normalized;
 }
 
 function sanitizePathSegment(value: string): string {

@@ -1,6 +1,7 @@
 param(
   [string] $StateFilePath,
-  [switch] $SkipModel
+  [switch] $SkipModel,
+  [switch] $ForceDistillation
 )
 
 Set-StrictMode -Version Latest
@@ -149,7 +150,9 @@ function Invoke-CodexExec {
     [Parameter(Mandatory = $true)]
     [string] $WorkingDirectory,
     [Parameter(Mandatory = $true)]
-    [string] $InputText
+    [string] $InputText,
+    [Parameter(Mandatory = $true)]
+    [int] $TimeoutSeconds
   )
 
   $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -183,7 +186,15 @@ function Invoke-CodexExec {
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
 
-    $process.WaitForExit()
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      try {
+        $process.Kill($true)
+      } catch {
+        $process.Kill()
+      }
+      $process.WaitForExit()
+      throw "Codex memory maintenance exceeded timeout of $TimeoutSeconds seconds."
+    }
     $stdoutTask.Wait()
     $stderrTask.Wait()
 
@@ -245,6 +256,29 @@ function Apply-TypedOperation {
   }
 }
 
+function Assert-TypedOperationSchema {
+  param([Parameter(Mandatory = $true)] $Operation)
+
+  $operationInputPath = Join-Path $statusDir ("void-memory-maintenance-validate-operation-{0}.json" -f ([Guid]::NewGuid().ToString("n")))
+  Write-JsonFile -Path $operationInputPath -Data $Operation
+
+  try {
+    $script = @"
+const { readFileSync } = require('node:fs');
+const core = require('./packages/core/dist');
+const operation = JSON.parse(readFileSync(process.argv[1], 'utf8'));
+core.voidSelfStateOperationSchema.parse(operation);
+console.log(JSON.stringify({ ok: true }));
+"@
+    $output = & node -e $script $operationInputPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "Typed operation failed schema validation: $output"
+    }
+  } finally {
+    Remove-Item -LiteralPath $operationInputPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Convert-ToOperationArray {
   param($Value)
 
@@ -259,15 +293,58 @@ function Convert-ToOperationArray {
   return @($Value)
 }
 
-function Test-RecentLockPresent {
-  param([Parameter(Mandatory = $true)][string] $Path, [Parameter(Mandatory = $true)][int] $Minutes)
+function Test-LockProcessAlive {
+  param($LockRecord)
+
+  $lockPid = Get-ObjectPropertyValue -Value $LockRecord -Name "pid"
+  if ($null -eq $lockPid) {
+    return $false
+  }
+
+  try {
+    $process = Get-Process -Id ([int]$lockPid) -ErrorAction Stop
+    return $null -ne $process
+  } catch {
+    return $false
+  }
+}
+
+function Test-LockWithinRuntimeLimit {
+  param(
+    $LockRecord,
+    [Parameter(Mandatory = $true)]
+    [int] $MaxRuntimeMinutes
+  )
+
+  $startedAtRaw = Get-ObjectPropertyString -Value $LockRecord -Name "startedAt"
+  if ([string]::IsNullOrWhiteSpace($startedAtRaw)) {
+    return $false
+  }
+
+  try {
+    $startedAt = [DateTime]::Parse($startedAtRaw).ToUniversalTime()
+  } catch {
+    return $false
+  }
+
+  return (([DateTime]::UtcNow - $startedAt).TotalMinutes -lt $MaxRuntimeMinutes)
+}
+
+function Test-ActiveLock {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Path,
+    [Parameter(Mandatory = $true)]
+    [int] $MaxRuntimeMinutes
+  )
 
   if (-not (Test-Path $Path)) {
     return $false
   }
 
-  $lockAge = [DateTime]::UtcNow - (Get-Item $Path).LastWriteTimeUtc
-  return $lockAge.TotalMinutes -lt $Minutes
+  $lockRecord = Read-JsonFile -Path $Path
+  return (Test-LockProcessAlive -LockRecord $lockRecord) -and
+    (Test-LockWithinRuntimeLimit -LockRecord $lockRecord -MaxRuntimeMinutes $MaxRuntimeMinutes)
 }
 
 function Assert-AllowedMemoryMaintenanceOperation {
@@ -315,23 +392,53 @@ trap {
 
 New-Item -ItemType Directory -Force -Path $statusDir, $logDir, (Split-Path -Parent $stateFilePath) | Out-Null
 
-if (Test-RecentLockPresent -Path $moderationLockPath -Minutes 20) {
-  Write-JsonFile -Path $statusPath -Data @{
-    status = "skipped"
-    reason = "moderation_loop_active"
-    observedAt = ([DateTime]::UtcNow.ToString("o"))
-    stateFile = $stateFilePath
+$maxRuntimeMinutes = if (-not [string]::IsNullOrWhiteSpace($env:VOID_MEMORY_MAINTENANCE_MAX_RUNTIME_MINUTES)) {
+  [int]$env:VOID_MEMORY_MAINTENANCE_MAX_RUNTIME_MINUTES
+} else {
+  15
+}
+
+if (Test-Path $moderationLockPath) {
+  $moderationLock = Read-JsonFile -Path $moderationLockPath
+  $moderationProcessAlive = Test-LockProcessAlive -LockRecord $moderationLock
+  if ($moderationProcessAlive) {
+    Write-JsonFile -Path $statusPath -Data @{
+      status = "skipped"
+      reason = if (Test-LockWithinRuntimeLimit -LockRecord $moderationLock -MaxRuntimeMinutes $maxRuntimeMinutes) { "moderation_loop_active" } else { "moderation_loop_over_runtime_active" }
+      observedAt = ([DateTime]::UtcNow.ToString("o"))
+      stateFile = $stateFilePath
+      moderationLockPath = $moderationLockPath
+      maxRuntimeMinutes = $maxRuntimeMinutes
+      pid = Get-ObjectPropertyValue -Value $moderationLock -Name "pid"
+      startedAt = Get-ObjectPropertyString -Value $moderationLock -Name "startedAt"
+    }
+    return
   }
-  return
+  Remove-Item -LiteralPath $moderationLockPath -Force
 }
 
 if (Test-Path $lockPath) {
-  if (Test-RecentLockPresent -Path $lockPath -Minutes 20) {
+  $existingLock = Read-JsonFile -Path $lockPath
+  $lockProcessAlive = Test-LockProcessAlive -LockRecord $existingLock
+  if ($lockProcessAlive -and (Test-LockWithinRuntimeLimit -LockRecord $existingLock -MaxRuntimeMinutes $maxRuntimeMinutes)) {
     Write-JsonFile -Path $statusPath -Data @{
       status = "skipped"
       reason = "lock_present"
       observedAt = ([DateTime]::UtcNow.ToString("o"))
       stateFile = $stateFilePath
+    }
+    return
+  }
+  if ($lockProcessAlive) {
+    Write-JsonFile -Path $statusPath -Data @{
+      status = "skipped"
+      reason = "lock_over_runtime_active"
+      observedAt = ([DateTime]::UtcNow.ToString("o"))
+      stateFile = $stateFilePath
+      lockPath = $lockPath
+      maxRuntimeMinutes = $maxRuntimeMinutes
+      pid = Get-ObjectPropertyValue -Value $existingLock -Name "pid"
+      startedAt = Get-ObjectPropertyString -Value $existingLock -Name "startedAt"
     }
     return
   }
@@ -341,6 +448,13 @@ if (Test-Path $lockPath) {
 Write-JsonFile -Path $lockPath -Data @{
   pid = $PID
   startedAt = $startedAtUtc.ToString("o")
+}
+Write-JsonFile -Path $statusPath -Data @{
+  status = "starting"
+  startedAt = $startedAtUtc.ToString("o")
+  stateFile = $stateFilePath
+  lockPath = $lockPath
+  pid = $PID
 }
 
 if (Test-Path $operationOutputPath) {
@@ -382,10 +496,17 @@ $codexExecArgs = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXEC_ARGS)) {
 } else {
   @()
 }
+$codexTimeoutSeconds = if (-not [string]::IsNullOrWhiteSpace($env:VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS)) {
+  [int]$env:VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS
+} elseif ($envValues.ContainsKey("VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS") -and -not [string]::IsNullOrWhiteSpace($envValues["VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS"])) {
+  [int]$envValues["VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS"]
+} else {
+  [Math]::Max(60, $maxRuntimeMinutes * 60)
+}
 
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
-$isSleepMaintenance = [bool]$typedState.scheduledRuntime.sleepCycle.isNapping
+$isSleepMaintenance = [bool]$ForceDistillation -or [bool]$typedState.scheduledRuntime.sleepCycle.isNapping
 $shortTermMemoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.shortTerm).Count
 $longTermMemoryCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.memories).Count
 $incubationCount = @(Convert-ToValueArray -Value $typedState.thoughtMemory.incubation).Count
@@ -442,6 +563,7 @@ Write-JsonFile -Path $statusPath -Data @{
   status = if ($SkipModel) { "running_skip_model" } else { "running" }
   startedAt = $startedAtUtc.ToString("o")
   skipModel = [bool]$SkipModel
+  forceDistillation = [bool]$ForceDistillation
   stateFile = $stateFilePath
   contextPath = $contextPath
   operationOutputPath = $operationOutputPath
@@ -469,7 +591,7 @@ if ($SkipModel) {
     "-"
   )
 
-  $execution = Invoke-CodexExec -Executable $codexExecutable -Arguments $codexArgs -WorkingDirectory $repoRoot -InputText $prompt
+  $execution = Invoke-CodexExec -Executable $codexExecutable -Arguments $codexArgs -WorkingDirectory $repoRoot -InputText $prompt -TimeoutSeconds $codexTimeoutSeconds
   $exitCode = $execution.ExitCode
   $combinedText = (($execution.StdOut, $execution.StdErr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
 }
@@ -491,6 +613,10 @@ if ((-not $SkipModel) -and $isSleepMaintenance -and $maintenancePressure -gt 0 -
 
 foreach ($operation in $proposedOperations) {
   Assert-AllowedMemoryMaintenanceOperation -Operation $operation
+  Assert-TypedOperationSchema -Operation $operation
+}
+
+foreach ($operation in $proposedOperations) {
   $appliedOperations += Apply-TypedOperation -Operation $operation
 }
 
@@ -513,6 +639,7 @@ Write-JsonFile -Path $statusPath -Data @{
   durationSeconds = [Math]::Round(($finishedAtUtc - $startedAtUtc).TotalSeconds, 2)
   exitCode = [int]$exitCode
   skipModel = [bool]$SkipModel
+  forceDistillation = [bool]$ForceDistillation
   stateFile = [string]$stateFilePath
   contextPath = [string]$contextPath
   operationOutputPath = [string]$operationOutputPath
