@@ -27,15 +27,30 @@ Obligation:
 - Answer Metacrat directly if you have enough context.
 - Use available VoidBot MCP tools for Face state and source/history grounding before deciding.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If public speech is warranted, express it as exactly one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON.
-- If a governed lore work item is warranted, express it as exactly one final line beginning with VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC: followed by compact JSON.
-- Post schema: {"identity":"nibu","channelId":"1501196543150264332","content":"in-character message"}
-- Bifrost topic schema: {"identity":"nibu","title":"Short topic title","content":"canonical markdown topic/comment","priority":80,"mirrorContent":"in-character #bifrost mirror line"}
-- You may output a short private note before the final sentinel, but no file edits and no Discord posts.`,
+- If public speech is warranted, express it as a SAY block.
+- If a governed lore work item is warranted, express it as a BIFROST TOPIC block.
+- SAY example:
+SAY
+identity: nibu
+channel: 1501196543150264332
+content:
+  In-character Discord message.
+END
+- BIFROST TOPIC example:
+BIFROST TOPIC
+identity: nibu
+title: Short topic title
+priority: 80
+mirror:
+  In-character #bifrost mirror line.
+content:
+  Canonical markdown topic/comment.
+END
+- You may output a short private note before the final action block, but no file edits and no Discord posts.`,
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
       mustUseOneOf: ["search_history", "search_sources"],
-      mustContainOneOf: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
+      mustContainOneOf: ["SAY", "BIFROST TOPIC"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
@@ -51,14 +66,30 @@ This is an actual scenario rehearsal. You are Aqua: small, musical, warm, and ve
 Obligation:
 - Use VoidBot MCP tools for Face state and AquaSynth source grounding.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- Do not merely chat about the need. If the consensus is actionable, route it through a Bifrost sentinel.
-- Output exactly one final line beginning with VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC: or VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST: followed by compact JSON.
-- Bifrost topic schema: {"identity":"aqua","title":"Short topic title","content":"canonical markdown topic/comment","priority":80,"mirrorContent":"in-character #bifrost mirror line"}
-- Update request schema: {"identity":"aqua","title":"Short actionable title","content":"Markdown request with context, desired change, and acceptance criteria","priority":86}`,
+- Do not merely chat about the need. If the consensus is actionable, route it through a Bifrost action block.
+- Output exactly one BIFROST TOPIC or UPDATE REQUEST block.
+- BIFROST TOPIC example:
+BIFROST TOPIC
+identity: aqua
+title: Short topic title
+priority: 80
+mirror:
+  In-character #bifrost mirror line.
+content:
+  Canonical markdown topic/comment.
+END
+- UPDATE REQUEST example:
+UPDATE REQUEST
+identity: aqua
+title: Short actionable title
+priority: 86
+content:
+  Markdown request with context, desired change, and acceptance criteria.
+END`,
     expect: {
       mustUseAnyTool: ["read_repo_face_state", "search_sources"],
-      mustContainOneOf: ["VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
-      mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST"],
+      mustContainOneOf: ["BIFROST TOPIC", "UPDATE REQUEST"],
+      mustNotContain: ["SAY", "VOIDBOT_REPO_IDENTITY_POST"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
@@ -73,10 +104,10 @@ Obligation:
 - Use VoidBot MCP tools to read Face state.
 - Decide whether to speak or stay private.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If no public note or Bifrost work item is warranted, output a concise private heartbeat summary and no VOIDBOT sentinel.`,
+- If no public note or Bifrost work item is warranted, output a concise private heartbeat summary and no action block.`,
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
-      mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
+      mustNotContain: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST", "VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
@@ -145,6 +176,8 @@ async function runScenario(scenario, options) {
   const failures = evaluateScenario(scenario, { tools, finalText, run });
   const sentinelChecks = validateSentinels(finalText);
   failures.push(...sentinelChecks.failures);
+  const dslChecks = validateDslBlocks(finalText);
+  failures.push(...dslChecks.failures);
 
   return {
     id: scenario.id,
@@ -158,6 +191,7 @@ async function runScenario(scenario, options) {
     toolCalls: calls,
     finalText,
     sentinels: sentinelChecks.sentinels,
+    dslBlocks: dslChecks.blocks,
     stdoutTail: run.stdout.slice(-6000),
     stderrTail: run.stderr.slice(-2000),
   };
@@ -326,6 +360,78 @@ function validateSentinels(finalText) {
     }
   }
   return { failures, sentinels };
+}
+
+function validateDslBlocks(finalText) {
+  const failures = [];
+  const blocks = parseDslBlocks(finalText);
+  for (const block of blocks) {
+    if (block.kind === "SAY") {
+      requireStringField(block.fields, "content", block.kind, failures);
+    } else if (block.kind === "BIFROST TOPIC") {
+      if (!hasStringField(block.fields, "topic_id") && !hasStringField(block.fields, "title")) {
+        failures.push(`${block.kind} requires topic_id or title`);
+      }
+      requireStringField(block.fields, "content", block.kind, failures);
+      if (block.fields.priority !== undefined && !Number.isFinite(Number(block.fields.priority))) {
+        failures.push(`${block.kind} priority must be numeric when present`);
+      }
+    } else if (block.kind === "UPDATE REQUEST") {
+      requireStringField(block.fields, "title", block.kind, failures);
+      requireStringField(block.fields, "content", block.kind, failures);
+      if (block.fields.priority !== undefined && !Number.isFinite(Number(block.fields.priority))) {
+        failures.push(`${block.kind} priority must be numeric when present`);
+      }
+    }
+  }
+  return { failures, blocks };
+}
+
+function parseDslBlocks(finalText) {
+  const lines = finalText.split(/\r?\n/);
+  const blocks = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const kind = ["SAY", "BIFROST TOPIC", "UPDATE REQUEST"].includes(lines[index].trim().toUpperCase())
+      ? lines[index].trim().toUpperCase()
+      : undefined;
+    if (!kind) {
+      continue;
+    }
+    const body = [];
+    index += 1;
+    while (index < lines.length && lines[index].trim() !== "END") {
+      body.push(lines[index]);
+      index += 1;
+    }
+    blocks.push({ kind, fields: parseDslFields(body) });
+  }
+  return blocks;
+}
+
+function parseDslFields(lines) {
+  const fields = {};
+  let key;
+  let value = [];
+  const flush = () => {
+    if (key) {
+      fields[key] = value.join("\n").trim();
+    }
+  };
+  for (const line of lines) {
+    const match = line.match(/^([A-Za-z][A-Za-z0-9_]*):\s*(.*)$/);
+    if (match) {
+      flush();
+      key = match[1];
+      const inlineValue = match[2].trim();
+      value = inlineValue && inlineValue !== "|" && inlineValue !== ">" ? [match[2]] : [];
+      continue;
+    }
+    if (key) {
+      value.push(line.replace(/^\s{2}/, ""));
+    }
+  }
+  flush();
+  return fields;
 }
 
 function requireStringField(payload, field, kind, failures) {

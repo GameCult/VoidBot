@@ -1460,9 +1460,41 @@ function buildHeartbeatPrompt(input: {
     "Anti-repetition invariant: recent Face posts are social context, not a phrase template. If your proposed public line shares the same setup/punchline shape, refrain, rewrite from a different angle, or stay private.",
     "Do not let recent work-heavy context hypnotize you into sounding like a meeting transcript. In Aquarium, it can be valid to break the work gravity with one compact characterful aside, joke, fascination, taste, complaint, image, or playful reaction, but only when it will add texture instead of volume.",
     "Not every public post needs to attach itself to the current work seam. If no direct obligation is pending, you may simply share a fun thing this Face has been thinking about, a taste/preference, a tiny gripe, a weird fascination, or a light reaction to the room. Let the Face be socially present, not only useful.",
-    `If your governed opinion belongs on Bifrost, output one final line beginning with VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC: followed by compact JSON like {"identity":"${input.identity.id}","topicId":"topic_...","stance":"support|objection|question|proposal|summary","content":"Markdown comment","mirrorContent":"A more verbal in-character #bifrost mirror line","channelId":"${input.channelId}","replyToMessageId":"..."}; omit topicId and include "title" plus "priority" to open a new Bifrost topic in your jurisdiction. Set "approve":true only when you are the jurisdiction Face approving the topic; set "dispatch":true only when that approved topic should become a Codex update request now. Bifrost typed CultCache docs are the canonical governance surface. If #bifrost mirroring is configured, Bifrost will post mirrorContent in your own persona and record the Discord receipt on the topic; keep content canonical and mirrorContent alive/characterful.`,
-    `If you have a concrete repo-local request that should become a Codex turn in your own workspace, prefer posting or approving it on the canonical Bifrost topic first. If this heartbeat has enough Face-owned authority to approve immediate dispatch, output one final line beginning with VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST: followed by compact JSON like {"identity":"${input.identity.id}","title":"Short actionable title","content":"Markdown request with context, desired change, and acceptance criteria","priority":86,"channelId":"${input.channelId}","replyToMessageId":"..."}; the worker writes this into Bifrost intake and Bifrost dispatch opens the target Codex turn. Use this only for immediately actionable repo improvements, docs, tests, proposals, research passes, or implementation cuts that belong to your jurisdiction and have enough consensus/approval to leave discussion.`,
-    `Do not call post_repo_identity_message from this unattended heartbeat. If an in-channel note is warranted, output one final line beginning with VOIDBOT_REPO_IDENTITY_POST: followed by compact JSON like {"identity":"${input.identity.id}","channelId":"${input.channelId}","replyToMessageId":"...","content":"..."}; choose channelId from the channel permission plan above. The worker owns delivery and receipt recording. The content field must be only the in-character Discord message, not a job label or report header.`,
+    "Preferred action output is the Face action DSL below. Use at most one public speech block and at most one Bifrost/update block unless the prompt explicitly asks for more. The worker parses these blocks and owns all side effects; do not call post_repo_identity_message from this unattended heartbeat.",
+    `To speak in Discord, end with:
+SAY
+identity: ${input.identity.id}
+channel: ${input.channelId}
+reply_to: ...
+content:
+  In-character Discord message only. No job label, no report header.
+END`,
+    `For governed Bifrost topic/comment/approval work, end with:
+BIFROST TOPIC
+identity: ${input.identity.id}
+topic_id: topic_...
+title: Short title when opening a new topic
+stance: support|objection|question|proposal|summary
+priority: 80
+approve: false
+dispatch: false
+channel: ${input.channelId}
+reply_to: ...
+mirror:
+  A more verbal in-character #bifrost mirror line.
+content:
+  Canonical markdown comment or topic body. Omit topic_id and include title to open a new topic.
+END`,
+    `For immediately actionable repo-local Codex work inside your jurisdiction, prefer approving/dispatching a Bifrost topic first. If immediate dispatch is truly warranted, end with:
+UPDATE REQUEST
+identity: ${input.identity.id}
+title: Short actionable title
+priority: 86
+channel: ${input.channelId}
+reply_to: ...
+content:
+  Markdown request with context, desired change, and acceptance criteria.
+END`,
     input.githubActionsEnabled
       ? `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; Bifrost writes the proposal file on a new branch, opens a draft PR, and the worker announces the PR or branch through Bifrost's registered Discord identity bridge. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`
       : undefined,
@@ -1744,7 +1776,7 @@ function renderPendingMentionDirective(
   return [
     `Queued direct mentions for ${identity.displayName} are attached to this heartbeat. These are obligations, not ambient chat. Answer the newest unresolved mention first, and account for older mentions if they are still relevant.`,
     ...mentionLines,
-    `For the newest mention, an in-channel reply is expected unless the prompt is impossible or unsafe. Use the final sentinel with replyToMessageId "${newest.messageId}" and channelId "${newest.channelId}".`,
+    `For the newest mention, an in-channel reply is expected unless the prompt is impossible or unsafe. Use a final SAY block with reply_to: ${newest.messageId} and channel: ${newest.channelId}.`,
   ].join("\n");
 }
 

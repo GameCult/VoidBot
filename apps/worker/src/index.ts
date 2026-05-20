@@ -760,7 +760,15 @@ function escapeRegExp(value: string): string {
 }
 
 function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
-  const intents: RepoIdentityPostIntent[] = [];
+  const intents: RepoIdentityPostIntent[] = parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "say")
+    .map((block) => ({
+      identity: optionalDslString(block.fields.identity),
+      channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+      replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+      content: block.fields.content.trim(),
+    }))
+    .filter((intent) => intent.content.length > 0);
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1188,7 +1196,18 @@ function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
 }
 
 function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdentityUpdateRequestIntent[] {
-  const intents: RepoIdentityUpdateRequestIntent[] = [];
+  const intents: RepoIdentityUpdateRequestIntent[] = parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "update_request")
+    .map((block) => ({
+      identity: optionalDslString(block.fields.identity),
+      title: block.fields.title.trim(),
+      content: block.fields.content.trim(),
+      priority: parseDslNumber(block.fields.priority),
+      sourceMessageIds: parseDslList(block.fields.source_message_ids ?? block.fields.sourceMessageIds),
+      channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+      replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+    }))
+    .filter((intent) => intent.title.length > 0 && intent.content.length > 0);
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1225,7 +1244,23 @@ function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdent
 }
 
 function parseRepoIdentityBifrostTopicIntents(finalResponse: string): RepoIdentityBifrostTopicIntent[] {
-  const intents: RepoIdentityBifrostTopicIntent[] = [];
+  const intents: RepoIdentityBifrostTopicIntent[] = parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "bifrost_topic")
+    .map((block) => ({
+      identity: optionalDslString(block.fields.identity),
+      topicId: optionalDslString(block.fields.topic_id) ?? optionalDslString(block.fields.topicId),
+      title: optionalDslString(block.fields.title),
+      content: block.fields.content.trim(),
+      mirrorContent: optionalDslString(block.fields.mirror) ?? optionalDslString(block.fields.mirrorContent),
+      stance: optionalDslString(block.fields.stance),
+      priority: parseDslNumber(block.fields.priority),
+      approve: parseDslBoolean(block.fields.approve),
+      dispatch: parseDslBoolean(block.fields.dispatch),
+      sourceMessageIds: parseDslList(block.fields.source_message_ids ?? block.fields.sourceMessageIds),
+      channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+      replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+    }))
+    .filter((intent) => intent.content.length > 0 && Boolean(intent.topicId || intent.title));
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1388,6 +1423,116 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
   return count;
 }
 
+interface RepoFaceActionBlock {
+  kind: "say" | "bifrost_topic" | "update_request";
+  fields: Record<string, string>;
+}
+
+function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[] {
+  const lines = finalResponse.split(/\r?\n/);
+  const blocks: RepoFaceActionBlock[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const kind = parseRepoFaceActionKind(lines[index]);
+    if (!kind) {
+      continue;
+    }
+
+    const bodyLines: string[] = [];
+    index += 1;
+    while (index < lines.length && lines[index].trim() !== "END") {
+      bodyLines.push(lines[index]);
+      index += 1;
+    }
+    blocks.push({
+      kind,
+      fields: parseRepoFaceActionFields(bodyLines),
+    });
+  }
+  return blocks;
+}
+
+function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | undefined {
+  switch (line.trim().toUpperCase()) {
+    case "SAY":
+      return "say";
+    case "BIFROST TOPIC":
+      return "bifrost_topic";
+    case "UPDATE REQUEST":
+      return "update_request";
+    default:
+      return undefined;
+  }
+}
+
+function parseRepoFaceActionFields(lines: string[]): Record<string, string> {
+  const fields: Record<string, string> = {};
+  let currentKey: string | undefined;
+  let currentValue: string[] = [];
+
+  const flush = (): void => {
+    if (!currentKey) {
+      return;
+    }
+    fields[currentKey] = currentValue.join("\n").trim();
+  };
+
+  for (const line of lines) {
+    const match = line.match(/^([A-Za-z][A-Za-z0-9_]*):\s*(.*)$/);
+    if (match) {
+      flush();
+      currentKey = normalizeDslKey(match[1]);
+      const inlineValue = match[2].trim();
+      currentValue = inlineValue.length > 0 && inlineValue !== "|" && inlineValue !== ">" ? [match[2]] : [];
+      continue;
+    }
+    if (currentKey) {
+      currentValue.push(line.replace(/^\s{2}/, ""));
+    }
+  }
+  flush();
+  return fields;
+}
+
+function normalizeDslKey(key: string): string {
+  return key.trim();
+}
+
+function optionalDslString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseDslNumber(value: string | undefined): number | undefined {
+  const trimmed = optionalDslString(value);
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseDslBoolean(value: string | undefined): boolean | undefined {
+  const normalized = optionalDslString(value)?.toLowerCase();
+  if (["true", "yes", "1"].includes(normalized ?? "")) {
+    return true;
+  }
+  if (["false", "no", "0"].includes(normalized ?? "")) {
+    return false;
+  }
+  return undefined;
+}
+
+function parseDslList(value: string | undefined): string[] {
+  const trimmed = optionalDslString(value);
+  if (!trimmed) {
+    return [];
+  }
+  return trimmed
+    .split(/[,\n]/)
+    .map((entry) => entry.trim().replace(/^-\s*/, ""))
+    .filter((entry) => entry.length > 0);
+}
+
 function renderRepoIdentityUpdateRequestMarkdown(
   identity: { id: string; displayName: string; repoName: string },
   intent: RepoIdentityUpdateRequestIntent,
@@ -1469,7 +1614,7 @@ function normalizeProposalPath(
 }
 
 function stripRepoIdentityPostIntents(finalResponse: string): string {
-  return finalResponse
+  return stripRepoFaceActionBlocks(finalResponse)
     .split(/\r?\n/)
     .filter((line) => {
       const trimmed = line.trim();
@@ -1484,6 +1629,22 @@ function stripRepoIdentityPostIntents(finalResponse: string): string {
     })
     .join("\n")
     .trim();
+}
+
+function stripRepoFaceActionBlocks(finalResponse: string): string {
+  const lines = finalResponse.split(/\r?\n/);
+  const kept: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (parseRepoFaceActionKind(lines[index])) {
+      index += 1;
+      while (index < lines.length && lines[index].trim() !== "END") {
+        index += 1;
+      }
+      continue;
+    }
+    kept.push(lines[index]);
+  }
+  return kept.join("\n");
 }
 
 function isPathInside(rootPath: string, candidatePath: string): boolean {
