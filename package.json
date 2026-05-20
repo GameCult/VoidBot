@@ -29,6 +29,7 @@
     "state:install-mood-task": "powershell -ExecutionPolicy Bypass -File scripts/install-void-mood-drift-task.ps1",
     "state:install-repo-face-heartbeat-task": "powershell -ExecutionPolicy Bypass -File scripts/install-repo-face-heartbeat-task.ps1",
     "agents:inspect-requests": "tsx scripts/inspect-agent-state-requests.ts",
+    "agents:heartbeat-model-smoke": "node scripts/smoke-repo-face-heartbeat-model-scenarios.mjs",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",
