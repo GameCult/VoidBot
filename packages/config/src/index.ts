@@ -116,6 +116,10 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
+  REPO_FACE_HEARTBEAT_CODEX_MODEL: optionalNonEmptyString,
+  REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT: z
+    .enum(["low", "medium", "high", "xhigh"])
+    .optional(),
   EPIPHANY_AGENT_ROOT: z.string().min(1).default("E:/Projects/EpiphanyAgent"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
@@ -167,6 +171,8 @@ export interface AppConfig {
     globalHeat: number;
     speedOverrides: Record<string, number>;
     heatOverrides: Record<string, number>;
+    codexModel?: string;
+    codexModelReasoningEffort?: "low" | "medium" | "high" | "xhigh";
   };
   epiphanyAgentRoot: string;
   indexAllChannels: boolean;
@@ -387,6 +393,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       globalHeat: parsed.REPO_FACE_HEARTBEAT_GLOBAL_HEAT,
       speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
       heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
+      codexModel: parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL,
+      codexModelReasoningEffort: parsed.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT,
     },
     epiphanyAgentRoot: resolve(parsed.EPIPHANY_AGENT_ROOT),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,

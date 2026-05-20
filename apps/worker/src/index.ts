@@ -297,6 +297,7 @@ async function processJob(job: JobRecord): Promise<void> {
     const request = provider.buildRequest(job.contextBundle, {
       jobId: job.id,
       command: job.command,
+      ...repoFaceHeartbeatCodexOptions(job),
     });
     const response = await provider.execute(request);
     const artifactPaths = await writeArtifacts(job.id, response.artifacts ?? []);
@@ -457,6 +458,19 @@ async function processJob(job: JobRecord): Promise<void> {
     });
     console.error(`Failed job ${job.id}: ${message}`);
   }
+}
+
+function repoFaceHeartbeatCodexOptions(job: JobRecord): Record<string, string> {
+  if (job.command !== "repo-face-rumination") {
+    return {};
+  }
+
+  return {
+    ...(config.repoFaceHeartbeats.codexModel ? { model: config.repoFaceHeartbeats.codexModel } : {}),
+    ...(config.repoFaceHeartbeats.codexModelReasoningEffort
+      ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
+      : {}),
+  };
 }
 
 async function maybeNotifyOwnerOfJobFailure(job: JobRecord, errorMessage: string): Promise<void> {

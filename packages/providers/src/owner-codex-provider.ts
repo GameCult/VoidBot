@@ -185,8 +185,8 @@ export class OwnerCodexProvider implements ProviderAdapter {
       result = await runCodexExec({
         executable: this.options.executable,
         executableArgs: this.options.executableArgs,
-        model: this.options.model,
-        reasoningEffort: this.options.reasoningEffort,
+        model: getStringOption(request.options?.model) ?? this.options.model,
+        reasoningEffort: getReasoningEffortOption(request.options?.reasoningEffort) ?? this.options.reasoningEffort,
         timeoutMs: this.options.timeoutMs,
         workingDirectory: this.options.workingDirectory,
         prompt: codexPrompt,
@@ -386,4 +386,15 @@ export class OwnerCodexProvider implements ProviderAdapter {
       notifications: normalizedReply.notifications,
     };
   }
+}
+
+function getStringOption(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function getReasoningEffortOption(value: unknown): "low" | "medium" | "high" | "xhigh" | undefined {
+  if (value === "low" || value === "medium" || value === "high" || value === "xhigh") {
+    return value;
+  }
+  return undefined;
 }
