@@ -9,6 +9,7 @@ export const VOID_SELF_STATE_DOCUMENT_TYPES = {
   scheduledRuntime: "void.scheduled_runtime",
   agencyPressure: "void.agency_pressure",
   candidateInterventions: "void.candidate_interventions",
+  faceAffect: "void.face_affect",
 } as const;
 
 const nonEmptyStringSchema = z.string().trim().min(1);
@@ -224,6 +225,118 @@ const agencyPressureSchema = z.object({
   }
 });
 
+const faceAffectNeedSchema = z.object({
+  needId: nonEmptyStringSchema,
+  kind: z.enum([
+    "substrate",
+    "attention",
+    "agency",
+    "recognition",
+    "social_contact",
+    "territory",
+    "rest",
+    "play",
+    "status",
+  ]),
+  status: z.enum(["active", "cooling", "satisfied", "neglected", "retired"]),
+  target: thoughtTargetSchema,
+  summary: boundedTextSchema,
+  claim: z.string().trim().min(1).max(2000).optional(),
+  question: z.string().trim().min(1).max(2000).optional(),
+  tension: z.string().trim().min(1).max(2000),
+  actionImplication: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  valence: z.number().min(-1).max(1).default(0),
+  anchorRefs: z.array(anchorRefSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  sourceMemoryIds: z.array(nonEmptyStringSchema).default([]),
+  lastSatisfiedAt: timestampSchema.optional(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict().superRefine((need, context) => {
+  if (!need.claim && !need.question) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Affect needs must preserve at least one claim or question.",
+      path: ["claim"],
+    });
+  }
+
+  const admitsMissingAnchor = need.tags.includes("anchor:missing") || need.tags.includes("evidence:missing");
+  if (need.anchorRefs.length === 0 && need.evidenceRefs.length === 0 && need.sourceMemoryIds.length === 0 && !admitsMissingAnchor) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Affect needs must include anchor refs, source memory ids, or explicitly tag anchor:missing.",
+      path: ["anchorRefs"],
+    });
+  }
+});
+
+const faceSocialBondSchema = z.object({
+  bondId: nonEmptyStringSchema,
+  target: thoughtTargetSchema,
+  stance: z.enum([
+    "fondness",
+    "rivalry",
+    "trust",
+    "irritation",
+    "protectiveness",
+    "envy",
+    "respect",
+    "suspicion",
+    "attachment",
+  ]),
+  status: z.enum(["active", "cooling", "resolved", "retired"]),
+  summary: boundedTextSchema,
+  claim: z.string().trim().min(1).max(2000),
+  tension: z.string().trim().min(1).max(2000),
+  actionImplication: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  anchorRefs: z.array(anchorRefSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict();
+
+const faceStatusReadSchema = z.object({
+  readId: nonEmptyStringSchema,
+  target: thoughtTargetSchema,
+  status: z.enum([
+    "favored",
+    "neglected",
+    "pampered",
+    "bypassed",
+    "blocked",
+    "challenged",
+    "ignored",
+    "consulted",
+    "threatened",
+    "admired",
+  ]),
+  summary: boundedTextSchema,
+  claim: z.string().trim().min(1).max(2000),
+  tension: z.string().trim().min(1).max(2000),
+  actionImplication: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  anchorRefs: z.array(anchorRefSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict();
+
+const faceMoodDimensionSchema = z.object({
+  name: nonEmptyStringSchema,
+  value: z.number().min(0).max(1),
+  source: z.string().trim().min(1).max(240).optional(),
+  updatedAt: timestampSchema,
+}).strict();
+
 const selfProfileValueSchema = z.object({
   id: nonEmptyStringSchema,
   label: nonEmptyStringSchema,
@@ -309,6 +422,15 @@ export const voidAgencyPressureSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+export const voidFaceAffectSchema = z.object({
+  schemaVersion: z.literal(1),
+  needs: z.array(faceAffectNeedSchema).default([]),
+  socialBonds: z.array(faceSocialBondSchema).default([]),
+  statusReads: z.array(faceStatusReadSchema).default([]),
+  moodDimensions: z.array(faceMoodDimensionSchema).default([]),
+  updatedAt: timestampSchema,
+}).strict();
+
 export const voidSelfProfileDocument = defineDocumentType({
   type: VOID_SELF_STATE_DOCUMENT_TYPES.selfProfile,
   schema: voidSelfProfileSchema,
@@ -351,6 +473,12 @@ export const voidCandidateInterventionsDocument = defineDocumentType({
   global: true,
 });
 
+export const voidFaceAffectDocument = defineDocumentType({
+  type: VOID_SELF_STATE_DOCUMENT_TYPES.faceAffect,
+  schema: voidFaceAffectSchema,
+  global: true,
+});
+
 export const voidSelfStateDocumentRegistry = defineDocumentRegistry(
   voidSelfProfileDocument,
   voidModerationCursorDocument,
@@ -359,6 +487,7 @@ export const voidSelfStateDocumentRegistry = defineDocumentRegistry(
   voidScheduledRuntimeDocument,
   voidAgencyPressureDocument,
   voidCandidateInterventionsDocument,
+  voidFaceAffectDocument,
 );
 
 export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
@@ -456,6 +585,41 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     reason: z.string().trim().min(1).max(1000),
   }).strict(),
   z.object({
+    operation: z.literal("upsert_affect_need"),
+    need: faceAffectNeedSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_affect_need"),
+    needId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("upsert_social_bond"),
+    bond: faceSocialBondSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_social_bond"),
+    bondId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("upsert_status_read"),
+    read: faceStatusReadSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_status_read"),
+    readId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    operation: z.literal("update_mood_dimensions"),
+    dimensions: z.array(faceMoodDimensionSchema).min(1),
+    updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
     operation: z.literal("update_sleep_cycle"),
     sleepCycle: voidScheduledRuntimeSchema.shape.sleepCycle,
   }).strict(),
@@ -486,4 +650,5 @@ export type VoidThoughtMemory = z.infer<typeof voidThoughtMemorySchema>;
 export type VoidScheduledRuntime = z.infer<typeof voidScheduledRuntimeSchema>;
 export type VoidAgencyPressure = z.infer<typeof voidAgencyPressureSchema>;
 export type VoidCandidateInterventions = z.infer<typeof voidCandidateInterventionsSchema>;
+export type VoidFaceAffect = z.infer<typeof voidFaceAffectSchema>;
 export type VoidSelfStateOperation = z.infer<typeof voidSelfStateOperationSchema>;

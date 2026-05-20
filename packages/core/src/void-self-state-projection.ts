@@ -6,6 +6,7 @@ import {
 
 import {
   type VoidCandidateInterventions,
+  type VoidFaceAffect,
   type VoidAgencyPressure,
   type VoidModerationCursor,
   type VoidScheduledRuntime,
@@ -13,6 +14,7 @@ import {
   type VoidSpeechReceipts,
   type VoidThoughtMemory,
   voidCandidateInterventionsSchema,
+  voidFaceAffectSchema,
   voidAgencyPressureSchema,
   voidModerationCursorSchema,
   voidScheduledRuntimeSchema,
@@ -29,6 +31,7 @@ export interface VoidSelfStateTypedProjection {
   scheduledRuntime: VoidScheduledRuntime;
   agencyPressure: VoidAgencyPressure;
   candidateInterventions: VoidCandidateInterventions;
+  faceAffect: VoidFaceAffect;
 }
 
 export interface VoidSelfStateProjectionOptions {
@@ -132,6 +135,14 @@ export function createEmptyVoidSelfState(
       interventions: [],
       updatedAt: createdAt,
     }),
+    faceAffect: voidFaceAffectSchema.parse({
+      schemaVersion: 1,
+      needs: [],
+      socialBonds: [],
+      statusReads: [],
+      moodDimensions: [],
+      updatedAt: createdAt,
+    }),
   };
 }
 
@@ -210,6 +221,7 @@ export function renderVoidSelfStateSummary(
     .sort((left, right) => right.intensity - left.intensity)
     .slice(0, 4)
     .map((entry) => renderAgencyPressure(entry, identityName));
+  const affectLines = renderFaceAffectSummary(state.faceAffect, identityName);
 
   return [
     `- Identity: ${identityName}${identityDescription ? ` - ${identityDescription}` : ""}`,
@@ -236,6 +248,7 @@ export function renderVoidSelfStateSummary(
     agencyPressures.length > 0
       ? ["- Agency pressure:", ...agencyPressures].join("\n")
       : "- Agency pressure: none active.",
+    affectLines,
     interventions.length > 0
       ? [`- Things ${identityName} may say soon:`, ...interventions].join("\n")
       : `- Things ${identityName} may say soon: none queued.`,
@@ -265,6 +278,66 @@ function renderAgencyPressure(
   return lines.join("\n");
 }
 
+function renderFaceAffectSummary(
+  affect: VoidFaceAffect,
+  identityName: string,
+): string {
+  const needs = affect.needs
+    .filter((need) => ["active", "neglected"].includes(need.status))
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4);
+  const bonds = affect.socialBonds
+    .filter((bond) => bond.status === "active")
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4);
+  const reads = affect.statusReads
+    .filter((read) => !read.retiredAt)
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4);
+  const dimensions = affect.moodDimensions
+    .slice()
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
+
+  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0) {
+    return `- What ${identityName} feels and wants: no explicit affect state yet.`;
+  }
+
+  return [
+    `- What ${identityName} feels and wants:`,
+    ...needs.map((need) => {
+      const target = need.target.label ?? need.target.id;
+      return [
+        `- Need/${need.kind} for ${target} (${need.status}, ${need.intensity.toFixed(2)}): ${need.summary}`,
+        `  ${identityName}'s claim: ${need.claim ?? need.question ?? "(unspoken)"}`,
+        `  What rubs: ${need.tension}`,
+        `  What it wants next: ${need.actionImplication}`,
+      ].join("\n");
+    }),
+    ...bonds.map((bond) => {
+      const target = bond.target.label ?? bond.target.id;
+      return [
+        `- Bond/${bond.stance} with ${target} (${bond.intensity.toFixed(2)}): ${bond.summary}`,
+        `  ${identityName}'s read: ${bond.claim}`,
+        `  How it should change behavior: ${bond.actionImplication}`,
+      ].join("\n");
+    }),
+    ...reads.map((read) => {
+      const target = read.target.label ?? read.target.id;
+      return [
+        `- Status read/${read.status} around ${target} (${read.intensity.toFixed(2)}): ${read.summary}`,
+        `  ${identityName}'s read: ${read.claim}`,
+        `  What it should do: ${read.actionImplication}`,
+      ].join("\n");
+    }),
+    dimensions.length > 0
+      ? `- Mood dimensions: ${dimensions.map((dimension) => `${dimension.name}=${dimension.value.toFixed(2)}`).join(", ")}`
+      : undefined,
+  ]
+    .filter((line): line is string => typeof line === "string")
+    .join("\n");
+}
+
 export function buildVoidSelfStateProjection(
   typedState: VoidSelfStateTypedProjection,
 ): VoidSelfStateContext["projection"] {
@@ -291,6 +364,47 @@ export function buildVoidSelfStateProjection(
     replyDirective: isNapping
       ? "You are in a scheduled nap. Reply in brief, low-effort, half-dreaming mutters instead of doing full attentive service-work."
       : undefined,
+    affect: {
+      needs: typedState.faceAffect.needs
+        .filter((need) => ["active", "neglected"].includes(need.status))
+        .slice(0, 8)
+        .map((need) => ({
+          id: need.needId,
+          kind: need.kind,
+          status: need.status,
+          target: need.target,
+          summary: need.summary,
+          intensity: need.intensity,
+          valence: need.valence,
+        })),
+      socialBonds: typedState.faceAffect.socialBonds
+        .filter((bond) => bond.status === "active")
+        .slice(0, 8)
+        .map((bond) => ({
+          id: bond.bondId,
+          stance: bond.stance,
+          target: bond.target,
+          summary: bond.summary,
+          intensity: bond.intensity,
+        })),
+      statusReads: typedState.faceAffect.statusReads
+        .filter((read) => !read.retiredAt)
+        .slice(0, 8)
+        .map((read) => ({
+          id: read.readId,
+          status: read.status,
+          target: read.target,
+          summary: read.summary,
+          intensity: read.intensity,
+        })),
+      moodDimensions: typedState.faceAffect.moodDimensions
+        .slice(0, 16)
+        .map((dimension) => ({
+          name: dimension.name,
+          value: dimension.value,
+          source: dimension.source,
+        })),
+    },
   };
 }
 

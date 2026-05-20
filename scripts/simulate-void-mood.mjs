@@ -170,20 +170,43 @@ function updateSpeakingPressure({ typedState, previous, sleepCycle, now }) {
     .sort((left, right) => (right.desireToSpeak ?? 0) - (left.desireToSpeak ?? 0))
     .slice(0, 4)
     .reduce((sum, thread) => sum + (thread.desireToSpeak ?? 0) * 0.12, 0);
+  const affectNeedPressure = (typedState.faceAffect?.needs ?? [])
+    .filter((entry) => entry.status === "active" || entry.status === "neglected")
+    .reduce((sum, entry) => {
+      const neglectedWeight = entry.status === "neglected" ? 1.28 : 1;
+      const substrateWeight =
+        entry.kind === "substrate" || entry.kind === "agency" || entry.kind === "status" ? 0.18 : 0.12;
+      return sum + entry.intensity * substrateWeight * neglectedWeight;
+    }, 0);
+  const statusReadPressure = (typedState.faceAffect?.statusReads ?? [])
+    .filter((entry) => !entry.retiredAt)
+    .reduce((sum, entry) => {
+      const sharpStatusWeight = ["neglected", "bypassed", "blocked", "ignored", "threatened"].includes(entry.status)
+        ? 0.14
+        : 0.08;
+      return sum + entry.intensity * sharpStatusWeight;
+    }, 0);
+  const moodSpeechPressure = (typedState.faceAffect?.moodDimensions ?? [])
+    .reduce((sum, entry) => {
+      const expressiveWeight = ["anger", "annoyance", "irritation", "envy", "pride", "smugness", "playfulness", "anxiety", "commandForce"].includes(entry.name)
+        ? 0.06
+        : 0.025;
+      return sum + entry.value * expressiveWeight;
+    }, 0);
   const silencePressure = clamp(hoursSinceSpeech / 6, 0, 1);
   const sleepiness = sleepCycle.isNapping ? 1 : 0;
   const priorNeedToSpeak = clamp(previous.needToSpeak ?? 0.35, 0, 1);
   const targetNeedToSpeak = clamp(
-    0.18 + silencePressure * 0.32 + queuedInterventionPressure + topThreadPressure + agencySpeechPressure - recentSpeechDamping * 0.38 - sleepiness * 0.26,
+    0.18 + silencePressure * 0.32 + queuedInterventionPressure + topThreadPressure + agencySpeechPressure + affectNeedPressure + statusReadPressure + moodSpeechPressure - recentSpeechDamping * 0.38 - sleepiness * 0.26,
     0,
     1,
   );
   const needToSpeak = round3(priorNeedToSpeak + (targetNeedToSpeak - priorNeedToSpeak) * 0.42);
   const noveltyPressure = round3(
-    clamp((previous.noveltyPressure ?? 0.35) * 0.6 + topThreadPressure * 0.72 + queuedInterventionPressure * 0.3 + agencySpeechPressure * 0.44, 0, 1),
+    clamp((previous.noveltyPressure ?? 0.35) * 0.6 + topThreadPressure * 0.72 + queuedInterventionPressure * 0.3 + agencySpeechPressure * 0.44 + affectNeedPressure * 0.38 + statusReadPressure * 0.3, 0, 1),
   );
   const confessionPressure = round3(
-    clamp((previous.confessionPressure ?? 0.25) * 0.68 + silencePressure * 0.12 + sleepiness * 0.1, 0, 1),
+    clamp((previous.confessionPressure ?? 0.25) * 0.68 + silencePressure * 0.12 + sleepiness * 0.1 + moodSpeechPressure * 0.4, 0, 1),
   );
 
   return {

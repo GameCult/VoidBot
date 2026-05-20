@@ -4,6 +4,7 @@ import { CultCache, SingleFileMessagePackBackingStore } from "cultcache-ts";
 
 import {
   type VoidCandidateInterventions,
+  type VoidFaceAffect,
   type VoidAgencyPressure,
   type VoidModerationCursor,
   type VoidScheduledRuntime,
@@ -11,6 +12,7 @@ import {
   type VoidSpeechReceipts,
   type VoidThoughtMemory,
   voidCandidateInterventionsDocument,
+  voidFaceAffectDocument,
   voidAgencyPressureDocument,
   voidModerationCursorDocument,
   voidScheduledRuntimeDocument,
@@ -63,7 +65,7 @@ export async function applyVoidSelfStateOperation(
   return {
     operation: operation.operation,
     canonicalPath,
-    typedDocumentsWritten: 7,
+    typedDocumentsWritten: 8,
   };
 }
 
@@ -81,7 +83,7 @@ export async function ensureVoidSelfStateIdentityProfile(
   return {
     operation: "ensure_identity_profile",
     canonicalPath,
-    typedDocumentsWritten: 7,
+    typedDocumentsWritten: 8,
   };
 }
 
@@ -98,7 +100,7 @@ export async function repairVoidSelfStateTypedDocuments(
   return {
     operation: "repair_typed_state",
     canonicalPath,
-    typedDocumentsWritten: 7,
+    typedDocumentsWritten: 8,
   };
 }
 
@@ -123,6 +125,7 @@ function readTypedStateOrEmpty(
     agencyPressure: cache.getGlobal(voidAgencyPressureDocument) ?? empty.agencyPressure,
     candidateInterventions:
       cache.getGlobal(voidCandidateInterventionsDocument) ?? empty.candidateInterventions,
+    faceAffect: cache.getGlobal(voidFaceAffectDocument) ?? empty.faceAffect,
   };
   if (identity) {
     repairSelfProfileIdentity(state, identity);
@@ -144,6 +147,7 @@ async function writeTypedState(
   await cache.putGlobal(voidScheduledRuntimeDocument, stripUndefined(state.scheduledRuntime));
   await cache.putGlobal(voidAgencyPressureDocument, stripUndefined(state.agencyPressure));
   await cache.putGlobal(voidCandidateInterventionsDocument, stripUndefined(state.candidateInterventions));
+  await cache.putGlobal(voidFaceAffectDocument, stripUndefined(state.faceAffect));
 }
 
 function repairSelfProfileIdentity(
@@ -367,6 +371,45 @@ function applyTypedOperation(
     case "retire_agency_pressure":
       retireAgencyPressure(state.agencyPressure, operation);
       return;
+    case "upsert_affect_need":
+      upsertBy(state.faceAffect.needs, operation.need, (entry) => entry.needId);
+      state.faceAffect.needs = state.faceAffect.needs
+        .sort((left, right) => right.intensity - left.intensity)
+        .slice(0, 24);
+      state.faceAffect.updatedAt = operation.need.updatedAt;
+      return;
+    case "retire_affect_need":
+      retireAffectNeed(state.faceAffect, operation);
+      return;
+    case "upsert_social_bond":
+      upsertBy(state.faceAffect.socialBonds, operation.bond, (entry) => entry.bondId);
+      state.faceAffect.socialBonds = state.faceAffect.socialBonds
+        .sort((left, right) => right.intensity - left.intensity)
+        .slice(0, 24);
+      state.faceAffect.updatedAt = operation.bond.updatedAt;
+      return;
+    case "retire_social_bond":
+      retireSocialBond(state.faceAffect, operation);
+      return;
+    case "upsert_status_read":
+      upsertBy(state.faceAffect.statusReads, operation.read, (entry) => entry.readId);
+      state.faceAffect.statusReads = state.faceAffect.statusReads
+        .sort((left, right) => right.intensity - left.intensity)
+        .slice(0, 24);
+      state.faceAffect.updatedAt = operation.read.updatedAt;
+      return;
+    case "retire_status_read":
+      retireStatusRead(state.faceAffect, operation);
+      return;
+    case "update_mood_dimensions":
+      for (const dimension of operation.dimensions) {
+        upsertBy(state.faceAffect.moodDimensions, dimension, (entry) => entry.name);
+      }
+      state.faceAffect.moodDimensions = state.faceAffect.moodDimensions
+        .sort((left, right) => right.value - left.value)
+        .slice(0, 32);
+      state.faceAffect.updatedAt = operation.updatedAt;
+      return;
     case "update_sleep_cycle":
       state.scheduledRuntime.sleepCycle = operation.sleepCycle;
       state.scheduledRuntime.updatedAt = new Date().toISOString();
@@ -578,6 +621,47 @@ function retireAgencyPressure(
     pressure.tags = Array.from(new Set([...pressure.tags, `retired:${operation.reason}`]));
   }
   agencyPressure.updatedAt = operation.retiredAt;
+}
+
+function retireAffectNeed(
+  faceAffect: VoidFaceAffect,
+  operation: Extract<VoidSelfStateOperation, { operation: "retire_affect_need" }>,
+): void {
+  const need = faceAffect.needs.find((entry) => entry.needId === operation.needId);
+  if (need) {
+    need.status = "retired";
+    need.retiredAt = operation.retiredAt;
+    need.updatedAt = operation.retiredAt;
+    need.tags = Array.from(new Set([...need.tags, `retired:${operation.reason}`]));
+  }
+  faceAffect.updatedAt = operation.retiredAt;
+}
+
+function retireSocialBond(
+  faceAffect: VoidFaceAffect,
+  operation: Extract<VoidSelfStateOperation, { operation: "retire_social_bond" }>,
+): void {
+  const bond = faceAffect.socialBonds.find((entry) => entry.bondId === operation.bondId);
+  if (bond) {
+    bond.status = "retired";
+    bond.retiredAt = operation.retiredAt;
+    bond.updatedAt = operation.retiredAt;
+    bond.tags = Array.from(new Set([...bond.tags, `retired:${operation.reason}`]));
+  }
+  faceAffect.updatedAt = operation.retiredAt;
+}
+
+function retireStatusRead(
+  faceAffect: VoidFaceAffect,
+  operation: Extract<VoidSelfStateOperation, { operation: "retire_status_read" }>,
+): void {
+  const read = faceAffect.statusReads.find((entry) => entry.readId === operation.readId);
+  if (read) {
+    read.retiredAt = operation.retiredAt;
+    read.updatedAt = operation.retiredAt;
+    read.tags = Array.from(new Set([...read.tags, `retired:${operation.reason}`]));
+  }
+  faceAffect.updatedAt = operation.retiredAt;
 }
 
 function closeCasesForReceipt(

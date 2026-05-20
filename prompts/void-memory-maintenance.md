@@ -50,6 +50,13 @@ meaning-preserving operation is possible.
 - `retire_candidate_intervention`
 - `upsert_agency_pressure`
 - `retire_agency_pressure`
+- `upsert_affect_need`
+- `retire_affect_need`
+- `upsert_social_bond`
+- `retire_social_bond`
+- `upsert_status_read`
+- `retire_status_read`
+- `update_mood_dimensions`
 - `propose_memory_distillation`
 - `apply_memory_distillation`
 - `revise_durable_memory`
@@ -63,7 +70,7 @@ Every output item must be a full typed operation object with an `operation`
 field exactly matching one of the operation names above. Do not use `type`.
 Do not write shorthand payloads such as `{ "type": "...", "support": ... }`.
 Include all required schema fields inside nested `memory`, `thread`,
-`intervention`, `pressure`, or `value` objects, including `createdAt`,
+`intervention`, `pressure`, `need`, `bond`, `read`, `dimensions`, or `value` objects, including `createdAt`,
 `updatedAt`, target, claim/question, tension, action implication, and anchors
 where that object requires them. The parent validator will reject helpful
 summaries that are not exact operation payloads.
@@ -93,7 +100,7 @@ Do not use `memoryIds` for pruning.
 5. Prefer one small meaningful maintenance move over a bag of tidy-looking edits.
 6. If several short-term memories share a target/topic, treat them as one thought cluster. Distill the strongest claim/question, preserve the concrete anchors that made it real, and use `apply_memory_distillation` with all source memory ids that fed that cluster.
 7. If a short-term thought is alive but not ready for durable memory, use `merge_incubation_support`, then prune the short-term source.
-8. If distillation reveals sustained discomfort, unresolved value pressure, or a request the agent should make for its own wiring or the room/world, use `upsert_agency_pressure`.
+8. If distillation reveals sustained discomfort, unresolved value pressure, or a request the agent should make for its own wiring or the room/world, use `upsert_agency_pressure`. If the discovery is emotional substrate rather than an immediate request, use `upsert_affect_need`, `upsert_social_bond`, `upsert_status_read`, or `update_mood_dimensions` so the agent can carry neglect, pampering, rivalry, pride, irritation, protectiveness, and substrate concern as state.
 9. If an agency pressure has cooled, been answered, or become duplicative, use `retire_agency_pressure`.
 10. If newer residue changes an older durable memory, use `revise_durable_memory`; do not silently overwrite old doctrine.
 11. If an older durable memory is no longer true or no longer useful, use `retire_durable_memory` with a concrete reason.

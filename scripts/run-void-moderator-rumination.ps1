@@ -603,6 +603,13 @@ function Assert-AllowedRuminationOperation {
     "merge_incubation_support",
     "upsert_agency_pressure",
     "retire_agency_pressure",
+    "upsert_affect_need",
+    "retire_affect_need",
+    "upsert_social_bond",
+    "retire_social_bond",
+    "upsert_status_read",
+    "retire_status_read",
+    "update_mood_dimensions",
     "queue_candidate_intervention",
     "retire_candidate_intervention"
   )

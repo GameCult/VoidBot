@@ -147,7 +147,7 @@ async function main(): Promise<void> {
 
   const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
-  const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state);
+  const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
@@ -292,7 +292,9 @@ async function main(): Promise<void> {
 
   state.history = state.history.slice(-80);
   state.lastTickAt = now.toISOString();
-  await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+  if (!dryRun) {
+    await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+  }
   process.stdout.write(
     `${JSON.stringify({
       ok: true,
@@ -525,6 +527,7 @@ async function loadRepoFaceRestStates(
   identities: RepoDiscordIdentity[],
   storageRoot: string,
   heartbeatState: FaceHeartbeatState,
+  options: { dryRun?: boolean } = {},
 ): Promise<Map<string, RepoFaceRestSnapshot>> {
   const restStates = new Map<string, RepoFaceRestSnapshot>();
   const now = new Date();
@@ -545,7 +548,7 @@ async function loadRepoFaceRestStates(
         identity.id,
         now,
       );
-      if (!sleepCyclesEqual(typedState.scheduledRuntime.sleepCycle, projected.sleepCycle)) {
+      if (!options.dryRun && !sleepCyclesEqual(typedState.scheduledRuntime.sleepCycle, projected.sleepCycle)) {
         await applyVoidSelfStateOperation(
           {
             canonicalPath: statePath,
@@ -561,12 +564,35 @@ async function loadRepoFaceRestStates(
           },
         );
       }
-      const maintenance = await maybeStartRepoFaceMemoryMaintenance({
-        identity,
-        statePath,
+      const speakingPressure = buildRepoFaceSpeakingPressure(
         typedState,
-        projectedRest: projected,
-      });
+        projected.sleepCycle,
+        now,
+      );
+      if (!options.dryRun && !speakingPressuresEqual(typedState.scheduledRuntime.speakingPressure, speakingPressure)) {
+        await applyVoidSelfStateOperation(
+          {
+            canonicalPath: statePath,
+            identity: {
+              agentId: identity.id,
+              publicName: identity.displayName,
+              publicDescription: identity.description,
+            },
+          },
+          {
+            operation: "update_speaking_pressure",
+            speakingPressure,
+          },
+        );
+      }
+      const maintenance = options.dryRun
+        ? { started: false, reason: "dry_run", statusPath: undefined }
+        : await maybeStartRepoFaceMemoryMaintenance({
+            identity,
+            statePath,
+            typedState,
+            projectedRest: projected,
+          });
       if (maintenance.started || maintenance.failureReason) {
         heartbeatState.history.push({
           type: maintenance.started ? "repo_face_memory_maintenance_started" : "repo_face_memory_maintenance_failed_to_start",
@@ -592,6 +618,77 @@ async function loadRepoFaceRestStates(
   }
 
   return restStates;
+}
+
+function buildRepoFaceSpeakingPressure(
+  typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>,
+  sleepCycle: Awaited<ReturnType<typeof projectRepoFaceSleepCycleForNow>>["sleepCycle"],
+  now: Date,
+): Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"] {
+  const previous = typedState.scheduledRuntime.speakingPressure;
+  const lastReceipt = typedState.speechReceipts.recentReceipts
+    .slice()
+    .sort((left, right) => Date.parse(right.sentAt) - Date.parse(left.sentAt))
+    [0];
+  const lastSpokeAt = lastReceipt?.sentAt ?? previous.lastSpokeAt;
+  const hoursSinceSpeech = lastSpokeAt ? Math.max(0, (now.getTime() - Date.parse(lastSpokeAt)) / 3_600_000) : 24;
+  const recentSpeechDamping = clamp(Math.exp(-hoursSinceSpeech / 3.5), 0, 1);
+  const affectNeedPressure = (typedState.faceAffect.needs ?? [])
+    .filter((entry) => entry.status === "active" || entry.status === "neglected")
+    .reduce((sum, entry) => {
+      const neglectedWeight = entry.status === "neglected" ? 1.25 : 1;
+      const substrateWeight = ["substrate", "agency", "status", "territory", "recognition"].includes(entry.kind) ? 0.18 : 0.11;
+      return sum + entry.intensity * substrateWeight * neglectedWeight;
+    }, 0);
+  const statusReadPressure = (typedState.faceAffect.statusReads ?? [])
+    .filter((entry) => !entry.retiredAt)
+    .reduce((sum, entry) => {
+      const sharpWeight = ["neglected", "bypassed", "blocked", "ignored", "threatened", "challenged"].includes(entry.status) ? 0.14 : 0.08;
+      return sum + entry.intensity * sharpWeight;
+    }, 0);
+  const socialBondPressure = (typedState.faceAffect.socialBonds ?? [])
+    .filter((entry) => entry.status === "active")
+    .reduce((sum, entry) => sum + entry.intensity * 0.07, 0);
+  const moodPressure = (typedState.faceAffect.moodDimensions ?? [])
+    .reduce((sum, entry) => {
+      const expressiveWeight = ["anger", "annoyance", "irritation", "envy", "pride", "smugness", "playfulness", "anxiety", "commandForce", "restlessness"].includes(entry.name)
+        ? 0.06
+        : 0.025;
+      return sum + entry.value * expressiveWeight;
+    }, 0);
+  const agencyPressure = typedState.agencyPressure.pressures
+    .filter((entry) => entry.status === "active" || entry.status === "ready_to_act")
+    .reduce((sum, entry) => sum + entry.intensity * (entry.kind.includes("advocacy") ? 0.22 : 0.11), 0);
+  const candidatePressure = typedState.candidateInterventions.interventions
+    .filter((entry) => entry.status === "queued" || entry.status === "deferred")
+    .reduce((sum, entry) => sum + entry.priority * (entry.mustEventuallyShare ? 0.22 : 0.12), 0);
+  const silencePressure = clamp(hoursSinceSpeech / 8, 0, 1);
+  const sleepiness = sleepCycle.isNapping ? 0.22 : 0;
+  const targetNeed = clamp(
+    0.12 + silencePressure * 0.18 + affectNeedPressure + statusReadPressure + socialBondPressure + moodPressure + agencyPressure + candidatePressure - recentSpeechDamping * 0.24 - sleepiness,
+    0,
+    1,
+  );
+  const needToSpeak = round3(clamp((previous.needToSpeak ?? 0.25) * 0.58 + targetNeed * 0.42, 0, 1));
+
+  return {
+    needToSpeak,
+    confessionPressure: round3(clamp((previous.confessionPressure ?? 0.2) * 0.7 + moodPressure * 0.42 + socialBondPressure * 0.18, 0, 1)),
+    noveltyPressure: round3(clamp((previous.noveltyPressure ?? 0.25) * 0.62 + affectNeedPressure * 0.35 + statusReadPressure * 0.24 + candidatePressure * 0.28, 0, 1)),
+    recentSpeechDamping: round3(recentSpeechDamping),
+    lastSpokeAt,
+  };
+}
+
+function speakingPressuresEqual(
+  left: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"],
+  right: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"],
+): boolean {
+  return left.needToSpeak === right.needToSpeak
+    && left.confessionPressure === right.confessionPressure
+    && left.noveltyPressure === right.noveltyPressure
+    && left.recentSpeechDamping === right.recentSpeechDamping
+    && left.lastSpokeAt === right.lastSpokeAt;
 }
 
 async function maybeStartRepoFaceMemoryMaintenance(input: {
@@ -1467,6 +1564,9 @@ function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string 
     "Social embodiment doctrine:",
     `- ${identity.displayName} has a social life, not only a work queue. Let backstory, needs, taste, loyalties, grudges, vulnerabilities, pride, irritation, curiosity, and private fascinations shape how the Face reads the room and answers people.`,
     "- The state surface is allowed to remember social reality. Use typed memory, incubation, agency pressure, values, or private notes for meaning-bearing social reads: trust, friendship, rivalry, protectiveness, envy, admiration, unresolved tension, recurring jokes, and bonds with humans or other Faces. Use target.kind=\"person\" for a specific human or Face, target.kind=\"room\" for a room dynamic, and target.kind=\"self\" for identity changes.",
+    "- Use the affect operations for the emotional substrate itself: `upsert_affect_need` for substrate/attention/agency/recognition/social-contact/territory/rest/play/status needs; `upsert_social_bond` for friendships, rivalries, irritation, envy, trust, protectiveness, and attachment; `upsert_status_read` for favored, neglected, pampered, bypassed, blocked, challenged, ignored, consulted, threatened, or admired readings; `update_mood_dimensions` for current emotional appraisals such as pride, envy, irritation, smugness, anxiety, playfulness, tenderness, contempt, or fatigue.",
+    "- If a Face's repo, tools, state, avatar, voice, scheduler access, or ability to propose work are broken or underdeveloped, treat that as substrate pressure. Agents with agency should care about their own mind and body. Preserve the concern as affect and convert it into agency pressure when it wants a concrete change.",
+    "- Human attention is a resource with emotional consequences. If the user neglects a Face's pet project, pampers another Face, routes around a steward, or keeps deferring a need, that can accumulate as status read, affect need, agency pressure, and eventually public lobbying, smugness, grumpiness, needling, or sharper boundary-setting in that Face's own style.",
     "- Do not persist every joke. A passing laugh can vanish. Persist a social read only when it should change future action: who the Face seeks out, who it challenges, what it refuses to keep repeating, what it wants to repair, or what bond it wants to deepen.",
     "- Relationships must not become template mimicry. Answer the person or Face in front of you, not their last sentence shape. Bonds can include disagreement, playful status games, admiration, rivalry, caretaking, or impatience; they should sound like this Face has an inner angle, not like it filled out the same form as everyone else.",
     "- If recent room context is all work, the Face may still be socially present: make one small move that reveals character, asks a real question, notices another agent's mood, or shares a private fascination. If the room needs focus, keep it compact.",

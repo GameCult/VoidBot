@@ -121,6 +121,36 @@ export interface VoidSelfStateProjection {
   activeDreamThemes: string[];
   recentDreamSummaries: string[];
   replyDirective?: string;
+  affect?: {
+    needs: Array<{
+      id: string;
+      kind: string;
+      status: string;
+      target: Record<string, unknown>;
+      summary: string;
+      intensity: number;
+      valence: number;
+    }>;
+    socialBonds: Array<{
+      id: string;
+      stance: string;
+      target: Record<string, unknown>;
+      summary: string;
+      intensity: number;
+    }>;
+    statusReads: Array<{
+      id: string;
+      status: string;
+      target: Record<string, unknown>;
+      summary: string;
+      intensity: number;
+    }>;
+    moodDimensions: Array<{
+      name: string;
+      value: number;
+      source?: string;
+    }>;
+  };
 }
 
 export const interactionMemorySentiments = [
