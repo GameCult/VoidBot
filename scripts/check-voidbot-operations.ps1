@@ -1192,11 +1192,21 @@ try {
   try {
     $watchdogTask = Get-ScheduledTask -TaskName $watchdogTaskName -ErrorAction Stop
     $watchdogEnabled = [bool]$watchdogTask.Settings.Enabled
-    $watchdogTaskStatus = if ($watchdogEnabled) { "passed" } else { "failed" }
-    $watchdogTaskDetail = if ($watchdogEnabled) { "Operations watchdog task is installed and enabled." } else { "Operations watchdog task is installed but disabled." }
+    $orchestratorTask = Get-ScheduledTask -TaskName "GameCult Local Orchestrator" -ErrorAction SilentlyContinue
+    $orchestratorEnabled = $null -ne $orchestratorTask -and [bool]$orchestratorTask.Settings.Enabled
+    $watchdogTaskStatus = if ($watchdogEnabled -or $orchestratorEnabled) { "passed" } else { "failed" }
+    $watchdogTaskDetail = if ($watchdogEnabled) {
+      "Operations watchdog task is installed and enabled."
+    } elseif ($orchestratorEnabled) {
+      "Operations watchdog task is disabled because GameCult Local Orchestrator owns the watchdog pulse."
+    } else {
+      "Operations watchdog task is installed but disabled, and GameCult Local Orchestrator is not enabled."
+    }
     Add-Check -Name "scheduled_task.watchdog" -Status $watchdogTaskStatus -Detail $watchdogTaskDetail -Data @{
       taskName = $watchdogTaskName
       state = [string]$watchdogTask.State
+      orchestratorTaskName = "GameCult Local Orchestrator"
+      orchestratorEnabled = $orchestratorEnabled
     }
   } catch {
     Add-Check -Name "scheduled_task.watchdog" -Status "warning" -Detail "Operations watchdog task $watchdogTaskName is not installed yet."
