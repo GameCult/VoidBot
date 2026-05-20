@@ -636,6 +636,7 @@ interface RepoIdentityBifrostTopicIntent {
   topicId?: string;
   title?: string;
   content: string;
+  mirrorContent?: string;
   stance?: string;
   priority?: number;
   approve?: boolean;
@@ -999,6 +1000,13 @@ async function submitRepoIdentityBifrostTopicIntent(
     `${identity.id}-bifrost-topic.md`,
     ensureTrailingNewline(intent.content),
   );
+  const mirrorContentFile = intent.mirrorContent
+    ? await writeBifrostPayloadFile(
+        job,
+        `${identity.id}-bifrost-topic-mirror.md`,
+        ensureTrailingNewline(intent.mirrorContent),
+      )
+    : undefined;
   const sourceMessageIds = Array.from(new Set([
     ...intent.sourceMessageIds,
     intent.replyToMessageId,
@@ -1028,6 +1036,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       identity.id,
       ...(intent.channelId ?? job.outputChannelId ? ["--source-channel-id", intent.channelId ?? job.outputChannelId] : []),
       ...(sourceMessageIds.length > 0 ? ["--source-message-ids", sourceMessageIds.join(",")] : []),
+      ...bifrostMirrorArgs(identity, mirrorContentFile),
     ]) as BifrostGovernanceTopicReceipt;
     topicId = opened.id;
   } else if (!intent.approve) {
@@ -1044,6 +1053,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       "--body-file",
       contentFile,
       ...(intent.replyToMessageId ? ["--source-message-id", intent.replyToMessageId] : []),
+      ...bifrostMirrorArgs(identity, mirrorContentFile),
     ]);
   }
 
@@ -1057,12 +1067,17 @@ async function submitRepoIdentityBifrostTopicIntent(
       "--body-file",
       contentFile,
       ...(intent.replyToMessageId ? ["--source-message-id", intent.replyToMessageId] : []),
+      ...bifrostMirrorArgs(identity, mirrorContentFile),
     ]);
   }
 
   let promoted: { topic?: BifrostGovernanceTopicReceipt; request?: BifrostUpdateRequestReceipt } | undefined;
   if (intent.dispatch) {
-    promoted = runBifrostGovernanceThreads(["promote", "--topic", topicId]) as {
+    promoted = runBifrostGovernanceThreads([
+      "promote",
+      "--topic",
+      topicId,
+    ]) as {
       topic?: BifrostGovernanceTopicReceipt;
       request?: BifrostUpdateRequestReceipt;
     };
@@ -1119,6 +1134,24 @@ function runBifrostGovernanceThreads(args: string[]): BifrostGovernanceTopicRece
   } catch {
     throw new Error(`Bifrost governance thread command returned non-JSON output: ${result.stdout}`);
   }
+}
+
+function bifrostMirrorArgs(
+  identity: { displayName: string; avatarUrl?: string },
+  mirrorContentFile?: string,
+): string[] {
+  if (!config.bifrostDiscordChannelId) {
+    return [];
+  }
+
+  return [
+    "--mirror-channel-id",
+    config.bifrostDiscordChannelId,
+    "--mirror-persona-name",
+    identity.displayName,
+    ...(identity.avatarUrl ? ["--mirror-persona-avatar-url", identity.avatarUrl] : []),
+    ...(mirrorContentFile ? ["--mirror-content-file", mirrorContentFile] : []),
+  ];
 }
 
 function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
@@ -1200,6 +1233,7 @@ function parseRepoIdentityBifrostTopicIntents(finalResponse: string): RepoIdenti
         topicId,
         title,
         content,
+        mirrorContent: typeof parsed.mirrorContent === "string" ? parsed.mirrorContent.trim() : undefined,
         stance: typeof parsed.stance === "string" ? parsed.stance.trim() : undefined,
         priority: typeof parsed.priority === "number" ? parsed.priority : undefined,
         approve: parsed.approve === true,
