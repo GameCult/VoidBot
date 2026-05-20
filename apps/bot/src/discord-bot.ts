@@ -5,6 +5,7 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  type Message,
 } from "discord.js";
 
 import { loadConfig } from "@voidbot/config";
@@ -15,6 +16,7 @@ import {
   PermissionEngine,
   createStateStorage,
   ensureRepoFaceInitialized,
+  findRepoDiscordIdentityByPersonaName,
   findRepoDiscordIdentityByRoleIds,
   findRepoDiscordIdentityByTextAddress,
   loadRepoDiscordIdentityRegistry,
@@ -337,7 +339,12 @@ export async function startBot(): Promise<void> {
           stripBotMention(message.content),
           message.channelId,
         );
-    const addressedRepoIdentity = roleAddressedRepoIdentity ?? textAddressedRepoIdentity;
+    const repliedRepoIdentity = isDirectMessage ||
+      roleAddressedRepoIdentity ||
+      textAddressedRepoIdentity
+      ? undefined
+      : await resolveRepliedRepoIdentity(message, repoDiscordIdentities);
+    const addressedRepoIdentity = roleAddressedRepoIdentity ?? textAddressedRepoIdentity ?? repliedRepoIdentity;
     const isBotMentioned = Boolean(client.user && message.mentions.has(client.user));
 
     if (!client.user || (!isDirectMessage && !isBotMentioned && !addressedRepoIdentity)) {
@@ -353,7 +360,8 @@ export async function startBot(): Promise<void> {
               roleAddressedRepoIdentity?.roleId,
             ),
             addressedRepoIdentity,
-          ).trim()
+          ).trim() ||
+            renderRepliedRepoIdentityPrompt(message, addressedRepoIdentity, repliedRepoIdentity)
         : stripBotMention(message.content).trim();
 
     try {
@@ -635,6 +643,49 @@ export async function startBot(): Promise<void> {
   });
 
   await client.login(config.botToken);
+}
+
+async function resolveRepliedRepoIdentity(
+  message: Message,
+  registry: { identities: RepoDiscordIdentity[] },
+): Promise<RepoDiscordIdentity | undefined> {
+  if (!message.reference?.messageId) {
+    return undefined;
+  }
+
+  try {
+    const referenced = await message.fetchReference();
+    const personaName = referenced.webhookId
+      ? referenced.author.username
+      : referenced.member?.displayName ?? referenced.author.globalName ?? referenced.author.username;
+
+    return findRepoDiscordIdentityByPersonaName(registry, personaName, message.channelId);
+  } catch (error) {
+    console.warn(
+      `Could not resolve referenced message ${message.reference.messageId} for repo Face reply routing: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+}
+
+function renderRepliedRepoIdentityPrompt(
+  message: Message,
+  addressedRepoIdentity: RepoDiscordIdentity,
+  repliedRepoIdentity: RepoDiscordIdentity | undefined,
+): string {
+  const content = message.content.trim();
+
+  if (content.length > 0) {
+    return content;
+  }
+
+  if (repliedRepoIdentity?.id === addressedRepoIdentity.id) {
+    return `A human replied directly to ${addressedRepoIdentity.displayName}'s previous message without visible text. Inspect the replied-to exchange and decide whether a response is warranted.`;
+  }
+
+  return "";
 }
 
 async function ensureRepoIdentityRoles(options: {

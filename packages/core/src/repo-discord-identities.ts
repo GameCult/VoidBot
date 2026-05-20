@@ -94,6 +94,25 @@ export function findRepoDiscordIdentityByRoleIds(
   });
 }
 
+export function findRepoDiscordIdentityByPersonaName(
+  registry: RepoDiscordIdentityRegistry,
+  personaName: string | undefined,
+  channelId: string,
+): RepoDiscordIdentity | undefined {
+  if (!personaName || personaName.trim().length === 0) {
+    return undefined;
+  }
+
+  const normalizedPersonaName = normalizeIdentityKey(personaName);
+
+  return registry.identities.find((identity) => {
+    return (
+      isRepoDiscordIdentityAllowedInChannel(identity, channelId) &&
+      normalizeIdentityKey(identity.displayName) === normalizedPersonaName
+    );
+  });
+}
+
 export function isRepoDiscordIdentityAllowedInChannel(
   identity: RepoDiscordIdentity,
   channelId: string,
