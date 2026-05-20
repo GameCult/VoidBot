@@ -47,6 +47,7 @@ const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
 const REPO_IDENTITY_ARTICLE_SENTINEL = "VOIDBOT_REPO_IDENTITY_ARTICLE:";
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
+const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -335,6 +336,7 @@ async function processJob(job: JobRecord): Promise<void> {
 
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
+      const repoIdentityUpdateRequests = parseRepoIdentityUpdateRequestIntents(finalResponse);
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
         ? parseRepoIdentityArticleIntents(finalResponse)
         : [];
@@ -351,14 +353,18 @@ async function processJob(job: JobRecord): Promise<void> {
       const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
       const articlePrSubmitted =
         !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
+      const updateRequestSubmitted =
+        !proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && repoIdentityUpdateRequests.length > 0;
       if (repoIdentityProposals.length > 0) {
         await writeRepoIdentityProposalPrIntent(job, repoIdentityProposals[0]);
       } else if (repoIdentityPrComments.length > 0) {
         await commentRepoIdentityPullRequestIntent(job, repoIdentityPrComments[0]);
       } else if (repoIdentityArticles.length > 0) {
         await writeRepoIdentityArticleIntent(job, repoIdentityArticles[0]);
+      } else if (repoIdentityUpdateRequests.length > 0) {
+        await enqueueRepoIdentityUpdateRequestIntent(job, repoIdentityUpdateRequests[0]);
       }
-      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted) {
+      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && !updateRequestSubmitted) {
         for (const post of repoIdentityPosts.slice(0, 1)) {
           await postRepoIdentityIntent(job, post);
         }
@@ -377,10 +383,12 @@ async function processJob(job: JobRecord): Promise<void> {
             repoIdentityPosts.length > 0 ||
             proposalPrSubmitted ||
             prCommentSubmitted ||
-            articlePrSubmitted,
+            articlePrSubmitted ||
+            updateRequestSubmitted,
           articlePrSubmitted,
           proposalPrSubmitted,
           prCommentSubmitted,
+          updateRequestSubmitted,
           ignoredGithubActionIntents,
           reason:
             proposalPrSubmitted
@@ -389,6 +397,8 @@ async function processJob(job: JobRecord): Promise<void> {
                 ? "repo_face_rumination_commented_on_pr_as_registered_identity"
               : articlePrSubmitted
                 ? "repo_face_rumination_submitted_registered_identity_article_pr"
+              : updateRequestSubmitted
+                ? "repo_face_rumination_enqueued_bifrost_update_request"
               : repoIdentityPosts.length > 0
                 ? "repo_face_rumination_posted_as_registered_identity"
               : `${job.command}_private_summary`,
@@ -591,6 +601,16 @@ interface RepoIdentityPrCommentIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityUpdateRequestIntent {
+  identity?: string;
+  title: string;
+  content: string;
+  priority?: number;
+  sourceMessageIds: string[];
+  channelId?: string;
+  replyToMessageId?: string;
+}
+
 interface BifrostBridgeReceipt {
   action?: string;
   ok?: boolean;
@@ -598,6 +618,15 @@ interface BifrostBridgeReceipt {
   prUrl?: string;
   messageId?: string;
   transport?: "bot" | "webhook";
+}
+
+interface BifrostUpdateRequestReceipt {
+  id: string;
+  status: "queued" | "claimed" | "completed" | "cancelled";
+  title: string;
+  targetRepoName: string;
+  targetAgentIdentity?: string;
+  priority: number;
 }
 
 async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
@@ -857,12 +886,81 @@ async function commentRepoIdentityPullRequestIntent(
   });
 }
 
+async function enqueueRepoIdentityUpdateRequestIntent(
+  job: JobRecord,
+  intent: RepoIdentityUpdateRequestIntent,
+): Promise<void> {
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for Bifrost update request intent on job ${job.id}.`);
+  }
+
+  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for update request intent on job ${job.id}.`);
+  }
+
+  const contentFile = await writeBifrostPayloadFile(
+    job,
+    `${identity.id}-bifrost-update-request.md`,
+    ensureTrailingNewline(renderRepoIdentityUpdateRequestMarkdown(identity, intent)),
+  );
+  const sourceMessageIds = Array.from(new Set([
+    ...intent.sourceMessageIds,
+    intent.replyToMessageId,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+  const request = runBifrostAgentTransport([
+    "enqueue",
+    "--repo",
+    identity.repoName,
+    "--agent",
+    identity.id,
+    "--title",
+    intent.title,
+    "--request-file",
+    contentFile,
+    "--priority",
+    String(normalizeBifrostPriority(intent.priority)),
+    "--source-kind",
+    "repo_face_heartbeat",
+    "--packet-path",
+    contentFile,
+    "--created-by",
+    identity.id,
+    ...(intent.channelId ?? job.outputChannelId ? ["--source-channel-id", intent.channelId ?? job.outputChannelId] : []),
+    ...(sourceMessageIds.length > 0 ? ["--source-message-ids", sourceMessageIds.join(",")] : []),
+  ]);
+  console.log(
+    `Enqueued Bifrost update request ${request.id} for ${identity.id}/${identity.repoName} from job ${job.id}.`,
+  );
+}
+
 async function writeBifrostPayloadFile(job: JobRecord, fileName: string, content: string): Promise<string> {
   const directory = resolve(config.storageRoot, "artifacts", job.id, "bifrost-bridge");
   await mkdir(directory, { recursive: true });
   const path = join(directory, sanitizePathSegment(fileName) || "payload.md");
   await writeFile(path, content, "utf8");
   return path;
+}
+
+function runBifrostAgentTransport(args: string[]): BifrostUpdateRequestReceipt {
+  const transportScript = resolve(config.bifrostRoot, "tools", "agent-transport.mjs");
+  const result = spawnSync(process.execPath, [transportScript, ...args], {
+    cwd: config.bifrostRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`Bifrost agent transport failed: ${result.stderr || result.stdout}`);
+  }
+
+  try {
+    return JSON.parse(result.stdout) as BifrostUpdateRequestReceipt;
+  } catch {
+    throw new Error(`Bifrost agent transport returned non-JSON output: ${result.stdout}`);
+  }
 }
 
 function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
@@ -882,6 +980,43 @@ function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
   } catch {
     throw new Error(`Bifrost bridge returned non-JSON output: ${result.stdout}`);
   }
+}
+
+function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdentityUpdateRequestIntent[] {
+  const intents: RepoIdentityUpdateRequestIntent[] = [];
+
+  for (const line of finalResponse.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(REPO_IDENTITY_UPDATE_REQUEST_SENTINEL)) {
+      continue;
+    }
+
+    const payload = trimmed.slice(REPO_IDENTITY_UPDATE_REQUEST_SENTINEL.length).trim();
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
+      if (!title || !content) {
+        continue;
+      }
+      intents.push({
+        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        title,
+        content,
+        priority: typeof parsed.priority === "number" ? parsed.priority : undefined,
+        sourceMessageIds: Array.isArray(parsed.sourceMessageIds)
+          ? parsed.sourceMessageIds.filter((entry): entry is string => typeof entry === "string")
+          : [],
+        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
+        replyToMessageId:
+          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return intents;
 }
 
 function parseRepoIdentityArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
@@ -1005,6 +1140,34 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
   return count;
 }
 
+function renderRepoIdentityUpdateRequestMarkdown(
+  identity: { id: string; displayName: string; repoName: string },
+  intent: RepoIdentityUpdateRequestIntent,
+): string {
+  return [
+    "# Repo Face Update Request",
+    "",
+    `Source Face: ${identity.displayName} (${identity.id})`,
+    `Target repo: ${identity.repoName}`,
+    "",
+    "## Request",
+    "",
+    intent.content.trim(),
+    "",
+    "## Instructions For Codex",
+    "",
+    "Work this request in the target workspace. Prefer a small coherent change, proposal, doc, or test-backed patch. If the request is not actionable enough, write down the smallest missing question instead of silently dropping it.",
+    "",
+  ].join("\n");
+}
+
+function normalizeBifrostPriority(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 80;
+  }
+  return Math.max(1, Math.min(100, Math.round(value)));
+}
+
 function resolveRepoRoot(identity: { repoName: string; repoPath?: string }): string {
   if (identity.repoPath && identity.repoPath.trim().length > 0) {
     return resolve(identity.repoPath);
@@ -1048,6 +1211,7 @@ function stripRepoIdentityPostIntents(finalResponse: string): string {
       const trimmed = line.trim();
       return (
         !trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL) &&
+        !trimmed.startsWith(REPO_IDENTITY_UPDATE_REQUEST_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_PR_COMMENT_SENTINEL)
