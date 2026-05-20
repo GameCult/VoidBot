@@ -120,6 +120,20 @@ function Test-JsonEndpoint {
   }
 }
 
+function Test-HttpEndpoint {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Url
+  )
+
+  try {
+    & curl.exe -fsS --connect-timeout 5 --max-time 15 $Url *> $null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
+}
+
 function Wait-Until {
   param(
     [Parameter(Mandatory = $true)]
@@ -237,6 +251,52 @@ function Ensure-DockerOnPath {
     & docker version *> $null
     return ($LASTEXITCODE -eq 0)
   } -FailureMessage "Docker is installed but the daemon is not ready." -Attempts 45 -SleepSeconds 2
+}
+
+function Ensure-BifrostLocalStack {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $BifrostRoot,
+    [Parameter(Mandatory = $true)]
+    [string] $HealthUrl
+  )
+
+  if (Test-HttpEndpoint -Url $HealthUrl) {
+    return @{
+      root = $BifrostRoot
+      healthUrl = $HealthUrl
+      startedByScript = $false
+      healthy = $true
+    }
+  }
+
+  if (-not (Test-Path $BifrostRoot)) {
+    throw "Bifrost root does not exist at $BifrostRoot."
+  }
+
+  $composeFile = Join-Path $BifrostRoot "compose.local.yaml"
+
+  if (-not (Test-Path $composeFile)) {
+    throw "Bifrost local compose file does not exist at $composeFile."
+  }
+
+  Ensure-DockerOnPath
+
+  & docker compose -f $composeFile --project-directory $BifrostRoot up -d
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Docker Compose failed to start Bifrost."
+  }
+
+  Wait-Until -Condition { Test-HttpEndpoint -Url $HealthUrl } -FailureMessage "Bifrost did not become reachable at $HealthUrl in time." -Attempts 45 -SleepSeconds 2
+
+  return @{
+    root = $BifrostRoot
+    composeFile = $composeFile
+    healthUrl = $HealthUrl
+    startedByScript = $true
+    healthy = $true
+  }
 }
 
 function Ensure-Qdrant {
@@ -496,6 +556,8 @@ $localLlmEnabled = if ($config.ContainsKey("ENABLED_PROVIDERS")) { $config["ENAB
 $localLlmBaseUrl = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_BASE_URL")) { $config["LOCAL_LLM_OLLAMA_BASE_URL"] } else { "http://127.0.0.1:11434" }
 $localLlmModel = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_MODEL")) { $config["LOCAL_LLM_OLLAMA_MODEL"] } else { "qwen3.5:9b" }
 $localLlmSocialReadModel = if ($config.ContainsKey("LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL") -and -not [string]::IsNullOrWhiteSpace($config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"])) { $config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"] } else { $localLlmModel }
+$bifrostRoot = if ($config.ContainsKey("BIFROST_ROOT")) { [System.IO.Path]::GetFullPath($config["BIFROST_ROOT"]) } else { "E:\Projects\Bifrost" }
+$bifrostHealthUrl = if ($config.ContainsKey("BIFROST_HEALTH_URL")) { $config["BIFROST_HEALTH_URL"] } else { "http://127.0.0.1:5080/healthz" }
 
 if ($stateStorageBackend -eq "postgres") {
   $status.stage = "postgres"
@@ -568,6 +630,11 @@ if ($localLlmEnabled) {
 
   Write-StatusFile -Path $statusPath -Status $status
 }
+
+$status.stage = "bifrost"
+Write-StatusFile -Path $statusPath -Status $status
+$status.bifrost = Ensure-BifrostLocalStack -BifrostRoot $bifrostRoot -HealthUrl $bifrostHealthUrl
+Write-StatusFile -Path $statusPath -Status $status
 
 $npmCommand = Get-Command npm.cmd -ErrorAction Stop
 $nodeCommand = Get-Command node.exe -ErrorAction Stop

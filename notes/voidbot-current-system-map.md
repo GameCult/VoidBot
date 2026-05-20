@@ -110,6 +110,7 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 
 - `scripts/start-voidbot-stack.ps1`
   - stack bootstrap, health checks, fresh build, stale-process cleanup, source-repo reconcile, bot/worker restart, runtime status emission.
+  - It now also ensures the local Bifrost Docker Compose stack is healthy through `BIFROST_ROOT` and `BIFROST_HEALTH_URL`, because VoidBot's repo Face proposal/article/comment and Discord persona crossing paths call Bifrost bridge/intake tooling.
 - `scripts/install-stack-startup-task.ps1`
   - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
