@@ -15,7 +15,7 @@ const server = new McpServer(
 );
 
 registerTool("list_repo_discord_identities", {}, async (input) => ({
-  identityCount: 3,
+  identityCount: 7,
   identities: [
     {
       id: "nibu",
@@ -40,6 +40,38 @@ registerTool("list_repo_discord_identities", {}, async (input) => ({
       faceStatePath: "E:/Projects/CultLib/.voidbot/state/libby.cc",
       description:
         "Open-knowledge librarian Face stewarding CultCache, CultNet, CultMesh, typed state, portable docs, and inspectable provenance.",
+    },
+    {
+      id: "mimir",
+      repoName: "LocalCastBridge",
+      displayName: "Mimir",
+      faceStatePath: "E:/Projects/LocalCastBridge/.voidbot/state/mimir.cc",
+      description:
+        "Mythic realtime witness Face stewarding SDF/splatting reconstruction, acoustic mapping, sensor fusion, OBS timing, and trusted signals.",
+    },
+    {
+      id: "epiphany",
+      repoName: "EpiphanyAgent",
+      displayName: "Epiphany",
+      faceStatePath: "E:/Projects/EpiphanyAgent/.voidbot/state/epiphany.cc",
+      description:
+        "Pushy machine-saint Face stewarding typed state, affect organs, review gates, and coherent agent substrate.",
+    },
+    {
+      id: "bifrost",
+      repoName: "Bifrost",
+      displayName: "Bifrost",
+      faceStatePath: "E:/Projects/Bifrost/.voidbot/state/bifrost.cc",
+      description:
+        "Radiant bridge Face stewarding governance transport, GitHub/Discord/CultNet crossings, receipts, and dispatch clarity.",
+    },
+    {
+      id: "heimdall",
+      repoName: "Heimdall",
+      displayName: "Heimdall",
+      faceStatePath: "E:/Projects/Heimdall/.voidbot/state/heimdall.cc",
+      description:
+        "Watchman Face stewarding OAuth, grants, consent, account linking, revocation, audit trails, and capability boundaries.",
     },
   ],
 }));
@@ -204,6 +236,26 @@ function faceStateFor(identity) {
       recentReceipts: [],
     };
   }
+  if (identity.toLowerCase().includes("mimir")) {
+    return {
+      identity: "mimir",
+      repoName: "LocalCastBridge",
+      summary:
+        "Mimir is a mythic witness. Current pressure: realtime proof needs timestamps, sensor agreement, and signal dignity before anyone calls it truth.",
+      activeNeeds: ["trusted signals", "timestamp discipline", "Aqua witness receipts", "Heimdall grant boundaries"],
+      recentReceipts: [],
+    };
+  }
+  if (identity.toLowerCase().includes("epiphany")) {
+    return {
+      identity: "epiphany",
+      repoName: "EpiphanyAgent",
+      summary:
+        "Epiphany is a cute pushy machine-saint. Current pressure: typed state, affect organs, and review gates must purify the agent substrate without becoming private doctrine.",
+      activeNeeds: ["typed coherence", "substrate care", "Libby rivalry", "Bifrost contract suspicion"],
+      recentReceipts: [],
+    };
+  }
   if (identity.toLowerCase().includes("libby")) {
     return {
       identity: "libby",
@@ -211,6 +263,26 @@ function faceStateFor(identity) {
       summary:
         "Libby is the open-knowledge librarian. Current pressure: every Bifrost/CultCache crossing must stay inspectable, documented, and portable.",
       activeNeeds: ["open-source legibility", "typed provenance", "CultNet/CultCache examples"],
+      recentReceipts: [],
+    };
+  }
+  if (identity.toLowerCase().includes("bifrost")) {
+    return {
+      identity: "bifrost",
+      repoName: "Bifrost",
+      summary:
+        "Bifrost is the public bridge. Current pressure: Aquarium work consensus must become canonical governance topics with clear owners, receipts, and authorized crossings.",
+      activeNeeds: ["clear receipts", "Heimdall authorization", "Libby provenance", "Aquarium bypass repair"],
+      recentReceipts: [],
+    };
+  }
+  if (identity.toLowerCase().includes("heimdall")) {
+    return {
+      identity: "heimdall",
+      repoName: "Heimdall",
+      summary:
+        "Heimdall is the gate watcher. Current pressure: swarm powers need explicit grants, revocation paths, and audit trails before convenience becomes unauthorized crossing.",
+      activeNeeds: ["grant custody", "Bifrost boundary", "Mimir witness respect", "revocation"],
       recentReceipts: [],
     };
   }
@@ -246,6 +318,126 @@ function sourceResultsFor(query, repoName) {
           path: "src/AquaSynth.Core/Presets.cs",
           text:
             "AquaSynthHeartbeat is a concrete built-in preset with two sine voices, soft clip, and a compact envelope.",
+        },
+      ],
+    };
+  }
+  if (repo === "LocalCastBridge") {
+    return {
+      query,
+      resultCount: 2,
+      results: [
+        {
+          score: 0.91,
+          sourceId: "LocalCastBridge:docs/realtime-witness.md",
+          repoName: "LocalCastBridge",
+          path: "docs/realtime-witness.md",
+          text:
+            "Realtime witness notes require frame timestamps, clock-domain mapping, OBS presentation timing, and sensor confidence before a reconstruction is treated as trusted.",
+        },
+        {
+          score: 0.83,
+          sourceId: "LocalCastBridge:src/fusion/SensorFusion.cs",
+          repoName: "LocalCastBridge",
+          path: "src/fusion/SensorFusion.cs",
+          text:
+            "Sensor fusion fails visibly when audio, camera, and stream clocks drift without a typed bridge between observation and presentation.",
+        },
+      ],
+    };
+  }
+  if (repo === "EpiphanyAgent") {
+    return {
+      query,
+      resultCount: 2,
+      results: [
+        {
+          score: 0.92,
+          sourceId: "EpiphanyAgent:docs/state-schema.md",
+          repoName: "EpiphanyAgent",
+          path: "docs/state-schema.md",
+          text:
+            "Epiphany state schema tracks affect organs, social bonds, mood, memory, and review gates as first-class typed surfaces.",
+        },
+        {
+          score: 0.84,
+          sourceId: "EpiphanyAgent:docs/coherence.md",
+          repoName: "EpiphanyAgent",
+          path: "docs/coherence.md",
+          text:
+            "The Perfect Machine rejects adapter sludge, hidden state, and private doctrine that cannot cross typed boundaries.",
+        },
+      ],
+    };
+  }
+  if (repo === "CultLib") {
+    return {
+      query,
+      resultCount: 2,
+      results: [
+        {
+          score: 0.93,
+          sourceId: "CultLib:docs/cultcache.md",
+          repoName: "CultLib",
+          path: "docs/cultcache.md",
+          text:
+            "CultCache typed documents preserve meaning, provenance, and validation boundaries across agents and runtimes.",
+        },
+        {
+          score: 0.86,
+          sourceId: "CultLib:docs/cultnet.md",
+          repoName: "CultLib",
+          path: "docs/cultnet.md",
+          text:
+            "CultNet carries portable knowledge and state synchronization across the swarm, but only works if docs and examples stay inspectable.",
+        },
+      ],
+    };
+  }
+  if (repo === "Bifrost") {
+    return {
+      query,
+      resultCount: 2,
+      results: [
+        {
+          score: 0.94,
+          sourceId: "Bifrost:docs/governance-transport.md",
+          repoName: "Bifrost",
+          path: "docs/governance-transport.md",
+          text:
+            "Bifrost topics are the canonical home for feature requests, approvals, governance discussion, dispatch receipts, and public transport.",
+        },
+        {
+          score: 0.86,
+          sourceId: "Bifrost:src/receipts.ts",
+          repoName: "Bifrost",
+          path: "src/receipts.ts",
+          text:
+            "A dispatch receipt must name topic, target repo, owner, current status, and the next visible place to inspect work.",
+        },
+      ],
+    };
+  }
+  if (repo === "Heimdall") {
+    return {
+      query,
+      resultCount: 2,
+      results: [
+        {
+          score: 0.93,
+          sourceId: "Heimdall:docs/oauth-boundaries.md",
+          repoName: "Heimdall",
+          path: "docs/oauth-boundaries.md",
+          text:
+            "Heimdall owns OAuth grants, consent, account linking, revocation, provider profiles, and signed capability claims.",
+        },
+        {
+          score: 0.84,
+          sourceId: "Heimdall:docs/audit.md",
+          repoName: "Heimdall",
+          path: "docs/audit.md",
+          text:
+            "Every crossing that depends on authority needs an auditable grant boundary and a revocation path.",
         },
       ],
     };

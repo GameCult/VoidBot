@@ -54,6 +54,14 @@ const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
 const REPO_IDENTITY_BIFROST_TOPIC_SENTINEL = "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC:";
+const REPO_FACE_FORBIDDEN_CHILD_TOOLS = new Set([
+  "read_repo_face_state",
+  "list_mcp_resources",
+  "read_mcp_resource",
+  "post_repo_identity_message",
+  "apply_repo_face_state_operation",
+  "notify_owner",
+]);
 
 const embedder = createTextEmbedder({
   backend: config.ragEmbeddingBackend,
@@ -500,9 +508,18 @@ async function executeRepoFaceJobWithInterpreter(
   }
 
   const firstText = fitDiscordMessage(firstResponse.outputText ?? firstResponse.summary);
-  const firstInterpretation = await interpretRepoFaceTurnOutput(provider, job, firstText, {
-    attempt: 1,
-  });
+  const firstForbiddenTools = collectForbiddenRepoFaceChildTools(firstResponse.artifacts ?? []);
+  const firstInterpretation = firstForbiddenTools.length > 0
+    ? {
+        decision: "retry" as const,
+        reasons: [
+          `Face used forbidden substrate/tool-discovery tool(s): ${firstForbiddenTools.join(", ")}`,
+          "Face turns may use retrieval tools only; state and substrate inventory belong to the parent/interpreter.",
+        ],
+      }
+    : await interpretRepoFaceTurnOutput(provider, job, firstText, {
+        attempt: 1,
+      });
   if (firstInterpretation.decision === "route") {
     return routeRepoFaceInterpretedOutput(firstResponse, firstInterpretation);
   }
@@ -541,9 +558,18 @@ async function executeRepoFaceJobWithInterpreter(
   }
 
   const retryText = fitDiscordMessage(retryResponse.outputText ?? retryResponse.summary);
-  const retryInterpretation = await interpretRepoFaceTurnOutput(provider, job, retryText, {
-    attempt: 2,
-  });
+  const retryForbiddenTools = collectForbiddenRepoFaceChildTools(retryResponse.artifacts ?? []);
+  const retryInterpretation = retryForbiddenTools.length > 0
+    ? {
+        decision: "drop" as const,
+        reasons: [
+          `Face used forbidden substrate/tool-discovery tool(s) on retry: ${retryForbiddenTools.join(", ")}`,
+          "Dropping action blocks rather than routing a turn that crossed the child/tool boundary.",
+        ],
+      }
+    : await interpretRepoFaceTurnOutput(provider, job, retryText, {
+        attempt: 2,
+      });
   if (retryInterpretation.decision === "route") {
     return routeRepoFaceInterpretedOutput(retryResponse, retryInterpretation);
   }
@@ -616,6 +642,32 @@ function parseRepoFaceParentInterpretation(
     reasons: reasons.length > 0 ? reasons : ["parent interpreter did not provide a parseable reason"],
     routedOutput: extractRoutedRepoFaceOutput(interpretationText),
   };
+}
+
+function collectForbiddenRepoFaceChildTools(artifacts: ProviderArtifact[]): string[] {
+  const forbidden = new Set<string>();
+  for (const artifact of artifacts) {
+    if (!/^codex-turn-\d+-trace\.json$/.test(artifact.name)) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(artifact.content) as {
+        events?: Array<{ kind?: string; tool?: string }>;
+      };
+      for (const event of parsed.events ?? []) {
+        if (
+          event.kind === "mcp_tool_started" &&
+          typeof event.tool === "string" &&
+          REPO_FACE_FORBIDDEN_CHILD_TOOLS.has(event.tool)
+        ) {
+          forbidden.add(event.tool);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return [...forbidden].sort();
 }
 
 function extractRoutedRepoFaceOutput(reviewText: string): string | undefined {

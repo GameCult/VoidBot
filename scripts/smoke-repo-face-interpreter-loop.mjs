@@ -16,7 +16,7 @@ const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-interprete
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const model = options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.3-codex-spark";
+  const model = options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.4-mini";
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const facePromptPath = resolve(repoRoot, options["face-prompt"] ?? defaultFacePrompt);
   const outPath = resolve(repoRoot, options.out ?? defaultOut);

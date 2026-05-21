@@ -116,7 +116,7 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
-  REPO_FACE_HEARTBEAT_CODEX_MODEL: optionalNonEmptyString,
+  REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.4-mini"),
   REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT: z
     .enum(["low", "medium", "high", "xhigh"])
     .optional(),
