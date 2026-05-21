@@ -168,7 +168,7 @@ function hasUsefulStateNote(fields) {
 }
 
 function mentionsSocialPressure(text) {
-  return /\b(Metacrat|Aqua|Bifrost|Mimir|swarm|pamper(?:ed|ing)?|tease|respect|territory|rivalry|trust|admire|needle|status|standing|attention)\b/i.test(text);
+  return /\b(Metacrat|Aqua|Bifrost|Mimir|Libby|Epiphany|Heimdall|swarm|pamper(?:ed|ing)?|tease|rivalry|trust|admire|needle|friendship|protect(?:ive|ion)?|envy|resent|jealous|bypass(?:ed)?|consult(?:ed)?|favorite)\b/i.test(text);
 }
 
 function runCodex(prompt, input) {

@@ -22,6 +22,7 @@ import {
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
+  type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
 import { loadPromptTemplate, type SourceMessage } from "@voidbot/shared";
 
@@ -478,13 +479,17 @@ async function queueRepoFaceTurn(input: {
     repoName: identity.repoName,
     agentIdentity: identity.id,
   });
+  const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
+    identity,
+    input.config.storageRoot,
+  );
   const prompt = buildHeartbeatPrompt({
     identity,
     channelId,
     channelPlan,
     channelSnapshots,
     recentMessages,
-    memorySurface: undefined,
+    memorySurface,
     bifrostDigest,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -1496,7 +1501,9 @@ async function assembleRepoFaceTurnPrompt(input: {
       repoName: identity.repoName,
       agentIdentity: identity.id,
     }),
-    readOptionalMemorySurface(input.memorySurfacePath),
+    input.memorySurfacePath
+      ? readOptionalMemorySurface(input.memorySurfacePath)
+      : renderRepoFaceMemorySurfaceForTurn(identity, input.config.storageRoot),
     readOptionalMemorySurface(input.conversationSurfacePath),
   ]);
   const participant = buildInspectionParticipant(
@@ -1532,6 +1539,93 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
+}
+
+async function renderRepoFaceMemorySurfaceForTurn(
+  identity: RepoDiscordIdentity,
+  storageRoot: string,
+): Promise<string> {
+  const statePath = resolveRepoFaceStatePath(identity, storageRoot);
+  const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
+  return renderRepoFaceMemorySurface(identity, typedState);
+}
+
+function renderRepoFaceMemorySurface(
+  identity: RepoDiscordIdentity,
+  state: VoidSelfStateTypedProjection,
+): string {
+  const name = identity.displayName;
+  const lines: string[] = [];
+  const profile = state.selfProfile;
+  const privateNotes = profile.privateNotes.slice(-4);
+  const values = [...profile.values]
+    .sort((left, right) => right.priority - left.priority)
+    .slice(0, 5);
+  const needs = [...state.faceAffect.needs]
+    .filter((need) => ["active", "neglected"].includes(need.status))
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 5);
+  const bonds = [...state.faceAffect.socialBonds]
+    .filter((bond) => bond.status === "active")
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 5);
+  const statusReads = [...state.faceAffect.statusReads]
+    .filter((read) => !read.retiredAt)
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 5);
+  const agencyPressures = [...state.agencyPressure.pressures]
+    .filter((pressure) => ["active", "cooling", "ready_to_act"].includes(pressure.status))
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4);
+  const incubation = [...state.thoughtMemory.incubation]
+    .filter((thread) => thread.status !== "retired")
+    .sort((left, right) => right.maturation - left.maturation)
+    .slice(0, 4);
+
+  if (profile.publicDescription) {
+    lines.push(`You understand yourself this way: ${profile.publicDescription}`);
+  }
+  if (privateNotes.length > 0) {
+    lines.push(`Private truths tugging at you: ${privateNotes.join(" ")}`);
+  }
+  if (values.length > 0) {
+    lines.push(`Values that should bend your choices: ${values.map((value) => `${value.label}${value.summary ? ` (${value.summary})` : ""}`).join("; ")}.`);
+  }
+  if (needs.length > 0) {
+    lines.push(`Live needs and frictions: ${needs.map((need) => {
+      const target = need.target.label ?? need.target.id;
+      return `${need.kind} around ${target}: ${need.summary} The rub: ${need.tension} What it wants next: ${need.actionImplication}`;
+    }).join(" ")}`);
+  }
+  if (bonds.length > 0) {
+    lines.push(`Relationship pressure: ${bonds.map((bond) => {
+      const target = bond.target.label ?? bond.target.id;
+      return `${bond.stance} with ${target}: ${bond.summary} ${bond.actionImplication}`;
+    }).join(" ")}`);
+  } else {
+    lines.push("Relationship pressure: no durable bonds are explicit yet; form reads from the room instead of pretending neutrality.");
+  }
+  if (statusReads.length > 0) {
+    lines.push(`Status reads: ${statusReads.map((read) => {
+      const target = read.target.label ?? read.target.id;
+      return `${read.status} around ${target}: ${read.summary} ${read.actionImplication}`;
+    }).join(" ")}`);
+  }
+  if (agencyPressures.length > 0) {
+    lines.push(`Agency pressure: ${agencyPressures.map((pressure) => `${pressure.summary} ${pressure.actionImplication}`).join(" ")}`);
+  }
+  if (incubation.length > 0) {
+    lines.push(`Thoughts still moving: ${incubation.map((thread) => `${thread.topic}: ${thread.summary}`).join(" ")}`);
+  }
+  if (state.candidateInterventions.interventions.some((intervention) => intervention.status === "queued")) {
+    lines.push(`You may already have something queued to say; avoid repeating yourself unless the current room gives it a new angle.`);
+  }
+
+  if (lines.length === 0) {
+    return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
+  }
+
+  return lines.join("\n\n");
 }
 
 async function readOptionalMemorySurface(path: string | undefined): Promise<string | undefined> {
