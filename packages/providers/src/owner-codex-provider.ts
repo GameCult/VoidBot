@@ -1,3 +1,6 @@
+import { appendFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import type {
   Actor,
   ContextBundle,
@@ -11,6 +14,7 @@ import type {
 import {
   buildDefaultHandoffNotice,
   buildRequestPayload,
+  type CodexRunResult,
   type HistoryLookupTool,
   MAX_HISTORY_TOOL_CALLS,
   type OwnerCodexProviderOptions,
@@ -188,6 +192,14 @@ export class OwnerCodexProvider implements ProviderAdapter {
         prompt: codexPrompt,
       });
       turnResults.push(result);
+      await appendModelOutputLog({
+        workingDirectory: this.options.workingDirectory,
+        request,
+        command,
+        turn: turn + 1,
+        prompt: codexPrompt,
+        result,
+      });
 
       artifacts.push(
         {
@@ -449,6 +461,69 @@ function isRetryableCodexModelCapacityFailure(result: { exitCode: number | null;
   }
   const text = `${result.stderr}\n${result.stdout}`.toLowerCase();
   return /quota|rate limit|rate-limit|usage limit|capacity|too many requests|429|insufficient_quota|model.*unavailable|model.*access|limit exceeded/.test(text);
+}
+
+async function appendModelOutputLog(input: {
+  workingDirectory: string;
+  request: ProviderRequest;
+  command: string;
+  turn: number;
+  prompt: string;
+  result: CodexRunResult;
+}): Promise<void> {
+  const jobId = getStringOption(input.request.options?.jobId) ?? "unknown-job";
+  const logPath = join(input.workingDirectory, ".voidbot", "logs", "model-outputs.jsonl");
+  const finalMessage = [...input.result.traceEvents]
+    .reverse()
+    .find((event) => event.kind === "agent_message" && event.message?.trim())?.message?.trim();
+  const toolCalls = input.result.traceEvents
+    .filter((event) => event.kind === "mcp_tool_started")
+    .map((event) => ({
+      server: event.server,
+      tool: event.tool,
+      arguments: event.arguments,
+    }));
+  const commandExecutions = input.result.traceEvents
+    .filter((event) => event.kind === "command_started" || event.kind === "command_completed")
+    .map((event) => ({
+      kind: event.kind,
+      command: event.command,
+      status: event.status,
+      exitCode: event.exitCode,
+    }));
+  const promptMarker = input.prompt.match(/<!--\s*prompt:([^>\s]+)\s*-->/)?.[1];
+  const record = {
+    schemaVersion: 1,
+    loggedAt: new Date().toISOString(),
+    jobId,
+    command: input.command,
+    turn: input.turn,
+    model: input.result.model,
+    promptMarker: promptMarker ?? null,
+    promptLength: input.prompt.length,
+    startedAt: input.result.startedAt,
+    finishedAt: input.result.finishedAt,
+    durationMs: input.result.durationMs,
+    exitCode: input.result.exitCode,
+    timedOut: input.result.timedOut,
+    handoffReason: input.result.handoffReason ?? null,
+    usage: input.result.usage ?? null,
+    finalMessage: finalMessage ?? null,
+    stdoutTail: input.result.stdout.slice(-4000),
+    stderrTail: input.result.stderr.slice(-4000),
+    toolCalls,
+    commandExecutions,
+    artifactRefs: {
+      prompt: `.voidbot/artifacts/${jobId}/codex-turn-${input.turn}-prompt.md`,
+      stdout: `.voidbot/artifacts/${jobId}/codex-turn-${input.turn}-stdout.txt`,
+      stderr: `.voidbot/artifacts/${jobId}/codex-turn-${input.turn}-stderr.txt`,
+      trace: `.voidbot/artifacts/${jobId}/codex-turn-${input.turn}-trace.json`,
+      debug: `.voidbot/artifacts/${jobId}/codex-turn-${input.turn}-debug.md`,
+    },
+  };
+
+  await mkdir(join(input.workingDirectory, ".voidbot", "logs"), { recursive: true });
+  await appendFile(logPath, `${JSON.stringify(record)}\n`, "utf8");
 }
 
 function getReasoningEffortOption(value: unknown): "low" | "medium" | "high" | "xhigh" | undefined {

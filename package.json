@@ -29,6 +29,7 @@
     "state:install-mood-task": "powershell -ExecutionPolicy Bypass -File scripts/install-void-mood-drift-task.ps1",
     "state:install-repo-face-heartbeat-task": "powershell -ExecutionPolicy Bypass -File scripts/install-repo-face-heartbeat-task.ps1",
     "agents:inspect-requests": "tsx scripts/inspect-agent-state-requests.ts",
+    "agents:inspect-model-outputs": "node scripts/inspect-model-output-logs.mjs",
     "agents:assemble-character-prompt": "tsx scripts/run-repo-face-heartbeats.ts --assemble-prompt",
     "agents:heartbeat-model-smoke": "node scripts/smoke-repo-face-heartbeat-model-scenarios.mjs",
     "agents:interpreter-loop-smoke": "node scripts/smoke-repo-face-interpreter-loop.mjs",
