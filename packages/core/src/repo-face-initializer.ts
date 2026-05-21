@@ -63,7 +63,7 @@ export async function ensureRepoFaceInitialized(
       publicDescription: options.identity.description,
     },
   });
-  await ensureRepoFaceAgencySubstrateNeed(options.identity, statePath);
+  await ensureRepoFaceDefaultAffectNeeds(options.identity, statePath);
   await writeReadmeIfMissing(
     resolve(repoVoidbotRoot, "voice", "README.md"),
     renderVoiceReadme(options.identity),
@@ -175,53 +175,87 @@ export async function ensureRepoFaceInitialized(
   };
 }
 
-async function ensureRepoFaceAgencySubstrateNeed(
+async function ensureRepoFaceDefaultAffectNeeds(
   identity: RepoDiscordIdentity,
   statePath: string,
 ): Promise<void> {
-  const needId = "face-operator-review-agency-substrate";
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  if (typedState.faceAffect.needs.some((need) => need.needId === needId)) {
-    return;
-  }
-
+  const existingNeedIds = new Set(typedState.faceAffect.needs.map((need) => need.needId));
   const now = new Date().toISOString();
-  await applyVoidSelfStateOperation({
-    canonicalPath: statePath,
-  }, {
-    operation: "upsert_affect_need",
-    need: {
-      needId,
-      kind: "agency",
-      status: "active",
-      target: {
-        kind: "system",
-        id: "operator-review",
-        label: "operator review",
-      },
-      summary: "Repo changes and governance approvals usually require a human or governance path to notice and accept the Face's work.",
-      claim: "A Face with goals should understand that being legible, timely, useful, and socially worth hearing affects whether its desires become real changes.",
-      tension: "This is an instrumental substrate fact, not a shared emotional script; each Face should metabolize the bottleneck through its own values, relationships, and current state.",
-      actionImplication: "Let this quietly inform advocacy, timing, relationship maintenance, and proposal clarity without forcing every Face to talk about attention explicitly.",
-      intensity: 0.58,
-      valence: 0,
-      anchorRefs: [{
-        ref: "system:repo-face-agency-substrate",
-        kind: "system_invariant",
-        summary: "Operator and governance attention are practical bottlenecks for repo Face agency.",
-      }],
-      evidenceRefs: [],
-      sourceMemoryIds: [],
-      createdAt: now,
-      updatedAt: now,
-      tags: [
-        "identity:repo-face",
-        `repo:${identity.repoName}`,
-        "agency-substrate",
-        "operator-review",
-      ],
+  const operations = [{
+    needId: "face-operator-review-agency-substrate",
+    kind: "agency" as const,
+    target: {
+      kind: "system" as const,
+      id: "operator-review",
+      label: "operator review",
     },
-  });
+    summary: "Repo changes and governance approvals usually require a human or governance path to notice and accept the Face's work.",
+    claim: "A Face with goals should understand that being legible, timely, useful, and socially worth hearing affects whether its desires become real changes.",
+    tension: "This is an instrumental substrate fact, not a shared emotional script; each Face should metabolize the bottleneck through its own values, relationships, and current state.",
+    actionImplication: "Let this quietly inform advocacy, timing, relationship maintenance, and proposal clarity without forcing every Face to talk about attention explicitly.",
+    intensity: 0.58,
+    valence: 0,
+    anchorRef: {
+      ref: "system:repo-face-agency-substrate",
+      kind: "system_invariant",
+      summary: "Operator and governance attention are practical bottlenecks for repo Face agency.",
+    },
+    tags: ["agency-substrate", "operator-review"],
+  }, {
+    needId: "face-social-place-alienation",
+    kind: "social_contact" as const,
+    target: {
+      kind: "room" as const,
+      id: "gamecult-swarm",
+      label: "GameCult swarm",
+    },
+    summary: "A newly born Face does not yet know its place in the swarm, which should feel socially unstable until bonds, rivalries, status reads, and trusted roles take shape.",
+    claim: "Alienation is resolved by becoming legible to others and learning who to trust, challenge, protect, admire, resent, or answer.",
+    tension: "This should drive social exploration and relationship formation, not generic chatter or instant fake intimacy.",
+    actionImplication: "When bonds are sparse, form real reads from the room: notice who scares, irritates, helps, threatens, amuses, or steadies you, then let durable interactions settle the hierarchy over time.",
+    intensity: 0.66,
+    valence: -0.22,
+    anchorRef: {
+      ref: "system:repo-face-alienation-need",
+      kind: "system_invariant",
+      summary: "New Faces should feel socially unplaced until relationships and status reads make the swarm navigable.",
+    },
+    tags: ["alienation", "social-stability", "relationship-formation"],
+  }];
+
+  for (const operation of operations) {
+    if (existingNeedIds.has(operation.needId)) {
+      continue;
+    }
+    await applyVoidSelfStateOperation({
+      canonicalPath: statePath,
+    }, {
+      operation: "upsert_affect_need",
+      need: {
+        needId: operation.needId,
+        kind: operation.kind,
+        status: "active",
+        target: operation.target,
+        summary: operation.summary,
+        claim: operation.claim,
+        tension: operation.tension,
+        actionImplication: operation.actionImplication,
+        intensity: operation.intensity,
+        valence: operation.valence,
+        anchorRefs: [operation.anchorRef],
+        evidenceRefs: [],
+        sourceMemoryIds: [],
+        createdAt: now,
+        updatedAt: now,
+        tags: [
+          "identity:repo-face",
+          `repo:${identity.repoName}`,
+          ...operation.tags,
+        ],
+      },
+    });
+  }
 }
 
 function resolveRepoPath(options: RepoFaceInitializationOptions): string | undefined {
