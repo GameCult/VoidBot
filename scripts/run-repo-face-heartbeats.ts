@@ -132,6 +132,35 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const dryRun = process.argv.includes("--dry-run");
 
+  const pause = await readAgentSwarmPause();
+  if (pause.paused) {
+    const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
+    state.lastTickAt = new Date().toISOString();
+    state.history.push({
+      type: "skipped",
+      reason: "agent_swarm_paused",
+      skippedAt: state.lastTickAt,
+      pausePath: pause.path,
+      pauseReason: pause.reason,
+    });
+    state.history = state.history.slice(-80);
+    if (!dryRun) {
+      await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+    }
+    process.stdout.write(
+      `${JSON.stringify({
+        ok: true,
+        queuedCount: 0,
+        dryRun,
+        skipped: true,
+        reason: "agent_swarm_paused",
+        pausePath: pause.path,
+        statePath: config.repoFaceHeartbeats.statePath,
+      })}\n`,
+    );
+    return;
+  }
+
   if (!config.repoFaceHeartbeats.enabled && !process.argv.includes("--force")) {
     const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
     state.lastTickAt = new Date().toISOString();
@@ -307,6 +336,27 @@ async function main(): Promise<void> {
       statePath: config.repoFaceHeartbeats.statePath,
     })}\n`,
   );
+}
+
+async function readAgentSwarmPause(): Promise<{ paused: boolean; path: string; reason?: string }> {
+  const path = resolve(process.cwd(), "state", "agent-swarm-paused.json");
+  try {
+    const parsed = JSON.parse(stripLeadingBom(await readFile(path, "utf8"))) as Record<string, unknown>;
+    return {
+      paused: parsed.paused !== false,
+      path,
+      reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return { paused: false, path };
+    }
+    return {
+      paused: true,
+      path,
+      reason: "Pause file exists but could not be parsed; failing closed.",
+    };
+  }
 }
 
 interface ParticipantSpec {

@@ -12,6 +12,7 @@ $statusDir = Join-Path $repoRoot ".voidbot\status"
 $logDir = Join-Path $repoRoot ".voidbot\logs\orchestrator"
 $statePath = Join-Path $statusDir "gamecult-orchestrator.json"
 $lockPath = Join-Path $statusDir "gamecult-orchestrator.lock"
+$agentSwarmPausePath = Join-Path $repoRoot "state\agent-swarm-paused.json"
 $hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 $bifrostRoot = "E:\Projects\Bifrost"
 
@@ -211,6 +212,24 @@ function Test-OrchestratorLock {
   return $true
 }
 
+function Test-AgentSwarmPaused {
+  if (-not (Test-Path -LiteralPath $agentSwarmPausePath)) {
+    return $false
+  }
+  try {
+    $pause = Read-JsonFile -Path $agentSwarmPausePath
+    if ($null -eq $pause) {
+      return $true
+    }
+    if ($pause.PSObject.Properties["paused"] -and $pause.paused -eq $false) {
+      return $false
+    }
+    return $true
+  } catch {
+    return $true
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $statusDir, $logDir | Out-Null
 if (Test-OrchestratorLock) {
   exit 0
@@ -232,6 +251,13 @@ try {
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
   $now = [DateTime]::UtcNow
+  $agentSwarmPaused = Test-AgentSwarmPaused
+  $agentSwarmOrganIds = @{
+    "bifrost-dispatch" = $true
+    "repo-face-heartbeats" = $true
+    "void-mood-drift" = $true
+    "void-moderation-rumination" = $true
+  }
   $onlySet = @{}
   $onlyValues = @()
   if ($null -ne $Only) {
@@ -295,6 +321,20 @@ try {
       continue
     }
     if (-not (Test-Due -State $state -Id $organ.Id -IntervalMinutes $organ.IntervalMinutes -Now $now)) {
+      continue
+    }
+
+    if ($agentSwarmPaused -and $agentSwarmOrganIds.ContainsKey($organ.Id)) {
+      Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
+        label = $organ.Label
+        intervalMinutes = $organ.IntervalMinutes
+        lastStartedAt = $now.ToString("o")
+        lastFinishedAt = $now.ToString("o")
+        lastExitCode = 0
+        lastStatus = "skipped_agent_swarm_paused"
+        lastLogPath = $agentSwarmPausePath
+      })
+      Write-JsonFile -Path $statePath -Data $state
       continue
     }
 

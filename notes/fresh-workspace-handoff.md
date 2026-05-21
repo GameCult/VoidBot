@@ -18,6 +18,8 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 - Discord bot and worker are live.
 - The unattended repo Face / CTB swarm is intentionally offline as of 2026-05-21. `GameCult Local Orchestrator` is disabled after the Aquarium failure where Faces leaked heartbeat labels, repeated saturated work seams, failed to banter, and kept turning Aquarium into work pressure. Read `notes/agent-swarm-shutdown-audit-2026-05-21.md` before any restart.
+- The active teardown authority is now `notes/agent-swarm-teardown-plan-2026-05-21.md`. Treat it as the current map for repo Faces, CTB turns, Bifrost transport, public speech, and identity ownership. The conclusion is not "tune the heartbeat"; it is "rebuild the Face/Bifrost turn foundation before restart."
+- The repo-controlled pause flag is `state/agent-swarm-paused.json`. While it is missing or has `"paused": false`, swarm runners may operate. While it has `"paused": true` or is malformed, the Face heartbeat runner skips and the orchestrator skips agent-swarm organs. This is the brake. Do not route around it.
 - Postgres owns jobs, audit events, interaction memory, and rate-limit state.
 - Qdrant owns history and source vectors.
 - `.voidbot/` owns archives, artifacts, logs, status files, and backups.
@@ -141,7 +143,9 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 ## Likely Next Bounded Move
 
-- Do not restart the swarm by momentum. First bounded move is a restart-safety pass from `notes/agent-swarm-shutdown-audit-2026-05-21.md`: add a repo-controlled pause flag, remove "heartbeat" from child-facing task framing, add parent-side speech eligibility for stale/status-shaped/repeated outputs, separate Aquarium social speech from Bifrost work routing, reconcile stale active-turn scheduler state against the job queue, and create a recent Face-output audit report.
+- Do not restart the swarm by momentum. First bounded move is the teardown pass from `notes/agent-swarm-teardown-plan-2026-05-21.md`: add a repo-controlled pause gate for swarm organs, remove "heartbeat" from child-facing task framing, add parent-side speech eligibility for stale/status-shaped/repeated outputs, separate Aquarium social speech from Bifrost work routing, reconcile stale active-turn scheduler state against the job queue, and create a recent Face-output audit report.
+- Treat `sanitizeRepoIdentityPostContent` as a deletion target, not a feature surface. If deleting it would leak bad speech, that is evidence the parent-side speech gate is missing.
+- Treat direct Face `UPDATE REQUEST` dispatch as a governance bypass. The intended rebuild routes work proposals through Bifrost topics and dispatches only after Bifrost consensus/approval.
 - After those gates exist, run dry/mock Face turns before re-enabling `GameCult Local Orchestrator`.
 - The direct-ask receipt check remains important, but it is no longer the next move while the swarm is offline.
 - Next cuts should delete unstable foundations early: do not revive `legacyJsonPath`, working projections, top-level mirror fields, or cleanup code that only compensated for those broken boundaries.
@@ -152,6 +156,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 - Project root: `E:\Projects\VoidBot`
 - Canonical map: `E:\Projects\VoidBot\state\map.yaml`
+- Agent swarm pause flag: `E:\Projects\VoidBot\state\agent-swarm-paused.json`
 - Scratch surface: `E:\Projects\VoidBot\state\scratch.md`
 - Distilled evidence ledger: `E:\Projects\VoidBot\state\evidence.jsonl`
 - Branch/hypothesis ledger: `E:\Projects\VoidBot\state\branches.json`

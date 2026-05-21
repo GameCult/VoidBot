@@ -4,7 +4,9 @@ This is the current forward plan for the next larger organs. It is not a changel
 
 ## Current Aim
 
-The typed moderation, mood, sleep, agency, and private self-state boundary is live. The current goal is to let ordinary scheduling run, inspect the next CTB-routed mention response and sleep cycle, and harden only the seams that show concrete failure. Void should answer Discord through the global heartbeat, remember useful social/project context, retrieve GameCult history/source/lore, and run an unattended moderation/participation loop without reviving JSON projection edits, legacy mirrors, direct-reply organs, or the swollen memory organ.
+The typed moderation, mood, sleep, agency, and private self-state boundary is live, but the repo Face / CTB / Bifrost swarm loop is under teardown. Do not let ordinary swarm scheduling run. The active plan is `notes/agent-swarm-teardown-plan-2026-05-21.md`: the current Face loop mixed scheduling, prompt law, public speech, identity, governance, Discord mirroring, Bifrost dispatch, and GitHub proposal behavior into one prompt-and-parser machine. That foundation is no longer eligible for feature work.
+
+The current goal is to rebuild the Face/Bifrost turn foundation around clear ownership. VoidBot should keep the ordinary bot/worker/provider/RAG/Postgres/Qdrant/CultCache spine, but repo Face work must be reduced into a scheduler, context assembler, typed candidate output contract, parent-side speech/work gate, and Bifrost-owned governance transport. Sanitizers, direct `UPDATE REQUEST` dispatch, dual identity authority, and worker-owned bridge calls are teardown targets, not surfaces to polish.
 
 The next priority is observational hardening of the enabled typed loop. Agents and scheduled workers mutate typed CultCache-backed state through explicit operations, not by editing a whole-state JSON working copy. Sleep and memory distillation now preserve meaning-bearing claims/anchors/tensions in fixture and live-state passes, and short-term rumination has a clustering guard so repeated same-target/topic thoughts update one provisional memory instead of stacking duplicates. Keep checking ordinary cycles for abstraction sludge, duplicate speech, stale residue, or self-orbiting memories.
 
@@ -204,7 +206,31 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - hard-wired agency policy is mostly current scaffolding, not the final authority; identity, advocacy, and speech candidates should emerge from typed memory/state operations plus model-owned judgment under validation
 - sleep/distillation has a typed maintenance runner, reviewed prompt boundary, fixture coverage, and one live-state pass proving short-term residue can become durable memory without losing meaning
 
-Verdict: the foundation is coherent enough for cautious live operation. Do not add behavior by widening prompts or reviving compensators; harden only failures observed in ordinary scheduled cycles.
+Verdict: the ordinary VoidBot foundation is coherent enough for cautious operation, but the repo Face swarm foundation is not. Stop swarm feature work and rebuild that organ before restart. Do not add behavior by widening prompts or reviving compensators; the teardown plan is the active authority.
+
+## Agent Swarm Teardown Sequence
+
+The canonical teardown map is `notes/agent-swarm-teardown-plan-2026-05-21.md`.
+
+First cuts:
+
+- Keep `GameCult Local Orchestrator` disabled while swarm teardown proceeds.
+- Add a repo-controlled pause gate that swarm organs obey even when the Windows scheduled task or manual runner is invoked.
+- Rename child-facing `heartbeat` framing to neutral turn/pass language so runtime provenance stops poisoning public speech.
+- Add parent-side public speech eligibility before transport: reject scheduler labels, stale/repeated lines, and work requests trying to live only in Aquarium.
+- Delete `sanitizeRepoIdentityPostContent` after the speech gate owns the invariant.
+- Route Face work proposals through Bifrost topics; remove direct `UPDATE REQUEST` dispatch as a bypass.
+- Collapse repo Discord identity and Epiphany Face identity into one canonical Face identity model.
+- Split the Face turn loop into scheduler, context assembler, prompt renderer, candidate parser, policy gate, and transport router.
+
+Restart gates:
+
+- no public model speech posts without parent eligibility;
+- no work request exists only in Aquarium;
+- no Bifrost mirror post is treated as fresh consensus input;
+- no scheduler JSON owns active job truth;
+- no sanitizer is needed to hide internal runtime labels;
+- no Face identity exists in two competing canonical forms.
 
 ## Migration Plan
 
