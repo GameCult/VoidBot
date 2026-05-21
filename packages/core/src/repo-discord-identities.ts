@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import { z } from "zod";
 
@@ -32,6 +32,12 @@ export type RepoDiscordIdentity = z.infer<typeof repoDiscordIdentitySchema>;
 export interface RepoDiscordIdentityRegistry {
   identities: RepoDiscordIdentity[];
   epiphanies?: unknown;
+}
+
+export interface RepoDiscordIdentityJurisdictionMention {
+  identityId: string;
+  repoName: string;
+  matched: string;
 }
 
 export async function loadRepoDiscordIdentityRegistry(
@@ -144,6 +150,41 @@ export function resolveRepoFaceStatePath(
   return resolve(storageRoot, "private", "repo-faces", `${sanitizePathSegment(identity.id)}.cc`);
 }
 
+export function findCrossRepoJurisdictionMentions(
+  identity: RepoDiscordIdentity,
+  registry: RepoDiscordIdentityRegistry,
+  text: string,
+): RepoDiscordIdentityJurisdictionMention[] {
+  const matches: RepoDiscordIdentityJurisdictionMention[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of registry.identities) {
+    if (normalizeIdentityKey(candidate.id) === normalizeIdentityKey(identity.id)) {
+      continue;
+    }
+
+    for (const token of repoJurisdictionTokens(candidate)) {
+      if (!containsStandaloneToken(text, token)) {
+        continue;
+      }
+
+      const key = `${candidate.id}:${normalizeIdentityKey(token)}`;
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      matches.push({
+        identityId: candidate.id,
+        repoName: candidate.repoName,
+        matched: token,
+      });
+    }
+  }
+
+  return matches;
+}
+
 function normalizeRepoDiscordIdentities(
   identities: RepoDiscordIdentity[],
 ): RepoDiscordIdentity[] {
@@ -210,6 +251,24 @@ function sanitizePathSegment(value: string): string {
 
 function normalizeIdentityKey(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function repoJurisdictionTokens(identity: RepoDiscordIdentity): string[] {
+  const tokens = [identity.repoName];
+  if (identity.repoPath) {
+    tokens.push(basename(identity.repoPath));
+  }
+
+  return [...new Set(tokens.map((token) => token.trim()).filter((token) => token.length > 0))];
+}
+
+function containsStandaloneToken(text: string, token: string): boolean {
+  const escaped = escapeRegExp(token);
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripLeadingBom(input: string): string {

@@ -11,6 +11,7 @@ import {
   buildVoidMcpServerConfig,
   createStateStorage,
   applyVoidSelfStateOperation,
+  findCrossRepoJurisdictionMentions,
   findRepoDiscordIdentity,
   isRepoDiscordIdentityAllowedInChannel,
   type JobQueue,
@@ -971,6 +972,21 @@ async function enqueueRepoIdentityUpdateRequestIntent(
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for update request intent on job ${job.id}.`);
+  }
+
+  const crossRepoMentions = findCrossRepoJurisdictionMentions(
+    identity,
+    registry,
+    `${intent.title}\n${intent.content}`,
+  );
+  if (crossRepoMentions.length > 0) {
+    const conflicts = crossRepoMentions
+      .map((match) => `${match.repoName} (${match.identityId}, matched "${match.matched}")`)
+      .join(", ");
+    throw new Error(
+      `Repo Face UPDATE REQUEST from ${identity.id}/${identity.repoName} crosses registered jurisdiction: ${conflicts}. ` +
+        "Immediate UPDATE REQUEST is repo-local; use BIFROST TOPIC handoff/consultation or let the owning Face dispatch the work.",
+    );
   }
 
   const contentFile = await writeBifrostPayloadFile(
