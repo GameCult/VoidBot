@@ -364,6 +364,9 @@ async function processJob(job: JobRecord): Promise<void> {
         !articlePrSubmitted &&
         !bifrostTopicSubmitted &&
         repoIdentityUpdateRequests.length > 0;
+      console.log(
+        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
+      );
       if (repoIdentityProposals.length > 0) {
         await writeRepoIdentityProposalPrIntent(job, repoIdentityProposals[0]);
       } else if (repoIdentityPrComments.length > 0) {
@@ -735,6 +738,9 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`Could not record repo identity delivery receipt for job ${job.id}: ${message}`);
   });
+  console.log(
+    `Posted repo identity ${identity.id} to Discord channel ${channelId} from job ${job.id} via ${posted.transport} message ${posted.messageId}.`,
+  );
 }
 
 function sanitizeRepoIdentityPostContent(identity: { displayName: string; repoName: string }, content: string): string {
@@ -1499,7 +1505,13 @@ function normalizeDslKey(key: string): string {
 
 function optionalDslString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+  if (!trimmed || trimmed.length === 0) {
+    return undefined;
+  }
+  if (["0", "null", "none", "undefined"].includes(trimmed.toLowerCase())) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 function parseDslNumber(value: string | undefined): number | undefined {

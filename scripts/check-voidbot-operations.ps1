@@ -475,6 +475,59 @@ function Test-ProcessAlive {
   }
 }
 
+function Get-ProcessCreationTimeUtc {
+  param(
+    [Parameter(Mandatory = $true)]
+    [int] $ProcessId
+  )
+
+  try {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId"
+    if ($null -eq $process -or $null -eq $process.CreationDate) {
+      return $null
+    }
+    return ([datetime]$process.CreationDate).ToUniversalTime()
+  } catch {
+    return $null
+  }
+}
+
+function Test-ProcessFreshForEntrypoint {
+  param(
+    [Parameter(Mandatory = $true)]
+    [int] $ProcessId,
+    [Parameter(Mandatory = $true)]
+    [string] $EntrypointPath
+  )
+
+  if (-not (Test-Path -LiteralPath $EntrypointPath)) {
+    return [pscustomobject]@{
+      ok = $false
+      reason = "missing_entrypoint"
+      processStartedAt = $null
+      entrypointUpdatedAt = $null
+    }
+  }
+
+  $startedAt = Get-ProcessCreationTimeUtc -ProcessId $ProcessId
+  $updatedAt = (Get-Item -LiteralPath $EntrypointPath).LastWriteTimeUtc
+  if ($null -eq $startedAt) {
+    return [pscustomobject]@{
+      ok = $false
+      reason = "unknown_process_start_time"
+      processStartedAt = $null
+      entrypointUpdatedAt = $updatedAt.ToString("o")
+    }
+  }
+
+  return [pscustomobject]@{
+    ok = $startedAt -ge $updatedAt
+    reason = if ($startedAt -ge $updatedAt) { "fresh" } else { "process_started_before_entrypoint_update" }
+    processStartedAt = $startedAt.ToString("o")
+    entrypointUpdatedAt = $updatedAt.ToString("o")
+  }
+}
+
 function Escape-SingleQuotedPowerShell {
   param(
     [Parameter(Mandatory = $true)]
@@ -795,6 +848,8 @@ try {
         $componentStatus = Get-OptionalPropertyValue -InputObject $runtimeStatus -PropertyName $component
         $processIdValueRaw = Get-OptionalPropertyValue -InputObject $componentStatus -PropertyName "pid"
         $processIdValue = if ($null -ne $processIdValueRaw) { ($processIdValueRaw -as [int]) } else { $null }
+        $entrypointRelativePath = if ($component -eq "bot") { "apps\bot\dist\index.js" } else { "apps\worker\dist\index.js" }
+        $entrypointPath = Join-Path $repoRoot $entrypointRelativePath
 
         if ($null -eq $processIdValue -or $processIdValue -le 0) {
           Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component PID is missing from runtime-stack.json."
@@ -804,6 +859,23 @@ try {
         if (Test-ProcessAlive -ProcessId $processIdValue) {
           Add-Check -Name "runtime.$component" -Status "passed" -Detail "$component process $processIdValue is running." -Data @{
             pid = $processIdValue
+          }
+          $freshness = Test-ProcessFreshForEntrypoint -ProcessId $processIdValue -EntrypointPath $entrypointPath
+          if ($freshness.ok) {
+            Add-Check -Name "runtime.$component.freshness" -Status "passed" -Detail "$component process $processIdValue is fresh for $entrypointPath." -Data @{
+              pid = $processIdValue
+              entrypoint = $entrypointPath
+              processStartedAt = $freshness.processStartedAt
+              entrypointUpdatedAt = $freshness.entrypointUpdatedAt
+            }
+          } else {
+            Add-Check -Name "runtime.$component.freshness" -Status "failed" -Detail "$component process $processIdValue is stale or unverifiable for $entrypointPath ($($freshness.reason))." -Data @{
+              pid = $processIdValue
+              entrypoint = $entrypointPath
+              reason = $freshness.reason
+              processStartedAt = $freshness.processStartedAt
+              entrypointUpdatedAt = $freshness.entrypointUpdatedAt
+            }
           }
         } else {
           Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component process $processIdValue is not running anymore." -Data @{
