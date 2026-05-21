@@ -86,6 +86,10 @@ export function buildDiscordReplyPrompt(
         ]
       : [];
 
+  if (isRepoFaceTurn) {
+    return context.prompt;
+  }
+
   return loadPromptTemplate("owner-discord-reply.prompt.md", {
     repoFaceTurn: isRepoFaceTurn,
     repoFaceInstruction,

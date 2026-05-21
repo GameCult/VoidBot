@@ -104,6 +104,7 @@ const envSchema = z.object({
   REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
   REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
   REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
+  REPO_FACE_BIFROST_ENABLED: booleanFromEnv.default(false),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
   BIFROST_DISCORD_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
@@ -159,6 +160,7 @@ export interface AppConfig {
   repoFaceBirthMode: "plan" | "run";
   repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
   repoFaceGithubActionsEnabled: boolean;
+  repoFaceBifrostEnabled: boolean;
   bifrostRoot: string;
   bifrostDiscordChannelId?: string;
   repoFaceHeartbeats: {
@@ -382,6 +384,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     repoFaceBirthMode: parsed.REPO_FACE_BIRTH_MODE,
     repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
     repoFaceGithubActionsEnabled: parsed.REPO_FACE_GITHUB_ACTIONS_ENABLED,
+    repoFaceBifrostEnabled: parsed.REPO_FACE_BIFROST_ENABLED,
     bifrostRoot: resolve(parsed.BIFROST_ROOT),
     bifrostDiscordChannelId: parsed.BIFROST_DISCORD_CHANNEL_ID,
     repoFaceHeartbeats: {

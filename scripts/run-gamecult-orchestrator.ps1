@@ -54,6 +54,22 @@ function Get-ConfigInt {
   return [Math]::Max($Minimum, $value)
 }
 
+function Get-ConfigBool {
+  param(
+    [hashtable] $Config,
+    [string] $Name,
+    [bool] $Default
+  )
+  $raw = [Environment]::GetEnvironmentVariable($Name)
+  if ([string]::IsNullOrWhiteSpace($raw) -and $Config.ContainsKey($Name)) {
+    $raw = $Config[$Name]
+  }
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    return $Default
+  }
+  return @("1", "true", "yes", "on").Contains($raw.Trim().ToLowerInvariant())
+}
+
 function Read-JsonFile {
   param([string] $Path)
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -318,6 +334,19 @@ try {
   $runs = @()
   foreach ($organ in $organs) {
     if ($onlySet.Count -gt 0 -and -not $onlySet.ContainsKey($organ.Id.ToLowerInvariant())) {
+      continue
+    }
+    if ($organ.Id -eq "bifrost-dispatch" -and -not (Get-ConfigBool -Config $config -Name "BIFROST_DISPATCH_ENABLED" -Default $false)) {
+      Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
+        label = $organ.Label
+        intervalMinutes = $organ.IntervalMinutes
+        lastStartedAt = $now.ToString("o")
+        lastFinishedAt = $now.ToString("o")
+        lastExitCode = 0
+        lastStatus = "skipped_disabled"
+        lastLogPath = $null
+      })
+      Write-JsonFile -Path $statePath -Data $state
       continue
     }
     if (-not (Test-Due -State $state -Id $organ.Id -IntervalMinutes $organ.IntervalMinutes -Now $now)) {

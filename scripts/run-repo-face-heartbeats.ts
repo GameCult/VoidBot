@@ -474,11 +474,13 @@ async function queueRepoFaceTurn(input: {
     limit: 6,
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
-  const bifrostDigest = await fetchBifrostGovernanceDigest({
-    bifrostRoot: input.config.bifrostRoot,
-    repoName: identity.repoName,
-    agentIdentity: identity.id,
-  });
+  const bifrostDigest = input.config.repoFaceBifrostEnabled
+    ? await fetchBifrostGovernanceDigest({
+        bifrostRoot: input.config.bifrostRoot,
+        repoName: identity.repoName,
+        agentIdentity: identity.id,
+      })
+    : undefined;
   const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
     identity,
     input.config.storageRoot,
@@ -1496,11 +1498,13 @@ async function assembleRepoFaceTurnPrompt(input: {
       limit: 6,
       bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
     }),
-    fetchBifrostGovernanceDigest({
-      bifrostRoot: input.config.bifrostRoot,
-      repoName: identity.repoName,
-      agentIdentity: identity.id,
-    }),
+    input.config.repoFaceBifrostEnabled
+      ? fetchBifrostGovernanceDigest({
+          bifrostRoot: input.config.bifrostRoot,
+          repoName: identity.repoName,
+          agentIdentity: identity.id,
+        })
+      : Promise.resolve(undefined),
     input.memorySurfacePath
       ? readOptionalMemorySurface(input.memorySurfacePath)
       : renderRepoFaceMemorySurfaceForTurn(identity, input.config.storageRoot),
@@ -1886,7 +1890,11 @@ function collapseWhitespace(value: string, maxLength?: number): string {
 function renderBifrostGovernanceDigestDirective(
   digest: BifrostGovernanceDigest | undefined,
 ): string {
-  if (!digest || digest.topics.length === 0) {
+  if (!digest) {
+    return "Work routing is currently offline. Do not open governance topics or dispatch work this turn; if an idea wants action, discuss it in the room or save the pressure in memory.";
+  }
+
+  if (digest.topics.length === 0) {
     return loadPromptTemplate("repo-face-bifrost-digest.prompt.md", {
       topics: [],
     });

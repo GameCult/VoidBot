@@ -351,8 +351,12 @@ async function processJob(job: JobRecord): Promise<void> {
       const repoFaceOutput = rawFinalResponse;
       const repoIdentityPosts = parseRepoIdentityPostIntents(repoFaceOutput);
       const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(repoFaceOutput);
-      const repoIdentityBifrostTopics = parseRepoIdentityBifrostTopicIntents(repoFaceOutput);
-      const repoIdentityUpdateRequests = parseRepoIdentityUpdateRequestIntents(repoFaceOutput);
+      const repoIdentityBifrostTopics = config.repoFaceBifrostEnabled
+        ? parseRepoIdentityBifrostTopicIntents(repoFaceOutput)
+        : [];
+      const repoIdentityUpdateRequests = config.repoFaceBifrostEnabled
+        ? parseRepoIdentityUpdateRequestIntents(repoFaceOutput)
+        : [];
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
         ? parseRepoIdentityArticleIntents(repoFaceOutput)
         : [];
@@ -370,8 +374,13 @@ async function processJob(job: JobRecord): Promise<void> {
       const articlePrSubmitted =
         !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
       const bifrostTopicSubmitted =
-        !proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && repoIdentityBifrostTopics.length > 0;
+        config.repoFaceBifrostEnabled &&
+        !proposalPrSubmitted &&
+        !prCommentSubmitted &&
+        !articlePrSubmitted &&
+        repoIdentityBifrostTopics.length > 0;
       const updateRequestRoutedToBifrostTopic =
+        config.repoFaceBifrostEnabled &&
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
@@ -992,30 +1001,42 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  const channelId = intent.channelId ?? job.outputChannelId;
+  const requestedChannelId = intent.channelId ?? job.outputChannelId;
+  const channelId = normalizeRepoIdentitySpeechChannel(job, requestedChannelId);
   if (!channelId) {
     console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
     return false;
   }
+  if (requestedChannelId && requestedChannelId !== channelId) {
+    console.warn(
+      `Coerced repo identity ${identity.id} speech for job ${job.id} from owner DM alias to output channel ${channelId}.`,
+    );
+  }
   if (isOwnerDmChannelAlias(channelId)) {
     const content = intent.content.trim();
     const dmChannelId = await openOwnerDmChannel();
-    const posted = await postDiscordBotMessage(
+    const postedMessages = await postDiscordBotMessageChunks(
       dmChannelId,
       renderRepoIdentityOwnerDm(identity, content),
     );
+    const lastPosted = postedMessages[postedMessages.length - 1];
+    if (!lastPosted) {
+      throw new Error(`Owner DM posting for repo identity ${identity.id} returned no message receipt.`);
+    }
     await recordRepoIdentityDeliveryReceipt({
       identity,
       channelId: dmChannelId,
       content,
       replyToMessageId: undefined,
-      messageId: posted.id,
+      messageId: lastPosted?.id,
       transport: "bot",
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Could not record repo identity owner DM receipt for job ${job.id}: ${message}`);
     });
-    console.log(`Posted repo identity ${identity.id} to owner DM from job ${job.id} as message ${posted.id}.`);
+    console.log(
+      `Posted repo identity ${identity.id} to owner DM from job ${job.id} as ${postedMessages.length} message(s).`,
+    );
     return true;
   }
   if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId)) {
@@ -2367,6 +2388,14 @@ async function postDiscordBotMessage(channelId: string, content: string): Promis
   return { id: payload.id };
 }
 
+async function postDiscordBotMessageChunks(channelId: string, content: string): Promise<Array<{ id: string }>> {
+  const posted: Array<{ id: string }> = [];
+  for (const chunk of splitDiscordMessage(content)) {
+    posted.push(await postDiscordBotMessage(channelId, chunk));
+  }
+  return posted;
+}
+
 async function openOwnerDmChannel(): Promise<string> {
   if (!config.botToken) {
     throw new Error("DISCORD_BOT_TOKEN is required for the worker to open an owner DM.");
@@ -2400,11 +2429,33 @@ function isOwnerDmChannelAlias(channelId: string): boolean {
   return ["owner", "dm", "owner_dm", "private", "meta"].includes(channelId.trim().toLowerCase());
 }
 
+function normalizeRepoIdentitySpeechChannel(job: JobRecord, requestedChannelId: string | undefined): string | undefined {
+  if (!requestedChannelId || !isOwnerDmChannelAlias(requestedChannelId)) {
+    return requestedChannelId;
+  }
+
+  if (repoIdentityOwnerDmExplicitlyAllowed(job)) {
+    return requestedChannelId;
+  }
+
+  return job.outputChannelId && !isOwnerDmChannelAlias(job.outputChannelId)
+    ? job.outputChannelId
+    : undefined;
+}
+
+function repoIdentityOwnerDmExplicitlyAllowed(job: JobRecord): boolean {
+  if (job.command !== "repo-face-rumination") {
+    return true;
+  }
+
+  return /\bowner-private\b|\bowner dm allowed\b|\bdirect owner dm\b|\bprivate dm to metacrat\b/i.test(job.prompt);
+}
+
 function renderRepoIdentityOwnerDm(
   identity: { displayName: string; id: string },
   content: string,
 ): string {
-  return fitDiscordMessage(`**${identity.displayName} (${identity.id})**\n${content}`);
+  return `**${identity.displayName} (${identity.id})**\n${content}`.trim();
 }
 
 function fitDiscordMessage(content: string): string {
@@ -2415,6 +2466,35 @@ function fitDiscordMessage(content: string): string {
   }
 
   return `${trimmed.slice(0, 1897)}...`;
+}
+
+function splitDiscordMessage(content: string): string[] {
+  const trimmed = content.trim();
+  const limit = 1900;
+  if (trimmed.length <= limit) {
+    return [trimmed];
+  }
+
+  const chunks: string[] = [];
+  let remaining = trimmed;
+  while (remaining.length > limit) {
+    let cut = remaining.lastIndexOf("\n\n", limit);
+    if (cut < Math.floor(limit * 0.6)) {
+      cut = remaining.lastIndexOf("\n", limit);
+    }
+    if (cut < Math.floor(limit * 0.6)) {
+      cut = remaining.lastIndexOf(" ", limit);
+    }
+    if (cut < Math.floor(limit * 0.6)) {
+      cut = limit;
+    }
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) {
+    chunks.push(remaining);
+  }
+  return chunks;
 }
 
 function formatHistoryResults(

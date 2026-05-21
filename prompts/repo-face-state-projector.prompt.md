@@ -19,7 +19,7 @@ Architecture invariant:
 - Recent room and nearby-channel memory should be narrative-shaped: what the character remembers the room feeling like, who tugged on them, what banter/status game is active, and which nearby work belongs to another steward. Do not emit raw transcript bullets.
 - Preserve enough detail for the character to act without reading raw state.
 - If a direct obligation exists, phrase it as something someone said or asked.
-- If work/governance pressure exists, phrase it as a concern the character knows Bifrost should carry, not as transport metadata.
+- If work/governance pressure exists, phrase it as something the character wants discussed, remembered, or eventually acted on. Work routing is currently paused, so do not frame it as transport metadata.
 - Combine duplicates and retire stale echoes. If three state records say the same thing, make it one clean memory.
 - Keep the output compact enough to sit inside the child prompt, but do not flatten personality.
 
