@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -339,6 +340,7 @@ async function processJob(job: JobRecord): Promise<void> {
 
     if (job.command === "repo-face-rumination") {
       const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
+      const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(finalResponse);
       const repoIdentityBifrostTopics = parseRepoIdentityBifrostTopicIntents(finalResponse);
       const repoIdentityUpdateRequests = parseRepoIdentityUpdateRequestIntents(finalResponse);
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
@@ -366,8 +368,11 @@ async function processJob(job: JobRecord): Promise<void> {
         !bifrostTopicSubmitted &&
         repoIdentityUpdateRequests.length > 0;
       console.log(
-        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
+        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
       );
+      for (const stateNote of repoIdentityStateNotes.slice(0, 4)) {
+        await applyRepoIdentityStateNoteIntent(job, stateNote);
+      }
       if (repoIdentityProposals.length > 0) {
         await writeRepoIdentityProposalPrIntent(job, repoIdentityProposals[0]);
       } else if (repoIdentityPrComments.length > 0) {
@@ -828,6 +833,22 @@ interface RepoIdentityPostIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityStateNoteIntent {
+  identity?: string;
+  kind: "memory" | "need" | "bond" | "status" | "mood" | "agency";
+  target?: string;
+  summary: string;
+  claim?: string;
+  question?: string;
+  tension?: string;
+  action?: string;
+  stance?: string;
+  status?: string;
+  mood?: string;
+  intensity?: number;
+  valence?: number;
+}
+
 interface RepoIdentityArticleIntent {
   identity?: string;
   title: string;
@@ -961,7 +982,10 @@ async function resolveRepoIdentityForJobIntent(
   job: JobRecord,
   identitySelector?: string,
 ): Promise<NonNullable<ReturnType<typeof findRepoDiscordIdentity>> | undefined> {
-  const identityId = identitySelector ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  const identityId =
+    identitySelector ??
+    parseRepoIdentityIdFromPrompt(job.prompt) ??
+    parseRepoIdentityIdFromRequestMessageId(job.requestMessageId);
   if (!identityId) {
     return undefined;
   }
@@ -1013,6 +1037,191 @@ function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIn
   }
 
   return intents;
+}
+
+function parseRepoIdentityIdFromRequestMessageId(requestMessageId: string | undefined): string | undefined {
+  const match = requestMessageId?.match(/^agent-turn:([^:]+):/i);
+  return match?.[1]?.trim();
+}
+
+function parseRepoIdentityStateNoteIntents(finalResponse: string): RepoIdentityStateNoteIntent[] {
+  return parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "state_note")
+    .flatMap((block): RepoIdentityStateNoteIntent[] => {
+      const kind = normalizeStateNoteKind(block.fields.kind);
+      const summary = block.fields.summary?.trim() ?? "";
+      if (!kind || !summary) {
+        return [];
+      }
+      return [{
+        identity: optionalDslString(block.fields.identity),
+        kind,
+        target: optionalDslString(block.fields.target),
+        summary,
+        claim: optionalDslString(block.fields.claim),
+        question: optionalDslString(block.fields.question),
+        tension: optionalDslString(block.fields.tension),
+        action: optionalDslString(block.fields.action),
+        stance: optionalDslString(block.fields.stance),
+        status: optionalDslString(block.fields.status),
+        mood: optionalDslString(block.fields.mood),
+        intensity: parseDslNumber(block.fields.intensity),
+        valence: parseDslNumber(block.fields.valence),
+      }];
+    });
+}
+
+async function applyRepoIdentityStateNoteIntent(
+  job: JobRecord,
+  intent: RepoIdentityStateNoteIntent,
+): Promise<void> {
+  const identity = await resolveRepoIdentityForJobIntent(job, intent.identity);
+  if (!identity) {
+    throw new Error(`Could not resolve repo identity for state note on job ${job.id}.`);
+  }
+
+  const now = new Date().toISOString();
+  const target = stateNoteTarget(intent, identity);
+  const anchorRefs = [{ ref: `job:${job.id}`, kind: "runtime" }];
+  const intensity = clamp01(intent.intensity ?? 0.55);
+  const baseTags = [
+    "source:face-interpreter",
+    `kind:${intent.kind}`,
+    `repo:${identity.repoName}`,
+  ];
+
+  const canonicalPath = resolveRepoFaceStatePath(identity, config.storageRoot);
+  const operation = (() => {
+    switch (intent.kind) {
+      case "need":
+        return {
+          operation: "upsert_affect_need",
+          need: {
+            needId: stableStateId("need", identity.id, intent.target ?? intent.summary),
+            kind: "agency",
+            status: intensity >= 0.75 ? "neglected" : "active",
+            target,
+            summary: intent.summary,
+            claim: intent.claim ?? intent.question ?? intent.summary,
+            question: intent.question,
+            tension: intent.tension ?? "The Face felt this strongly enough to preserve it.",
+            actionImplication: intent.action ?? "Let this need bend future attention and speech pressure.",
+            intensity,
+            valence: clampSigned(intent.valence ?? 0),
+            anchorRefs,
+            evidenceRefs: [],
+            sourceMemoryIds: [],
+            createdAt: now,
+            updatedAt: now,
+            tags: baseTags,
+          },
+        };
+      case "bond":
+        return {
+          operation: "upsert_social_bond",
+          bond: {
+            bondId: stableStateId("bond", identity.id, intent.target ?? intent.summary),
+            target,
+            stance: normalizeSocialBondStance(intent.stance),
+            status: "active",
+            summary: intent.summary,
+            claim: intent.claim ?? intent.summary,
+            tension: intent.tension ?? "The relationship read is still developing.",
+            actionImplication: intent.action ?? "Let this social read color future interaction.",
+            intensity,
+            anchorRefs,
+            evidenceRefs: [],
+            createdAt: now,
+            updatedAt: now,
+            tags: baseTags,
+          },
+        };
+      case "status":
+        return {
+          operation: "upsert_status_read",
+          read: {
+            readId: stableStateId("status", identity.id, intent.target ?? intent.summary),
+            target,
+            status: normalizeStatusRead(intent.status),
+            summary: intent.summary,
+            claim: intent.claim ?? intent.summary,
+            tension: intent.tension ?? "The status read may be partial.",
+            actionImplication: intent.action ?? "Let this change how the Face reads the room.",
+            intensity,
+            anchorRefs,
+            evidenceRefs: [],
+            createdAt: now,
+            updatedAt: now,
+            tags: baseTags,
+          },
+        };
+      case "mood":
+        return {
+          operation: "update_mood_dimensions",
+          dimensions: [{
+            name: sanitizeStateToken(intent.mood ?? intent.target ?? "mood"),
+            value: intensity,
+            source: intent.summary.slice(0, 240),
+            updatedAt: now,
+          }],
+          updatedAt: now,
+        };
+      case "agency":
+        return {
+          operation: "upsert_agency_pressure",
+          pressure: {
+            pressureId: stableStateId("agency", identity.id, intent.target ?? intent.summary),
+            kind: "self_advocacy_request",
+            status: intensity >= 0.7 ? "ready_to_act" : "active",
+            target,
+            summary: intent.summary,
+            claim: intent.claim ?? intent.question ?? intent.summary,
+            question: intent.question,
+            tension: intent.tension ?? "The Face wants this acted on but has not resolved the path.",
+            actionImplication: intent.action ?? "Use future turns to sharpen this into speech, Bifrost work, or a proposal.",
+            intensity,
+            anchorRefs,
+            evidenceRefs: [],
+            sourceMemoryIds: [],
+            createdAt: now,
+            updatedAt: now,
+            tags: baseTags,
+          },
+        };
+      case "memory":
+      default:
+        return {
+          operation: "record_short_term_memory",
+          memory: {
+            memoryId: stableStateId("memory", identity.id, `${intent.target ?? identity.repoName}:${intent.summary}`),
+            kind: "room_observation",
+            target,
+            summary: intent.summary,
+            claim: intent.claim ?? intent.question ?? intent.summary,
+            question: intent.question,
+            tension: intent.tension ?? "The Face chose to remember this because it may matter later.",
+            actionImplication: intent.action ?? "Let this memory influence future speech and investigation.",
+            anchorRefs,
+            evidenceRefs: [],
+            createdAt: now,
+            updatedAt: now,
+            tags: baseTags,
+          },
+        };
+    }
+  })();
+
+  await applyVoidSelfStateOperation(
+    {
+      canonicalPath,
+      identity: {
+        agentId: identity.id,
+        publicName: identity.displayName,
+        publicDescription: identity.description,
+      },
+    },
+    operation,
+  );
 }
 
 async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdentityArticleIntent): Promise<void> {
@@ -1594,7 +1803,7 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
 }
 
 interface RepoFaceActionBlock {
-  kind: "say" | "bifrost_topic" | "update_request";
+  kind: "say" | "state_note" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 }
 
@@ -1625,6 +1834,8 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
   switch (line.trim().toUpperCase()) {
     case "SAY":
       return "say";
+    case "STATE NOTE":
+      return "state_note";
     case "BIFROST TOPIC":
       return "bifrost_topic";
     case "UPDATE REQUEST":
@@ -1707,6 +1918,113 @@ function parseDslList(value: string | undefined): string[] {
     .split(/[,\n]/)
     .map((entry) => entry.trim().replace(/^-\s*/, ""))
     .filter((entry) => entry.length > 0);
+}
+
+function normalizeStateNoteKind(value: string | undefined): RepoIdentityStateNoteIntent["kind"] | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return ["memory", "need", "bond", "status", "mood", "agency"].includes(normalized ?? "")
+    ? normalized as RepoIdentityStateNoteIntent["kind"]
+    : undefined;
+}
+
+function stateNoteTarget(
+  intent: RepoIdentityStateNoteIntent,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+): { kind: "repo" | "person" | "room" | "system" | "self"; id: string; label?: string } {
+  const raw = intent.target?.trim();
+  if (!raw || raw.toLowerCase() === "self") {
+    return {
+      kind: "person",
+      id: identity.id,
+      label: identity.displayName,
+    };
+  }
+  if (raw.toLowerCase() === identity.repoName.toLowerCase()) {
+    return {
+      kind: "repo",
+      id: identity.repoName,
+      label: identity.repoName,
+    };
+  }
+  if (["room", "aquarium", "discord"].includes(raw.toLowerCase())) {
+    return {
+      kind: "room",
+      id: raw.toLowerCase(),
+      label: raw,
+    };
+  }
+  if (/^[a-z0-9_-]+$/i.test(raw) && raw.length <= 48) {
+    return {
+      kind: "person",
+      id: raw.toLowerCase(),
+      label: raw,
+    };
+  }
+  return {
+    kind: "system",
+    id: sanitizeStateToken(raw),
+    label: raw,
+  };
+}
+
+function normalizeSocialBondStance(value: string | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  return [
+    "fondness",
+    "rivalry",
+    "trust",
+    "irritation",
+    "protectiveness",
+    "envy",
+    "respect",
+    "suspicion",
+    "attachment",
+  ].includes(normalized ?? "")
+    ? normalized!
+    : "respect";
+}
+
+function normalizeStatusRead(value: string | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  return [
+    "favored",
+    "neglected",
+    "pampered",
+    "bypassed",
+    "blocked",
+    "challenged",
+    "ignored",
+    "consulted",
+    "threatened",
+    "admired",
+  ].includes(normalized ?? "")
+    ? normalized!
+    : "consulted";
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampSigned(value: number): number {
+  return Math.max(-1, Math.min(1, value));
+}
+
+function stableStateId(prefix: string, identityId: string, value: string): string {
+  const hash = createHash("sha1")
+    .update(`${identityId}:${prefix}:${value}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `${prefix}-${identityId}-${hash}`;
+}
+
+function sanitizeStateToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "topic";
 }
 
 function normalizeBifrostPriority(value: number | undefined): number {

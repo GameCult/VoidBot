@@ -4,6 +4,7 @@ Guild context:
 - Guild: {{guild}}
 - Channel: {{channel}}
 
+{{#unless repoFaceTurn}}
 Recent channel messages:
 {{recentMessages}}
 
@@ -21,5 +22,6 @@ Private runtime projection for this reply:
 
 Private situational social read for this room:
 {{situationalSocialRead}}
+{{/unless}}
 
 If you need more archived history or source context than is included above, call the appropriate read-only tool before answering.

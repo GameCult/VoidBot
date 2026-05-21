@@ -65,12 +65,13 @@ export function buildDiscordReplyPrompt(
   );
   const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
   const isRepoFaceTurn = !isRepoFaceParentInterpreter && (
-    context.prompt.includes("prompt:repo-face-turn")
+    context.prompt.includes("prompt:character-turn")
+      || context.prompt.includes("prompt:repo-face-turn")
       || context.prompt.includes("Repo Face identity doctrine:")
       || context.prompt.includes("Epiphany Face identity doctrine:")
   );
   const repoFaceInstruction = isRepoFaceTurn
-    ? "- This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak, reason, remember, object, and choose as that Face first. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files directly. If the Face should speak, use the Face action block exactly as instructed by the turn prompt."
+    ? "- This turn belongs to the character described in the prompt. Keep the useful discipline and humor permissions from the base style, but speak, reason, remember, object, and choose as that person first. Stay read-only: propose repo changes and ask for consensus, but do not edit files directly."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
   const toolLoopNotes =

@@ -441,7 +441,7 @@ async function queueRepoFaceTurn(input: {
   }
 
   const contextBuilder = new ContextBuilder();
-  const initialization = await ensureRepoFaceInitialized({
+  await ensureRepoFaceInitialized({
     identity,
     storageRoot: input.config.storageRoot,
     sourceRepoRoot: input.config.sourceRepoRoot,
@@ -477,19 +477,16 @@ async function queueRepoFaceTurn(input: {
   });
   const prompt = buildHeartbeatPrompt({
     identity,
-    faceStatePath,
     channelId,
     channelPlan,
     channelSnapshots,
     recentMessages,
+    memorySurface: faceSelfState ? projectStateSummaryForCharacterTurn(faceSelfState.summary) : undefined,
     bifrostDigest,
-    queuedAt: input.queuedAt,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
     jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
-    repoVoidbotRoot: initialization.repoVoidbotRoot,
-    birthStatusPath: initialization.birthStatusPath,
   });
   const contextBundle = contextBuilder.build({
     prompt,
@@ -504,7 +501,7 @@ async function queueRepoFaceTurn(input: {
     },
     recentMessages,
     retrieval: [],
-    voidSelfState: faceSelfState,
+    voidSelfState: undefined,
   });
   const requestMessageId = `agent-turn:${identity.id}:${input.queuedAt}`;
   const result = await input.storage.jobQueue.createJob({
@@ -1450,47 +1447,24 @@ function countPendingMentionsByIdentity(
 
 function buildHeartbeatPrompt(input: {
   identity: RepoDiscordIdentity;
-  faceStatePath: string;
   channelId: string;
   channelPlan: RepoFaceChannelPlan;
   channelSnapshots: ChannelSnapshot[];
   recentMessages: SourceMessage[];
+  memorySurface?: string;
   bifrostDigest?: BifrostGovernanceDigest;
-  queuedAt: string;
   participant: FaceHeartbeatParticipant;
   pendingMentions: RepoFacePendingMention[];
   jurisdictionDive: JurisdictionDiveDirective;
   githubActionsEnabled: boolean;
-  repoVoidbotRoot?: string;
-  birthStatusPath?: string;
 }): string {
   return loadPromptTemplate("repo-face-turn.prompt.md", {
     displayName: input.identity.displayName,
     identityId: input.identity.id,
     repoName: input.identity.repoName,
     identityDoctrine: renderRepoFaceIdentityDoctrine(input.identity),
-    queuedAt: input.queuedAt,
-    faceStatePath: input.faceStatePath,
-    repoVoidbotRoot: input.repoVoidbotRoot,
-    birthStatusPath: input.birthStatusPath,
     channelId: input.channelId,
-    initiativeSnapshot: JSON.stringify({
-      initiativeSpeed: input.participant.initiativeSpeed,
-      heat: input.participant.heat,
-      effectiveSpeed: input.participant.effectiveSpeed,
-      baseRecoveryMinutes: input.participant.baseRecoveryMinutes,
-      nextTurnAt: input.participant.nextTurnAt,
-      lastTurnAt: input.participant.lastTurnAt,
-      activeTurnStartedAt: input.participant.activeTurnStartedAt,
-      activeJobId: input.participant.activeJobId,
-      reactionBias: input.participant.reactionBias,
-      interruptThreshold: input.participant.interruptThreshold,
-      queuedCount: input.participant.queuedCount,
-      groups: input.participant.groups,
-      pendingMentionCount: input.pendingMentions.length,
-      jurisdictionDiveDue: input.jurisdictionDive.due,
-      jurisdictionDiveCadence: input.jurisdictionDive.cadence,
-    }),
+    memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
     bifrostDigestDirective: renderBifrostGovernanceDigestDirective(input.bifrostDigest),
     channelPermissionDirective: renderChannelPermissionDirective(input.channelPlan, input.channelSnapshots),
@@ -1564,11 +1538,11 @@ function renderChannelPermissionDirective(
 ): string {
   const options = plan.options.length > 0
     ? plan.options.map((option) =>
-        `- ${option.label} (${option.channelId}): topic=${option.topic}; speechThreshold=${option.speechThreshold}; speedMultiplier=${option.speedMultiplier}; posture=${option.posture ?? "use judgment"}`,
+        `- ${option.label}: ${option.topic}. ${option.posture ?? "Use judgment and keep it compact."}`,
       )
     : ["- No channel permissions are configured; stay private."];
   const snapshotLines = snapshots.flatMap((snapshot) => {
-    const header = `Recent context from ${labelForChannel(plan, snapshot.channelId)} (${snapshot.channelId}):`;
+    const header = `From ${labelForChannel(plan, snapshot.channelId)}:`;
     const messages = snapshot.messages.length > 0
       ? snapshot.messages.slice(-4).map((message) =>
           `  - ${message.authorName ?? message.authorId}: ${collapseWhitespace(message.content).slice(0, 260) || "(empty message)"}`,
@@ -1689,6 +1663,30 @@ function collapseWhitespace(value: string, maxLength?: number): string {
     : normalized;
 }
 
+function projectStateSummaryForCharacterTurn(summary: string): string {
+  const lines = summary
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !line.includes("Current room snapshot"))
+    .filter((line) => !line.includes("Current room:"))
+    .filter((line) => !line.includes("Recent room:"))
+    .map((line) => line
+      .replace(/\b\d{4}-\d{2}-\d{2}[T ][0-9:.Z+-]+\b/g, "recently")
+      .replace(/\bchannel\s+[0-9]{6,}\b/gi, "the room")
+      .replace(/\breply to\s+[0-9]{6,}\b/gi, "a recent reply")
+      .replace(/\(([a-z_ -]+),\s*[0-9.]+\)/gi, "($1)")
+      .replace(/\b[A-Za-z_ -]+=([0-9.]+)\b/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim(),
+    )
+    .filter((line) => line.length > 0);
+
+  return lines.length > 0
+    ? lines.join("\n")
+    : "- Your private memory is quiet. Let the room, your values, and your jurisdiction pull a real thought forward.";
+}
+
 function renderBifrostGovernanceDigestDirective(
   digest: BifrostGovernanceDigest | undefined,
 ): string {
@@ -1701,12 +1699,12 @@ function renderBifrostGovernanceDigestDirective(
   const lines: string[] = [];
   for (const topic of digest.topics) {
     lines.push(
-      `- ${topic.id}: ${topic.title} [${topic.status}; priority=${topic.priority}; updated=${topic.updatedAt}]`,
-      `  jurisdiction=${topic.jurisdictionRepoName}${topic.jurisdictionAgentIdentity ? `/${topic.jurisdictionAgentIdentity}` : ""}${topic.approvedByAgent ? `; approvedBy=${topic.approvedByAgent}` : ""}${topic.dispatchRequestId ? `; dispatch=${topic.dispatchRequestId}` : ""}`,
-      `  summary=${collapseWhitespace(topic.summaryMarkdown, 320)}`,
+      `- ${topic.title}: ${topic.status}.`,
+      `  Jurisdiction: ${topic.jurisdictionRepoName}${topic.approvedByAgent ? `; approved by ${topic.approvedByAgent}` : ""}${topic.dispatchRequestId ? "; already dispatched" : ""}.`,
+      `  ${collapseWhitespace(topic.summaryMarkdown, 320)}`,
     );
     for (const comment of (topic.comments ?? []).slice(-3)) {
-      lines.push(`  - ${comment.stance} by ${comment.authorId}: ${collapseWhitespace(comment.bodyMarkdown, 220)}`);
+      lines.push(`  - ${comment.stance}: ${collapseWhitespace(comment.bodyMarkdown, 220)}`);
     }
   }
 
@@ -1725,16 +1723,13 @@ function renderPendingMentionDirective(
     });
   }
 
-  const newest = pendingMentions[pendingMentions.length - 1];
   const mentionLines = pendingMentions.map((mention, index) =>
-    `${index + 1}. messageId=${mention.messageId}; channelId=${mention.channelId}; author=${mention.authorName ?? mention.authorId}; queuedAt=${mention.queuedAt}; prompt=${JSON.stringify(mention.visiblePrompt)}`,
+    `- ${index === pendingMentions.length - 1 ? "Newest" : "Earlier"}: ${mention.authorName ?? mention.authorId} said, "${collapseWhitespace(mention.visiblePrompt, 500)}"`,
   );
 
   return loadPromptTemplate("repo-face-pending-mentions.prompt.md", {
     displayName: identity.displayName,
     mentions: mentionLines,
-    newestMessageId: newest.messageId,
-    newestChannelId: newest.channelId,
   });
 }
 

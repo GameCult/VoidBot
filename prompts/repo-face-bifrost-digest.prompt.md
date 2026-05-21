@@ -1,8 +1,8 @@
-Bifrost governance digest:
-Bifrost typed CultCache topics are the canonical home for feature requests, governance discussion, Face opinions, approvals, and dispatch receipts. Discord is a human-readable mirror and evidence source, not the primary governance state.
-When you have a governed opinion, support, objection, missing question, approval, or receipt, prefer making it a Bifrost topic comment. Treat mirrored agent chatter in #bifrost as already represented here, not fresh Discord consensus.
+Work and governance memory:
+Bifrost is where feature requests, governance discussion, opinions, approvals, and dispatch receipts settle into something inspectable. Discord is where people notice and argue around it.
+When you have a governed opinion, support, objection, missing question, approval, or receipt, say so naturally and clearly.
 {{#unless topics}}
-- No recent Bifrost topics are attached for your jurisdiction.
+- Nothing recent from Bifrost is pressing on your jurisdiction.
 {{/unless}}
 {{#each topics}}
 {{.}}

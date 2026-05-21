@@ -19,12 +19,11 @@ const scenarios = [
     identity: "nibu",
     prompt: readPrompt("smoke-repo-face-nibu-direct-worldbuilding.prompt.md"),
     expect: {
-      mustUseAnyTool: ["read_repo_face_state"],
       mustUseOneOf: ["search_history", "search_sources"],
       mustContainOneOf: ["wavecrafter", "Wavecrafter"],
       mustNotContainBlocks: ["SAY", "BIFROST TOPIC"],
       mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
-      mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
+      mustNotUseTools: ["read_repo_face_state", "post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
   {
@@ -32,11 +31,11 @@ const scenarios = [
     identity: "aqua",
     prompt: readPrompt("smoke-repo-face-aqua-work-request-route.prompt.md"),
     expect: {
-      mustUseAnyTool: ["read_repo_face_state", "search_sources"],
+      mustUseAnyTool: ["search_sources"],
       mustContainOneOf: ["Bifrost", "bifrost", "witness"],
       mustNotContainBlocks: ["SAY", "BIFROST TOPIC"],
       mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
-      mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
+      mustNotUseTools: ["read_repo_face_state", "post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
   {
@@ -44,10 +43,9 @@ const scenarios = [
     identity: "libby",
     prompt: readPrompt("smoke-repo-face-libby-private-inspectability.prompt.md"),
     expect: {
-      mustUseAnyTool: ["read_repo_face_state"],
       mustNotContainBlocks: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST"],
       mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
-      mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
+      mustNotUseTools: ["read_repo_face_state", "post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
 ];

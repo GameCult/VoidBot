@@ -56,11 +56,34 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
+function isMcpToolAllowed(name: string): boolean {
+  const raw = process.env.VOIDBOT_MCP_TOOL_ALLOWLIST?.trim();
+  if (!raw) {
+    return true;
+  }
+
+  const allowed = new Set(
+    raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+  return allowed.has(name);
+}
+
 export function registerVoidbotTools(
   server: McpServer,
   context: VoidbotMcpContext,
 ): void {
-  server.registerTool(
+  const registerIfAllowed = (...args: any[]): void => {
+    const [name] = args;
+    if (!isMcpToolAllowed(name)) {
+      return;
+    }
+    (server.registerTool as any)(...args);
+  };
+
+  registerIfAllowed(
     "get_voidbot_runtime_info",
     {
       title: "Get VoidBot Runtime Info",
@@ -91,7 +114,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "search_history",
     {
       title: "Search Discord History",
@@ -136,7 +159,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "list_indexed_repos",
     {
       title: "List Indexed Repositories",
@@ -169,7 +192,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "search_sources",
     {
       title: "Search Repository Sources",
@@ -214,7 +237,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "get_source_context",
     {
       title: "Get Source Context",
@@ -291,7 +314,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "get_message_context",
     {
       title: "Get Message Context",
@@ -350,7 +373,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "post_discord_message",
     {
       title: "Post Discord Message",
@@ -418,7 +441,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "list_repo_discord_identities",
     {
       title: "List Repo Discord Identities",
@@ -492,7 +515,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "post_repo_identity_message",
     {
       title: "Post Repo Identity Message",
@@ -612,7 +635,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "read_repo_face_state",
     {
       title: "Read Repo Face State",
@@ -667,7 +690,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "apply_repo_face_state_operation",
     {
       title: "Apply Repo Face State Operation",
@@ -722,7 +745,7 @@ export function registerVoidbotTools(
     },
   );
 
-  server.registerTool(
+  registerIfAllowed(
     "notify_owner",
     {
       title: "Notify Owner",

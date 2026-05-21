@@ -190,7 +190,9 @@ export class OwnerCodexProvider implements ProviderAdapter {
         timeoutMs: this.options.timeoutMs,
         workingDirectory: this.options.workingDirectory,
         prompt: codexPrompt,
-        mcpServers: this.options.mcpServers ?? [],
+        mcpServers: command === "repo-face-rumination"
+          ? restrictMcpServersToRepoFaceExploration(this.options.mcpServers ?? [])
+          : this.options.mcpServers ?? [],
       });
       turnResults.push(result);
 
@@ -397,4 +399,24 @@ function getReasoningEffortOption(value: unknown): "low" | "medium" | "high" | "
     return value;
   }
   return undefined;
+}
+
+function restrictMcpServersToRepoFaceExploration(
+  servers: NonNullable<OwnerCodexProviderOptions["mcpServers"]>,
+): NonNullable<OwnerCodexProviderOptions["mcpServers"]> {
+  const allowedTools = [
+    "search_history",
+    "get_message_context",
+    "list_indexed_repos",
+    "search_sources",
+    "get_source_context",
+  ].join(",");
+
+  return servers.map((server) => ({
+    ...server,
+    env: {
+      ...(server.env ?? {}),
+      VOIDBOT_MCP_TOOL_ALLOWLIST: allowedTools,
+    },
+  }));
 }

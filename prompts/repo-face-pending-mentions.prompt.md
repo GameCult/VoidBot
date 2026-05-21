@@ -1,10 +1,10 @@
 {{#unless mentions}}
-No queued direct mentions are attached to this turn.
+Nobody has called on you directly in the attached conversation memory.
 {{/unless}}
 {{#if mentions}}
-Queued direct mentions for {{displayName}} are attached to this turn. These are obligations, not ambient chat. Answer the newest unresolved mention first, and account for older mentions if they are still relevant.
+People have called on {{displayName}} directly. Treat these as social obligations, not ambient chat. Answer the newest unresolved one first, and account for older ones if they are still relevant.
 {{#each mentions}}
 {{.}}
 {{/each}}
-For the newest mention, an in-channel reply is expected unless the prompt is impossible or unsafe. Use a final SAY block with reply_to: {{newestMessageId}} and channel: {{newestChannelId}}.
+For the newest direct call, an in-channel reply is expected unless answering would be impossible or unsafe.
 {{/if}}

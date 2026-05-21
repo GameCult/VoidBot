@@ -13,12 +13,13 @@ export function buildSystemPrompt(context: ContextBundle): string {
       : "No extra persona instructions were supplied.";
   const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
   const isRepoFaceJob = !isRepoFaceParentInterpreter && (
-    context.prompt.includes("prompt:repo-face-turn")
+    context.prompt.includes("prompt:character-turn")
+      || context.prompt.includes("prompt:repo-face-turn")
       || context.prompt.includes("Repo Face identity doctrine:")
       || context.prompt.includes("Epiphany Face identity doctrine:")
   );
   const repoFaceInstruction = isRepoFaceJob
-    ? "This job is for a repo Face identity. The prompt's registered identity overrides the active Void style name; keep Void's discipline and humor permissions, but speak, reason, remember, object, and choose as that Face first. Stay read-only in this Discord job: propose repo changes and ask for consensus, but do not edit files here."
+    ? "This turn belongs to the character described in the prompt. Keep the useful discipline and humor permissions from the base style, but speak, reason, remember, object, and choose as that person first. Stay read-only: propose repo changes and ask for consensus, but do not edit files here."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
 
@@ -62,6 +63,7 @@ export function buildPrompt(context: ContextBundle): string {
   const voidSelfState = renderVoidSelfState(context);
 
   return loadPromptTemplate("local-llm-user.prompt.md", {
+    repoFaceTurn: isRepoFacePrompt(context),
     prompt: context.prompt,
     guild: context.guildContext.guildName ?? context.guildContext.guildId ?? "(direct/unknown)",
     channel: context.guildContext.channelName ?? context.guildContext.channelId,
@@ -72,6 +74,16 @@ export function buildPrompt(context: ContextBundle): string {
     sleepProjection: renderSleepProjection(context),
     situationalSocialRead,
   });
+}
+
+function isRepoFacePrompt(context: ContextBundle): boolean {
+  const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
+  return !isRepoFaceParentInterpreter && (
+    context.prompt.includes("prompt:character-turn")
+      || context.prompt.includes("prompt:repo-face-turn")
+      || context.prompt.includes("Repo Face identity doctrine:")
+      || context.prompt.includes("Epiphany Face identity doctrine:")
+  );
 }
 
 export function buildArtifacts(input: LocalLlmArtifactsInput): ProviderArtifact[] {
