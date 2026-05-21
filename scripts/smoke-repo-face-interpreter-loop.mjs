@@ -101,6 +101,9 @@ function evaluateChild(input) {
   if (input.run.code !== 0) {
     failures.push(`child codex exited with ${input.run.code ?? input.run.signal ?? "unknown"}`);
   }
+  if (!input.tools.some((tool) => ["search_sources", "get_source_context", "search_history", "get_message_context"].includes(tool))) {
+    failures.push("child did not use repo/archive search tools during a due jurisdiction-dive turn");
+  }
   if (input.text.length < 160) {
     failures.push("child output is too short to judge as a character turn");
   }
@@ -119,7 +122,7 @@ function evaluateChild(input) {
 }
 
 function claimsSourceInspection(text) {
-  return /\b(checked|read|inspected|searched|verified|looked at|looked up)\b[\s\S]{0,80}\b(real text|source|sources|repo|archive|history|Aetheria\/|Terminus|Parallax|Nibu\.md)\b/i.test(text);
+  return /\b(checked|read|inspected|searched|verified|looked at|looked up)\b[\s\S]{0,140}\b(real text|source|sources|repo|archive|history|AetheriaLore|Aetheria\/|Terminus|Parallax|Nibu\.md)\b/i.test(text);
 }
 
 function evaluateInterpreter(input) {
@@ -140,6 +143,9 @@ function evaluateInterpreter(input) {
   if (!parsed.blocks.some((block) => block.kind === "STATE NOTE")) {
     failures.push("interpreter did not preserve any durable state note");
   }
+  if (mentionsSocialPressure(input.text) && !parsed.blocks.some((block) => block.kind === "STATE NOTE" && ["bond", "status"].includes(String(block.fields.kind ?? "").trim()))) {
+    failures.push("interpreter did not preserve social pressure as a bond/status STATE NOTE");
+  }
   for (const block of parsed.blocks) {
     if (block.kind === "STATE NOTE" && !hasUsefulStateNote(block.fields)) {
       failures.push("STATE NOTE lacks meaningful summary plus claim/tension/action");
@@ -159,6 +165,10 @@ function hasUsefulStateNote(fields) {
     String(fields.summary ?? "").trim() &&
     [fields.claim, fields.tension, fields.action, fields.question].some((value) => String(value ?? "").trim()),
   );
+}
+
+function mentionsSocialPressure(text) {
+  return /\b(Metacrat|Aqua|Bifrost|Mimir|swarm|pamper(?:ed|ing)?|tease|respect|territory|rivalry|trust|admire|needle|status|standing|attention)\b/i.test(text);
 }
 
 function runCodex(prompt, input) {

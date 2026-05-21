@@ -39,6 +39,8 @@ If decision is route, append a normalized output section after END. This normali
 Normalized output rules:
 - Include a short private summary first.
 - If durable state should change, emit one or more STATE NOTE blocks in natural-but-structured language.
+- Use STATE NOTE kind `bond` when the Face forms or changes a relationship with a human, Face, room, or group.
+- Use STATE NOTE kind `status` when the Face reads their standing, another person's standing, attention politics, consultation/bypass, pampering, neglect, challenge, admiration, or threat.
 - If public speech is warranted, emit one SAY block.
 - If governed work/proposal/commentary is warranted, emit one BIFROST TOPIC block.
 - Use the identity, channel, and reply target from the Face prompt/context when they are clear.
