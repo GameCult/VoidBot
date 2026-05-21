@@ -63,8 +63,8 @@ export function buildDiscordReplyPrompt(
     context,
     sourceGroundingReminder,
   );
-  const isRepoFaceParentReviewer = context.prompt.includes("prompt:repo-face-parent-review");
-  const isRepoFaceTurn = !isRepoFaceParentReviewer && (
+  const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
+  const isRepoFaceTurn = !isRepoFaceParentInterpreter && (
     context.prompt.includes("prompt:repo-face-turn")
       || context.prompt.includes("Repo Face identity doctrine:")
       || context.prompt.includes("Epiphany Face identity doctrine:")

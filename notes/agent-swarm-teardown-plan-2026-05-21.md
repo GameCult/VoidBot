@@ -98,7 +98,7 @@ What breaks if deleted: Face chatter, Face direct-mention responses, and automat
 
 Verdict: that breakage proves the need exists, not that this implementation owns it coherently.
 
-Simpler architecture: a `FaceTurn` domain engine should emit typed candidate intents. Scheduler selects who gets a turn. Context assembler gathers evidence. Model proposes typed candidates. Parent gates and routes them. Bifrost owns governance.
+Simpler architecture: a `FaceTurn` domain engine should emit typed candidate intents. Scheduler selects who gets a turn. Context assembler gathers evidence. Model proposes typed candidates. Parent Interpreter translates or rejects them. Bifrost owns governance.
 
 Files to change: `scripts/run-repo-face-heartbeats.ts`, `apps/worker/src/index.ts`, `packages/core/src/repo-face-heartbeat-queue.ts`, `packages/core/src/repo-face-rest.ts`, repo Face prompt/render helpers, Face heartbeat smokes.
 
@@ -114,7 +114,7 @@ Verdict: that proves public speech is being accepted too late and at the wrong l
 
 Simpler architecture: model output becomes `speech_candidate`. Parent-side speech eligibility rejects provenance-shaped, stale, repeated, or work-request-shaped content before transport. No string mop.
 
-Files to change: `apps/worker/src/index.ts`, Face action parser/router, heartbeat prompt, model smoke fixtures.
+Files to change: `apps/worker/src/index.ts`, Face action parser/Interpreter, heartbeat prompt, model smoke fixtures.
 
 ### 3. Worker Owns Too Many Side Effects
 
@@ -124,7 +124,7 @@ Real need: execute provider jobs and record results.
 
 What breaks if deleted: repo Face side effects stop.
 
-Verdict: side effects need a domain router. The worker is currently a junction box with opinions.
+Verdict: side effects need a domain Interpreter. The worker is currently a junction box with opinions.
 
 Simpler architecture: worker stores typed job result. A `FaceActionRouter` validates and routes candidates to Bifrost/Discord/GitHub adapters. Bifrost-owned work/governance transport should not live in the worker branch.
 
@@ -279,7 +279,7 @@ Files to change: `scripts/inspect-agent-state-requests.ts`, `scripts/feed-codex-
 5. Introduce parent-side public speech eligibility and make sanitizer deletion possible. Landed as a Spark/Codex parent-review pass with one retry, not a regex language cop.
 6. Route all work proposals through Bifrost topics; remove direct `UPDATE REQUEST` dispatch. Landed for the worker: legacy `UPDATE REQUEST` blocks are reconciled into Bifrost topics instead of immediate agent transport enqueue.
 7. Collapse identity authority.
-8. Split scheduler from context/prompt/router.
+8. Split scheduler from context/prompt/Interpreter.
 
 Restart is not allowed until these invariants can be stated in code and tested:
 

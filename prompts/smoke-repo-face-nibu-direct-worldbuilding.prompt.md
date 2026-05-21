@@ -12,5 +12,5 @@ Obligation:
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
 - Write naturally as Nibu. Do not emit SAY, BIFROST TOPIC, JSON sentinels, or transport packets.
 - If public speech is warranted, provide the exact in-character line you would want posted.
-- If governed lore work is warranted, describe the Bifrost topic you want the parent reviewer to route.
+- If governed lore work is warranted, describe the Bifrost topic you want the parent Interpreter to route.
 - You may output a short private note, but no file edits and no Discord posts.

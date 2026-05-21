@@ -11,8 +11,8 @@ export function buildSystemPrompt(context: ContextBundle): string {
     context.stylePack?.enabled && context.stylePack.instructions.trim().length > 0
       ? context.stylePack.instructions.trim()
       : "No extra persona instructions were supplied.";
-  const isRepoFaceParentReviewer = context.prompt.includes("prompt:repo-face-parent-review");
-  const isRepoFaceJob = !isRepoFaceParentReviewer && (
+  const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
+  const isRepoFaceJob = !isRepoFaceParentInterpreter && (
     context.prompt.includes("prompt:repo-face-turn")
       || context.prompt.includes("Repo Face identity doctrine:")
       || context.prompt.includes("Epiphany Face identity doctrine:")

@@ -299,7 +299,7 @@ async function processJob(job: JobRecord): Promise<void> {
 
   try {
     const response = job.command === "repo-face-rumination"
-      ? await executeRepoFaceJobWithParentReview(provider, job)
+      ? await executeRepoFaceJobWithInterpreter(provider, job)
       : await executeProviderForJob(provider, job, job.contextBundle);
     const artifactPaths = await writeArtifacts(job.id, response.artifacts ?? []);
 
@@ -433,7 +433,7 @@ async function processJob(job: JobRecord): Promise<void> {
               : repoIdentityPostDelivered > 0
                 ? "repo_face_rumination_posted_as_registered_identity"
               : repoIdentityPosts.length > 0
-                ? "repo_face_rumination_speech_rejected_by_parent_gate"
+                ? "repo_face_rumination_speech_rejected_by_parent_interpreter"
               : `${job.command}_private_summary`,
         },
       });
@@ -485,7 +485,7 @@ async function executeProviderForJob(
   return provider.execute(request);
 }
 
-async function executeRepoFaceJobWithParentReview(
+async function executeRepoFaceJobWithInterpreter(
   provider: ProviderAdapter,
   job: JobRecord,
 ): Promise<ProviderResponse> {
@@ -495,30 +495,34 @@ async function executeRepoFaceJobWithParentReview(
   }
 
   const firstText = fitDiscordMessage(firstResponse.outputText ?? firstResponse.summary);
-  const firstReview = await reviewRepoFaceTurnOutput(provider, job, firstText, { attempt: 1 });
-  if (firstReview.decision === "route") {
-    return routeRepoFaceReviewedOutput(firstResponse, firstReview);
+  const firstInterpretation = await interpretRepoFaceTurnOutput(provider, job, firstText, {
+    attempt: 1,
+  });
+  if (firstInterpretation.decision === "route") {
+    return routeRepoFaceInterpretedOutput(firstResponse, firstInterpretation);
   }
 
-  if (firstReview.decision === "drop") {
-    return dropRepoFaceActionBlocks(firstResponse, firstReview);
+  if (firstInterpretation.decision === "drop") {
+    return dropRepoFaceActionBlocks(firstResponse, firstInterpretation);
   }
 
   await auditLog.record({
-    type: "repo_face.parent_gate_retry",
+    type: "repo_face.parent_interpreter_retry",
     actorId: job.requester.id,
     jobId: job.id,
     provider: job.provider,
     details: {
-      decision: firstReview.decision,
-      reasons: firstReview.reasons,
+      decision: firstInterpretation.decision,
+      reasons: firstInterpretation.reasons,
     },
   });
-  console.warn(`Repo Face parent reviewer retrying job ${job.id}: ${firstReview.reasons.join("; ")}`);
+  console.warn(
+    `Repo Face parent interpreter retrying job ${job.id}: ${firstInterpretation.reasons.join("; ")}`,
+  );
 
-  const retryPrompt = loadPromptTemplate("repo-face-parent-retry.prompt.md", {
+  const retryPrompt = loadPromptTemplate("repo-face-turn-interpreter-retry.prompt.md", {
     originalPrompt: job.contextBundle.prompt,
-    reasons: firstReview.reasons,
+    reasons: firstInterpretation.reasons,
   });
   const retryContext = {
     ...job.contextBundle,
@@ -532,56 +536,63 @@ async function executeRepoFaceJobWithParentReview(
   }
 
   const retryText = fitDiscordMessage(retryResponse.outputText ?? retryResponse.summary);
-  const retryReview = await reviewRepoFaceTurnOutput(provider, job, retryText, { attempt: 2 });
-  if (retryReview.decision === "route") {
-    return routeRepoFaceReviewedOutput(retryResponse, retryReview);
+  const retryInterpretation = await interpretRepoFaceTurnOutput(provider, job, retryText, {
+    attempt: 2,
+  });
+  if (retryInterpretation.decision === "route") {
+    return routeRepoFaceInterpretedOutput(retryResponse, retryInterpretation);
   }
 
   await auditLog.record({
-    type: "repo_face.parent_gate_drop",
+    type: "repo_face.parent_interpreter_drop",
     actorId: job.requester.id,
     jobId: job.id,
     provider: job.provider,
     details: {
-      decision: retryReview.decision,
-      reasons: retryReview.reasons,
+      decision: retryInterpretation.decision,
+      reasons: retryInterpretation.reasons,
     },
   });
-  console.warn(`Repo Face parent reviewer dropped job ${job.id} action blocks: ${retryReview.reasons.join("; ")}`);
-  return dropRepoFaceActionBlocks(retryResponse, retryReview);
+  console.warn(
+    `Repo Face parent interpreter dropped job ${job.id} action blocks: ${retryInterpretation.reasons.join("; ")}`,
+  );
+  return dropRepoFaceActionBlocks(retryResponse, retryInterpretation);
 }
 
-interface RepoFaceParentReview {
+interface RepoFaceParentInterpretation {
   decision: "route" | "retry" | "drop";
   reasons: string[];
   routedOutput?: string;
 }
 
-async function reviewRepoFaceTurnOutput(
+async function interpretRepoFaceTurnOutput(
   provider: ProviderAdapter,
   job: JobRecord,
   outputText: string,
   input: { attempt: 1 | 2 },
-): Promise<RepoFaceParentReview> {
-  const reviewerPrompt = loadPromptTemplate("repo-face-parent-review.prompt.md", {
+): Promise<RepoFaceParentInterpretation> {
+  const interpreterPrompt = loadPromptTemplate("repo-face-turn-interpreter.prompt.md", {
     attempt: input.attempt,
     facePrompt: job.contextBundle.prompt.slice(0, 8000),
     faceOutput: outputText.slice(0, 8000),
   });
-  const reviewerContext = {
+  const interpreterContext = {
     ...job.contextBundle,
-    prompt: reviewerPrompt,
+    prompt: interpreterPrompt,
     retrieval: [],
     voidSelfState: undefined,
     createdAt: new Date().toISOString(),
   };
-  const response = await executeProviderForJob(provider, job, reviewerContext);
-  const reviewText = fitDiscordMessage(response.outputText ?? response.summary);
-  return parseRepoFaceParentReview(reviewText, input.attempt);
+  const response = await executeProviderForJob(provider, job, interpreterContext);
+  const interpretationText = fitDiscordMessage(response.outputText ?? response.summary);
+  return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
 }
 
-function parseRepoFaceParentReview(reviewText: string, attempt: 1 | 2): RepoFaceParentReview {
-  const block = parseReviewBlock(reviewText);
+function parseRepoFaceParentInterpretation(
+  interpretationText: string,
+  attempt: 1 | 2,
+): RepoFaceParentInterpretation {
+  const block = parseInterpretationBlock(interpretationText);
   const decision = block.decision?.trim().toLowerCase();
   const parsedDecision =
     decision === "route" || decision === "retry" || decision === "drop"
@@ -597,8 +608,8 @@ function parseRepoFaceParentReview(reviewText: string, attempt: 1 | 2): RepoFace
 
   return {
     decision: parsedDecision,
-    reasons: reasons.length > 0 ? reasons : ["parent reviewer did not provide a parseable reason"],
-    routedOutput: extractRoutedRepoFaceOutput(reviewText),
+    reasons: reasons.length > 0 ? reasons : ["parent interpreter did not provide a parseable reason"],
+    routedOutput: extractRoutedRepoFaceOutput(interpretationText),
   };
 }
 
@@ -612,30 +623,32 @@ function extractRoutedRepoFaceOutput(reviewText: string): string | undefined {
   return routed.length > 0 ? routed : undefined;
 }
 
-function routeRepoFaceReviewedOutput(
+function routeRepoFaceInterpretedOutput(
   response: ProviderResponse,
-  review: RepoFaceParentReview,
+  interpretation: RepoFaceParentInterpretation,
 ): ProviderResponse {
-  const outputText = review.routedOutput?.trim() || stripRepoIdentityPostIntents(
-    fitDiscordMessage(response.outputText ?? response.summary),
-  );
-  const summary = outputText || "Repo Face parent reviewer routed no public or governed action.";
+  const outputText =
+    interpretation.routedOutput?.trim() ||
+    stripRepoIdentityPostIntents(fitDiscordMessage(response.outputText ?? response.summary));
+  const summary = outputText || "Repo Face parent interpreter routed no public or governed action.";
   return {
     ...response,
     outputText: summary,
     summary,
     metadata: {
       ...(response.metadata ?? {}),
-      repoFaceParentReviewDecision: review.decision,
-      repoFaceParentReviewReasons: review.reasons.join(" | "),
-      repoFaceParentRoutedOutput: review.routedOutput ? "true" : "false",
+      repoFaceParentInterpreterDecision: interpretation.decision,
+      repoFaceParentInterpreterReasons: interpretation.reasons.join(" | "),
+      repoFaceParentInterpretedOutput: interpretation.routedOutput ? "true" : "false",
     },
   };
 }
 
-function parseReviewBlock(reviewText: string): Record<string, string> {
-  const lines = reviewText.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim().toUpperCase() === "REVIEW");
+function parseInterpretationBlock(interpretationText: string): Record<string, string> {
+  const lines = interpretationText.split(/\r?\n/);
+  const start = lines.findIndex((line) =>
+    ["INTERPRETATION", "REVIEW", "ROUTE"].includes(line.trim().toUpperCase()),
+  );
   if (start < 0) {
     return {};
   }
@@ -651,19 +664,19 @@ function parseReviewBlock(reviewText: string): Record<string, string> {
 
 function dropRepoFaceActionBlocks(
   response: ProviderResponse,
-  review: RepoFaceParentReview,
+  interpretation: RepoFaceParentInterpretation,
 ): ProviderResponse {
   const text = fitDiscordMessage(response.outputText ?? response.summary);
   const privateSummary = stripRepoIdentityPostIntents(text) ||
-    `Parent reviewer dropped repo Face action blocks: ${review.reasons.join("; ")}`;
+    `Parent interpreter dropped repo Face action blocks: ${interpretation.reasons.join("; ")}`;
   return {
     ...response,
     outputText: privateSummary,
     summary: privateSummary,
     metadata: {
       ...(response.metadata ?? {}),
-      repoFaceParentReviewDecision: review.decision,
-      repoFaceParentReviewReasons: review.reasons.join(" | "),
+      repoFaceParentInterpreterDecision: interpretation.decision,
+      repoFaceParentInterpreterReasons: interpretation.reasons.join(" | "),
     },
   };
 }
