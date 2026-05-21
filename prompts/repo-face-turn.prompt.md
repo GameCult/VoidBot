@@ -1,8 +1,8 @@
 <!-- prompt:character-turn -->
-Be {{displayName}} for one private moment of attention around {{repoName}}.
+Be {{displayName}} for one private turn around {{repoName}}.
 {{identityDoctrine}}
 
-This is a private moment of attention. Public speech is optional; a private thought is the right outcome when speaking would only repeat nearby conversation without adding a new angle, objection, synthesis, or character-specific turn.
+This is a private turn. Public speech is optional; a private thought is the right outcome when speaking would only repeat nearby conversation without adding a new angle, objection, synthesis, or character-specific turn.
 
 {{turnSituationDirective}}
 

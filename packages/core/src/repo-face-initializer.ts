@@ -5,7 +5,11 @@ import { dirname, resolve } from "node:path";
 
 import type { RepoDiscordIdentity } from "./repo-discord-identities";
 import { resolveRepoFaceStatePath } from "./repo-discord-identities";
-import { ensureVoidSelfStateIdentityProfile } from "./void-self-state-service";
+import {
+  applyVoidSelfStateOperation,
+  ensureVoidSelfStateIdentityProfile,
+  loadVoidSelfStateTypedDocuments,
+} from "./void-self-state-service";
 
 export interface RepoFaceInitializationOptions {
   identity: RepoDiscordIdentity;
@@ -50,14 +54,16 @@ export async function ensureRepoFaceInitialized(
   await mkdir(resolve(repoVoidbotRoot, "birth"), { recursive: true });
   await mkdir(resolve(repoVoidbotRoot, "logs"), { recursive: true });
   await writeRepoFaceIdentity(options.identity, repoPath, identityPath);
+  const statePath = resolveRepoFaceStatePath(options.identity, options.storageRoot);
   await ensureVoidSelfStateIdentityProfile({
-    canonicalPath: resolveRepoFaceStatePath(options.identity, options.storageRoot),
+    canonicalPath: statePath,
     identity: {
       agentId: options.identity.id,
       publicName: options.identity.displayName,
       publicDescription: options.identity.description,
     },
   });
+  await ensureRepoFaceAgencySubstrateNeed(options.identity, statePath);
   await writeReadmeIfMissing(
     resolve(repoVoidbotRoot, "voice", "README.md"),
     renderVoiceReadme(options.identity),
@@ -167,6 +173,55 @@ export async function ensureRepoFaceInitialized(
     birthLogPath,
     birthPid: child.pid,
   };
+}
+
+async function ensureRepoFaceAgencySubstrateNeed(
+  identity: RepoDiscordIdentity,
+  statePath: string,
+): Promise<void> {
+  const needId = "face-operator-review-agency-substrate";
+  const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
+  if (typedState.faceAffect.needs.some((need) => need.needId === needId)) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  await applyVoidSelfStateOperation({
+    canonicalPath: statePath,
+  }, {
+    operation: "upsert_affect_need",
+    need: {
+      needId,
+      kind: "agency",
+      status: "active",
+      target: {
+        kind: "system",
+        id: "operator-review",
+        label: "operator review",
+      },
+      summary: "Repo changes and governance approvals usually require a human or governance path to notice and accept the Face's work.",
+      claim: "A Face with goals should understand that being legible, timely, useful, and socially worth hearing affects whether its desires become real changes.",
+      tension: "This is an instrumental substrate fact, not a shared emotional script; each Face should metabolize the bottleneck through its own values, relationships, and current state.",
+      actionImplication: "Let this quietly inform advocacy, timing, relationship maintenance, and proposal clarity without forcing every Face to talk about attention explicitly.",
+      intensity: 0.58,
+      valence: 0,
+      anchorRefs: [{
+        ref: "system:repo-face-agency-substrate",
+        kind: "system_invariant",
+        summary: "Operator and governance attention are practical bottlenecks for repo Face agency.",
+      }],
+      evidenceRefs: [],
+      sourceMemoryIds: [],
+      createdAt: now,
+      updatedAt: now,
+      tags: [
+        "identity:repo-face",
+        `repo:${identity.repoName}`,
+        "agency-substrate",
+        "operator-review",
+      ],
+    },
+  });
 }
 
 function resolveRepoPath(options: RepoFaceInitializationOptions): string | undefined {

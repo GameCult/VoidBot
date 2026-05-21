@@ -1666,7 +1666,7 @@ function renderTurnSituationDirective(input: {
     ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
   ];
   if (shouldPromptIntroduction(input.identity, input.participant, visibleMessages)) {
-    lines.push("If you speak publicly, make it a brief natural introduction in your own voice before asking the room for work or attention.");
+    lines.push("If you speak publicly, make it a brief natural introduction in your own voice before asking the room for anything.");
   }
 
   return lines.length > 0 ? lines.join("\n") : "";
