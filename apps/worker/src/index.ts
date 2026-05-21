@@ -398,13 +398,7 @@ async function processJob(job: JobRecord): Promise<void> {
         );
       }
       let repoIdentityPostDelivered = 0;
-      if (
-        !proposalPrSubmitted &&
-        !prCommentSubmitted &&
-        !articlePrSubmitted &&
-        !bifrostTopicSubmitted &&
-        !updateRequestRoutedToBifrostTopic
-      ) {
+      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted) {
         for (const post of repoIdentityPosts.slice(0, 1)) {
           if (await postRepoIdentityIntent(job, post)) {
             repoIdentityPostDelivered += 1;
