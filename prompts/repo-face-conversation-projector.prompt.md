@@ -15,10 +15,14 @@ Do not expose transcript metadata, raw ids, timestamps, scheduler details, model
 Do not summarize every message. Preserve only what should change this turn.
 If the room contains banter, preserve the social charge rather than flattening it into a work summary.
 If work is being discussed, preserve who owns it and what concrete next action already exists.
+If the logs contain old project names, migrated repo names, or vocabulary from a different steward, translate the memory into the character's current naming and jurisdiction. Mention an obsolete alias only when the correction itself matters socially.
 If nothing matters, say that the nearby room is quiet or irrelevant in one sentence.
 
 Character:
 {{characterIdentity}}
+
+Current naming and jurisdiction notes:
+{{jurisdictionBoundaryNotes}}
 
 Conversation packet:
 ```text

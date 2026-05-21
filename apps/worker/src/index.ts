@@ -512,7 +512,7 @@ async function executeRepoFaceJobWithInterpreter(
     return firstResponse;
   }
 
-  const firstText = fitDiscordMessage(firstResponse.outputText ?? firstResponse.summary);
+  const firstText = normalizeModelText(firstResponse.outputText ?? firstResponse.summary);
   const firstForbiddenTools = collectForbiddenRepoFaceChildTools(firstResponse.artifacts ?? []);
   const firstInterpretation = firstForbiddenTools.length > 0
     ? {
@@ -562,7 +562,7 @@ async function executeRepoFaceJobWithInterpreter(
     return retryResponse;
   }
 
-  const retryText = fitDiscordMessage(retryResponse.outputText ?? retryResponse.summary);
+  const retryText = normalizeModelText(retryResponse.outputText ?? retryResponse.summary);
   const retryForbiddenTools = collectForbiddenRepoFaceChildTools(retryResponse.artifacts ?? []);
   const retryInterpretation = retryForbiddenTools.length > 0
     ? {
@@ -620,8 +620,12 @@ async function interpretRepoFaceTurnOutput(
     createdAt: new Date().toISOString(),
   };
   const response = await executeProviderForJob(provider, job, interpreterContext);
-  const interpretationText = fitDiscordMessage(response.outputText ?? response.summary);
+  const interpretationText = normalizeModelText(response.outputText ?? response.summary);
   return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
+}
+
+function normalizeModelText(content: string): string {
+  return content.trim();
 }
 
 function parseRepoFaceParentInterpretation(
@@ -1047,7 +1051,15 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   }
 
   const content = intent.content.trim();
-  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, fitDiscordMessage(content));
+  if (content.length > 1900) {
+    throw new Error(
+      `Repo identity ${identity.id} SAY content is too long for one Discord message (${content.length} characters).`,
+    );
+  }
+  if (/\S(?:\.\.\.|…)$/.test(content)) {
+    throw new Error(`Repo identity ${identity.id} SAY content appears mechanically truncated.`);
+  }
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, content);
   const posted = runBifrostBridge([
     "discord-post",
     "--channel-id",

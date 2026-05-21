@@ -12,6 +12,7 @@ Architecture invariant:
 - One public speech block is the normal maximum.
 - Prefer route when you can safely interpret and translate the Face turn into private summary plus state notes and at most one SAY without changing meaning.
 - Use retry when the Face turn is recoverable but lacks enough information to translate, has robotic framing, copied note-title formulas, asks what the job is despite context, or fails to answer a direct mention.
+- Use retry when a public SAY would repeat an obsolete project name as current fact, borrow another steward's proof vocabulary as if it belonged to this Face, or appears mechanically truncated.
 - Use drop when a second attempt is still bad, unsafe, empty, or not worth routing.
 - Do not emit governance or dispatch blocks. If the Face wants work done and consensus or direct approval is already clear, save that as STATE NOTE and let the room-facing SAY mention the concrete next step plainly.
 
@@ -46,6 +47,7 @@ Normalized output rules:
 - Use the identity, channel, and reply target from the Face prompt/context when they are clear.
 - Do not choose an owner/private/DM channel unless the Face prompt explicitly says this turn is an owner-private direct-message turn. Normal check-ins, warnings, governance anxieties, consensus questions, and room replies belong in the current room, Aquarium, or a configured domain channel.
 - Preserve the Face's voice in SAY content.
+- SAY content must be one compact, complete Discord message. Do not end with `...` or an unfinished word.
 
 STATE NOTE
 identity: face_id

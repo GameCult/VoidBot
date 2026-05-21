@@ -1772,6 +1772,7 @@ async function projectRepoFaceConversationMemorySurface(input: {
   const conversationPacket = renderRepoFaceConversationPacket(input);
   const prompt = loadPromptTemplate("repo-face-conversation-projector.prompt.md", {
     characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
+    jurisdictionBoundaryNotes: renderRepoFaceJurisdictionBoundaryNotes(input.identity),
     conversationPacket,
   });
   const output = await runCodexTextProjection({
@@ -1785,7 +1786,22 @@ async function projectRepoFaceConversationMemorySurface(input: {
   if (projected.length < 40) {
     throw new Error(`Repo Face conversation projector returned too little text for ${input.identity.id}.`);
   }
-  return rejectLeakyConversationSurface(projected);
+  return rejectInvalidConversationSurfaceForIdentity(input.identity, rejectLeakyConversationSurface(projected));
+}
+
+function renderRepoFaceJurisdictionBoundaryNotes(identity: RepoDiscordIdentity): string {
+  const notes = [
+    `Current public name: ${identity.displayName}. Current repo/jurisdiction: ${identity.repoName}.`,
+    "Do not let nearby-room wording rename this character's territory. If a message uses a stale alias, preserve the correction without adopting the alias.",
+    "Known global migration: LocalCastBridge is an obsolete/migrated name for Mimir. Use Mimir, the realtime field, or Mimir stream/OBS timing witness work unless explicitly discussing migration history.",
+    "Known steward boundary: wet-voice-01 and AquaSynth parity/listening receipt language belongs to Aqua. Other characters may mention it as Aqua's lane, but should not present it as their own artifact protocol.",
+  ];
+  if (identity.id.toLowerCase() === "mimir") {
+    notes.push(
+      "Mimir-specific: ask for OBS/stream timing witness ledgers, drift envelopes, latency measurements, and sensor-fusion proof. Do not use Aqua's receipt vocabulary as Mimir's own.",
+    );
+  }
+  return notes.join("\n");
 }
 
 function renderRepoFaceConversationPacket(input: {
@@ -1838,6 +1854,21 @@ function rejectLeakyConversationSurface(surface: string): string {
   ];
   if (leaks.some((pattern) => pattern.test(surface))) {
     throw new Error("Repo Face conversation surface leaked transcript machinery or placeholder text.");
+  }
+  return surface;
+}
+
+function rejectInvalidConversationSurfaceForIdentity(identity: RepoDiscordIdentity, surface: string): string {
+  const staleAlias = /\bLocalCastBridge\b/i.test(surface);
+  const marksAliasAsStale = /\b(?:not|obsolete|legacy|stale|old|migrat(?:ed|ion)|retired|correction|corrected)\b/i
+    .test(surface);
+  if (staleAlias && !marksAliasAsStale) {
+    throw new Error(`${identity.id} conversation surface adopted obsolete LocalCastBridge naming as current context.`);
+  }
+  const borrowedAquaLanguage = /\b(?:wet-voice-01|parity receipt|parity receipts)\b/i.test(surface);
+  const marksAquaBoundary = /\bAqua(?:Synth)?\b/i.test(surface);
+  if (borrowedAquaLanguage && !marksAquaBoundary) {
+    throw new Error(`${identity.id} conversation surface borrowed AquaSynth receipt vocabulary without naming the boundary.`);
   }
   return surface;
 }
