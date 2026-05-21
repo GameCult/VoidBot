@@ -130,6 +130,17 @@ interface ChannelSnapshot {
 async function main(): Promise<void> {
   const config = loadConfig();
   const dryRun = process.argv.includes("--dry-run");
+  const assemblePromptIdentity = readArgValue("--assemble-prompt");
+  if (assemblePromptIdentity) {
+    const result = await assembleRepoFaceTurnPrompt({
+      config,
+      identityId: assemblePromptIdentity,
+      outPath: readArgValue("--out"),
+      memorySurfacePath: readArgValue("--memory-surface"),
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
 
   const pause = await readAgentSwarmPause();
   if (pause.paused) {
@@ -1425,6 +1436,131 @@ function buildHeartbeatPrompt(input: {
   });
 }
 
+async function assembleRepoFaceTurnPrompt(input: {
+  config: ReturnType<typeof loadConfig>;
+  identityId: string;
+  outPath?: string;
+  memorySurfacePath?: string;
+}): Promise<{
+  ok: true;
+  identityId: string;
+  promptLength: number;
+  outPath?: string;
+  memorySurfacePath?: string;
+}> {
+  const faceRegistry = await loadFaceIdentityRegistry(input.config.repoDiscordIdentitiesPath);
+  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
+  const identity = registry.identities.find(
+    (entry) => entry.id.toLowerCase() === input.identityId.toLowerCase(),
+  );
+
+  if (!identity) {
+    throw new Error(`Unknown repo Face identity: ${input.identityId}`);
+  }
+
+  const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
+  const channelId = channelPlan.primaryChannelId;
+  if (!channelId) {
+    throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
+  }
+
+  const [recentMessages, channelSnapshots, bifrostDigest, memorySurface] = await Promise.all([
+    fetchRecentDiscordMessages({
+      botToken: input.config.botToken,
+      channelId,
+      limit: 15,
+      ignoreBotMessages: channelId === input.config.bifrostDiscordChannelId,
+    }),
+    fetchChannelSnapshots({
+      botToken: input.config.botToken,
+      channelIds: channelPlan.snapshotChannelIds,
+      primaryChannelId: channelId,
+      limit: 6,
+      bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
+    }),
+    fetchBifrostGovernanceDigest({
+      bifrostRoot: input.config.bifrostRoot,
+      repoName: identity.repoName,
+      agentIdentity: identity.id,
+    }),
+    readOptionalMemorySurface(input.memorySurfacePath),
+  ]);
+  const participant = buildInspectionParticipant(
+    identity,
+    input.config.repoFaceHeartbeats.baseRecoveryMinutes,
+  );
+  const prompt = buildHeartbeatPrompt({
+    identity,
+    channelId,
+    channelPlan,
+    channelSnapshots,
+    recentMessages,
+    memorySurface,
+    bifrostDigest,
+    participant,
+    pendingMentions: [],
+    jurisdictionDive: buildJurisdictionDiveDirective(identity, participant),
+    githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
+  });
+
+  if (input.outPath) {
+    const outPath = resolve(input.outPath);
+    await mkdir(dirname(outPath), { recursive: true });
+    await writeFile(outPath, prompt, "utf8");
+  }
+
+  return {
+    ok: true,
+    identityId: identity.id,
+    promptLength: prompt.length,
+    outPath: input.outPath ? resolve(input.outPath) : undefined,
+    memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
+  };
+}
+
+async function readOptionalMemorySurface(path: string | undefined): Promise<string | undefined> {
+  if (!path) {
+    return undefined;
+  }
+
+  const content = (await readFile(resolve(path), "utf8")).trim();
+  return content.length > 0 ? content : undefined;
+}
+
+function buildInspectionParticipant(
+  identity: RepoDiscordIdentity,
+  baseRecoveryMinutes: number,
+): FaceHeartbeatParticipant {
+  return {
+    identityId: identity.id,
+    participantKind: "repo_face",
+    turnKind: "repo_face_rumination",
+    repoName: identity.repoName,
+    displayName: identity.displayName,
+    initiativeSpeed: 1,
+    reactionBias: 0.5,
+    interruptThreshold: 0.6,
+    currentLoad: 0,
+    status: "active",
+    groups: [
+      "all",
+      "kind:repo_face",
+      "turn:repo_face_rumination",
+      `identity:${normalizeKey(identity.id)}`,
+      `repo:${normalizeKey(identity.repoName)}`,
+    ],
+    heat: 1,
+    effectiveSpeed: 1,
+    baseRecoveryMinutes,
+    nextTurnAt: 0,
+    queuedCount: 0,
+    constraints: [
+      "Prompt assembly is deterministic inspection only.",
+      "Character memory and affect prose must come from the Interpreter memory surface.",
+    ],
+  };
+}
+
 function buildChannelPlan(
   identity: RepoDiscordIdentity,
   defaultChannelId?: string,
@@ -1950,6 +2086,16 @@ function round3(value: number): number {
 
 function stripLeadingBom(input: string): string {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+function readArgValue(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index < 0) {
+    return undefined;
+  }
+
+  const value = process.argv[index + 1];
+  return value && !value.startsWith("--") ? value : undefined;
 }
 
 void main().catch((error) => {
