@@ -137,6 +137,7 @@ async function main(): Promise<void> {
       identityId: assemblePromptIdentity,
       outPath: readArgValue("--out"),
       memorySurfacePath: readArgValue("--memory-surface"),
+      conversationSurfacePath: readArgValue("--conversation-surface"),
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
@@ -1407,6 +1408,7 @@ function buildHeartbeatPrompt(input: {
   channelSnapshots: ChannelSnapshot[];
   recentMessages: SourceMessage[];
   memorySurface?: string;
+  conversationMemorySurface?: string;
   bifrostDigest?: BifrostGovernanceDigest;
   participant: FaceHeartbeatParticipant;
   pendingMentions: RepoFacePendingMention[];
@@ -1420,6 +1422,7 @@ function buildHeartbeatPrompt(input: {
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
+    conversationMemorySurface: input.conversationMemorySurface ?? "- No Interpreter-shaped conversation memory was projected for this turn.",
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -1429,11 +1432,7 @@ function buildHeartbeatPrompt(input: {
     }),
     pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
     bifrostDigestDirective: renderBifrostGovernanceDigestDirective(input.bifrostDigest),
-    channelPermissionDirective: renderChannelPermissionDirective(
-      input.channelPlan,
-      input.recentMessages,
-      input.channelSnapshots,
-    ),
+    channelPermissionDirective: renderChannelPermissionDirective(input.channelPlan),
     socialEmbodimentDirective: renderSocialEmbodimentDirective(input.identity),
     jurisdictionRespectDirective: renderJurisdictionRespectDirective(input.identity),
     comedyImprovDirective: renderComedyImprovDirective(input.identity),
@@ -1452,12 +1451,14 @@ async function assembleRepoFaceTurnPrompt(input: {
   identityId: string;
   outPath?: string;
   memorySurfacePath?: string;
+  conversationSurfacePath?: string;
 }): Promise<{
   ok: true;
   identityId: string;
   promptLength: number;
   outPath?: string;
   memorySurfacePath?: string;
+  conversationSurfacePath?: string;
 }> {
   const faceRegistry = await loadFaceIdentityRegistry(input.config.repoDiscordIdentitiesPath);
   const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
@@ -1475,7 +1476,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
   }
 
-  const [recentMessages, channelSnapshots, bifrostDigest, memorySurface] = await Promise.all([
+  const [recentMessages, channelSnapshots, bifrostDigest, memorySurface, conversationMemorySurface] = await Promise.all([
     fetchRecentDiscordMessages({
       botToken: input.config.botToken,
       channelId,
@@ -1495,6 +1496,7 @@ async function assembleRepoFaceTurnPrompt(input: {
       agentIdentity: identity.id,
     }),
     readOptionalMemorySurface(input.memorySurfacePath),
+    readOptionalMemorySurface(input.conversationSurfacePath),
   ]);
   const participant = buildInspectionParticipant(
     identity,
@@ -1507,6 +1509,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     channelSnapshots,
     recentMessages,
     memorySurface,
+    conversationMemorySurface,
     bifrostDigest,
     participant,
     pendingMentions: [],
@@ -1526,6 +1529,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     promptLength: prompt.length,
     outPath: input.outPath ? resolve(input.outPath) : undefined,
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
+    conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
 }
 
@@ -1623,35 +1627,15 @@ function buildChannelPlan(
   };
 }
 
-function renderChannelPermissionDirective(
-  plan: RepoFaceChannelPlan,
-  recentMessages: SourceMessage[],
-  snapshots: ChannelSnapshot[],
-): string {
+function renderChannelPermissionDirective(plan: RepoFaceChannelPlan): string {
   const options = plan.options.length > 0
     ? plan.options.map((option) =>
         `${option.label}: ${option.topic}. ${option.posture ?? "Use judgment and keep it compact."}`,
       )
     : ["- No channel permissions are configured; stay private."];
-  const snapshotLines = snapshots.flatMap((snapshot) => {
-    const header = `From ${labelForChannel(plan, snapshot.channelId)}:`;
-    const messages = snapshot.messages.length > 0
-      ? snapshot.messages.slice(-4).map((message) =>
-          `  - ${message.authorName ?? message.authorId}: ${projectPromptVisibleText(collapseWhitespace(message.content).slice(0, 260)) || "(empty message)"}`,
-        )
-      : ["  - (no recent readable messages)"];
-    return [header, ...messages];
-  });
-  const currentRoomLines = recentMessages.length > 0
-    ? recentMessages.slice(-8).map((message) =>
-        `- ${message.authorName ?? message.authorId}: ${projectPromptVisibleText(collapseWhitespace(message.content).slice(0, 320)) || "(empty message)"}`,
-      )
-    : [];
 
   return loadPromptTemplate("repo-face-channel-permissions.prompt.md", {
     options,
-    currentRoom: currentRoomLines,
-    snapshots: snapshotLines,
   });
 }
 
@@ -1791,28 +1775,11 @@ function thresholdRank(threshold: RepoFaceChannelOption["speechThreshold"]): num
   }
 }
 
-function labelForChannel(plan: RepoFaceChannelPlan, channelId: string): string {
-  return plan.options.find((option) => option.channelId === channelId)?.label ?? channelId;
-}
-
 function collapseWhitespace(value: string, maxLength?: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return maxLength && normalized.length > maxLength
     ? `${normalized.slice(0, maxLength - 3)}...`
     : normalized;
-}
-
-function projectPromptVisibleText(value: string): string {
-  return value
-    .replace(/â€”/g, "-")
-    .replace(/â€™/g, "'")
-    .replace(/â€œ/g, "\"")
-    .replace(/â€�/g, "\"")
-    .replace(/\bheartbeat\b/gi, "earlier note")
-    .replace(/\bFaces\b/g, "characters")
-    .replace(/\bFace\b/g, "character")
-    .replace(/\s{2,}/g, " ")
-    .trim();
 }
 
 function renderBifrostGovernanceDigestDirective(

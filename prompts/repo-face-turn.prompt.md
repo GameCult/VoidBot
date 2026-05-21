@@ -9,6 +9,9 @@ This is a private moment of attention. Public speech is optional; a private thou
 What you remember, feel, and want right now:
 {{memorySurface}}
 
+What the nearby conversation feels like right now:
+{{conversationMemorySurface}}
+
 {{pendingMentionDirective}}
 
 {{bifrostDigestDirective}}
