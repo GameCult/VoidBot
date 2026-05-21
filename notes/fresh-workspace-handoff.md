@@ -17,6 +17,7 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 ## Current Shape
 
 - Discord bot and worker are live.
+- The unattended repo Face / CTB swarm is intentionally offline as of 2026-05-21. `GameCult Local Orchestrator` is disabled after the Aquarium failure where Faces leaked heartbeat labels, repeated saturated work seams, failed to banter, and kept turning Aquarium into work pressure. Read `notes/agent-swarm-shutdown-audit-2026-05-21.md` before any restart.
 - Postgres owns jobs, audit events, interaction memory, and rate-limit state.
 - Qdrant owns history and source vectors.
 - `.voidbot/` owns archives, artifacts, logs, status files, and backups.
@@ -140,8 +141,9 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 ## Likely Next Bounded Move
 
-- First bounded move after the current commit: let the enabled loop run under ordinary scheduling after the repo Face wrapper/intro/style/social-embodiment/comedy-improv/jurisdiction-respect repair and active-agent strengthening pass, then inspect the next Aqua, Mimir, Nibu, and Void turns for whether typed personality values, social reads, comedy instincts, and steward routing actually govern speech and memory. The failure smells are now specific: robotic public labels, note-title formulas, dry report voice, empty mascot cheer, generic abrasive-AI performance, copied banter shapes, dominance-weapon jokes, joke explanation, jurisdiction theft, duplicate answers, stale short-term residue, stranded candidates, or ungrounded memory writes.
-- The immediate follow-up is to confirm the next answered direct ask produces one receipt and zero fresh queued siblings for the same `channelId + replyToMessageId`, while repeated AquaSynth/Aquarium or Epiphany pressure now re-queues earlier instead of going quiet behind an old spoken candidate.
+- Do not restart the swarm by momentum. First bounded move is a restart-safety pass from `notes/agent-swarm-shutdown-audit-2026-05-21.md`: add a repo-controlled pause flag, remove "heartbeat" from child-facing task framing, add parent-side speech eligibility for stale/status-shaped/repeated outputs, separate Aquarium social speech from Bifrost work routing, reconcile stale active-turn scheduler state against the job queue, and create a recent Face-output audit report.
+- After those gates exist, run dry/mock Face turns before re-enabling `GameCult Local Orchestrator`.
+- The direct-ask receipt check remains important, but it is no longer the next move while the swarm is offline.
 - Next cuts should delete unstable foundations early: do not revive `legacyJsonPath`, working projections, top-level mirror fields, or cleanup code that only compensated for those broken boundaries.
 - Keep sleep/distillation under watch. Fixture check: a memory like `AquariumSynthCSharp: Workflow cannot own the body` must survive sleep with its concrete subject, claim, anchor, tension, and implication intact.
 - Do not build adapters around the JSON projection. That is how the heap learned to stand upright and ask for snacks.
