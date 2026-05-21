@@ -47,6 +47,7 @@ export interface CodexRunResult {
   stdout: string;
   stderr: string;
   exitCode: number | null;
+  model: string;
   handoffReason?: string;
   toolRequest?: HistoryToolRequest;
   timedOut: boolean;

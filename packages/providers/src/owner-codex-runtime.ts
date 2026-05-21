@@ -86,6 +86,7 @@ export async function runCodexExec(input: {
       result: Omit<
         CodexRunResult,
         "startedAt" | "finishedAt" | "durationMs" | "traceEvents" | "usage"
+        | "model"
       >,
     ) => {
       if (resolved) {
@@ -98,6 +99,7 @@ export async function runCodexExec(input: {
 
       resolve({
         ...result,
+        model: input.model,
         startedAt,
         finishedAt: new Date(finishedAtMs).toISOString(),
         durationMs: finishedAtMs - startedAtMs,

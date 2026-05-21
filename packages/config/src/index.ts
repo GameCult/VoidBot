@@ -116,7 +116,8 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
-  REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.4-mini"),
+  REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.3-codex-spark"),
+  REPO_FACE_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.3-codex-spark,gpt-5.4-mini"),
   REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT: z
     .enum(["low", "medium", "high", "xhigh"])
     .optional(),
@@ -172,6 +173,7 @@ export interface AppConfig {
     speedOverrides: Record<string, number>;
     heatOverrides: Record<string, number>;
     codexModel?: string;
+    codexModels: string[];
     codexModelReasoningEffort?: "low" | "medium" | "high" | "xhigh";
   };
   epiphanyAgentRoot: string;
@@ -394,6 +396,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
       heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
       codexModel: parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL,
+      codexModels: parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS)
+        : [parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL],
       codexModelReasoningEffort: parsed.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT,
     },
     epiphanyAgentRoot: resolve(parsed.EPIPHANY_AGENT_ROOT),

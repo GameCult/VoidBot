@@ -182,17 +182,10 @@ export class OwnerCodexProvider implements ProviderAdapter {
         false,
       );
 
-      result = await runCodexExec({
-        executable: this.options.executable,
-        executableArgs: this.options.executableArgs,
-        model: getStringOption(request.options?.model) ?? this.options.model,
-        reasoningEffort: getReasoningEffortOption(request.options?.reasoningEffort) ?? this.options.reasoningEffort,
-        timeoutMs: this.options.timeoutMs,
-        workingDirectory: this.options.workingDirectory,
+      result = await this.runCodexExecWithModelFallback({
+        request,
+        command,
         prompt: codexPrompt,
-        mcpServers: command === "repo-face-rumination"
-          ? restrictMcpServersToRepoFaceExploration(this.options.mcpServers ?? [])
-          : this.options.mcpServers ?? [],
       });
       turnResults.push(result);
 
@@ -220,6 +213,7 @@ export class OwnerCodexProvider implements ProviderAdapter {
               startedAt: result.startedAt,
               finishedAt: result.finishedAt,
               durationMs: result.durationMs,
+              model: result.model,
               usage: result.usage ?? null,
               events: result.traceEvents,
             },
@@ -388,10 +382,73 @@ export class OwnerCodexProvider implements ProviderAdapter {
       notifications: normalizedReply.notifications,
     };
   }
+
+  private async runCodexExecWithModelFallback(input: {
+    request: ProviderRequest;
+    command: string;
+    prompt: string;
+  }) {
+    const models = getStringListOption(input.request.options?.models);
+    const candidates = models.length > 0
+      ? models
+      : [getStringOption(input.request.options?.model) ?? this.options.model];
+    let lastResult;
+
+    for (const model of candidates) {
+      const result = await runCodexExec({
+        executable: this.options.executable,
+        executableArgs: this.options.executableArgs,
+        model,
+        reasoningEffort: getReasoningEffortOption(input.request.options?.reasoningEffort) ?? this.options.reasoningEffort,
+        timeoutMs: this.options.timeoutMs,
+        workingDirectory: this.options.workingDirectory,
+        prompt: input.prompt,
+        mcpServers: input.command === "repo-face-rumination"
+          ? restrictMcpServersToRepoFaceExploration(this.options.mcpServers ?? [])
+          : this.options.mcpServers ?? [],
+      });
+      lastResult = result;
+      if (!isRetryableCodexModelCapacityFailure(result) || model === candidates.at(-1)) {
+        return result;
+      }
+      console.warn(
+        `Codex model ${model} failed with retryable quota/capacity signal; falling back to ${candidates[candidates.indexOf(model) + 1]}.`,
+      );
+    }
+
+    return lastResult ?? runCodexExec({
+      executable: this.options.executable,
+      executableArgs: this.options.executableArgs,
+      model: this.options.model,
+      reasoningEffort: this.options.reasoningEffort,
+      timeoutMs: this.options.timeoutMs,
+      workingDirectory: this.options.workingDirectory,
+      prompt: input.prompt,
+      mcpServers: this.options.mcpServers ?? [],
+    });
+  }
 }
 
 function getStringOption(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function getStringListOption(value: unknown): string[] {
+  if (typeof value !== "string") {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function isRetryableCodexModelCapacityFailure(result: { exitCode: number | null; stdout: string; stderr: string; handoffReason?: string }): boolean {
+  if (result.exitCode === 0 || result.handoffReason || result.stdout.includes("item.completed")) {
+    return false;
+  }
+  const text = `${result.stderr}\n${result.stdout}`.toLowerCase();
+  return /quota|rate limit|rate-limit|usage limit|capacity|too many requests|429|insufficient_quota|model.*unavailable|model.*access|limit exceeded/.test(text);
 }
 
 function getReasoningEffortOption(value: unknown): "low" | "medium" | "high" | "xhigh" | undefined {

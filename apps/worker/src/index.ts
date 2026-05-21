@@ -745,6 +745,9 @@ function repoFaceHeartbeatCodexOptions(job: JobRecord): Record<string, string> {
 
   return {
     ...(config.repoFaceHeartbeats.codexModel ? { model: config.repoFaceHeartbeats.codexModel } : {}),
+    ...(config.repoFaceHeartbeats.codexModels.length > 0
+      ? { models: config.repoFaceHeartbeats.codexModels.join(",") }
+      : {}),
     ...(config.repoFaceHeartbeats.codexModelReasoningEffort
       ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
       : {}),
