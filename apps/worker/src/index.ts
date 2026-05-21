@@ -610,7 +610,7 @@ async function interpretRepoFaceTurnOutput(
 ): Promise<RepoFaceParentInterpretation> {
   const interpreterPrompt = loadPromptTemplate("repo-face-turn-interpreter.prompt.md", {
     attempt: input.attempt,
-    facePrompt: job.contextBundle.prompt.slice(0, 8000),
+    facePrompt: renderRepoFaceInterpreterPromptContext(job.contextBundle.prompt),
     faceOutput: outputText.slice(0, 8000),
   });
   const interpreterContext = {
@@ -627,6 +627,18 @@ async function interpretRepoFaceTurnOutput(
 
 function normalizeModelText(content: string): string {
   return content.trim();
+}
+
+function renderRepoFaceInterpreterPromptContext(prompt: string): string {
+  if (prompt.length <= 28000) {
+    return prompt;
+  }
+
+  return [
+    prompt.slice(0, 6000),
+    "\n\n[... middle of Face prompt omitted for Interpreter context budget ...]\n\n",
+    prompt.slice(-22000),
+  ].join("");
 }
 
 function parseRepoFaceParentInterpretation(
