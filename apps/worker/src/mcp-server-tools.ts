@@ -15,6 +15,8 @@ import {
   renderFaceIdentityDoctrine,
   resolveFaceStatePath,
   resolveRepoFaceStatePath,
+  VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES,
+  VOID_SELF_STATE_SCHEMA_FINGERPRINT,
 } from "@voidbot/core";
 
 import { type VoidbotMcpContext } from "./mcp-server-context";
@@ -27,6 +29,7 @@ import {
   type PostDiscordMessageArgs,
   type PostRepoIdentityMessageArgs,
   type RepoFaceStateArgs,
+  type RuntimeInfoArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
   type SourceContextArgs,
@@ -40,6 +43,7 @@ import {
   postRepoIdentityMessageInputSchema,
   repoFaceStateInputSchema,
   renderJsonBlock,
+  runtimeInfoInputSchema,
   searchHistoryInputSchema,
   searchSourcesInputSchema,
   sourceContextInputSchema,
@@ -56,6 +60,37 @@ export function registerVoidbotTools(
   server: McpServer,
   context: VoidbotMcpContext,
 ): void {
+  server.registerTool(
+    "get_voidbot_runtime_info",
+    {
+      title: "Get VoidBot Runtime Info",
+      description:
+        "Return the running VoidBot MCP server runtime and typed self-state schema identity. Use this to detect stale MCP processes after schema changes.",
+      inputSchema: runtimeInfoInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (_input: RuntimeInfoArgs): Promise<CallToolResult> => {
+      const runtimeInfo = {
+        serverName: "voidbot",
+        serverVersion: "0.1.0",
+        pid: process.pid,
+        workspaceRoot: process.cwd(),
+        selfStateSchemaFingerprint: VOID_SELF_STATE_SCHEMA_FINGERPRINT,
+        selfStateDocumentTypes: VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES,
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock(runtimeInfo),
+          },
+        ],
+        structuredContent: runtimeInfo,
+      };
+    },
+  );
+
   server.registerTool(
     "search_history",
     {

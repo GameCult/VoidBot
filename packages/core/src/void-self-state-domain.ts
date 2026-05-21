@@ -12,6 +12,13 @@ export const VOID_SELF_STATE_DOCUMENT_TYPES = {
   faceAffect: "void.face_affect",
 } as const;
 
+export const VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES = Object.freeze(
+  Object.values(VOID_SELF_STATE_DOCUMENT_TYPES),
+);
+
+export const VOID_SELF_STATE_SCHEMA_FINGERPRINT =
+  `void-self-state.v1:${VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES.join("|")}`;
+
 const nonEmptyStringSchema = z.string().trim().min(1);
 const timestampSchema = nonEmptyStringSchema;
 
