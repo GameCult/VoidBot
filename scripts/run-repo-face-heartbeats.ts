@@ -19,13 +19,13 @@ import {
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
+  renderVoidSelfStateCharacterSurface,
   type RepoFaceRestSnapshot,
-  renderFaceIdentityDoctrine,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
 } from "@voidbot/core";
-import { loadPromptTemplate, type SourceMessage } from "@voidbot/shared";
+import { loadPromptTemplate, type SourceMessage, type VoidSelfStateContext } from "@voidbot/shared";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
@@ -129,8 +129,25 @@ interface ChannelSnapshot {
   messages: SourceMessage[];
 }
 
+interface RepoFaceSelfStateLoad {
+  context: VoidSelfStateContext;
+  characterSurface: string;
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
+  const renderPromptIdentity = readArgValue("--render-prompt");
+  if (renderPromptIdentity) {
+    const outPath = readArgValue("--out");
+    const rendered = await renderRepoFacePromptPreview({
+      config,
+      identityId: renderPromptIdentity,
+      outPath,
+    });
+    process.stdout.write(`${JSON.stringify(rendered, null, 2)}\n`);
+    return;
+  }
+
   const dryRun = process.argv.includes("--dry-run");
 
   const pause = await readAgentSwarmPause();
@@ -481,7 +498,7 @@ async function queueRepoFaceTurn(input: {
     channelPlan,
     channelSnapshots,
     recentMessages,
-    memorySurface: faceSelfState ? projectStateSummaryForCharacterTurn(faceSelfState.summary) : undefined,
+    memorySurface: faceSelfState?.characterSurface,
     bifrostDigest,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -530,7 +547,7 @@ async function loadRepoFaceSelfStateContext(input: {
   statePath: string;
   channelId: string;
   recentMessages: SourceMessage[];
-}): Promise<ReturnType<typeof buildVoidSelfStateContext> | undefined> {
+}): Promise<RepoFaceSelfStateLoad | undefined> {
   try {
     const typedState = await loadVoidSelfStateTypedDocuments({
       canonicalPath: input.statePath,
@@ -545,13 +562,15 @@ async function loadRepoFaceSelfStateContext(input: {
       input.identity.id,
       new Date(),
     );
-    return buildVoidSelfStateContext({
+    const normalizedState = {
       ...typedState,
       scheduledRuntime: {
         ...typedState.scheduledRuntime,
         sleepCycle: normalizedSleep.sleepCycle,
       },
-    }, {
+    };
+    return {
+      context: buildVoidSelfStateContext(normalizedState, {
       sourcePath: input.statePath,
       guildContext: {
         channelId: input.channelId,
@@ -562,7 +581,15 @@ async function loadRepoFaceSelfStateContext(input: {
         publicName: input.identity.displayName,
         publicDescription: input.identity.description,
       },
-    });
+      }),
+      characterSurface: renderVoidSelfStateCharacterSurface(normalizedState, {
+        identity: {
+          agentId: input.identity.id,
+          publicName: input.identity.displayName,
+          publicDescription: input.identity.description,
+        },
+      }),
+    };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
@@ -1462,7 +1489,7 @@ function buildHeartbeatPrompt(input: {
     displayName: input.identity.displayName,
     identityId: input.identity.id,
     repoName: input.identity.repoName,
-    identityDoctrine: renderRepoFaceIdentityDoctrine(input.identity),
+    identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
@@ -1479,6 +1506,113 @@ function buildHeartbeatPrompt(input: {
     jurisdictionDiveLine: input.jurisdictionDive.promptLine,
     githubActionsEnabled: input.githubActionsEnabled,
   });
+}
+
+async function renderRepoFacePromptPreview(input: {
+  config: ReturnType<typeof loadConfig>;
+  identityId: string;
+  outPath?: string;
+}): Promise<{ ok: boolean; identityId: string; outPath?: string; promptLength: number }> {
+  const faceRegistry = await loadFaceIdentityRegistry(input.config.repoDiscordIdentitiesPath);
+  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
+  const identity = registry.identities.find((entry) => entry.id.toLowerCase() === input.identityId.toLowerCase());
+  if (!identity) {
+    throw new Error(`No repo character identity registered for ${input.identityId}.`);
+  }
+
+  const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
+  const channelId = channelPlan.primaryChannelId
+    ?? getRepoDiscordIdentityAllowedChannelIds(identity)[0]
+    ?? input.config.repoFaceHeartbeats.defaultChannelId;
+  if (!channelId) {
+    throw new Error(`No channel available for ${identity.id}.`);
+  }
+
+  const recentMessages = await fetchRecentDiscordMessages({
+    botToken: input.config.botToken,
+    channelId,
+    limit: 15,
+    ignoreBotMessages: channelId === input.config.bifrostDiscordChannelId,
+  });
+  const channelSnapshots = await fetchChannelSnapshots({
+    botToken: input.config.botToken,
+    channelIds: channelPlan.snapshotChannelIds,
+    primaryChannelId: channelId,
+    limit: 6,
+    bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
+  });
+  const faceStatePath = resolveRepoFaceStatePath(identity, input.config.storageRoot);
+  const faceSelfState = await loadRepoFaceSelfStateContext({
+    identity,
+    statePath: faceStatePath,
+    channelId,
+    recentMessages,
+  });
+  const prompt = buildHeartbeatPrompt({
+    identity,
+    channelId,
+    channelPlan,
+    channelSnapshots,
+    recentMessages,
+    memorySurface: faceSelfState?.characterSurface,
+    bifrostDigest: await fetchBifrostGovernanceDigest({
+      bifrostRoot: input.config.bifrostRoot,
+      repoName: identity.repoName,
+      agentIdentity: identity.id,
+    }),
+    participant: {
+      identityId: identity.id,
+      participantKind: "repo_face",
+      turnKind: "repo_face_rumination",
+      repoName: identity.repoName,
+      displayName: identity.displayName,
+      initiativeSpeed: 1,
+      reactionBias: 0,
+      interruptThreshold: 0.5,
+      currentLoad: 0,
+      status: "active",
+      groups: [],
+      heat: 1,
+      effectiveSpeed: 1,
+      baseRecoveryMinutes: input.config.repoFaceHeartbeats.baseRecoveryMinutes,
+      nextTurnAt: 0,
+      queuedCount: 0,
+      constraints: [],
+    },
+    pendingMentions: [],
+    jurisdictionDive: buildJurisdictionDiveDirective(identity, {
+      identityId: identity.id,
+      participantKind: "repo_face",
+      turnKind: "repo_face_rumination",
+      repoName: identity.repoName,
+      displayName: identity.displayName,
+      initiativeSpeed: 1,
+      reactionBias: 0,
+      interruptThreshold: 0.5,
+      currentLoad: 0,
+      status: "active",
+      groups: [],
+      heat: 1,
+      effectiveSpeed: 1,
+      baseRecoveryMinutes: input.config.repoFaceHeartbeats.baseRecoveryMinutes,
+      nextTurnAt: 0,
+      queuedCount: 0,
+      constraints: [],
+    }),
+    githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
+  });
+
+  if (input.outPath) {
+    await mkdir(dirname(resolve(input.outPath)), { recursive: true });
+    await writeFile(resolve(input.outPath), prompt, "utf8");
+  }
+
+  return {
+    ok: true,
+    identityId: identity.id,
+    outPath: input.outPath ? resolve(input.outPath) : undefined,
+    promptLength: prompt.length,
+  };
 }
 
 function buildChannelPlan(
@@ -1538,14 +1672,14 @@ function renderChannelPermissionDirective(
 ): string {
   const options = plan.options.length > 0
     ? plan.options.map((option) =>
-        `- ${option.label}: ${option.topic}. ${option.posture ?? "Use judgment and keep it compact."}`,
+        `${option.label}: ${option.topic}. ${option.posture ?? "Use judgment and keep it compact."}`,
       )
     : ["- No channel permissions are configured; stay private."];
   const snapshotLines = snapshots.flatMap((snapshot) => {
     const header = `From ${labelForChannel(plan, snapshot.channelId)}:`;
     const messages = snapshot.messages.length > 0
       ? snapshot.messages.slice(-4).map((message) =>
-          `  - ${message.authorName ?? message.authorId}: ${collapseWhitespace(message.content).slice(0, 260) || "(empty message)"}`,
+          `  - ${message.authorName ?? message.authorId}: ${projectPromptVisibleText(collapseWhitespace(message.content).slice(0, 260)) || "(empty message)"}`,
         )
       : ["  - (no recent readable messages)"];
     return [header, ...messages];
@@ -1663,28 +1797,17 @@ function collapseWhitespace(value: string, maxLength?: number): string {
     : normalized;
 }
 
-function projectStateSummaryForCharacterTurn(summary: string): string {
-  const lines = summary
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .filter((line) => !line.includes("Current room snapshot"))
-    .filter((line) => !line.includes("Current room:"))
-    .filter((line) => !line.includes("Recent room:"))
-    .map((line) => line
-      .replace(/\b\d{4}-\d{2}-\d{2}[T ][0-9:.Z+-]+\b/g, "recently")
-      .replace(/\bchannel\s+[0-9]{6,}\b/gi, "the room")
-      .replace(/\breply to\s+[0-9]{6,}\b/gi, "a recent reply")
-      .replace(/\(([a-z_ -]+),\s*[0-9.]+\)/gi, "($1)")
-      .replace(/\b[A-Za-z_ -]+=([0-9.]+)\b/g, "")
-      .replace(/\s{2,}/g, " ")
-      .trim(),
-    )
-    .filter((line) => line.length > 0);
-
-  return lines.length > 0
-    ? lines.join("\n")
-    : "- Your private memory is quiet. Let the room, your values, and your jurisdiction pull a real thought forward.";
+function projectPromptVisibleText(value: string): string {
+  return value
+    .replace(/â€”/g, "-")
+    .replace(/â€™/g, "'")
+    .replace(/â€œ/g, "\"")
+    .replace(/â€�/g, "\"")
+    .replace(/\bheartbeat\b/gi, "earlier note")
+    .replace(/\bFaces\b/g, "characters")
+    .replace(/\bFace\b/g, "character")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function renderBifrostGovernanceDigestDirective(
@@ -1765,22 +1888,46 @@ function buildJurisdictionDiveDirective(
   };
 }
 
-function renderRepoFaceIdentityDoctrine(identity: RepoDiscordIdentity): string {
+function renderRepoCharacterIdentityDoctrine(identity: RepoDiscordIdentity): string {
   const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).faces[0];
-  if (face) {
-    return [
-      renderFaceIdentityDoctrine(face),
-      loadPromptTemplate("repo-face-identity-addendum.prompt.md"),
-    ].join("\n");
+  return loadPromptTemplate("repo-character-identity.prompt.md", {
+    displayName: identity.displayName,
+    repoName: identity.repoName,
+    originName: face?.epiphanyDisplayName ?? identity.repoName,
+    characterDescription: projectCharacterDescription(face?.description ?? identity.description),
+  });
+}
+
+function projectCharacterDescription(description: string | undefined): string | undefined {
+  const trimmed = description?.trim();
+  if (!trimmed) {
+    return undefined;
   }
 
-  return loadPromptTemplate("repo-face-identity-fallback.prompt.md", {
-    displayName: identity.displayName,
-    identityId: identity.id,
-    repoName: identity.repoName,
-    description: identity.description,
-    avatarUrl: identity.avatarUrl,
-  });
+  return trimmed
+    .split("|")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .filter((part) => !/^face of\b/i.test(part))
+    .filter((part) => !/^grants:/i.test(part))
+    .filter((part) => !/^jurisdictions:/i.test(part))
+    .map((part) => part
+      .replace(/\bcharacter Face\b/g, "character")
+      .replace(/\bFace\b/g, "personality")
+      .replace(/\brepo=AetheriaLore path=[^\s]+/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim(),
+    )
+    .filter((part) => part.length > 0)
+    .join(" ");
+}
+
+function readArgValue(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index < 0) {
+    return undefined;
+  }
+  return process.argv[index + 1];
 }
 
 function recoveryFor(participant: FaceHeartbeatParticipant): number {
