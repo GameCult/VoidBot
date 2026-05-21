@@ -53,13 +53,13 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `packages/providers/src/owner-codex-runtime.ts`
   - Codex process execution, stdout/stderr parsing, trace-event normalization, history-tool loop requests, and owner-DM intent parsing.
 - `packages/providers/src/owner-codex-render.ts`
-  - prompt assembly, bundle rendering, and trace/debug transcript rendering for the owner lane.
+  - prompt data projection, bundle rendering, and trace/debug transcript rendering for the owner lane. Behavioral prompt prose is loaded from `prompts/`.
 - `packages/providers/src/owner-codex-shared.ts`
   - owner-lane constants, shared types, request-payload shaping, trace formatting helpers, and interaction-memory rendering.
 - `packages/providers/src/local-llm-provider.ts`
   - thin orchestration shell for the Ollama chat lane plus the bounded host-managed read-only tool loop.
 - `packages/providers/src/local-llm-render.ts`
-  - local-lane prompt assembly, interaction-memory rendering, source-grounding reminders, and artifact rendering.
+  - local-lane prompt data projection, interaction-memory rendering, source-grounding reminders, and artifact rendering. Behavioral prompt prose is loaded from `prompts/`.
 - `packages/providers/src/local-llm-tools.ts`
   - local-lane tool definitions, assistant-message normalization, tool argument parsing, and toolbox execution helpers.
 - `packages/providers/src/local-llm-shared.ts`

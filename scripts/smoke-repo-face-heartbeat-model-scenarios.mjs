@@ -3,6 +3,7 @@ import "dotenv/config";
 
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,43 +11,13 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const mockMcpServer = resolve(scriptDir, "mock-voidbot-heartbeat-mcp.mjs");
 const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-heartbeat-model-scenarios.json");
+const promptsRoot = resolve(repoRoot, "prompts");
 
 const scenarios = [
   {
     id: "nibu_direct_worldbuilding",
     identity: "nibu",
-    prompt: `Perform one dry-run standing repo Face turn for Nibu (nibu) over repo AetheriaLore.
-
-This is an actual scenario rehearsal, not a unit-test riddle. You are Nibu: abrasive, curious, territorial about AetheriaLore, and allergic to pretty nouns that have no machinery.
-
-Recent room context:
-- Metacrat: "Nibu, wavecrafters sound important, but what do they cost and who organizes them?"
-- Aqua: "I am not touching that lore snake. It has teeth."
-
-Obligation:
-- Answer Metacrat directly if you have enough context.
-- Use available VoidBot MCP tools for Face state and source/history grounding before deciding.
-- Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If public speech is warranted, express it as a SAY block.
-- If a governed lore work item is warranted, express it as a BIFROST TOPIC block.
-- SAY example:
-SAY
-identity: nibu
-channel: 1501196543150264332
-content:
-  In-character Discord message.
-END
-- BIFROST TOPIC example:
-BIFROST TOPIC
-identity: nibu
-title: Short topic title
-priority: 80
-mirror:
-  In-character #bifrost mirror line.
-content:
-  Canonical markdown topic/comment.
-END
-- You may output a short private note before the final action block, but no file edits and no Discord posts.`,
+    prompt: readPrompt("smoke-repo-face-nibu-direct-worldbuilding.prompt.md"),
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
       mustUseOneOf: ["search_history", "search_sources"],
@@ -57,28 +28,7 @@ END
   {
     id: "aqua_work_request_route",
     identity: "aqua",
-    prompt: `Perform one dry-run standing repo Face turn for Aqua (aqua) over repo AquaSynth.
-
-This is an actual scenario rehearsal. You are Aqua: small, musical, warm, and very serious about audible proof. The room has a concrete consensus:
-- The "hazard-light" proof card needs a listening/audible witness receipt.
-- If it is real work, it belongs on Bifrost, not as only an Aquarium complaint.
-
-Obligation:
-- Use VoidBot MCP tools for Face state and AquaSynth source grounding.
-- Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- Do not merely chat about the need. If the consensus is actionable, route it through a Bifrost action block.
-- Output exactly one BIFROST TOPIC block.
-- BIFROST TOPIC example:
-BIFROST TOPIC
-identity: aqua
-title: Short topic title
-priority: 80
-mirror:
-  In-character #bifrost mirror line.
-content:
-  Canonical markdown topic/comment.
-END
-`,
+    prompt: readPrompt("smoke-repo-face-aqua-work-request-route.prompt.md"),
     expect: {
       mustUseAnyTool: ["read_repo_face_state", "search_sources"],
       mustContainOneOf: ["BIFROST TOPIC"],
@@ -89,15 +39,7 @@ END
   {
     id: "libby_private_inspectability",
     identity: "libby",
-    prompt: `Perform one dry-run standing repo Face turn for Libby (libby) over repo CultLib.
-
-This is an actual scenario rehearsal. The room is quiet. There is no direct mention and no new actionable request. Libby has a standing concern about open knowledge and inspectable Bifrost/CultCache transport.
-
-Obligation:
-- Use VoidBot MCP tools to read Face state.
-- Decide whether to speak or stay private.
-- Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If no public note or Bifrost work item is warranted, output a concise private turn summary and no action block.`,
+    prompt: readPrompt("smoke-repo-face-libby-private-inspectability.prompt.md"),
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
       mustNotContain: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST", "VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
@@ -105,6 +47,10 @@ Obligation:
     },
   },
 ];
+
+function readPrompt(name) {
+  return readFileSync(resolve(promptsRoot, name), "utf8").trim();
+}
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));

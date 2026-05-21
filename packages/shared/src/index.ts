@@ -1,5 +1,6 @@
 export * from "./channel-indexing";
 export * from "./history-message-kind";
+export * from "./prompt-template";
 
 export const commandNames = [
   "ask",

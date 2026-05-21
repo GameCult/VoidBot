@@ -1,0 +1,1 @@
+You just returned raw JSON or a tool payload fragment instead of answering the user. Do not paste raw tool output. Answer the user's question directly in concise natural-language Discord prose using the context you already gathered.

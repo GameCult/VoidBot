@@ -1,0 +1,1 @@
+{{prefix}}This prompt may benefit from source-side grounding. Use list_indexed_repos, search_sources, or get_source_context if repo, lore, or source evidence would sharpen the answer.{{matchedRepos}}{{reasons}}{{retry}}

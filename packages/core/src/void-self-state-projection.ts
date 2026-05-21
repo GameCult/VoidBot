@@ -1,5 +1,6 @@
 import {
   type GuildContext,
+  loadPromptTemplate,
   type SourceMessage,
   type VoidSelfStateContext,
 } from "@voidbot/shared";
@@ -362,7 +363,7 @@ export function buildVoidSelfStateProjection(
     activeDreamThemes: sleepCycle.activeDreamThemes,
     recentDreamSummaries: dreamSummaries,
     replyDirective: isNapping
-      ? "You are in a scheduled nap. Reply in brief, low-effort, half-dreaming mutters instead of doing full attentive service-work."
+      ? loadPromptTemplate("runtime-nap-reply-directive.prompt.md")
       : undefined,
     affect: {
       needs: typedState.faceAffect.needs

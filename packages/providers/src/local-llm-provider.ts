@@ -5,6 +5,7 @@ import {
   type ProviderAdapter,
   type ProviderRequest,
   type ProviderResponse,
+  loadPromptTemplate,
 } from "@voidbot/shared";
 
 import {
@@ -65,11 +66,7 @@ const METADATA_ONLY_KEYS = new Set([
 ]);
 const STRUCTURED_OUTPUT_REQUEST_PATTERN =
   /\b(json|yaml|yml|xml|csv|tsv|object|array|schema|key-value|key value|machine-readable|machine readable)\b/i;
-const RAW_TOOL_OUTPUT_REWRITE_PROMPT = [
-  "You just returned raw JSON or a tool payload fragment instead of answering the user.",
-  "Do not paste raw tool output.",
-  "Answer the user's question directly in concise natural-language Discord prose using the context you already gathered.",
-].join(" ");
+const RAW_TOOL_OUTPUT_REWRITE_PROMPT = loadPromptTemplate("local-llm-raw-tool-output-rewrite.prompt.md");
 
 export class LocalLlmProvider implements ProviderAdapter {
   public constructor(private readonly options: LocalLlmProviderOptions) {}

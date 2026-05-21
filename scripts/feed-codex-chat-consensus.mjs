@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const AQUARIUM_CHANNEL_ID = "1501196543150264332";
+const promptsRoot = resolve(repoRoot, "prompts");
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -382,15 +383,20 @@ function buildConsensusPacket(messages, options, archivePath) {
 }
 
 function buildCodexPrompt(packet, packetPath, options) {
-  return [
-    `You are ${options.agent}, receiving a recent Discord consensus packet from VoidBot.`,
-    options.repo ? `Your target repo is ${options.repo}.` : undefined,
-    `Consensus packet path: ${packetPath}`,
-    ``,
+  return renderPrompt("feed-codex-chat-consensus.prompt.md", {
+    agent: options.agent,
+    repo: options.repo ?? "",
+    packetPath,
     packet,
-  ]
-    .filter((line) => line !== undefined)
-    .join("\n");
+  });
+}
+
+function renderPrompt(name, variables) {
+  let template = readFileSync(resolve(promptsRoot, name), "utf8");
+  template = template.replace(/\{\{#if\s+([A-Za-z0-9_-]+)\s*\}\}([\s\S]*?)\{\{\/if\}\}/g, (_match, key, body) =>
+    variables[key] ? body : "",
+  );
+  return template.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (_match, key) => String(variables[key] ?? "")).trim();
 }
 
 function extractConsensusCandidates(messages) {

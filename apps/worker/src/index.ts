@@ -43,6 +43,7 @@ import {
   type ProviderArtifact,
   type ProviderNotificationIntent,
   type ProviderResponse,
+  loadPromptTemplate,
 } from "@voidbot/shared";
 
 const config = loadConfig();
@@ -515,15 +516,10 @@ async function executeRepoFaceJobWithParentReview(
   });
   console.warn(`Repo Face parent reviewer retrying job ${job.id}: ${firstReview.reasons.join("; ")}`);
 
-  const retryPrompt = [
-    job.contextBundle.prompt,
-    "",
-    "Parent gate retry:",
-    "A separate parent reviewer rejected your previous Face turn before public routing for these reasons:",
-    ...firstReview.reasons.map((reason) => `- ${reason}`),
-    "",
-    "Revise once. Keep the same identity and evidence. If public speech is still warranted, emit one clean SAY block whose content starts as the Face speaking to the room, not as a scheduler/status/note label. If the output is work-shaped, use BIFROST TOPIC instead of UPDATE REQUEST. If no public or governed action survives, return a concise private summary with no action block.",
-  ].join("\n");
+  const retryPrompt = loadPromptTemplate("repo-face-parent-retry.prompt.md", {
+    originalPrompt: job.contextBundle.prompt,
+    reasons: firstReview.reasons,
+  });
   const retryContext = {
     ...job.contextBundle,
     prompt: retryPrompt,
@@ -566,37 +562,11 @@ async function reviewRepoFaceTurnOutput(
   outputText: string,
   input: { attempt: 1 | 2 },
 ): Promise<RepoFaceParentReview> {
-  const reviewerPrompt = [
-    "You are the parent reviewer for one unattended repo Face turn.",
-    "You are not the Face. You are deciding whether the Face turn output should be routed, retried once, or dropped before public side effects.",
-    "",
-    "Architecture invariant:",
-    "- Public Discord speech must sound like the Face speaking to people, not a scheduler, status report, maintenance note, or provenance label.",
-    "- Bifrost/GitHub/work-shaped requests should use BIFROST TOPIC. Legacy UPDATE REQUEST blocks may be reconciled by the parent into Bifrost topics, so do not reject solely because that legacy block appears.",
-    "- One public speech block is the normal maximum.",
-    "- Prefer route when the output can be safely routed as-is or parent-reconciled without changing the meaning.",
-    "- Use retry when the output is recoverable but has robotic framing, copied note-title formulas, asks what the job is despite context, or puts a work request only in casual speech.",
-    "- Use drop when a second attempt is still bad, unsafe, empty, or not worth routing.",
-    "",
-    `Attempt: ${input.attempt}`,
-    "",
-    "Original Face prompt:",
-    "```",
-    job.contextBundle.prompt.slice(0, 8000),
-    "```",
-    "",
-    "Face output to review:",
-    "```",
-    outputText.slice(0, 8000),
-    "```",
-    "",
-    "Return exactly this small review block and nothing else:",
-    "REVIEW",
-    "decision: route|retry|drop",
-    "reason:",
-    "  One or two concrete reasons.",
-    "END",
-  ].join("\n");
+  const reviewerPrompt = loadPromptTemplate("repo-face-parent-review.prompt.md", {
+    attempt: input.attempt,
+    facePrompt: job.contextBundle.prompt.slice(0, 8000),
+    faceOutput: outputText.slice(0, 8000),
+  });
   const reviewerContext = {
     ...job.contextBundle,
     prompt: reviewerPrompt,
