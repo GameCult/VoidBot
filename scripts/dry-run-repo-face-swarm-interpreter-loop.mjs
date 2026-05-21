@@ -188,7 +188,7 @@ const socialPattern = /\b(Metacrat|Nibu|Aqua|Mimir|Libby|Epiphany|Bifrost|Heimda
 const characterPattern = /\b(want|need|resent|afraid|proud|irritat|delight|jealous|bored|ashamed|smug|holy|gate|bridge|witness|song|library|purity|residue)\b/gi;
 
 function claimsSourceInspection(text) {
-  return /\b(checked|read|inspected|searched|verified|looked at|looked up|asked the indexes)\b[\s\S]{0,160}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|LocalCastBridge|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text);
+  return /\b(checked|read|inspected|searched|verified|looked at|looked up|asked the indexes)\b[\s\S]{0,160}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|Mimir|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text);
 }
 
 function countMatches(text, pattern) {

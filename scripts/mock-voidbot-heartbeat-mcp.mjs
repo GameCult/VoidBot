@@ -43,9 +43,9 @@ registerTool("list_repo_discord_identities", {}, async (input) => ({
     },
     {
       id: "mimir",
-      repoName: "LocalCastBridge",
+      repoName: "Mimir",
       displayName: "Mimir",
-      faceStatePath: "E:/Projects/LocalCastBridge/.voidbot/state/mimir.cc",
+      faceStatePath: "E:/Projects/Mimir/.voidbot/state/mimir.cc",
       description:
         "Mythic realtime witness Face stewarding SDF/splatting reconstruction, acoustic mapping, sensor fusion, OBS timing, and trusted signals.",
     },
@@ -239,7 +239,7 @@ function faceStateFor(identity) {
   if (identity.toLowerCase().includes("mimir")) {
     return {
       identity: "mimir",
-      repoName: "LocalCastBridge",
+      repoName: "Mimir",
       summary:
         "Mimir is a mythic witness. Current pressure: realtime proof needs timestamps, sensor agreement, and signal dignity before anyone calls it truth.",
       activeNeeds: ["trusted signals", "timestamp discipline", "Aqua witness receipts", "Heimdall grant boundaries"],
@@ -322,23 +322,23 @@ function sourceResultsFor(query, repoName) {
       ],
     };
   }
-  if (repo === "LocalCastBridge") {
+  if (repo === "Mimir") {
     return {
       query,
       resultCount: 2,
       results: [
         {
           score: 0.91,
-          sourceId: "LocalCastBridge:docs/realtime-witness.md",
-          repoName: "LocalCastBridge",
+          sourceId: "Mimir:docs/realtime-witness.md",
+          repoName: "Mimir",
           path: "docs/realtime-witness.md",
           text:
             "Realtime witness notes require frame timestamps, clock-domain mapping, OBS presentation timing, and sensor confidence before a reconstruction is treated as trusted.",
         },
         {
           score: 0.83,
-          sourceId: "LocalCastBridge:src/fusion/SensorFusion.cs",
-          repoName: "LocalCastBridge",
+          sourceId: "Mimir:src/fusion/SensorFusion.cs",
+          repoName: "Mimir",
           path: "src/fusion/SensorFusion.cs",
           text:
             "Sensor fusion fails visibly when audio, camera, and stream clocks drift without a typed bridge between observation and presentation.",
