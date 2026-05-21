@@ -328,7 +328,8 @@ async function processJob(job: JobRecord): Promise<void> {
       return;
     }
 
-    const finalResponse = fitDiscordMessage(response.outputText ?? response.summary);
+    const rawFinalResponse = response.outputText ?? response.summary;
+    const finalResponse = fitDiscordMessage(rawFinalResponse);
 
     if (job.postApprovalRequired) {
       await jobQueue.markAwaitingPostApproval(job.id, artifactPaths, response.summary);
@@ -347,22 +348,23 @@ async function processJob(job: JobRecord): Promise<void> {
     }
 
     if (job.command === "repo-face-rumination") {
-      const repoIdentityPosts = parseRepoIdentityPostIntents(finalResponse);
-      const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(finalResponse);
-      const repoIdentityBifrostTopics = parseRepoIdentityBifrostTopicIntents(finalResponse);
-      const repoIdentityUpdateRequests = parseRepoIdentityUpdateRequestIntents(finalResponse);
+      const repoFaceOutput = rawFinalResponse;
+      const repoIdentityPosts = parseRepoIdentityPostIntents(repoFaceOutput);
+      const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(repoFaceOutput);
+      const repoIdentityBifrostTopics = parseRepoIdentityBifrostTopicIntents(repoFaceOutput);
+      const repoIdentityUpdateRequests = parseRepoIdentityUpdateRequestIntents(repoFaceOutput);
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
-        ? parseRepoIdentityArticleIntents(finalResponse)
+        ? parseRepoIdentityArticleIntents(repoFaceOutput)
         : [];
       const repoIdentityProposals = config.repoFaceGithubActionsEnabled
-        ? parseRepoIdentityProposalPrIntents(finalResponse)
+        ? parseRepoIdentityProposalPrIntents(repoFaceOutput)
         : [];
       const repoIdentityPrComments = config.repoFaceGithubActionsEnabled
-        ? parseRepoIdentityPrCommentIntents(finalResponse)
+        ? parseRepoIdentityPrCommentIntents(repoFaceOutput)
         : [];
       const ignoredGithubActionIntents = config.repoFaceGithubActionsEnabled
         ? 0
-        : countRepoIdentityGithubActionIntents(finalResponse);
+        : countRepoIdentityGithubActionIntents(repoFaceOutput);
       const proposalPrSubmitted = repoIdentityProposals.length > 0;
       const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
       const articlePrSubmitted =
@@ -409,8 +411,8 @@ async function processJob(job: JobRecord): Promise<void> {
           }
         }
       }
-      const cleanedFinalResponse = stripRepoIdentityPostIntents(finalResponse);
-      await jobQueue.completeJobDirect(job.id, cleanedFinalResponse || finalResponse);
+      const cleanedFinalResponse = stripRepoIdentityPostIntents(repoFaceOutput);
+      await jobQueue.completeJobDirect(job.id, cleanedFinalResponse || repoFaceOutput);
       await deliverOwnerNotifications(job, response.notifications ?? []);
       await auditLog.record({
         type: "provider.completed",
@@ -992,12 +994,41 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
 
   const identity = await resolveRepoIdentityForJobIntent(job, intent.identity);
   if (!identity) {
-    throw new Error(`Could not resolve repo identity for job ${job.id}.`);
+    console.warn(`Rejected repo identity speech for job ${job.id}: could not resolve identity.`);
+    return false;
   }
 
   const channelId = intent.channelId ?? job.outputChannelId;
+  if (!channelId) {
+    console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
+    return false;
+  }
+  if (isOwnerDmChannelAlias(channelId)) {
+    const content = intent.content.trim();
+    const dmChannelId = await openOwnerDmChannel();
+    const posted = await postDiscordBotMessage(
+      dmChannelId,
+      renderRepoIdentityOwnerDm(identity, content),
+    );
+    await recordRepoIdentityDeliveryReceipt({
+      identity,
+      channelId: dmChannelId,
+      content,
+      replyToMessageId: undefined,
+      messageId: posted.id,
+      transport: "bot",
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Could not record repo identity owner DM receipt for job ${job.id}: ${message}`);
+    });
+    console.log(`Posted repo identity ${identity.id} to owner DM from job ${job.id} as message ${posted.id}.`);
+    return true;
+  }
   if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId)) {
-    throw new Error(`Repo identity ${identity.id} is not registered for Discord channel ${channelId}.`);
+    console.warn(
+      `Rejected repo identity ${identity.id} speech for job ${job.id}: identity is not registered for Discord channel ${channelId}.`,
+    );
+    return false;
   }
 
   const content = intent.content.trim();
@@ -1058,13 +1089,20 @@ async function loadRegisteredFaceRepoRegistry() {
 function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
   const intents: RepoIdentityPostIntent[] = parseRepoFaceActionBlocks(finalResponse)
     .filter((block) => block.kind === "say")
-    .map((block) => ({
-      identity: optionalDslString(block.fields.identity),
-      channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
-      replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
-      content: block.fields.content.trim(),
-    }))
-    .filter((intent) => intent.content.length > 0);
+    .flatMap((block): RepoIdentityPostIntent[] => {
+      const content = requiredDslString(block.fields.content);
+      if (!content) {
+        return [];
+      }
+      return [
+        {
+          identity: optionalDslString(block.fields.identity),
+          channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+          replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+          content,
+        },
+      ];
+    });
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1486,8 +1524,16 @@ async function submitRepoIdentityBifrostTopicIntent(
     ...intent.sourceMessageIds,
     intent.replyToMessageId,
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+  const sourceChannelId = normalizeBifrostSourceChannelId(intent.channelId ?? job.outputChannelId);
 
   let topicId = intent.topicId;
+  const createWithTopicId =
+    topicId && intent.title && !intent.approve && !bifrostGovernanceTopicExists(topicId)
+      ? topicId
+      : undefined;
+  if (createWithTopicId) {
+    topicId = undefined;
+  }
   if (!topicId) {
     if (!intent.title) {
       throw new Error(`Bifrost topic intent for ${identity.id} on job ${job.id} needs title when topicId is absent.`);
@@ -1499,6 +1545,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       identity.repoName,
       "--agent",
       identity.id,
+      ...(createWithTopicId ? ["--id", createWithTopicId] : []),
       "--title",
       intent.title,
       "--summary-file",
@@ -1509,7 +1556,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       "repo_face_turn",
       "--created-by",
       identity.id,
-      ...(intent.channelId ?? job.outputChannelId ? ["--source-channel-id", intent.channelId ?? job.outputChannelId] : []),
+      ...(sourceChannelId ? ["--source-channel-id", sourceChannelId] : []),
       ...(sourceMessageIds.length > 0 ? ["--source-message-ids", sourceMessageIds.join(",")] : []),
       ...bifrostMirrorArgs(identity, mirrorContentFile),
     ]) as BifrostGovernanceTopicReceipt;
@@ -1527,6 +1574,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       normalizeBifrostTopicStance(intent.stance),
       "--body-file",
       contentFile,
+      ...(sourceChannelId ? ["--source-channel-id", sourceChannelId] : []),
       ...(intent.replyToMessageId ? ["--source-message-id", intent.replyToMessageId] : []),
       ...bifrostMirrorArgs(identity, mirrorContentFile),
     ]);
@@ -1541,6 +1589,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       identity.id,
       "--body-file",
       contentFile,
+      ...(sourceChannelId ? ["--source-channel-id", sourceChannelId] : []),
       ...(intent.replyToMessageId ? ["--source-message-id", intent.replyToMessageId] : []),
       ...bifrostMirrorArgs(identity, mirrorContentFile),
     ]);
@@ -1592,6 +1641,23 @@ function runBifrostGovernanceThreads(args: string[]): BifrostGovernanceTopicRece
   }
 }
 
+function bifrostGovernanceTopicExists(topicId: string): boolean {
+  const governanceScript = resolve(config.bifrostRoot, "tools", "governance-threads.mjs");
+  const result = spawnSync(process.execPath, [governanceScript, "show", "--topic", topicId], {
+    cwd: config.bifrostRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  return result.status === 0;
+}
+
+function normalizeBifrostSourceChannelId(channelId: string | undefined): string | undefined {
+  if (!channelId || isOwnerDmChannelAlias(channelId)) {
+    return undefined;
+  }
+  return channelId;
+}
+
 function bifrostMirrorArgs(
   identity: { displayName: string; avatarUrl?: string },
   mirrorContentFile?: string,
@@ -1632,16 +1698,24 @@ function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
 function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdentityUpdateRequestIntent[] {
   const intents: RepoIdentityUpdateRequestIntent[] = parseRepoFaceActionBlocks(finalResponse)
     .filter((block) => block.kind === "update_request")
-    .map((block) => ({
-      identity: optionalDslString(block.fields.identity),
-      title: block.fields.title.trim(),
-      content: block.fields.content.trim(),
-      priority: parseDslNumber(block.fields.priority),
-      sourceMessageIds: parseDslList(block.fields.source_message_ids ?? block.fields.sourceMessageIds),
-      channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
-      replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
-    }))
-    .filter((intent) => intent.title.length > 0 && intent.content.length > 0);
+    .flatMap((block): RepoIdentityUpdateRequestIntent[] => {
+      const title = requiredDslString(block.fields.title);
+      const content = requiredDslString(block.fields.content);
+      if (!title || !content) {
+        return [];
+      }
+      return [
+        {
+          identity: optionalDslString(block.fields.identity),
+          title,
+          content,
+          priority: parseDslNumber(block.fields.priority),
+          sourceMessageIds: parseDslList(block.fields.source_message_ids ?? block.fields.sourceMessageIds),
+          channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+          replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+        },
+      ];
+    });
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1680,21 +1754,30 @@ function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdent
 function parseRepoIdentityBifrostTopicIntents(finalResponse: string): RepoIdentityBifrostTopicIntent[] {
   const intents: RepoIdentityBifrostTopicIntent[] = parseRepoFaceActionBlocks(finalResponse)
     .filter((block) => block.kind === "bifrost_topic")
-    .map((block) => ({
-      identity: optionalDslString(block.fields.identity),
-      topicId: optionalDslString(block.fields.topic_id) ?? optionalDslString(block.fields.topicId),
-      title: optionalDslString(block.fields.title),
-      content: block.fields.content.trim(),
-      mirrorContent: optionalDslString(block.fields.mirror) ?? optionalDslString(block.fields.mirrorContent),
-      stance: optionalDslString(block.fields.stance),
-      priority: parseDslNumber(block.fields.priority),
-      approve: parseDslBoolean(block.fields.approve),
-      dispatch: parseDslBoolean(block.fields.dispatch),
-      sourceMessageIds: parseDslList(block.fields.source_message_ids ?? block.fields.sourceMessageIds),
-      channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
-      replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
-    }))
-    .filter((intent) => intent.content.length > 0 && Boolean(intent.topicId || intent.title));
+    .flatMap((block): RepoIdentityBifrostTopicIntent[] => {
+      const topicId = optionalDslString(block.fields.topic_id) ?? optionalDslString(block.fields.topicId);
+      const title = optionalDslString(block.fields.title);
+      const content = requiredDslString(block.fields.content);
+      if (!content || (!topicId && !title)) {
+        return [];
+      }
+      return [
+        {
+          identity: optionalDslString(block.fields.identity),
+          topicId,
+          title,
+          content,
+          mirrorContent: optionalDslString(block.fields.mirror) ?? optionalDslString(block.fields.mirrorContent),
+          stance: optionalDslString(block.fields.stance),
+          priority: parseDslNumber(block.fields.priority),
+          approve: parseDslBoolean(block.fields.approve),
+          dispatch: parseDslBoolean(block.fields.dispatch),
+          sourceMessageIds: parseDslList(block.fields.source_message_ids ?? block.fields.sourceMessageIds),
+          channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+          replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+        },
+      ];
+    });
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -1942,6 +2025,10 @@ function optionalDslString(value: string | undefined): string | undefined {
     return undefined;
   }
   return trimmed;
+}
+
+function requiredDslString(value: string | undefined): string | undefined {
+  return optionalDslString(value);
 }
 
 function parseDslNumber(value: string | undefined): number | undefined {
@@ -2252,7 +2339,15 @@ async function postOwnerNotification(content: string): Promise<void> {
   }
 
   const dmChannelId = await openOwnerDmChannel();
-  const response = await fetch(`https://discord.com/api/v10/channels/${dmChannelId}/messages`, {
+  await postDiscordBotMessage(dmChannelId, fitDiscordMessage(content));
+}
+
+async function postDiscordBotMessage(channelId: string, content: string): Promise<{ id: string }> {
+  if (!config.botToken) {
+    throw new Error("DISCORD_BOT_TOKEN is required for the worker to post Discord messages.");
+  }
+
+  const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bot ${config.botToken}`,
@@ -2269,6 +2364,13 @@ async function postOwnerNotification(content: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`Discord owner notification failed with ${response.status}: ${await response.text()}`);
   }
+
+  const payload = (await response.json()) as { id?: string };
+  if (!payload.id) {
+    throw new Error("Discord message post succeeded without returning a message id.");
+  }
+
+  return { id: payload.id };
 }
 
 async function openOwnerDmChannel(): Promise<string> {
@@ -2298,6 +2400,17 @@ async function openOwnerDmChannel(): Promise<string> {
   }
 
   return payload.id;
+}
+
+function isOwnerDmChannelAlias(channelId: string): boolean {
+  return ["owner", "dm", "owner_dm", "private", "meta"].includes(channelId.trim().toLowerCase());
+}
+
+function renderRepoIdentityOwnerDm(
+  identity: { displayName: string; id: string },
+  content: string,
+): string {
+  return fitDiscordMessage(`**${identity.displayName} (${identity.id})**\n${content}`);
 }
 
 function fitDiscordMessage(content: string): string {

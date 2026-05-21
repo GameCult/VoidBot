@@ -14,11 +14,11 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep feature work on moderation, mood, and self-state stopped while the
-    private state boundary is rebuilt around the typed CultCache `.cc` store.
-    The immediate priority is to rebuild the scheduled phase machine and memory
-    maintenance from typed operations instead of feeding the next Void any
-    legacy projection or mirror state.
+    Keep the repo Face swarm online under watch after the 2026-05-21 teardown
+    restart. The immediate priority is to harden the Face/Interpreter/Bifrost
+    boundary with live evidence: no structured action truncation, no fake
+    channel ids, no failed turns from private speech, and no direct dispatch
+    outside Bifrost governance.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -55,10 +55,10 @@ data_flow:
     - keep persistent state lean enough that re-entry sharpens the next turn instead of drowning it
 
 active_subgoals:
-  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the current repo Face/Bifrost/CTB rebuild authority. The repo Face swarm loop is architectural Jenga: scheduling, prompt policy, speech, governance, identity, Bifrost transport, and work dispatch must be torn down into clearer ownership before any swarm feature work or restart.
+  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is live again, but only because the scheduler, prompt, model-output logs, parent Interpreter, Bifrost routing, and worker side-effect rails now have explicit observable boundaries. Keep watching for prompt/parser/transport Jenga before adding new swarm features.
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep the rebuilt moderation/self-state foundation on canonical CultCache `.cc` typed operations, never an editable JSON working projection.
-  - Keep the typed moderation, mood, repo Face, Bifrost dispatch, and watchdog organs behind the single `GameCult Local Orchestrator` scheduled pulse; the per-organ scheduled tasks are legacy installer surfaces and should stay disabled unless a deliberate isolation test needs one. As of the 2026-05-21 swarm shutdown, the orchestrator task itself is intentionally disabled until the agent-swarm failure audit restart conditions are met.
+  - Keep the typed moderation, mood, repo Face, Bifrost dispatch, and watchdog organs behind the single `GameCult Local Orchestrator` scheduled pulse; the per-organ scheduled tasks are legacy installer surfaces and should stay disabled unless a deliberate isolation test needs one. As of the 2026-05-21 restart, the orchestrator task is enabled and is the live swarm pulse owner.
   - Keep legacy moderation mirrors, whole-state projection commits, and deleted memory-organ compensators from re-entering the active path before adding more moderation, mood, agency, or public-lane behavior.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
   - Preserve boring observability and startup discipline around Postgres, Qdrant, Ollama, Docker, backups, scheduled tasks, watchdogs, and any private local fire-signal extensions.
@@ -228,5 +228,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: VoidBot's ordinary bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is still conceptually sound, but the repo Face swarm loop is now officially under teardown. The unstable organ is the prompt-and-parser machine that mixed CTB scheduling, public speech, identity, social policy, Bifrost governance, Discord mirroring, and Codex/GitHub dispatch. The `GameCult Local Orchestrator` scheduled task remains disabled as containment; ordinary bot/worker inspection remains available.
-  next_action: Use `notes/agent-swarm-teardown-plan-2026-05-21.md` as the active rebuild map and `notes/agent-swarm-shutdown-audit-2026-05-21.md` as incident evidence. The first teardown cut landed, including repo pause gate, active turn framing, Spark/Codex parent Interpreter with one retry, sanitizer deletion, legacy UPDATE REQUEST reconciliation into Bifrost topics, prompt-surface extraction into `prompts/`, and the slim character protocol where children should receive roleplay-friendly memory/mood/obligation projection and write natural turns while the parent Interpreter emits structured state, speech, and Bifrost intents. The inbound state-projector prompt exists and now explicitly requires values, drives, wounds, fascinations, aesthetic taste, dignity, social reads, bonds, and affect pressure when state contains them. `repo-face-conversation-projector.prompt.md` owns current-room/nearby-channel logs -> narrative conversational memory, so raw chat bullets are no longer assembled into the child prompt. Deterministic prompt assembly/inspection is restored as `scripts/run-repo-face-heartbeats.ts --assemble-prompt <identity>`: code assembles stable templates, channel policy, repo/archive research guidance, Bifrost digest, and supplied Interpreter memory/conversation surfaces, while Spark/Codex alone translates typed state and raw conversation into character-facing prose. Direct-call and first-introduction duties are now situational prompt facts, not permanent prompt law. The next cut is wiring the state and conversation projectors as actual Spark/Codex Interpreter calls; until then, repo Face turns intentionally lack projected prose rather than using a fake substitute. Identity collapse is in progress. Active bot, worker, MCP repo-identity tools, and Face CTB scheduler paths now load through the canonical Face registry and treat repo Discord identities as compatibility projections. Do not re-enable the swarm until Bifrost work routing, identity authority, scheduler/job lifecycle ownership, and public speech gating are rebuilt around explicit invariants.
+  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, and the repo Face swarm has been restarted after the 2026-05-21 teardown pass. `GameCult Local Orchestrator` is enabled as the single pulse owner; watchdog, Bifrost dispatch, mood, moderation, and repo Face CTB organs have all completed healthy post-restart pulses.
+  next_action: Keep the swarm awake but watched. The restart cut landed model-output JSONL logging, hourly model-output inspection, Spark->mini model fallback, pause-flag thaw, fresh stack restart, parser validation for malformed action blocks, raw Interpreter-output parsing before Discord truncation, owner-DM routing for `SAY channel: owner`, and Bifrost topic fallback creation when a Face supplies a symbolic topic id that does not exist yet. Next work should harden the inspector's warning classifier and continue cutting any live prompt/parser/transport boundary leak found by model-output logs or worker errors.

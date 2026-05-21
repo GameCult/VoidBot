@@ -1,5 +1,5 @@
 {
-  "paused": true,
-  "reason": "Repo Face / CTB / Bifrost swarm teardown is active. See notes/agent-swarm-teardown-plan-2026-05-21.md.",
-  "updatedAt": "2026-05-21T00:00:00.000Z"
+  "paused": false,
+  "reason": "Swarm thawed after dry-run, model-output logging, and hourly model-output inspection were installed.",
+  "updatedAt": "2026-05-21T18:18:00.000Z"
 }
