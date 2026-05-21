@@ -1420,9 +1420,20 @@ function buildHeartbeatPrompt(input: {
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
+    turnSituationDirective: renderTurnSituationDirective({
+      identity: input.identity,
+      participant: input.participant,
+      recentMessages: input.recentMessages,
+      channelSnapshots: input.channelSnapshots,
+      pendingMentions: input.pendingMentions,
+    }),
     pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
     bifrostDigestDirective: renderBifrostGovernanceDigestDirective(input.bifrostDigest),
-    channelPermissionDirective: renderChannelPermissionDirective(input.channelPlan, input.channelSnapshots),
+    channelPermissionDirective: renderChannelPermissionDirective(
+      input.channelPlan,
+      input.recentMessages,
+      input.channelSnapshots,
+    ),
     socialEmbodimentDirective: renderSocialEmbodimentDirective(input.identity),
     jurisdictionRespectDirective: renderJurisdictionRespectDirective(input.identity),
     comedyImprovDirective: renderComedyImprovDirective(input.identity),
@@ -1614,6 +1625,7 @@ function buildChannelPlan(
 
 function renderChannelPermissionDirective(
   plan: RepoFaceChannelPlan,
+  recentMessages: SourceMessage[],
   snapshots: ChannelSnapshot[],
 ): string {
   const options = plan.options.length > 0
@@ -1630,11 +1642,58 @@ function renderChannelPermissionDirective(
       : ["  - (no recent readable messages)"];
     return [header, ...messages];
   });
+  const currentRoomLines = recentMessages.length > 0
+    ? recentMessages.slice(-8).map((message) =>
+        `- ${message.authorName ?? message.authorId}: ${projectPromptVisibleText(collapseWhitespace(message.content).slice(0, 320)) || "(empty message)"}`,
+      )
+    : [];
 
   return loadPromptTemplate("repo-face-channel-permissions.prompt.md", {
     options,
+    currentRoom: currentRoomLines,
     snapshots: snapshotLines,
   });
+}
+
+function renderTurnSituationDirective(input: {
+  identity: RepoDiscordIdentity;
+  participant: FaceHeartbeatParticipant;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  pendingMentions: RepoFacePendingMention[];
+}): string {
+  const lines: string[] = [];
+  if (input.pendingMentions.length > 0) {
+    lines.push(
+      "A direct call is tugging at you. Answer the newest unresolved call first; if it belongs to another steward, name that owner and offer only the piece your own territory can honestly add.",
+      "Do not ask what the job is when the direct call or current room memory already states it.",
+    );
+  }
+
+  const visibleMessages = [
+    ...input.recentMessages,
+    ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
+  ];
+  if (shouldPromptIntroduction(input.identity, input.participant, visibleMessages)) {
+    lines.push("If you speak publicly, make it a brief natural introduction in your own voice before asking the room for work or attention.");
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "";
+}
+
+function shouldPromptIntroduction(
+  identity: RepoDiscordIdentity,
+  participant: FaceHeartbeatParticipant,
+  messages: SourceMessage[],
+): boolean {
+  if (participant.queuedCount > 0) {
+    return false;
+  }
+
+  return !messages.some((message) =>
+    message.isBot === true &&
+    normalizeKey(message.authorName ?? message.authorId) === normalizeKey(identity.displayName),
+  );
 }
 
 function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string {
@@ -1858,6 +1917,9 @@ function projectCharacterDescription(description: string | undefined): string | 
     .filter((part) => !/^grants:/i.test(part))
     .filter((part) => !/^jurisdictions:/i.test(part))
     .map((part) => part
+      .replace(/\bmore opinionated and abrasive than Void because she is a character, not the room moderator\b/gi, "more opinionated and abrasive than a room moderator")
+      .replace(/\bShe is much more opinionated and abrasive than Void because she is a character, not the room moderator:/gi, "She is much more opinionated and abrasive than a room moderator:")
+      .replace(/\bthan Void\b/g, "than a moderator")
       .replace(/\bcharacter Face\b/g, "character")
       .replace(/\bFace\b/g, "personality")
       .replace(/\brepo=AetheriaLore path=[^\s]+/g, "")

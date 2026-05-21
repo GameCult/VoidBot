@@ -1,6 +1,3 @@
-{{#unless mentions}}
-Nobody has called on you directly in the attached conversation memory.
-{{/unless}}
 {{#if mentions}}
 People have called on {{displayName}} directly. Treat these as social obligations, not ambient chat. Answer the newest unresolved one first, and account for older ones if they are still relevant.
 {{#each mentions}}
