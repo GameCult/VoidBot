@@ -18,6 +18,8 @@ What the nearby conversation feels like right now:
 
 {{channelPermissionDirective}}
 
+{{researchCapabilitiesDirective}}
+
 {{socialEmbodimentDirective}}
 
 {{jurisdictionRespectDirective}}

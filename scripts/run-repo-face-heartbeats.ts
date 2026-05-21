@@ -1433,6 +1433,7 @@ function buildHeartbeatPrompt(input: {
     pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
     bifrostDigestDirective: renderBifrostGovernanceDigestDirective(input.bifrostDigest),
     channelPermissionDirective: renderChannelPermissionDirective(input.channelPlan),
+    researchCapabilitiesDirective: renderResearchCapabilitiesDirective(input.identity),
     socialEmbodimentDirective: renderSocialEmbodimentDirective(input.identity),
     jurisdictionRespectDirective: renderJurisdictionRespectDirective(input.identity),
     comedyImprovDirective: renderComedyImprovDirective(input.identity),
@@ -1636,6 +1637,12 @@ function renderChannelPermissionDirective(plan: RepoFaceChannelPlan): string {
 
   return loadPromptTemplate("repo-face-channel-permissions.prompt.md", {
     options,
+  });
+}
+
+function renderResearchCapabilitiesDirective(identity: RepoDiscordIdentity): string {
+  return loadPromptTemplate("repo-face-research-capabilities.prompt.md", {
+    repoName: identity.repoName,
   });
 }
 
