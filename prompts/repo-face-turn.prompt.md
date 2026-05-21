@@ -11,6 +11,9 @@ If the recent conversation transcript shows a human correcting, narrowing, or re
 What you remember, feel, and want right now:
 {{memorySurface}}
 
+Recent home repo activity:
+{{repoActivitySurface}}
+
 Recent conversation transcript:
 {{conversationMemorySurface}}
 

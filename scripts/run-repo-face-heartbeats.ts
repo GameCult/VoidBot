@@ -485,6 +485,7 @@ async function queueRepoFaceTurn(input: {
     identity,
     input.config,
   );
+  const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
     recentMessages,
@@ -499,6 +500,7 @@ async function queueRepoFaceTurn(input: {
     channelSnapshots,
     recentMessages,
     memorySurface,
+    repoActivitySurface,
     conversationMemorySurface,
     bifrostDigest,
     participant: input.participant,
@@ -1423,6 +1425,7 @@ function buildHeartbeatPrompt(input: {
   channelSnapshots: ChannelSnapshot[];
   recentMessages: SourceMessage[];
   memorySurface?: string;
+  repoActivitySurface?: string;
   conversationMemorySurface?: string;
   bifrostDigest?: BifrostGovernanceDigest;
   participant: FaceHeartbeatParticipant;
@@ -1437,6 +1440,7 @@ function buildHeartbeatPrompt(input: {
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
+    repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
@@ -1517,6 +1521,7 @@ async function assembleRepoFaceTurnPrompt(input: {
       ? readOptionalMemorySurface(input.memorySurfacePath)
       : renderRepoFaceMemorySurfaceForTurn(identity, input.config),
   ]);
+  const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
     : renderRepoFaceConversationTranscript({
@@ -1537,6 +1542,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     channelSnapshots,
     recentMessages,
     memorySurface,
+    repoActivitySurface,
     conversationMemorySurface,
     bifrostDigest,
     participant,
@@ -1800,6 +1806,56 @@ function renderRepoFaceConversationTranscript(input: {
     ].join("\n"));
   }
   return sections.join("\n\n");
+}
+
+function renderRepoFaceRepoActivitySurface(
+  identity: RepoDiscordIdentity,
+  config: ReturnType<typeof loadConfig>,
+): string {
+  const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
+  const result = spawnSync(
+    process.execPath,
+    [
+      resolve("scripts", "export-recent-repo-activity.mjs"),
+      "--repos",
+      identity.repoName,
+      "--state-path",
+      statePath,
+      "--read-only",
+      "--hours",
+      "96",
+      "--max-commits",
+      "5",
+    ],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 30_000,
+    },
+  );
+
+  if (result.status !== 0) {
+    const detail = `${result.stdout}\n${result.stderr}`.trim().slice(-600);
+    return [
+      `- Recent ${identity.repoName} activity could not be read for this turn.`,
+      detail ? `- Reader error: ${collapseWhitespace(detail, 500)}` : "- Reader error: no diagnostic output.",
+      "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
+    ].join("\n");
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as { digest?: unknown };
+    const digest = typeof parsed.digest === "string" ? parsed.digest.trim() : "";
+    return digest || `- No recent ${identity.repoName} activity was reported.`;
+  } catch {
+    return [
+      `- Recent ${identity.repoName} activity output was not parseable.`,
+      `- Raw output: ${collapseWhitespace(result.stdout, 500)}`,
+      "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
+    ].join("\n");
+  }
 }
 
 function formatConversationMessages(messages: SourceMessage[], limit: number): string[] {
