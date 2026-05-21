@@ -8,7 +8,6 @@ import { dirname, resolve } from "node:path";
 import { loadConfig } from "@voidbot/config";
 import {
   buildEpiphanyIdentityRegistry,
-  buildVoidSelfStateContext,
   ContextBuilder,
   createStateStorage,
   ensureRepoFaceInitialized,
@@ -19,13 +18,12 @@ import {
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
-  renderVoidSelfStateCharacterSurface,
   type RepoFaceRestSnapshot,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
 } from "@voidbot/core";
-import { loadPromptTemplate, type SourceMessage, type VoidSelfStateContext } from "@voidbot/shared";
+import { loadPromptTemplate, type SourceMessage } from "@voidbot/shared";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
@@ -129,25 +127,8 @@ interface ChannelSnapshot {
   messages: SourceMessage[];
 }
 
-interface RepoFaceSelfStateLoad {
-  context: VoidSelfStateContext;
-  characterSurface: string;
-}
-
 async function main(): Promise<void> {
   const config = loadConfig();
-  const renderPromptIdentity = readArgValue("--render-prompt");
-  if (renderPromptIdentity) {
-    const outPath = readArgValue("--out");
-    const rendered = await renderRepoFacePromptPreview({
-      config,
-      identityId: renderPromptIdentity,
-      outPath,
-    });
-    process.stdout.write(`${JSON.stringify(rendered, null, 2)}\n`);
-    return;
-  }
-
   const dryRun = process.argv.includes("--dry-run");
 
   const pause = await readAgentSwarmPause();
@@ -485,20 +466,13 @@ async function queueRepoFaceTurn(input: {
     repoName: identity.repoName,
     agentIdentity: identity.id,
   });
-  const faceStatePath = resolveRepoFaceStatePath(identity, input.config.storageRoot);
-  const faceSelfState = await loadRepoFaceSelfStateContext({
-    identity,
-    statePath: faceStatePath,
-    channelId,
-    recentMessages,
-  });
   const prompt = buildHeartbeatPrompt({
     identity,
     channelId,
     channelPlan,
     channelSnapshots,
     recentMessages,
-    memorySurface: faceSelfState?.characterSurface,
+    memorySurface: undefined,
     bifrostDigest,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -540,63 +514,6 @@ async function queueRepoFaceTurn(input: {
     activeJobId: result.job.id,
     requestMessageId,
   };
-}
-
-async function loadRepoFaceSelfStateContext(input: {
-  identity: RepoDiscordIdentity;
-  statePath: string;
-  channelId: string;
-  recentMessages: SourceMessage[];
-}): Promise<RepoFaceSelfStateLoad | undefined> {
-  try {
-    const typedState = await loadVoidSelfStateTypedDocuments({
-      canonicalPath: input.statePath,
-      identity: {
-        agentId: input.identity.id,
-        publicName: input.identity.displayName,
-        publicDescription: input.identity.description,
-      },
-    });
-    const normalizedSleep = projectRepoFaceSleepCycleForNow(
-      typedState.scheduledRuntime.sleepCycle,
-      input.identity.id,
-      new Date(),
-    );
-    const normalizedState = {
-      ...typedState,
-      scheduledRuntime: {
-        ...typedState.scheduledRuntime,
-        sleepCycle: normalizedSleep.sleepCycle,
-      },
-    };
-    return {
-      context: buildVoidSelfStateContext(normalizedState, {
-      sourcePath: input.statePath,
-      guildContext: {
-        channelId: input.channelId,
-      },
-      recentMessages: input.recentMessages,
-      identity: {
-        agentId: input.identity.id,
-        publicName: input.identity.displayName,
-        publicDescription: input.identity.description,
-      },
-      }),
-      characterSurface: renderVoidSelfStateCharacterSurface(normalizedState, {
-        identity: {
-          agentId: input.identity.id,
-          publicName: input.identity.displayName,
-          publicDescription: input.identity.description,
-        },
-      }),
-    };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 async function loadRepoFaceRestStates(
@@ -1508,113 +1425,6 @@ function buildHeartbeatPrompt(input: {
   });
 }
 
-async function renderRepoFacePromptPreview(input: {
-  config: ReturnType<typeof loadConfig>;
-  identityId: string;
-  outPath?: string;
-}): Promise<{ ok: boolean; identityId: string; outPath?: string; promptLength: number }> {
-  const faceRegistry = await loadFaceIdentityRegistry(input.config.repoDiscordIdentitiesPath);
-  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
-  const identity = registry.identities.find((entry) => entry.id.toLowerCase() === input.identityId.toLowerCase());
-  if (!identity) {
-    throw new Error(`No repo character identity registered for ${input.identityId}.`);
-  }
-
-  const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
-  const channelId = channelPlan.primaryChannelId
-    ?? getRepoDiscordIdentityAllowedChannelIds(identity)[0]
-    ?? input.config.repoFaceHeartbeats.defaultChannelId;
-  if (!channelId) {
-    throw new Error(`No channel available for ${identity.id}.`);
-  }
-
-  const recentMessages = await fetchRecentDiscordMessages({
-    botToken: input.config.botToken,
-    channelId,
-    limit: 15,
-    ignoreBotMessages: channelId === input.config.bifrostDiscordChannelId,
-  });
-  const channelSnapshots = await fetchChannelSnapshots({
-    botToken: input.config.botToken,
-    channelIds: channelPlan.snapshotChannelIds,
-    primaryChannelId: channelId,
-    limit: 6,
-    bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
-  });
-  const faceStatePath = resolveRepoFaceStatePath(identity, input.config.storageRoot);
-  const faceSelfState = await loadRepoFaceSelfStateContext({
-    identity,
-    statePath: faceStatePath,
-    channelId,
-    recentMessages,
-  });
-  const prompt = buildHeartbeatPrompt({
-    identity,
-    channelId,
-    channelPlan,
-    channelSnapshots,
-    recentMessages,
-    memorySurface: faceSelfState?.characterSurface,
-    bifrostDigest: await fetchBifrostGovernanceDigest({
-      bifrostRoot: input.config.bifrostRoot,
-      repoName: identity.repoName,
-      agentIdentity: identity.id,
-    }),
-    participant: {
-      identityId: identity.id,
-      participantKind: "repo_face",
-      turnKind: "repo_face_rumination",
-      repoName: identity.repoName,
-      displayName: identity.displayName,
-      initiativeSpeed: 1,
-      reactionBias: 0,
-      interruptThreshold: 0.5,
-      currentLoad: 0,
-      status: "active",
-      groups: [],
-      heat: 1,
-      effectiveSpeed: 1,
-      baseRecoveryMinutes: input.config.repoFaceHeartbeats.baseRecoveryMinutes,
-      nextTurnAt: 0,
-      queuedCount: 0,
-      constraints: [],
-    },
-    pendingMentions: [],
-    jurisdictionDive: buildJurisdictionDiveDirective(identity, {
-      identityId: identity.id,
-      participantKind: "repo_face",
-      turnKind: "repo_face_rumination",
-      repoName: identity.repoName,
-      displayName: identity.displayName,
-      initiativeSpeed: 1,
-      reactionBias: 0,
-      interruptThreshold: 0.5,
-      currentLoad: 0,
-      status: "active",
-      groups: [],
-      heat: 1,
-      effectiveSpeed: 1,
-      baseRecoveryMinutes: input.config.repoFaceHeartbeats.baseRecoveryMinutes,
-      nextTurnAt: 0,
-      queuedCount: 0,
-      constraints: [],
-    }),
-    githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
-  });
-
-  if (input.outPath) {
-    await mkdir(dirname(resolve(input.outPath)), { recursive: true });
-    await writeFile(resolve(input.outPath), prompt, "utf8");
-  }
-
-  return {
-    ok: true,
-    identityId: identity.id,
-    outPath: input.outPath ? resolve(input.outPath) : undefined,
-    promptLength: prompt.length,
-  };
-}
-
 function buildChannelPlan(
   identity: RepoDiscordIdentity,
   defaultChannelId?: string,
@@ -1920,14 +1730,6 @@ function projectCharacterDescription(description: string | undefined): string | 
     )
     .filter((part) => part.length > 0)
     .join(" ");
-}
-
-function readArgValue(name: string): string | undefined {
-  const index = process.argv.indexOf(name);
-  if (index < 0) {
-    return undefined;
-  }
-  return process.argv[index + 1];
 }
 
 function recoveryFor(participant: FaceHeartbeatParticipant): number {
