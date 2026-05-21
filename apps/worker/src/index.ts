@@ -1002,7 +1002,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   }
 
   const requestedChannelId = intent.channelId ?? job.outputChannelId;
-  const channelId = normalizeRepoIdentitySpeechChannel(job, requestedChannelId);
+  const channelId = normalizeRepoIdentitySpeechChannel(identity, job, requestedChannelId);
   if (!channelId) {
     console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
     return false;
@@ -1083,7 +1083,20 @@ async function resolveRepoIdentityForJobIntent(
   job: JobRecord,
   identitySelector?: string,
 ): Promise<NonNullable<ReturnType<typeof findRepoDiscordIdentity>> | undefined> {
+  const jobIdentityId = job.command === "repo-face-rumination"
+    ? parseRepoIdentityIdFromRequestMessageId(job.requestMessageId) ?? parseRepoIdentityIdFromPrompt(job.prompt)
+    : undefined;
+  if (
+    jobIdentityId &&
+    identitySelector &&
+    normalizeChannelSelector(jobIdentityId) !== normalizeChannelSelector(identitySelector)
+  ) {
+    console.warn(
+      `Ignoring mismatched repo identity selector "${identitySelector}" for repo-face job ${job.id}; job identity is "${jobIdentityId}".`,
+    );
+  }
   const identityId =
+    jobIdentityId ??
     identitySelector ??
     parseRepoIdentityIdFromPrompt(job.prompt) ??
     parseRepoIdentityIdFromRequestMessageId(job.requestMessageId);
@@ -2429,7 +2442,16 @@ function isOwnerDmChannelAlias(channelId: string): boolean {
   return ["owner", "dm", "owner_dm", "private", "meta"].includes(channelId.trim().toLowerCase());
 }
 
-function normalizeRepoIdentitySpeechChannel(job: JobRecord, requestedChannelId: string | undefined): string | undefined {
+function normalizeRepoIdentitySpeechChannel(
+  identity: { channelPermissions?: Array<{ channelId: string; label?: string }> },
+  job: JobRecord,
+  requestedChannelId: string | undefined,
+): string | undefined {
+  const explicitChannelId = resolveRepoIdentityChannelSelector(identity, requestedChannelId);
+  if (explicitChannelId) {
+    return explicitChannelId;
+  }
+
   if (!requestedChannelId || !isOwnerDmChannelAlias(requestedChannelId)) {
     return requestedChannelId;
   }
@@ -2441,6 +2463,24 @@ function normalizeRepoIdentitySpeechChannel(job: JobRecord, requestedChannelId: 
   return job.outputChannelId && !isOwnerDmChannelAlias(job.outputChannelId)
     ? job.outputChannelId
     : undefined;
+}
+
+function resolveRepoIdentityChannelSelector(
+  identity: { channelPermissions?: Array<{ channelId: string; label?: string }> },
+  selector: string | undefined,
+): string | undefined {
+  const normalized = normalizeChannelSelector(selector);
+  if (!normalized) {
+    return undefined;
+  }
+  return identity.channelPermissions?.find((permission) =>
+    normalizeChannelSelector(permission.channelId) === normalized ||
+    normalizeChannelSelector(permission.label) === normalized
+  )?.channelId;
+}
+
+function normalizeChannelSelector(selector: string | undefined): string {
+  return (selector ?? "").trim().replace(/^#/, "").toLowerCase();
 }
 
 function repoIdentityOwnerDmExplicitlyAllowed(job: JobRecord): boolean {

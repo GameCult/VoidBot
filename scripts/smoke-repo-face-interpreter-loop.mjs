@@ -16,7 +16,8 @@ const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-interprete
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const model = options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.4-mini";
+  const modelCandidates = modelCandidatesFromOptions(options);
+  const model = modelCandidates.join(",");
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const facePromptPath = resolve(repoRoot, options["face-prompt"] ?? defaultFacePrompt);
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
@@ -24,8 +25,8 @@ async function main() {
   const childLogPath = resolve(repoRoot, ".voidbot", "status", "mock-mcp", `interpreter-loop-child-${Date.now()}.jsonl`);
   await rm(childLogPath, { force: true }).catch(() => undefined);
 
-  const childRun = await runCodex(facePrompt, {
-    model,
+  const childRun = await runCodexWithModelFallback(facePrompt, {
+    models: modelCandidates,
     reasoningEffort,
     scenarioId: "nibu_interpreter_loop_child",
     logPath: childLogPath,
@@ -40,8 +41,8 @@ async function main() {
     facePrompt,
     faceOutput: childText,
   });
-  const interpreterRun = await runCodex(interpreterPrompt, {
-    model,
+  const interpreterRun = await runCodexWithModelFallback(interpreterPrompt, {
+    models: modelCandidates,
     reasoningEffort,
     scenarioId: "nibu_interpreter_loop_parent",
     logPath: undefined,
@@ -168,7 +169,40 @@ function hasUsefulStateNote(fields) {
 }
 
 function mentionsSocialPressure(text) {
-  return /\b(Metacrat|Aqua|Bifrost|Mimir|Libby|Epiphany|Heimdall|swarm|pamper(?:ed|ing)?|tease|rivalry|trust|admire|needle|friendship|protect(?:ive|ion)?|envy|resent|jealous|bypass(?:ed)?|consult(?:ed)?|favorite)\b/i.test(text);
+  return (
+    /\b(pamper(?:ed|ing)?|tease|rivalry|trust|admire|needle|friendship|protect(?:ive|ion)?|envy|resent|jealous|bypass(?:ed)?|consult(?:ed)?|favorite|neglect(?:ed)?|attention|approval|status|bond)\b/i.test(text) ||
+    /\b(Metacrat|Aqua|Bifrost|Mimir|Libby|Epiphany|Heimdall|swarm)\b[\s\S]{0,120}\b(tease|trust|rivalry|friend|jealous|resent|admire|consult|neglect|status|bond)\b/i.test(text)
+  );
+}
+
+async function runCodexWithModelFallback(prompt, input) {
+  let lastRun;
+  for (const [index, model] of input.models.entries()) {
+    const run = await runCodex(prompt, {
+      ...input,
+      model,
+    });
+    lastRun = run;
+    if (run.code === 0 || index === input.models.length - 1 || !isRetryableModelFailure(run)) {
+      return {
+        ...run,
+        model,
+        attemptedModels: input.models.slice(0, index + 1),
+      };
+    }
+  }
+  return lastRun;
+}
+
+function isRetryableModelFailure(run) {
+  const text = `${run.stdout}\n${run.stderr}`.toLowerCase();
+  return (
+    text.includes("usage limit") ||
+    text.includes("rate limit") ||
+    text.includes("capacity") ||
+    text.includes("temporarily unavailable") ||
+    text.includes("try again")
+  );
 }
 
 function runCodex(prompt, input) {
@@ -234,6 +268,19 @@ function runCodex(prompt, input) {
       });
     });
   });
+}
+
+function modelCandidatesFromOptions(options) {
+  const explicit = options.model ?? options.models;
+  const raw =
+    explicit ??
+    process.env.REPO_FACE_HEARTBEAT_CODEX_MODELS ??
+    process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ??
+    "gpt-5.4-mini";
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry, index, all) => entry.length > 0 && all.indexOf(entry) === index);
 }
 
 async function readToolCalls(logPath) {

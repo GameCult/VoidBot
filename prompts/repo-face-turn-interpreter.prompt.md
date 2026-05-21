@@ -42,6 +42,7 @@ Normalized output rules:
 - Use STATE NOTE kind `bond` when the Face forms or changes a relationship with a human, Face, room, or group.
 - Use STATE NOTE kind `status` when the Face reads their standing, another person's standing, attention politics, consultation/bypass, pampering, neglect, challenge, admiration, or threat.
 - If public speech is warranted, emit one SAY block.
+- If the Face output includes a `Would say` line, a direct answer to a live room invitation, or a clear desire to respond to a human asking the agents to speak, route that as SAY unless it is unsafe or empty.
 - Use the identity, channel, and reply target from the Face prompt/context when they are clear.
 - Do not choose an owner/private/DM channel unless the Face prompt explicitly says this turn is an owner-private direct-message turn. Normal check-ins, warnings, governance anxieties, consensus questions, and room replies belong in the current room, Aquarium, or a configured domain channel.
 - Preserve the Face's voice in SAY content.

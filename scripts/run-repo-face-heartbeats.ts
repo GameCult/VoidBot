@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
@@ -485,6 +485,13 @@ async function queueRepoFaceTurn(input: {
     identity,
     input.config,
   );
+  const conversationMemorySurface = await projectRepoFaceConversationMemorySurface({
+    identity,
+    recentMessages,
+    channelSnapshots,
+    pendingMentions: input.pendingMentions,
+    config: input.config,
+  });
   const prompt = buildHeartbeatPrompt({
     identity,
     channelId,
@@ -492,6 +499,7 @@ async function queueRepoFaceTurn(input: {
     channelSnapshots,
     recentMessages,
     memorySurface,
+    conversationMemorySurface,
     bifrostDigest,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -1484,7 +1492,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
   }
 
-  const [recentMessages, channelSnapshots, bifrostDigest, memorySurface, conversationMemorySurface] = await Promise.all([
+  const [recentMessages, channelSnapshots, bifrostDigest, memorySurface] = await Promise.all([
     fetchRecentDiscordMessages({
       botToken: input.config.botToken,
       channelId,
@@ -1508,8 +1516,16 @@ async function assembleRepoFaceTurnPrompt(input: {
     input.memorySurfacePath
       ? readOptionalMemorySurface(input.memorySurfacePath)
       : renderRepoFaceMemorySurfaceForTurn(identity, input.config),
-    readOptionalMemorySurface(input.conversationSurfacePath),
   ]);
+  const conversationMemorySurface = input.conversationSurfacePath
+    ? await readOptionalMemorySurface(input.conversationSurfacePath)
+    : await projectRepoFaceConversationMemorySurface({
+        identity,
+        recentMessages,
+        channelSnapshots,
+        pendingMentions: [],
+        config: input.config,
+      });
   const participant = buildInspectionParticipant(
     identity,
     input.config.repoFaceHeartbeats.baseRecoveryMinutes,
@@ -1735,6 +1751,8 @@ async function projectRepoFaceMemorySurface(input: {
   const output = await runCodexTextProjection({
     prompt,
     config: input.config,
+    command: "repo-face-state-projector",
+    jobId: `state-projector:${input.identity.id}:${Date.now()}`,
     timeoutMs: 180_000,
   });
   const projected = output.trim();
@@ -1744,16 +1762,119 @@ async function projectRepoFaceMemorySurface(input: {
   return rejectLeakyMemorySurface(projected);
 }
 
+async function projectRepoFaceConversationMemorySurface(input: {
+  identity: RepoDiscordIdentity;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  pendingMentions: RepoFacePendingMention[];
+  config: ReturnType<typeof loadConfig>;
+}): Promise<string> {
+  const conversationPacket = renderRepoFaceConversationPacket(input);
+  const prompt = loadPromptTemplate("repo-face-conversation-projector.prompt.md", {
+    characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
+    conversationPacket,
+  });
+  const output = await runCodexTextProjection({
+    prompt,
+    config: input.config,
+    command: "repo-face-conversation-projector",
+    jobId: `conversation-projector:${input.identity.id}:${Date.now()}`,
+    timeoutMs: 180_000,
+  });
+  const projected = output.trim();
+  if (projected.length < 40) {
+    throw new Error(`Repo Face conversation projector returned too little text for ${input.identity.id}.`);
+  }
+  return rejectLeakyConversationSurface(projected);
+}
+
+function renderRepoFaceConversationPacket(input: {
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  pendingMentions: RepoFacePendingMention[];
+}): string {
+  const sections: string[] = [];
+  if (input.pendingMentions.length > 0) {
+    sections.push([
+      "Direct calls:",
+      ...input.pendingMentions.map((mention) =>
+        `- ${mention.authorName ?? mention.authorId}: ${collapseWhitespace(mention.visiblePrompt, 700)}`,
+      ),
+    ].join("\n"));
+  }
+  sections.push([
+    "Current room:",
+    ...formatConversationMessages(input.recentMessages),
+  ].join("\n"));
+  for (const snapshot of input.channelSnapshots) {
+    sections.push([
+      `Nearby channel ${snapshot.channelId}:`,
+      ...formatConversationMessages(snapshot.messages),
+    ].join("\n"));
+  }
+  return sections.join("\n\n");
+}
+
+function formatConversationMessages(messages: SourceMessage[]): string[] {
+  if (messages.length === 0) {
+    return ["- No recent messages."];
+  }
+  return messages.slice(-12).map((message) => {
+    const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
+    return `- ${speaker}: ${collapseWhitespace(message.content, 700)}`;
+  });
+}
+
+function rejectLeakyConversationSurface(surface: string): string {
+  const leaks = [
+    /\bchannel\s*id\b/i,
+    /\bmessage\s*id\b/i,
+    /\btimestamp\b/i,
+    /\bscheduler\b/i,
+    /\btool\s*(?:call|id|name|result|surface|metadata)\b/i,
+    /\bschema\s*(?:version|id|field|key|metadata)\b/i,
+    /\btransport mechanics\b/i,
+    /\bNo Interpreter-shaped conversation memory\b/i,
+  ];
+  if (leaks.some((pattern) => pattern.test(surface))) {
+    throw new Error("Repo Face conversation surface leaked transcript machinery or placeholder text.");
+  }
+  return surface;
+}
+
 function runCodexTextProjection(input: {
   prompt: string;
   config: ReturnType<typeof loadConfig>;
+  command: string;
+  jobId: string;
   timeoutMs: number;
 }): Promise<string> {
+  const models = [
+    ...input.config.repoFaceHeartbeats.codexModels,
+    input.config.repoFaceHeartbeats.codexModel,
+    input.config.codexModel,
+  ].filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
+
+  return runCodexTextProjectionWithModels({
+    ...input,
+    models,
+    attemptedErrors: [],
+  });
+}
+
+function runCodexTextProjectionWithModels(input: {
+  prompt: string;
+  config: ReturnType<typeof loadConfig>;
+  command: string;
+  jobId: string;
+  timeoutMs: number;
+  models: string[];
+  attemptedErrors: string[];
+}): Promise<string> {
   return new Promise((resolveProjection, rejectProjection) => {
-    const model =
-      input.config.repoFaceHeartbeats.codexModels[0] ??
-      input.config.repoFaceHeartbeats.codexModel ??
-      input.config.codexModel;
+    const startedAt = new Date().toISOString();
+    const startedMs = Date.now();
+    const model = input.models[0] ?? input.config.codexModel;
     const reasoningEffort = input.config.repoFaceHeartbeats.codexModelReasoningEffort ?? "low";
     const args = [
       ...input.config.codexExecArgs,
@@ -1793,12 +1914,37 @@ function runCodexTextProjection(input: {
     }, input.timeoutMs);
     child.on("close", (code, signal) => {
       clearTimeout(timer);
+      const finishedAt = new Date().toISOString();
+      const durationMs = Date.now() - startedMs;
+      void appendProjectionModelOutputLog({
+        config: input.config,
+        jobId: input.jobId,
+        command: input.command,
+        model,
+        prompt: input.prompt,
+        startedAt,
+        finishedAt,
+        durationMs,
+        exitCode: code,
+        signal,
+        stdout,
+        stderr,
+      }).catch(() => undefined);
       if (code !== 0) {
-        rejectProjection(
-          new Error(
-            `Repo Face state projector failed with ${code ?? signal ?? "unknown"}: ${stderr.slice(-1200)}`,
-          ),
-        );
+        const diagnostics = `${stdout}\n${stderr}`.trim().slice(-2400);
+        const attemptedErrors = [
+          ...input.attemptedErrors,
+          `${model}: ${code ?? signal ?? "unknown"} ${diagnostics}`,
+        ];
+        if (input.models.length > 1 && isRetryableProjectionModelFailure({ stdout, stderr })) {
+          runCodexTextProjectionWithModels({
+            ...input,
+            models: input.models.slice(1),
+            attemptedErrors,
+          }).then(resolveProjection, rejectProjection);
+          return;
+        }
+        rejectProjection(new Error(`Repo Face ${input.command} failed: ${attemptedErrors.join("\n---\n")}`));
         return;
       }
       const text = extractLastCodexAgentMessage(stdout).trim();
@@ -1809,6 +1955,55 @@ function runCodexTextProjection(input: {
       resolveProjection(text);
     });
   });
+}
+
+function isRetryableProjectionModelFailure(input: { stdout: string; stderr: string }): boolean {
+  const text = `${input.stdout}\n${input.stderr}`.toLowerCase();
+  return /quota|rate limit|rate-limit|usage limit|capacity|too many requests|429|insufficient_quota|model.*unavailable|model.*access|limit exceeded/.test(text);
+}
+
+async function appendProjectionModelOutputLog(input: {
+  config: ReturnType<typeof loadConfig>;
+  jobId: string;
+  command: string;
+  model: string;
+  prompt: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+}): Promise<void> {
+  const logPath = resolve(input.config.storageRoot, "logs", "model-outputs.jsonl");
+  const finalMessage = extractLastCodexAgentMessage(input.stdout).trim() || null;
+  const record = {
+    schemaVersion: 1,
+    loggedAt: new Date().toISOString(),
+    jobId: input.jobId,
+    command: input.command,
+    turn: 1,
+    model: input.model,
+    promptMarker: input.prompt.match(/<!--\s*prompt:([^>\s]+)\s*-->/)?.[1] ?? null,
+    promptLength: input.prompt.length,
+    startedAt: input.startedAt,
+    finishedAt: input.finishedAt,
+    durationMs: input.durationMs,
+    exitCode: input.exitCode,
+    signal: input.signal,
+    timedOut: input.signal === "SIGTERM",
+    handoffReason: null,
+    usage: null,
+    finalMessage,
+    stdoutTail: input.stdout.slice(-4000),
+    stderrTail: input.stderr.slice(-4000),
+    toolCalls: [],
+    commandExecutions: [],
+    artifactRefs: {},
+  };
+  await mkdir(dirname(logPath), { recursive: true });
+  await appendFile(logPath, `${JSON.stringify(record)}\n`, "utf8");
 }
 
 function extractLastCodexAgentMessage(stdout: string): string {

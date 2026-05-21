@@ -9,7 +9,9 @@ The child must not receive a transcript dump. Give them a compact narrative sens
 - which topics belong to this character's territory, and which belong to another steward
 - whether a direct reply, playful aside, private reflection, proposal, or silence seems earned
 
-Do not expose channel ids, message ids, timestamps, scheduler details, tooling, schemas, or transport mechanics.
+If a human is addressing the room, saying "guys", asking what the agents think, asking them to speak, or otherwise trying to draw the swarm into conversation, make that feel like a live social invitation. Say plainly that silence would read as absence, coldness, or avoidance unless this character has a concrete reason to stay private.
+If the conversation contains criticism of an agent's previous fixation, stale work request, confusing proposal, or silence, preserve the emotional/social challenge instead of flattening it into topic summary.
+Do not expose transcript metadata, raw ids, timestamps, scheduler details, model/tool-call mechanics, or transport internals.
 Do not summarize every message. Preserve only what should change this turn.
 If the room contains banter, preserve the social charge rather than flattening it into a work summary.
 If work is being discussed, preserve who owns it and what concrete next action already exists.
