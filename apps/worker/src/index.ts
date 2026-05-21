@@ -494,11 +494,12 @@ async function executeProviderForJob(
   provider: ProviderAdapter,
   job: JobRecord,
   contextBundle: JobRecord["contextBundle"],
+  role: "face" | "interpreter" = "face",
 ): Promise<ProviderResponse> {
   const request = provider.buildRequest(contextBundle, {
     jobId: job.id,
     command: job.command,
-    ...repoFaceHeartbeatCodexOptions(job),
+    ...repoFaceHeartbeatCodexOptions(job, role),
   });
   return provider.execute(request);
 }
@@ -619,7 +620,7 @@ async function interpretRepoFaceTurnOutput(
     voidSelfState: undefined,
     createdAt: new Date().toISOString(),
   };
-  const response = await executeProviderForJob(provider, job, interpreterContext);
+  const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
   return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
 }
@@ -747,9 +748,18 @@ function dropRepoFaceActionBlocks(
   };
 }
 
-function repoFaceHeartbeatCodexOptions(job: JobRecord): Record<string, string> {
+function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpreter"): Record<string, string> {
   if (job.command !== "repo-face-rumination") {
     return {};
+  }
+
+  if (role === "face") {
+    return {
+      model: config.repoFaceHeartbeats.turnCodexModel,
+      ...(config.repoFaceHeartbeats.codexModelReasoningEffort
+        ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
+        : {}),
+    };
   }
 
   return {

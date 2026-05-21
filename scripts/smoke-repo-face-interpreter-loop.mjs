@@ -16,8 +16,9 @@ const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-interprete
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const modelCandidates = modelCandidatesFromOptions(options);
-  const model = modelCandidates.join(",");
+  const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
+  const interpreterModelCandidates = modelCandidatesFromOptions(options);
+  const interpreterModel = interpreterModelCandidates.join(",");
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const facePromptPath = resolve(repoRoot, options["face-prompt"] ?? defaultFacePrompt);
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
@@ -26,7 +27,7 @@ async function main() {
   await rm(childLogPath, { force: true }).catch(() => undefined);
 
   const childRun = await runCodexWithModelFallback(facePrompt, {
-    models: modelCandidates,
+    models: [faceModel],
     reasoningEffort,
     scenarioId: "nibu_interpreter_loop_child",
     logPath: childLogPath,
@@ -42,7 +43,7 @@ async function main() {
     faceOutput: childText,
   });
   const interpreterRun = await runCodexWithModelFallback(interpreterPrompt, {
-    models: modelCandidates,
+    models: interpreterModelCandidates,
     reasoningEffort,
     scenarioId: "nibu_interpreter_loop_parent",
     logPath: undefined,
@@ -56,7 +57,8 @@ async function main() {
   ];
   const report = {
     generatedAt: new Date().toISOString(),
-    model,
+    faceModel,
+    interpreterModel,
     reasoningEffort,
     facePromptPath,
     passed: failures.length === 0,
@@ -83,7 +85,8 @@ async function main() {
   await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({
     outPath,
-    model,
+    faceModel,
+    interpreterModel,
     reasoningEffort,
     passed: report.passed,
     failures,
@@ -276,7 +279,7 @@ function modelCandidatesFromOptions(options) {
     explicit ??
     process.env.REPO_FACE_HEARTBEAT_CODEX_MODELS ??
     process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ??
-    "gpt-5.4-mini";
+    "gpt-5.3-codex-spark,gpt-5.4-mini";
   return raw
     .split(",")
     .map((entry) => entry.trim())

@@ -23,7 +23,8 @@ const repoFaceRetrievalToolAllowlist = [
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const model = options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.4-mini";
+  const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
+  const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.3-codex-spark";
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const mcpMode = options.mcp === "mock" ? "mock" : "real-readonly";
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
@@ -50,7 +51,7 @@ async function main() {
 
     process.stderr.write(`[dry-run] face turn ${identity}\n`);
     const childRun = await runCodex(facePrompt, {
-      model,
+      model: faceModel,
       reasoningEffort,
       scenarioId: `${identity}_swarm_dry_run_child`,
       logPath: childLogPath,
@@ -69,7 +70,7 @@ async function main() {
       faceOutput: childText,
     });
     const interpreterRun = await runCodex(interpreterPrompt, {
-      model,
+      model: interpreterModel,
       reasoningEffort,
       scenarioId: `${identity}_swarm_dry_run_interpreter`,
       mcpMode: "none",
@@ -102,7 +103,8 @@ async function main() {
 
   const report = {
     generatedAt: new Date().toISOString(),
-    model,
+    faceModel,
+    interpreterModel,
     reasoningEffort,
     mcpMode,
     passed: runs.every((run) => run.assessment.failures.length === 0),
