@@ -33,6 +33,7 @@
     "agents:assemble-character-prompt": "tsx scripts/run-repo-face-heartbeats.ts --assemble-prompt",
     "agents:heartbeat-model-smoke": "node scripts/smoke-repo-face-heartbeat-model-scenarios.mjs",
     "agents:interpreter-loop-smoke": "node scripts/smoke-repo-face-interpreter-loop.mjs",
+    "agents:memory-projection-smoke": "node scripts/smoke-repo-face-memory-projection.mjs",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",

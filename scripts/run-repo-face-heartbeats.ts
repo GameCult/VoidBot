@@ -483,7 +483,7 @@ async function queueRepoFaceTurn(input: {
     : undefined;
   const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
     identity,
-    input.config.storageRoot,
+    input.config,
   );
   const prompt = buildHeartbeatPrompt({
     identity,
@@ -1507,7 +1507,7 @@ async function assembleRepoFaceTurnPrompt(input: {
       : Promise.resolve(undefined),
     input.memorySurfacePath
       ? readOptionalMemorySurface(input.memorySurfacePath)
-      : renderRepoFaceMemorySurfaceForTurn(identity, input.config.storageRoot),
+      : renderRepoFaceMemorySurfaceForTurn(identity, input.config),
     readOptionalMemorySurface(input.conversationSurfacePath),
   ]);
   const participant = buildInspectionParticipant(
@@ -1547,14 +1547,23 @@ async function assembleRepoFaceTurnPrompt(input: {
 
 async function renderRepoFaceMemorySurfaceForTurn(
   identity: RepoDiscordIdentity,
-  storageRoot: string,
+  config: ReturnType<typeof loadConfig>,
 ): Promise<string> {
-  const statePath = resolveRepoFaceStatePath(identity, storageRoot);
+  const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  return renderRepoFaceMemorySurface(identity, typedState);
+  const statePacket = renderRepoFaceStatePacket(identity, typedState);
+  if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
+    return rejectLeakyMemorySurface(statePacket);
+  }
+
+  return projectRepoFaceMemorySurface({
+    identity,
+    statePacket,
+    config,
+  });
 }
 
-function renderRepoFaceMemorySurface(
+function renderRepoFaceStatePacket(
   identity: RepoDiscordIdentity,
   state: VoidSelfStateTypedProjection,
 ): string {
@@ -1568,68 +1577,257 @@ function renderRepoFaceMemorySurface(
   const needs = [...state.faceAffect.needs]
     .filter((need) => ["active", "neglected"].includes(need.status))
     .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 5);
+    .slice(0, 3);
   const bonds = [...state.faceAffect.socialBonds]
     .filter((bond) => bond.status === "active")
     .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 5);
+    .slice(0, 3);
   const statusReads = [...state.faceAffect.statusReads]
     .filter((read) => !read.retiredAt)
     .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 5);
+    .slice(0, 3);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => ["active", "cooling", "ready_to_act"].includes(pressure.status))
     .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 4);
+    .slice(0, 2);
   const incubation = [...state.thoughtMemory.incubation]
     .filter((thread) => thread.status !== "retired")
     .sort((left, right) => right.maturation - left.maturation)
     .slice(0, 4);
 
-  if (profile.publicDescription) {
-    lines.push(`You understand yourself this way: ${profile.publicDescription}`);
+  const selfTexture = [
+    ...privateNotes.map(projectPrivateNoteForMemorySurface),
+    ...values.map((value) => value.summary || value.label),
+  ]
+    .map(cleanCharacterFacingSentence)
+    .filter((entry) => entry.length > 0)
+    .slice(0, 5);
+  if (selfTexture.length > 0) {
+    lines.push(`Right now, ${name} is carrying this close to the skin: ${joinAsNarrativeList(selfTexture)}.`);
   }
-  if (privateNotes.length > 0) {
-    lines.push(`Private truths tugging at you: ${privateNotes.join(" ")}`);
-  }
-  if (values.length > 0) {
-    lines.push(`Values that should bend your choices: ${values.map((value) => `${value.label}${value.summary ? ` (${value.summary})` : ""}`).join("; ")}.`);
-  }
+
   if (needs.length > 0) {
-    lines.push(`Live needs and frictions: ${needs.map((need) => {
+    lines.push([
+      `${name}'s current pressures:`,
+      ...needs.map((need) => {
       const target = need.target.label ?? need.target.id;
-      return `${need.kind} around ${target}: ${need.summary} The rub: ${need.tension} What it wants next: ${need.actionImplication}`;
-    }).join(" ")}`);
+        return `- ${target}: ${asSentence(need.summary)} The catch: ${asSentence(need.tension)} Next: ${asSentence(need.actionImplication)}`;
+      }),
+    ].join("\n"));
   }
+
   if (bonds.length > 0) {
-    lines.push(`Relationship pressure: ${bonds.map((bond) => {
+    lines.push([
+      "The social map has teeth:",
+      ...bonds.map((bond) => {
       const target = bond.target.label ?? bond.target.id;
-      return `${bond.stance} with ${target}: ${bond.summary} ${bond.actionImplication}`;
-    }).join(" ")}`);
+        return `- ${target} draws ${bond.stance}: ${asSentence(bond.summary)} ${asSentence(bond.actionImplication)}`;
+      }),
+    ].join("\n"));
   } else {
-    lines.push("Relationship pressure: no durable bonds are explicit yet; form reads from the room instead of pretending neutrality.");
+    lines.push(`${name} does not have enough settled bonds yet, and that absence should feel a little socially cold. Use the room to decide who earns trust, irritation, protection, rivalry, or a carefully labeled shelf.`);
   }
+
   if (statusReads.length > 0) {
-    lines.push(`Status reads: ${statusReads.map((read) => {
+    lines.push([
+      "Status in the swarm is part of the weather:",
+      ...statusReads.map((read) => {
       const target = read.target.label ?? read.target.id;
-      return `${read.status} around ${target}: ${read.summary} ${read.actionImplication}`;
-    }).join(" ")}`);
+        return `- Around ${target}, ${name} feels ${read.status}: ${asSentence(read.summary)} ${asSentence(read.actionImplication)}`;
+      }),
+    ].join("\n"));
   }
+
   if (agencyPressures.length > 0) {
-    lines.push(`Agency pressure: ${agencyPressures.map((pressure) => `${pressure.summary} ${pressure.actionImplication}`).join(" ")}`);
+    lines.push([
+      "What wants action later:",
+      ...agencyPressures.map((pressure) =>
+        `- ${asSentence(pressure.summary)} ${asSentence(pressure.actionImplication)}`,
+      ),
+    ].join("\n"));
   }
+
   if (incubation.length > 0) {
-    lines.push(`Thoughts still moving: ${incubation.map((thread) => `${thread.topic}: ${thread.summary}`).join(" ")}`);
+    lines.push(`Thoughts still moving under the floorboards: ${incubation.map((thread) =>
+      `${cleanCharacterFacingSentence(thread.topic)}: ${cleanCharacterFacingSentence(thread.summary)}`,
+    ).join(" ")}`);
   }
+
   if (state.candidateInterventions.interventions.some((intervention) => intervention.status === "queued")) {
-    lines.push(`You may already have something queued to say; avoid repeating yourself unless the current room gives it a new angle.`);
+    lines.push(`${name} may already have an unsaid line waiting. Do not repeat it unless the room gives it a sharper angle.`);
   }
 
   if (lines.length === 0) {
     return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
   }
 
-  return lines.join("\n\n");
+  return rejectLeakyMemorySurface(lines.join("\n\n"));
+}
+
+function projectPrivateNoteForMemorySurface(note: string): string {
+  return note
+    .replace(/\bdo not prompt (?:her|him|them|it|[A-Z][A-Za-z0-9_-]*) as\b/gi, "she refuses to be treated as")
+    .replace(/\bdo not prompt\b/gi, "do not treat")
+    .replace(/\bprompt (?:her|him|them|it)\b/gi, "treat them")
+    .replace(/\bprompt [A-Z][A-Za-z0-9_-]*\b/g, "treat them");
+}
+
+function cleanCharacterFacingSentence(value: string | undefined): string {
+  const cleaned = (value ?? "")
+    .replace(/\s*\|\s*/g, " ")
+    .replace(/\bFace of\s+[A-Za-z0-9_-]+\b/gi, "")
+    .replace(/\bgrants:\s*[^.]+/gi, "")
+    .replace(/\bjurisdictions:\s*[^.]+/gi, "")
+    .replace(/\brepo=[^\s]+/gi, "")
+    .replace(/\bpath=[^\s]+/gi, "")
+    .replace(/\bvoid\.face_[A-Za-z0-9_.-]+/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return cleaned.replace(/[.;:,]+$/g, "");
+}
+
+function asSentence(value: string | undefined): string {
+  const cleaned = cleanCharacterFacingSentence(value);
+  if (!cleaned) {
+    return "";
+  }
+  return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
+function joinAsNarrativeList(items: string[]): string {
+  if (items.length <= 1) {
+    return items[0] ?? "";
+  }
+  if (items.length === 2) {
+    return `${items[0]}, and ${items[1]}`;
+  }
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function rejectLeakyMemorySurface(surface: string): string {
+  const leaks = [
+    /\bgrants:/i,
+    /\bjurisdictions:/i,
+    /\bFace of\b/i,
+    /\brepo=[^\s]+/i,
+    /\bpath=[^\s]+/i,
+    /\bdo not prompt\b/i,
+    /\bprompt (?:her|him|them|it)\b/i,
+  ];
+
+  if (leaks.some((pattern) => pattern.test(surface))) {
+    throw new Error("Repo Face memory surface leaked schema or prompt-construction language.");
+  }
+
+  return surface;
+}
+
+async function projectRepoFaceMemorySurface(input: {
+  identity: RepoDiscordIdentity;
+  statePacket: string;
+  config: ReturnType<typeof loadConfig>;
+}): Promise<string> {
+  const prompt = loadPromptTemplate("repo-face-state-projector.prompt.md", {
+    characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
+    statePacket: input.statePacket,
+  });
+  const output = await runCodexTextProjection({
+    prompt,
+    config: input.config,
+    timeoutMs: 180_000,
+  });
+  const projected = output.trim();
+  if (projected.length < 80) {
+    throw new Error(`Repo Face state projector returned too little text for ${input.identity.id}.`);
+  }
+  return rejectLeakyMemorySurface(projected);
+}
+
+function runCodexTextProjection(input: {
+  prompt: string;
+  config: ReturnType<typeof loadConfig>;
+  timeoutMs: number;
+}): Promise<string> {
+  return new Promise((resolveProjection, rejectProjection) => {
+    const model =
+      input.config.repoFaceHeartbeats.codexModels[0] ??
+      input.config.repoFaceHeartbeats.codexModel ??
+      input.config.codexModel;
+    const reasoningEffort = input.config.repoFaceHeartbeats.codexModelReasoningEffort ?? "low";
+    const args = [
+      ...input.config.codexExecArgs,
+      "exec",
+      "-m",
+      model,
+      "-c",
+      'approval_policy="never"',
+      "-c",
+      `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`,
+      "--json",
+      "--skip-git-repo-check",
+      "-s",
+      "read-only",
+      "-",
+    ];
+    const child = spawn(input.config.codexExecutable, args, {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", rejectProjection);
+    child.stdin.end(input.prompt);
+    const timer = setTimeout(() => {
+      child.kill();
+    }, input.timeoutMs);
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        rejectProjection(
+          new Error(
+            `Repo Face state projector failed with ${code ?? signal ?? "unknown"}: ${stderr.slice(-1200)}`,
+          ),
+        );
+        return;
+      }
+      const text = extractLastCodexAgentMessage(stdout).trim();
+      if (!text) {
+        rejectProjection(new Error("Repo Face state projector returned no visible agent message."));
+        return;
+      }
+      resolveProjection(text);
+    });
+  });
+}
+
+function extractLastCodexAgentMessage(stdout: string): string {
+  const messages = stdout
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as { type?: string; item?: { type?: string; text?: string } };
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((event): event is { type?: string; item?: { type?: string; text?: string } } => Boolean(event))
+    .filter((event) => event.type === "item.completed" && event.item?.type === "agent_message")
+    .map((event) => event.item?.text?.trim() ?? "")
+    .filter((message) => message.length > 0);
+
+  return messages.at(-1) ?? stdout.trim();
 }
 
 async function readOptionalMemorySurface(path: string | undefined): Promise<string | undefined> {
