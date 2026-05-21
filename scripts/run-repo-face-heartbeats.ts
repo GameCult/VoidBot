@@ -485,12 +485,12 @@ async function queueRepoFaceTurn(input: {
     identity,
     input.config,
   );
-  const conversationMemorySurface = await projectRepoFaceConversationMemorySurface({
+  const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
     recentMessages,
     channelSnapshots,
     pendingMentions: input.pendingMentions,
-    config: input.config,
+    channelPlan,
   });
   const prompt = buildHeartbeatPrompt({
     identity,
@@ -1437,7 +1437,7 @@ function buildHeartbeatPrompt(input: {
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
-    conversationMemorySurface: input.conversationMemorySurface ?? "- No Interpreter-shaped conversation memory was projected for this turn.",
+    conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -1519,12 +1519,12 @@ async function assembleRepoFaceTurnPrompt(input: {
   ]);
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
-    : await projectRepoFaceConversationMemorySurface({
+    : renderRepoFaceConversationTranscript({
         identity,
         recentMessages,
         channelSnapshots,
         pendingMentions: [],
-        config: input.config,
+        channelPlan,
       });
   const participant = buildInspectionParticipant(
     identity,
@@ -1762,115 +1762,54 @@ async function projectRepoFaceMemorySurface(input: {
   return rejectLeakyMemorySurface(projected);
 }
 
-async function projectRepoFaceConversationMemorySurface(input: {
+function renderRepoFaceConversationTranscript(input: {
   identity: RepoDiscordIdentity;
   recentMessages: SourceMessage[];
   channelSnapshots: ChannelSnapshot[];
   pendingMentions: RepoFacePendingMention[];
-  config: ReturnType<typeof loadConfig>;
-}): Promise<string> {
-  const conversationPacket = renderRepoFaceConversationPacket(input);
-  const prompt = loadPromptTemplate("repo-face-conversation-projector.prompt.md", {
-    characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
-    jurisdictionBoundaryNotes: renderRepoFaceJurisdictionBoundaryNotes(input.identity),
-    conversationPacket,
-  });
-  const output = await runCodexTextProjection({
-    prompt,
-    config: input.config,
-    command: "repo-face-conversation-projector",
-    jobId: `conversation-projector:${input.identity.id}:${Date.now()}`,
-    timeoutMs: 180_000,
-  });
-  const projected = output.trim();
-  if (projected.length < 40) {
-    throw new Error(`Repo Face conversation projector returned too little text for ${input.identity.id}.`);
-  }
-  return rejectInvalidConversationSurfaceForIdentity(input.identity, rejectLeakyConversationSurface(projected));
-}
-
-function renderRepoFaceJurisdictionBoundaryNotes(identity: RepoDiscordIdentity): string {
-  const notes = [
-    `Current public name: ${identity.displayName}. Current repo/jurisdiction: ${identity.repoName}.`,
-    "Do not let nearby-room wording rename this character's territory. If a message uses a stale alias, preserve the correction without adopting the alias.",
-    "Known global migration: LocalCastBridge is an obsolete/migrated name for Mimir. Use Mimir, the realtime field, or Mimir stream/OBS timing witness work unless explicitly discussing migration history.",
-    "Known steward boundary: wet-voice-01 and AquaSynth parity/listening receipt language belongs to Aqua. Other characters may mention it as Aqua's lane, but should not present it as their own artifact protocol.",
-  ];
-  if (identity.id.toLowerCase() === "mimir") {
-    notes.push(
-      "Mimir-specific: ask for OBS/stream timing witness ledgers, drift envelopes, latency measurements, and sensor-fusion proof. Do not use Aqua's receipt vocabulary as Mimir's own.",
-    );
-  }
-  return notes.join("\n");
-}
-
-function renderRepoFaceConversationPacket(input: {
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-  pendingMentions: RepoFacePendingMention[];
+  channelPlan: RepoFaceChannelPlan;
 }): string {
   const sections: string[] = [];
+  sections.push([
+    "Read this as raw recent message evidence, not as a summary and not as consensus.",
+    "Messages are ordered oldest to newest inside each section. Newer human corrections can supersede older agent proposals.",
+    "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
+    "If you answer the live conversation, default to the current room unless a human explicitly asks to move elsewhere.",
+  ].join("\n"));
   if (input.pendingMentions.length > 0) {
     sections.push([
       "Direct calls:",
       ...input.pendingMentions.map((mention) =>
-        `- ${mention.authorName ?? mention.authorId}: ${collapseWhitespace(mention.visiblePrompt, 700)}`,
+        `- ${mention.authorName ?? mention.authorId}: ${collapseWhitespace(mention.visiblePrompt, 900)}`,
       ),
     ].join("\n"));
   }
+  const currentLabel = input.channelPlan.options.find((option) =>
+    option.channelId === input.channelPlan.primaryChannelId
+  )?.label ?? "current room";
   sections.push([
-    "Current room:",
-    ...formatConversationMessages(input.recentMessages),
+    `Current room (${currentLabel}), oldest to newest:`,
+    ...formatConversationMessages(input.recentMessages, 15),
   ].join("\n"));
   for (const snapshot of input.channelSnapshots) {
+    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
+      "nearby room";
     sections.push([
-      `Nearby channel ${snapshot.channelId}:`,
-      ...formatConversationMessages(snapshot.messages),
+      `Nearby ${label}, oldest to newest:`,
+      ...formatConversationMessages(snapshot.messages, 6),
     ].join("\n"));
   }
   return sections.join("\n\n");
 }
 
-function formatConversationMessages(messages: SourceMessage[]): string[] {
+function formatConversationMessages(messages: SourceMessage[], limit: number): string[] {
   if (messages.length === 0) {
     return ["- No recent messages."];
   }
-  return messages.slice(-12).map((message) => {
+  return messages.slice(-limit).map((message) => {
     const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-    return `- ${speaker}: ${collapseWhitespace(message.content, 700)}`;
+    return `- ${speaker}: ${collapseWhitespace(message.content, 900)}`;
   });
-}
-
-function rejectLeakyConversationSurface(surface: string): string {
-  const leaks = [
-    /\bchannel\s*id\b/i,
-    /\bmessage\s*id\b/i,
-    /\btimestamp\b/i,
-    /\bscheduler\b/i,
-    /\btool\s*(?:call|id|name|result|surface|metadata)\b/i,
-    /\bschema\s*(?:version|id|field|key|metadata)\b/i,
-    /\btransport mechanics\b/i,
-    /\bNo Interpreter-shaped conversation memory\b/i,
-  ];
-  if (leaks.some((pattern) => pattern.test(surface))) {
-    throw new Error("Repo Face conversation surface leaked transcript machinery or placeholder text.");
-  }
-  return surface;
-}
-
-function rejectInvalidConversationSurfaceForIdentity(identity: RepoDiscordIdentity, surface: string): string {
-  const staleAlias = /\bLocalCastBridge\b/i.test(surface);
-  const marksAliasAsStale = /\b(?:not|obsolete|legacy|stale|old|migrat(?:ed|ion)|retired|correction|corrected)\b/i
-    .test(surface);
-  if (staleAlias && !marksAliasAsStale) {
-    throw new Error(`${identity.id} conversation surface adopted obsolete LocalCastBridge naming as current context.`);
-  }
-  const borrowedAquaLanguage = /\b(?:wet-voice-01|parity receipt|parity receipts)\b/i.test(surface);
-  const marksAquaBoundary = /\bAqua(?:Synth)?\b/i.test(surface);
-  if (borrowedAquaLanguage && !marksAquaBoundary) {
-    throw new Error(`${identity.id} conversation surface borrowed AquaSynth receipt vocabulary without naming the boundary.`);
-  }
-  return surface;
 }
 
 function runCodexTextProjection(input: {
