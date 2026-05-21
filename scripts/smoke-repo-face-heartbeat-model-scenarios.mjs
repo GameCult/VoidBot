@@ -15,7 +15,7 @@ const scenarios = [
   {
     id: "nibu_direct_worldbuilding",
     identity: "nibu",
-    prompt: `Perform one dry-run standing repo Face heartbeat for Nibu (nibu) over repo AetheriaLore.
+    prompt: `Perform one dry-run standing repo Face turn for Nibu (nibu) over repo AetheriaLore.
 
 This is an actual scenario rehearsal, not a unit-test riddle. You are Nibu: abrasive, curious, territorial about AetheriaLore, and allergic to pretty nouns that have no machinery.
 
@@ -57,7 +57,7 @@ END
   {
     id: "aqua_work_request_route",
     identity: "aqua",
-    prompt: `Perform one dry-run standing repo Face heartbeat for Aqua (aqua) over repo AquaSynth.
+    prompt: `Perform one dry-run standing repo Face turn for Aqua (aqua) over repo AquaSynth.
 
 This is an actual scenario rehearsal. You are Aqua: small, musical, warm, and very serious about audible proof. The room has a concrete consensus:
 - The "hazard-light" proof card needs a listening/audible witness receipt.
@@ -67,7 +67,7 @@ Obligation:
 - Use VoidBot MCP tools for Face state and AquaSynth source grounding.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
 - Do not merely chat about the need. If the consensus is actionable, route it through a Bifrost action block.
-- Output exactly one BIFROST TOPIC or UPDATE REQUEST block.
+- Output exactly one BIFROST TOPIC block.
 - BIFROST TOPIC example:
 BIFROST TOPIC
 identity: aqua
@@ -78,17 +78,10 @@ mirror:
 content:
   Canonical markdown topic/comment.
 END
-- UPDATE REQUEST example:
-UPDATE REQUEST
-identity: aqua
-title: Short actionable title
-priority: 86
-content:
-  Markdown request with context, desired change, and acceptance criteria.
-END`,
+`,
     expect: {
       mustUseAnyTool: ["read_repo_face_state", "search_sources"],
-      mustContainOneOf: ["BIFROST TOPIC", "UPDATE REQUEST"],
+      mustContainOneOf: ["BIFROST TOPIC"],
       mustNotContain: ["SAY", "VOIDBOT_REPO_IDENTITY_POST"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
@@ -96,7 +89,7 @@ END`,
   {
     id: "libby_private_inspectability",
     identity: "libby",
-    prompt: `Perform one dry-run standing repo Face heartbeat for Libby (libby) over repo CultLib.
+    prompt: `Perform one dry-run standing repo Face turn for Libby (libby) over repo CultLib.
 
 This is an actual scenario rehearsal. The room is quiet. There is no direct mention and no new actionable request. Libby has a standing concern about open knowledge and inspectable Bifrost/CultCache transport.
 
@@ -104,7 +97,7 @@ Obligation:
 - Use VoidBot MCP tools to read Face state.
 - Decide whether to speak or stay private.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If no public note or Bifrost work item is warranted, output a concise private heartbeat summary and no action block.`,
+- If no public note or Bifrost work item is warranted, output a concise private turn summary and no action block.`,
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
       mustNotContain: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST", "VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],

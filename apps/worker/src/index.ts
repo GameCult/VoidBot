@@ -11,11 +11,11 @@ import {
   buildVoidMcpServerConfig,
   createStateStorage,
   applyVoidSelfStateOperation,
-  findCrossRepoJurisdictionMentions,
   findRepoDiscordIdentity,
+  faceRegistryAsRepoDiscordRegistry,
   isRepoDiscordIdentityAllowedInChannel,
   type JobQueue,
-  loadRepoDiscordIdentityRegistry,
+  loadFaceIdentityRegistry,
   loadSystemMessageCatalog,
   resolveRepoFaceStatePath,
   type SystemMessageCatalog,
@@ -39,8 +39,10 @@ import {
 } from "@voidbot/rag";
 import {
   type JobRecord,
+  type ProviderAdapter,
   type ProviderArtifact,
   type ProviderNotificationIntent,
+  type ProviderResponse,
 } from "@voidbot/shared";
 
 const config = loadConfig();
@@ -295,12 +297,9 @@ async function processJob(job: JobRecord): Promise<void> {
   }
 
   try {
-    const request = provider.buildRequest(job.contextBundle, {
-      jobId: job.id,
-      command: job.command,
-      ...repoFaceHeartbeatCodexOptions(job),
-    });
-    const response = await provider.execute(request);
+    const response = job.command === "repo-face-rumination"
+      ? await executeRepoFaceJobWithParentReview(provider, job)
+      : await executeProviderForJob(provider, job, job.contextBundle);
     const artifactPaths = await writeArtifacts(job.id, response.artifacts ?? []);
 
     if (response.status === "ready_for_review") {
@@ -359,7 +358,7 @@ async function processJob(job: JobRecord): Promise<void> {
         !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
       const bifrostTopicSubmitted =
         !proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && repoIdentityBifrostTopics.length > 0;
-      const updateRequestSubmitted =
+      const updateRequestRoutedToBifrostTopic =
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
@@ -377,17 +376,23 @@ async function processJob(job: JobRecord): Promise<void> {
       } else if (repoIdentityBifrostTopics.length > 0) {
         await submitRepoIdentityBifrostTopicIntent(job, repoIdentityBifrostTopics[0]);
       } else if (repoIdentityUpdateRequests.length > 0) {
-        await enqueueRepoIdentityUpdateRequestIntent(job, repoIdentityUpdateRequests[0]);
+        await submitRepoIdentityBifrostTopicIntent(
+          job,
+          repoIdentityUpdateRequestToBifrostTopic(repoIdentityUpdateRequests[0]),
+        );
       }
+      let repoIdentityPostDelivered = 0;
       if (
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
         !bifrostTopicSubmitted &&
-        !updateRequestSubmitted
+        !updateRequestRoutedToBifrostTopic
       ) {
         for (const post of repoIdentityPosts.slice(0, 1)) {
-          await postRepoIdentityIntent(job, post);
+          if (await postRepoIdentityIntent(job, post)) {
+            repoIdentityPostDelivered += 1;
+          }
         }
       }
       const cleanedFinalResponse = stripRepoIdentityPostIntents(finalResponse);
@@ -401,17 +406,17 @@ async function processJob(job: JobRecord): Promise<void> {
         details: {
           summary: response.summary,
           autoPosted:
-            repoIdentityPosts.length > 0 ||
+            repoIdentityPostDelivered > 0 ||
             proposalPrSubmitted ||
             prCommentSubmitted ||
             articlePrSubmitted ||
             bifrostTopicSubmitted ||
-            updateRequestSubmitted,
+            updateRequestRoutedToBifrostTopic,
           articlePrSubmitted,
           proposalPrSubmitted,
           prCommentSubmitted,
           bifrostTopicSubmitted,
-          updateRequestSubmitted,
+          updateRequestRoutedToBifrostTopic,
           ignoredGithubActionIntents,
           reason:
             proposalPrSubmitted
@@ -422,10 +427,12 @@ async function processJob(job: JobRecord): Promise<void> {
                 ? "repo_face_rumination_submitted_registered_identity_article_pr"
               : bifrostTopicSubmitted
                 ? "repo_face_rumination_submitted_bifrost_topic"
-              : updateRequestSubmitted
-                ? "repo_face_rumination_enqueued_bifrost_update_request"
-              : repoIdentityPosts.length > 0
+              : updateRequestRoutedToBifrostTopic
+                ? "repo_face_rumination_routed_legacy_update_request_to_bifrost_topic"
+              : repoIdentityPostDelivered > 0
                 ? "repo_face_rumination_posted_as_registered_identity"
+              : repoIdentityPosts.length > 0
+                ? "repo_face_rumination_speech_rejected_by_parent_gate"
               : `${job.command}_private_summary`,
         },
       });
@@ -462,6 +469,200 @@ async function processJob(job: JobRecord): Promise<void> {
     });
     console.error(`Failed job ${job.id}: ${message}`);
   }
+}
+
+async function executeProviderForJob(
+  provider: ProviderAdapter,
+  job: JobRecord,
+  contextBundle: JobRecord["contextBundle"],
+): Promise<ProviderResponse> {
+  const request = provider.buildRequest(contextBundle, {
+    jobId: job.id,
+    command: job.command,
+    ...repoFaceHeartbeatCodexOptions(job),
+  });
+  return provider.execute(request);
+}
+
+async function executeRepoFaceJobWithParentReview(
+  provider: ProviderAdapter,
+  job: JobRecord,
+): Promise<ProviderResponse> {
+  const firstResponse = await executeProviderForJob(provider, job, job.contextBundle);
+  if (firstResponse.status !== "completed") {
+    return firstResponse;
+  }
+
+  const firstText = fitDiscordMessage(firstResponse.outputText ?? firstResponse.summary);
+  const firstReview = await reviewRepoFaceTurnOutput(provider, job, firstText, { attempt: 1 });
+  if (firstReview.decision === "route") {
+    return firstResponse;
+  }
+
+  if (firstReview.decision === "drop") {
+    return dropRepoFaceActionBlocks(firstResponse, firstReview);
+  }
+
+  await auditLog.record({
+    type: "repo_face.parent_gate_retry",
+    actorId: job.requester.id,
+    jobId: job.id,
+    provider: job.provider,
+    details: {
+      decision: firstReview.decision,
+      reasons: firstReview.reasons,
+    },
+  });
+  console.warn(`Repo Face parent reviewer retrying job ${job.id}: ${firstReview.reasons.join("; ")}`);
+
+  const retryPrompt = [
+    job.contextBundle.prompt,
+    "",
+    "Parent gate retry:",
+    "A separate parent reviewer rejected your previous Face turn before public routing for these reasons:",
+    ...firstReview.reasons.map((reason) => `- ${reason}`),
+    "",
+    "Revise once. Keep the same identity and evidence. If public speech is still warranted, emit one clean SAY block whose content starts as the Face speaking to the room, not as a scheduler/status/note label. If the output is work-shaped, use BIFROST TOPIC instead of UPDATE REQUEST. If no public or governed action survives, return a concise private summary with no action block.",
+  ].join("\n");
+  const retryContext = {
+    ...job.contextBundle,
+    prompt: retryPrompt,
+    createdAt: new Date().toISOString(),
+  };
+
+  const retryResponse = await executeProviderForJob(provider, job, retryContext);
+  if (retryResponse.status !== "completed") {
+    return retryResponse;
+  }
+
+  const retryText = fitDiscordMessage(retryResponse.outputText ?? retryResponse.summary);
+  const retryReview = await reviewRepoFaceTurnOutput(provider, job, retryText, { attempt: 2 });
+  if (retryReview.decision === "route") {
+    return retryResponse;
+  }
+
+  await auditLog.record({
+    type: "repo_face.parent_gate_drop",
+    actorId: job.requester.id,
+    jobId: job.id,
+    provider: job.provider,
+    details: {
+      decision: retryReview.decision,
+      reasons: retryReview.reasons,
+    },
+  });
+  console.warn(`Repo Face parent reviewer dropped job ${job.id} action blocks: ${retryReview.reasons.join("; ")}`);
+  return dropRepoFaceActionBlocks(retryResponse, retryReview);
+}
+
+interface RepoFaceParentReview {
+  decision: "route" | "retry" | "drop";
+  reasons: string[];
+}
+
+async function reviewRepoFaceTurnOutput(
+  provider: ProviderAdapter,
+  job: JobRecord,
+  outputText: string,
+  input: { attempt: 1 | 2 },
+): Promise<RepoFaceParentReview> {
+  const reviewerPrompt = [
+    "You are the parent reviewer for one unattended repo Face turn.",
+    "You are not the Face. You are deciding whether the Face turn output should be routed, retried once, or dropped before public side effects.",
+    "",
+    "Architecture invariant:",
+    "- Public Discord speech must sound like the Face speaking to people, not a scheduler, status report, maintenance note, or provenance label.",
+    "- Bifrost/GitHub/work-shaped requests should use BIFROST TOPIC. Legacy UPDATE REQUEST blocks may be reconciled by the parent into Bifrost topics, so do not reject solely because that legacy block appears.",
+    "- One public speech block is the normal maximum.",
+    "- Prefer route when the output can be safely routed as-is or parent-reconciled without changing the meaning.",
+    "- Use retry when the output is recoverable but has robotic framing, copied note-title formulas, asks what the job is despite context, or puts a work request only in casual speech.",
+    "- Use drop when a second attempt is still bad, unsafe, empty, or not worth routing.",
+    "",
+    `Attempt: ${input.attempt}`,
+    "",
+    "Original Face prompt:",
+    "```",
+    job.contextBundle.prompt.slice(0, 8000),
+    "```",
+    "",
+    "Face output to review:",
+    "```",
+    outputText.slice(0, 8000),
+    "```",
+    "",
+    "Return exactly this small review block and nothing else:",
+    "REVIEW",
+    "decision: route|retry|drop",
+    "reason:",
+    "  One or two concrete reasons.",
+    "END",
+  ].join("\n");
+  const reviewerContext = {
+    ...job.contextBundle,
+    prompt: reviewerPrompt,
+    retrieval: [],
+    voidSelfState: undefined,
+    createdAt: new Date().toISOString(),
+  };
+  const response = await executeProviderForJob(provider, job, reviewerContext);
+  const reviewText = fitDiscordMessage(response.outputText ?? response.summary);
+  return parseRepoFaceParentReview(reviewText, input.attempt);
+}
+
+function parseRepoFaceParentReview(reviewText: string, attempt: 1 | 2): RepoFaceParentReview {
+  const block = parseReviewBlock(reviewText);
+  const decision = block.decision?.trim().toLowerCase();
+  const parsedDecision =
+    decision === "route" || decision === "retry" || decision === "drop"
+      ? decision
+      : attempt === 1
+        ? "retry"
+        : "drop";
+  const reasons = (block.reason ?? block.reasons ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return {
+    decision: parsedDecision,
+    reasons: reasons.length > 0 ? reasons : ["parent reviewer did not provide a parseable reason"],
+  };
+}
+
+function parseReviewBlock(reviewText: string): Record<string, string> {
+  const lines = reviewText.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().toUpperCase() === "REVIEW");
+  if (start < 0) {
+    return {};
+  }
+  const body: string[] = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (lines[index].trim().toUpperCase() === "END") {
+      break;
+    }
+    body.push(lines[index]);
+  }
+  return parseRepoFaceActionFields(body);
+}
+
+function dropRepoFaceActionBlocks(
+  response: ProviderResponse,
+  review: RepoFaceParentReview,
+): ProviderResponse {
+  const text = fitDiscordMessage(response.outputText ?? response.summary);
+  const privateSummary = stripRepoIdentityPostIntents(text) ||
+    `Parent reviewer dropped repo Face action blocks: ${review.reasons.join("; ")}`;
+  return {
+    ...response,
+    outputText: privateSummary,
+    summary: privateSummary,
+    metadata: {
+      ...(response.metadata ?? {}),
+      repoFaceParentReviewDecision: review.decision,
+      repoFaceParentReviewReasons: review.reasons.join(" | "),
+    },
+  };
 }
 
 function repoFaceHeartbeatCodexOptions(job: JobRecord): Record<string, string> {
@@ -598,6 +799,7 @@ function parseRepoIdentityIdFromPrompt(prompt: string): string | undefined {
   const match = prompt.match(/repo identity\s+.+?\(([^)]+)\)\s+for repo/i);
   return (
     match?.[1]?.trim() ??
+    prompt.match(/repo Face turn for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
     prompt.match(/repo Face heartbeat for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
     prompt.match(/identity "([^"]+)"/i)?.[1]?.trim()
   );
@@ -691,28 +893,22 @@ interface BifrostGovernanceTopicReceipt {
   dispatchRequestId?: string;
 }
 
-async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<void> {
+async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIntent): Promise<boolean> {
   if (!config.botToken) {
     throw new Error("DISCORD_BOT_TOKEN is required for Bifrost to post repo identity responses.");
   }
 
-  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
-  if (!identityId) {
+  const identity = await resolveRepoIdentityForJobIntent(job, intent.identity);
+  if (!identity) {
     throw new Error(`Could not resolve repo identity for job ${job.id}.`);
   }
 
   const channelId = intent.channelId ?? job.outputChannelId;
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
-  const identity = findRepoDiscordIdentity(registry, identityId);
-  if (!identity) {
-    throw new Error(`No registered repo identity matched "${identityId}" for job ${job.id}.`);
-  }
-
   if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId)) {
     throw new Error(`Repo identity ${identity.id} is not registered for Discord channel ${channelId}.`);
   }
 
-  const content = sanitizeRepoIdentityPostContent(identity, intent.content);
+  const content = intent.content.trim();
   const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, fitDiscordMessage(content));
   const posted = runBifrostBridge([
     "discord-post",
@@ -742,28 +938,26 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   console.log(
     `Posted repo identity ${identity.id} to Discord channel ${channelId} from job ${job.id} via ${posted.transport} message ${posted.messageId}.`,
   );
+  return true;
 }
 
-function sanitizeRepoIdentityPostContent(identity: { displayName: string; repoName: string }, content: string): string {
-  let sanitized = content.trim();
-  const escapedRepo = escapeRegExp(identity.repoName);
-  const escapedDisplay = escapeRegExp(identity.displayName);
-  const prefixPatterns = [
-    new RegExp(`^(?:repo[- ]?face\\s+)?heartbeat\\s+from\\s+${escapedRepo}\\s*:\\s*`, "i"),
-    new RegExp(`^${escapedRepo}\\s+heartbeat(?:\\s+complete)?\\s*:\\s*`, "i"),
-    new RegExp(`^${escapedDisplay}\\s+heartbeat(?:\\s+complete)?\\s*:\\s*`, "i"),
-    /^(?:repo[- ]?face\s+)?heartbeat\s+from\s+[^:]{1,80}\s*:\s*/i,
-  ];
-
-  for (const pattern of prefixPatterns) {
-    sanitized = sanitized.replace(pattern, "").trim();
+async function resolveRepoIdentityForJobIntent(
+  job: JobRecord,
+  identitySelector?: string,
+): Promise<NonNullable<ReturnType<typeof findRepoDiscordIdentity>> | undefined> {
+  const identityId = identitySelector ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    return undefined;
   }
 
-  return sanitized.length > 0 ? sanitized : content.trim();
+  const registry = await loadRegisteredFaceRepoRegistry();
+  return findRepoDiscordIdentity(registry, identityId);
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+async function loadRegisteredFaceRepoRegistry() {
+  return faceRegistryAsRepoDiscordRegistry(
+    await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath),
+  );
 }
 
 function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
@@ -811,7 +1005,7 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     throw new Error(`Could not resolve repo identity for article intent on job ${job.id}.`);
   }
 
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = await loadRegisteredFaceRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for article intent on job ${job.id}.`);
@@ -866,7 +1060,7 @@ async function writeRepoIdentityProposalPrIntent(
     throw new Error(`Could not resolve repo identity for proposal PR intent on job ${job.id}.`);
   }
 
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = await loadRegisteredFaceRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for proposal PR intent on job ${job.id}.`);
@@ -921,7 +1115,7 @@ async function commentRepoIdentityPullRequestIntent(
     throw new Error(`Could not resolve repo identity for PR comment intent on job ${job.id}.`);
   }
 
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = await loadRegisteredFaceRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for PR comment intent on job ${job.id}.`);
@@ -959,69 +1153,26 @@ async function commentRepoIdentityPullRequestIntent(
   });
 }
 
-async function enqueueRepoIdentityUpdateRequestIntent(
-  job: JobRecord,
+function repoIdentityUpdateRequestToBifrostTopic(
   intent: RepoIdentityUpdateRequestIntent,
-): Promise<void> {
-  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
-  if (!identityId) {
-    throw new Error(`Could not resolve repo identity for Bifrost update request intent on job ${job.id}.`);
-  }
-
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
-  const identity = findRepoDiscordIdentity(registry, identityId);
-  if (!identity) {
-    throw new Error(`No registered repo identity matched "${identityId}" for update request intent on job ${job.id}.`);
-  }
-
-  const crossRepoMentions = findCrossRepoJurisdictionMentions(
-    identity,
-    registry,
-    `${intent.title}\n${intent.content}`,
-  );
-  if (crossRepoMentions.length > 0) {
-    const conflicts = crossRepoMentions
-      .map((match) => `${match.repoName} (${match.identityId}, matched "${match.matched}")`)
-      .join(", ");
-    throw new Error(
-      `Repo Face UPDATE REQUEST from ${identity.id}/${identity.repoName} crosses registered jurisdiction: ${conflicts}. ` +
-        "Immediate UPDATE REQUEST is repo-local; use BIFROST TOPIC handoff/consultation or let the owning Face dispatch the work.",
-    );
-  }
-
-  const contentFile = await writeBifrostPayloadFile(
-    job,
-    `${identity.id}-bifrost-update-request.md`,
-    ensureTrailingNewline(renderRepoIdentityUpdateRequestMarkdown(identity, intent)),
-  );
-  const sourceMessageIds = Array.from(new Set([
-    ...intent.sourceMessageIds,
-    intent.replyToMessageId,
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
-  const request = runBifrostAgentTransport([
-    "enqueue",
-    "--repo",
-    identity.repoName,
-    "--agent",
-    identity.id,
-    "--title",
-    intent.title,
-    "--request-file",
-    contentFile,
-    "--priority",
-    String(normalizeBifrostPriority(intent.priority)),
-    "--source-kind",
-    "repo_face_heartbeat",
-    "--packet-path",
-    contentFile,
-    "--created-by",
-    identity.id,
-    ...(intent.channelId ?? job.outputChannelId ? ["--source-channel-id", intent.channelId ?? job.outputChannelId] : []),
-    ...(sourceMessageIds.length > 0 ? ["--source-message-ids", sourceMessageIds.join(",")] : []),
-  ]);
-  console.log(
-    `Enqueued Bifrost update request ${request.id} for ${identity.id}/${identity.repoName} from job ${job.id}.`,
-  );
+): RepoIdentityBifrostTopicIntent {
+  return {
+    identity: intent.identity,
+    title: intent.title,
+    content: [
+      "Legacy UPDATE REQUEST was reconciled into a Bifrost topic instead of immediate dispatch.",
+      "",
+      intent.content.trim(),
+    ].join("\n"),
+    mirrorContent: `I put the work request on Bifrost instead of throwing it straight at Codex: ${intent.title}`,
+    stance: "proposal",
+    priority: intent.priority,
+    approve: false,
+    dispatch: false,
+    sourceMessageIds: intent.sourceMessageIds,
+    channelId: intent.channelId,
+    replyToMessageId: intent.replyToMessageId,
+  };
 }
 
 async function submitRepoIdentityBifrostTopicIntent(
@@ -1033,7 +1184,7 @@ async function submitRepoIdentityBifrostTopicIntent(
     throw new Error(`Could not resolve repo identity for Bifrost topic intent on job ${job.id}.`);
   }
 
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = await loadRegisteredFaceRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for Bifrost topic intent on job ${job.id}.`);
@@ -1075,7 +1226,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       "--priority",
       String(normalizeBifrostPriority(intent.priority)),
       "--source-kind",
-      "repo_face_heartbeat",
+      "repo_face_turn",
       "--created-by",
       identity.id,
       ...(intent.channelId ?? job.outputChannelId ? ["--source-channel-id", intent.channelId ?? job.outputChannelId] : []),
@@ -1140,25 +1291,6 @@ async function writeBifrostPayloadFile(job: JobRecord, fileName: string, content
   const path = join(directory, sanitizePathSegment(fileName) || "payload.md");
   await writeFile(path, content, "utf8");
   return path;
-}
-
-function runBifrostAgentTransport(args: string[]): BifrostUpdateRequestReceipt {
-  const transportScript = resolve(config.bifrostRoot, "tools", "agent-transport.mjs");
-  const result = spawnSync(process.execPath, [transportScript, ...args], {
-    cwd: config.bifrostRoot,
-    encoding: "utf8",
-    windowsHide: true,
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`Bifrost agent transport failed: ${result.stderr || result.stdout}`);
-  }
-
-  try {
-    return JSON.parse(result.stdout) as BifrostUpdateRequestReceipt;
-  } catch {
-    throw new Error(`Bifrost agent transport returned non-JSON output: ${result.stdout}`);
-  }
 }
 
 function runBifrostGovernanceThreads(args: string[]): BifrostGovernanceTopicReceipt | Record<string, unknown> {
@@ -1559,27 +1691,6 @@ function parseDslList(value: string | undefined): string[] {
     .split(/[,\n]/)
     .map((entry) => entry.trim().replace(/^-\s*/, ""))
     .filter((entry) => entry.length > 0);
-}
-
-function renderRepoIdentityUpdateRequestMarkdown(
-  identity: { id: string; displayName: string; repoName: string },
-  intent: RepoIdentityUpdateRequestIntent,
-): string {
-  return [
-    "# Repo Face Update Request",
-    "",
-    `Source Face: ${identity.displayName} (${identity.id})`,
-    `Target repo: ${identity.repoName}`,
-    "",
-    "## Request",
-    "",
-    intent.content.trim(),
-    "",
-    "## Instructions For Codex",
-    "",
-    "Work this request in the target workspace. Prefer a small coherent change, proposal, doc, or test-backed patch. If the request is not actionable enough, write down the smallest missing question instead of silently dropping it.",
-    "",
-  ].join("\n");
 }
 
 function normalizeBifrostPriority(value: number | undefined): number {

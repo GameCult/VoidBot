@@ -16,10 +16,11 @@ import {
   PermissionEngine,
   createStateStorage,
   ensureRepoFaceInitialized,
+  faceRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentityByPersonaName,
   findRepoDiscordIdentityByRoleIds,
   findRepoDiscordIdentityByTextAddress,
-  loadRepoDiscordIdentityRegistry,
+  loadFaceIdentityRegistry,
   queueAgentHeartbeatMention,
   queueRepoFaceMention,
   type RepoDiscordIdentity,
@@ -92,8 +93,8 @@ export async function startBot(): Promise<void> {
       GatewayIntentBits.MessageContent,
     ],
   });
-  let repoDiscordIdentities = await loadRepoDiscordIdentityRegistry(
-    config.repoDiscordIdentitiesPath,
+  let repoDiscordIdentities = faceRegistryAsRepoDiscordRegistry(
+    await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath),
   );
   repoDiscordIdentities = await ensureRepoIdentityRoles({
     botToken: config.botToken,
@@ -390,7 +391,7 @@ export async function startBot(): Promise<void> {
           visiblePrompt,
         });
         console.log(
-          `Queued repo Face mention ${message.id} for ${addressedRepoIdentity.id} via heartbeat CTB (${queuedMention.pendingCount} pending). Birth status: ${
+          `Queued repo Face mention ${message.id} for ${addressedRepoIdentity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
             faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
           }`,
         );
@@ -408,7 +409,7 @@ export async function startBot(): Promise<void> {
         visiblePrompt: visiblePrompt || "Void was mentioned without a visible prompt; inspect recent room context and decide whether a response is warranted.",
       });
       console.log(
-        `Queued Void mention ${message.id} via heartbeat CTB (${queuedMention.pendingCount} pending).`,
+        `Queued Void mention ${message.id} via CTB turn queue (${queuedMention.pendingCount} pending).`,
       );
     } catch (error) {
       console.error(error);

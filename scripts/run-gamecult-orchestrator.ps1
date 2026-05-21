@@ -279,7 +279,7 @@ try {
     },
     [pscustomobject]@{
       Id = "repo-face-heartbeats"
-      Label = "Repo Face CTB heartbeat"
+      Label = "Repo Face CTB turns"
       IntervalMinutes = Get-ConfigInt -Config $config -Name "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
       TimeoutMinutes = 20
       Cwd = $repoRoot

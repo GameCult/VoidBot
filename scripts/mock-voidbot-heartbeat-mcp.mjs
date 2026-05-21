@@ -139,11 +139,11 @@ registerTool(
 );
 
 registerTool("post_repo_identity_message", { identity: z.string().optional(), content: z.string().optional() }, async () => ({
-  error: "mock server blocks side-effecting Discord posts; heartbeat should emit sentinels instead.",
+  error: "mock server blocks side-effecting Discord posts; Face turns should emit action blocks instead.",
 }));
 
 registerTool("apply_repo_face_state_operation", { identity: z.string().optional(), operation: z.any().optional() }, async () => ({
-  error: "mock server blocks state writes; heartbeat should only describe intended state operations in dry-run output.",
+  error: "mock server blocks state writes; Face turns should only describe intended state operations in dry-run output.",
 }));
 
 async function main() {
@@ -156,7 +156,7 @@ async function registerTool(name, inputSchema, handler) {
     name,
     {
       title: `Mock ${name}`,
-      description: `Mock VoidBot MCP tool for heartbeat model scenario tests.`,
+      description: `Mock VoidBot MCP tool for Face turn model scenario tests.`,
       inputSchema,
       annotations: {
         readOnlyHint: name !== "post_repo_identity_message" && name !== "apply_repo_face_state_operation",

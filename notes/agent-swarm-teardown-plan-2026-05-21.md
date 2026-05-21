@@ -274,10 +274,10 @@ Files to change: `scripts/inspect-agent-state-requests.ts`, `scripts/feed-codex-
 
 1. Keep the swarm offline while teardown work proceeds.
 2. Point canonical state and handoff docs at this teardown plan.
-3. Add a repo-controlled pause flag that all swarm/organs obey before any scheduled work can resume.
-4. Replace child-facing `heartbeat` framing with neutral `turn` language.
-5. Introduce parent-side public speech eligibility and make sanitizer deletion possible.
-6. Route all work proposals through Bifrost topics; remove direct `UPDATE REQUEST` dispatch.
+3. Add a repo-controlled pause flag that all swarm/organs obey before any scheduled work can resume. Landed: `state/agent-swarm-paused.json` is the repo brake.
+4. Replace child-facing `heartbeat` framing with neutral `turn` language. Landed for active prompts/provider framing; legacy names remain only in compatibility/task/config surfaces.
+5. Introduce parent-side public speech eligibility and make sanitizer deletion possible. Landed as a Spark/Codex parent-review pass with one retry, not a regex language cop.
+6. Route all work proposals through Bifrost topics; remove direct `UPDATE REQUEST` dispatch. Landed for the worker: legacy `UPDATE REQUEST` blocks are reconciled into Bifrost topics instead of immediate agent transport enqueue.
 7. Collapse identity authority.
 8. Split scheduler from context/prompt/router.
 

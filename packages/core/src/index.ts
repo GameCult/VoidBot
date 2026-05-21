@@ -2,6 +2,7 @@ export * from "./audit-log";
 export * from "./codex-mcp";
 export * from "./context-builder";
 export * from "./epiphany-identities";
+export * from "./face-identity-registry";
 export * from "./interaction-memory";
 export * from "./job-queue";
 export * from "./permission-engine";

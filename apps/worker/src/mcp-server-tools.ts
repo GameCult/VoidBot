@@ -7,10 +7,10 @@ import {
   applyRepoFacePostFatigueAfterSpeech,
   applyVoidSelfStateOperation,
   buildVoidSelfStateContext,
-  buildEpiphanyIdentityRegistry,
+  faceRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentity,
   isRepoDiscordIdentityAllowedInChannel,
-  loadRepoDiscordIdentityRegistry,
+  loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   renderFaceIdentityDoctrine,
   resolveFaceStatePath,
@@ -428,10 +428,8 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (): Promise<CallToolResult> => {
-      const registry = await loadRepoDiscordIdentityRegistry(
-        context.config.repoDiscordIdentitiesPath,
-      );
-      const epiphanyRegistry = buildEpiphanyIdentityRegistry(registry);
+      const faceRegistry = await loadFaceIdentityRegistry(context.config.repoDiscordIdentitiesPath);
+      const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
       const identities = registry.identities.map((identity) => ({
         id: identity.id,
         repoName: identity.repoName,
@@ -444,7 +442,7 @@ export function registerVoidbotTools(
         hasAvatarUrl: Boolean(identity.avatarUrl),
         description: identity.description ?? null,
       }));
-      const epiphanies = epiphanyRegistry.epiphanies.map((epiphany) => ({
+      const epiphanies = faceRegistry.epiphanies.map((epiphany) => ({
         id: epiphany.id,
         displayName: epiphany.displayName,
         description: epiphany.description ?? null,
@@ -452,7 +450,7 @@ export function registerVoidbotTools(
         jurisdictions: epiphany.jurisdictions,
         faces: epiphany.faces.map((face) => face.id),
       }));
-      const faces = epiphanyRegistry.faces.map((face) => ({
+      const faces = faceRegistry.faces.map((face) => ({
         id: face.id,
         displayName: face.displayName,
         epiphanyId: face.epiphanyId,
@@ -510,8 +508,8 @@ export function registerVoidbotTools(
     },
     async (input: PostRepoIdentityMessageArgs): Promise<CallToolResult> => {
       const { identity: identitySelector, channelId, content, replyToMessageId } = input;
-      const registry = await loadRepoDiscordIdentityRegistry(
-        context.config.repoDiscordIdentitiesPath,
+      const registry = faceRegistryAsRepoDiscordRegistry(
+        await loadFaceIdentityRegistry(context.config.repoDiscordIdentitiesPath),
       );
       const identity = findRepoDiscordIdentity(registry, identitySelector);
 
@@ -652,7 +650,7 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              identity: identityForToolResult(resolved.identity),
+              identity: identityForToolResult(resolved.identity, resolved.face),
               faceStatePath: resolved.faceStatePath,
               summary: rendered.summary,
               typedState,
@@ -660,7 +658,7 @@ export function registerVoidbotTools(
           },
         ],
         structuredContent: {
-          identity: identityForToolResult(resolved.identity),
+          identity: identityForToolResult(resolved.identity, resolved.face),
           faceStatePath: resolved.faceStatePath,
           summary: rendered.summary,
           typedState,
@@ -708,7 +706,7 @@ export function registerVoidbotTools(
             type: "text",
             text: renderJsonBlock({
               applied: true,
-              identity: identityForToolResult(resolved.identity),
+              identity: identityForToolResult(resolved.identity, resolved.face),
               faceStatePath: resolved.faceStatePath,
               result,
             }),
@@ -716,7 +714,7 @@ export function registerVoidbotTools(
         ],
         structuredContent: {
           applied: true,
-          identity: identityForToolResult(resolved.identity),
+          identity: identityForToolResult(resolved.identity, resolved.face),
           faceStatePath: resolved.faceStatePath,
           result,
         },
@@ -782,6 +780,7 @@ async function resolveRepoIdentityForTool(
 ): Promise<
   | {
       identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+      face?: Awaited<ReturnType<typeof loadFaceIdentityRegistry>>["faces"][number];
       faceStatePath: string;
     }
   | {
@@ -789,9 +788,8 @@ async function resolveRepoIdentityForTool(
       error: CallToolResult;
     }
 > {
-  const registry = await loadRepoDiscordIdentityRegistry(
-    context.config.repoDiscordIdentitiesPath,
-  );
+  const faceRegistry = await loadFaceIdentityRegistry(context.config.repoDiscordIdentitiesPath);
+  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
   const identity = findRepoDiscordIdentity(registry, identitySelector);
 
   if (!identity) {
@@ -815,6 +813,7 @@ async function resolveRepoIdentityForTool(
 
   return {
     identity,
+    face: faceRegistry.faces.find((face) => face.id === identity.id),
     faceStatePath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
   };
 }
@@ -867,8 +866,10 @@ async function recordRepoIdentityDeliveryReceipt(input: {
   }
 }
 
-function identityForToolResult(identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>) {
-  const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).faces[0];
+function identityForToolResult(
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  face?: Awaited<ReturnType<typeof loadFaceIdentityRegistry>>["faces"][number],
+) {
   return {
     id: identity.id,
     repoName: identity.repoName,

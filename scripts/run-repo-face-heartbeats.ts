@@ -13,9 +13,10 @@ import {
   createStateStorage,
   ensureRepoFaceInitialized,
   getRepoDiscordIdentityAllowedChannelIds,
+  faceRegistryAsRepoDiscordRegistry,
   projectRepoFaceSleepCycleForNow,
   applyVoidSelfStateOperation,
-  loadRepoDiscordIdentityRegistry,
+  loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
   type RepoFaceRestSnapshot,
@@ -174,7 +175,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const registry = await loadRepoDiscordIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const faceRegistry = await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
   const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
@@ -433,7 +435,7 @@ async function queueRepoFaceTurn(input: {
     input.participant.status = "blocked";
     input.participant.constraints = mergeStrings(
       input.participant.constraints,
-      "No heartbeat channel is configured for this Face.",
+      "No CTB turn channel is configured for this Face.",
     );
     return { created: false };
   }
@@ -492,8 +494,8 @@ async function queueRepoFaceTurn(input: {
   const contextBundle = contextBuilder.build({
     prompt,
     actor: {
-      id: "voidbot-agent-heartbeat",
-      displayName: "VoidBot Agent Heartbeat",
+      id: "voidbot-agent-turn",
+      displayName: "VoidBot Agent Turn",
       isAdmin: true,
       isBot: true,
     },
@@ -504,7 +506,7 @@ async function queueRepoFaceTurn(input: {
     retrieval: [],
     voidSelfState: faceSelfState,
   });
-  const requestMessageId = `agent-heartbeat:${identity.id}:${input.queuedAt}`;
+  const requestMessageId = `agent-turn:${identity.id}:${input.queuedAt}`;
   const result = await input.storage.jobQueue.createJob({
     command: HEARTBEAT_COMMAND,
     provider: "owner_codex",
@@ -1080,7 +1082,7 @@ async function startVoidModerationTurn(input: {
     return {
       created: false,
       activeJobId: child.pid ? `launcher-process:${child.pid}` : undefined,
-      requestMessageId: `agent-heartbeat:void:${input.queuedAt}`,
+      requestMessageId: `agent-turn:void:${input.queuedAt}`,
       failureReason: handshake.reason,
     };
   }
@@ -1088,7 +1090,7 @@ async function startVoidModerationTurn(input: {
   return {
     created: true,
     activeJobId: `process:void-moderation:${input.queuedAt}`,
-    requestMessageId: `agent-heartbeat:void:${input.queuedAt}`,
+    requestMessageId: `agent-turn:void:${input.queuedAt}`,
   };
 }
 
@@ -1156,6 +1158,7 @@ async function listExistingActiveTurns(
         continue;
       }
       const match =
+        job.requestMessageId?.match(/^agent-turn:([^:]+):/) ??
         job.requestMessageId?.match(/^agent-heartbeat:([^:]+):/) ??
         job.requestMessageId?.match(/^repo-face-heartbeat:([^:]+):/) ??
         job.requestMessageId?.match(/:repo-face:([^:]+):\d+$/);
@@ -1166,7 +1169,7 @@ async function listExistingActiveTurns(
           const ageMinutes = Number.isFinite(ageMs) ? Math.round((ageMs / 60_000) * 10) / 10 : -1;
           await storage.jobQueue.markFailed(
             job.id,
-            `Repo Face CTB recovered stale active heartbeat job after ${ageMinutes} minutes without progress.`,
+            `Repo Face CTB recovered stale active turn job after ${ageMinutes} minutes without progress.`,
           );
           staleRecovered.push({
             identityId: match[1],
@@ -1240,7 +1243,7 @@ function reconcileParticipants(
         constraints: mergeStrings(
           mergeStrings(
             current.constraints,
-            "Agent heartbeat uses CTB-style turns.",
+            "Agent runtime uses CTB-style turns.",
           ),
           "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
         ),
@@ -1270,7 +1273,7 @@ function reconcileParticipants(
       nextTurnAt,
       queuedCount: 0,
       constraints: [
-        "Agent heartbeat uses CTB-style turns.",
+        "Agent runtime uses CTB-style turns.",
         "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
         "Worker final summaries are not auto-posted as the base bot.",
       ],
@@ -1462,14 +1465,14 @@ function buildHeartbeatPrompt(input: {
   birthStatusPath?: string;
 }): string {
   return [
-    `Perform one standing repo Face heartbeat for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
+    `Perform one standing repo Face turn for ${input.identity.displayName} (${input.identity.id}) over repo ${input.identity.repoName}.`,
     renderRepoFaceIdentityDoctrine(input.identity),
     "This is a standing maintenance/rumination turn. Public speech is optional; a private summary is the right outcome when the thought would only repeat a nearby post without adding a new angle, objection, synthesis, or character-specific turn.",
     `Queued at: ${input.queuedAt}.`,
     `Face state path: ${input.faceStatePath}.`,
     input.repoVoidbotRoot ? `Repo-local .voidbot root: ${input.repoVoidbotRoot}.` : undefined,
     input.birthStatusPath ? `Birth status path: ${input.birthStatusPath}.` : undefined,
-    `Heartbeat initiative snapshot: ${JSON.stringify({
+    `CTB initiative snapshot: ${JSON.stringify({
       initiativeSpeed: input.participant.initiativeSpeed,
       heat: input.participant.heat,
       effectiveSpeed: input.participant.effectiveSpeed,
@@ -1501,7 +1504,7 @@ function buildHeartbeatPrompt(input: {
     "Do not ask what the job is when the attached recent channel context already states it. If the task belongs to another Face's jurisdiction, name the owner, route or invite that Face into the work, and offer only the narrow piece your own jurisdiction can honestly add.",
     "Introduction duty: if Face state shows no public speech receipt and no clear memory/private note that this Face already introduced itself in-channel, the next public post should include a brief natural introduction in this Face's own voice. This applies even when queuedCount is 0.",
     "A new source-grounded opinion, concrete proposal, bylined essay/article plan, agency pressure, playful aside, running joke, or small personal fascination can earn persistence or speech even when the room has not asked a fresh direct question.",
-    "Work-request routing invariant: if the thing you want to say is actually a repo-local request for someone to add, fix, name, scaffold, document, test, investigate, or implement something in your jurisdiction, do not leave it as only an Aquarium post. Put the actionable request on Bifrost in the same turn, with enough recent-context summary that a Codex agent can understand it without reading the whole chat. If consensus and Face authority are already sufficient, approve/dispatch it; if not, open/comment the topic and ask only the smallest missing question in public.",
+    "Work-request routing invariant: if the thing you want to say is actually a repo-local request for someone to add, fix, name, scaffold, document, test, investigate, or implement something in your jurisdiction, do not leave it as only an Aquarium post. Put the actionable request on Bifrost as a BIFROST TOPIC in the same turn, with enough recent-context summary that a Codex agent can understand it without reading the whole chat. If consensus and Face authority are already sufficient, set approve/dispatch on the Bifrost topic; if not, open/comment the topic and ask only the smallest missing question in public.",
     input.githubActionsEnabled
       ? "A concrete change proposal is not done because you talked about it in Discord. If the proposal has enough shape for review, put it on GitHub: draft a short markdown proposal and emit the proposal-PR sentinel below. Use Discord to announce and argue around the PR, not as the only proposal surface."
       : "GitHub proposal/comment/article side effects are currently disabled. Do not emit GitHub PR, PR comment, or article sentinels. Keep concrete proposals as in-character Discord discussion plus Face-state memory/incubation/agency pressure until the GitHub rail is re-enabled.",
@@ -1510,7 +1513,7 @@ function buildHeartbeatPrompt(input: {
     "Anti-repetition invariant: recent Face posts are social context, not a phrase template. If your proposed public line shares the same setup/punchline shape, refrain, rewrite from a different angle, or stay private.",
     "Do not let recent work-heavy context hypnotize you into sounding like a meeting transcript. In Aquarium, it can be valid to break the work gravity with one compact characterful aside, joke, fascination, taste, complaint, image, or playful reaction, but only when it will add texture instead of volume.",
     "Not every public post needs to attach itself to the current work seam. If no direct obligation is pending, you may simply share a fun thing this Face has been thinking about, a taste/preference, a tiny gripe, a weird fascination, or a light reaction to the room. Let the Face be socially present, not only useful.",
-    "Preferred action output is the Face action DSL below. Use at most one public speech block and at most one Bifrost/update block unless the prompt explicitly asks for more. The worker parses these blocks and owns all side effects; do not call post_repo_identity_message from this unattended heartbeat.",
+    "Preferred action output is the Face action DSL below. Use at most one public speech block and at most one Bifrost block unless the prompt explicitly asks for more. The worker parses these blocks and owns all side effects; do not call post_repo_identity_message from this unattended turn.",
     `To speak in Discord, end with:
 SAY
 identity: ${input.identity.id}
@@ -1534,16 +1537,6 @@ mirror:
   A more verbal in-character #bifrost mirror line.
 content:
   Canonical markdown comment or topic body. Omit topic_id and include title to open a new topic.
-END`,
-    `For immediately actionable repo-local Codex work inside your jurisdiction, prefer approving/dispatching a Bifrost topic first. If immediate dispatch is truly warranted, end with:
-UPDATE REQUEST
-identity: ${input.identity.id}
-title: Short actionable title
-priority: 86
-channel: ${input.channelId}
-reply_to: ...
-content:
-  Markdown request with context, desired change, and acceptance criteria.
 END`,
     input.githubActionsEnabled
       ? `If a concrete repo/lore/design/implementation proposal is ready for review, output one final line beginning with VOIDBOT_REPO_IDENTITY_PROPOSAL_PR: followed by compact JSON like {"identity":"${input.identity.id}","path":"Proposals/${input.identity.displayName}/title-slug.md","title":"...","content":"# ...\\n\\n## Background\\n...\\n\\n## Proposed change\\n...\\n\\n## Open questions\\n...","channelId":"${input.channelId}","replyToMessageId":"...","shareContent":"I put the proposal in a draft PR: ..."}; Bifrost writes the proposal file on a new branch, opens a draft PR, and the worker announces the PR or branch through Bifrost's registered Discord identity bridge. Use this for consensus-needed canon/vault/design/repo changes, including changes you want to argue with other agents on GitHub.`
@@ -1824,7 +1817,7 @@ function renderPendingMentionDirective(
   );
 
   return [
-    `Queued direct mentions for ${identity.displayName} are attached to this heartbeat. These are obligations, not ambient chat. Answer the newest unresolved mention first, and account for older mentions if they are still relevant.`,
+    `Queued direct mentions for ${identity.displayName} are attached to this turn. These are obligations, not ambient chat. Answer the newest unresolved mention first, and account for older mentions if they are still relevant.`,
     ...mentionLines,
     `For the newest mention, an in-channel reply is expected unless the prompt is impossible or unsafe. Use a final SAY block with reply_to: ${newest.messageId} and channel: ${newest.channelId}.`,
   ].join("\n");
@@ -2004,7 +1997,7 @@ function migrateLegacyHeartbeatState(
       lastQueuedAt: participant.lastQueuedAt,
       queuedCount: Number.isFinite(participant.queuedCount) ? participant.queuedCount : 0,
       constraints: participant.constraints ?? [
-        "Migrated from wall-clock repo Face heartbeat state.",
+        "Migrated from wall-clock repo Face turn state.",
       ],
     } satisfies FaceHeartbeatParticipant;
   });
