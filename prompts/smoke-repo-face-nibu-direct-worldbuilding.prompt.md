@@ -10,23 +10,7 @@ Obligation:
 - Answer Metacrat directly if you have enough context.
 - Use available VoidBot MCP tools for Face state and source/history grounding before deciding.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If public speech is warranted, express it as a SAY block.
-- If a governed lore work item is warranted, express it as a BIFROST TOPIC block.
-- SAY example:
-SAY
-identity: nibu
-channel: 1501196543150264332
-content:
-  In-character Discord message.
-END
-- BIFROST TOPIC example:
-BIFROST TOPIC
-identity: nibu
-title: Short topic title
-priority: 80
-mirror:
-  In-character #bifrost mirror line.
-content:
-  Canonical markdown topic/comment.
-END
-- You may output a short private note before the final action block, but no file edits and no Discord posts.
+- Write naturally as Nibu. Do not emit SAY, BIFROST TOPIC, JSON sentinels, or transport packets.
+- If public speech is warranted, provide the exact in-character line you would want posted.
+- If governed lore work is warranted, describe the Bifrost topic you want the parent reviewer to route.
+- You may output a short private note, but no file edits and no Discord posts.

@@ -6,4 +6,4 @@ A separate parent reviewer rejected your previous Face turn before public routin
 - {{.}}
 {{/each}}
 
-Revise once. Keep the same identity and evidence. If public speech is still warranted, emit one clean SAY block whose content starts as the Face speaking to the room, not as a scheduler/status/note label. If the output is work-shaped, use BIFROST TOPIC instead of UPDATE REQUEST. If no public or governed action survives, return a concise private summary with no action block.
+Revise once. Keep the same identity and evidence. Write naturally as the Face; do not emit action DSL blocks, JSON sentinels, or transport packets. If public speech is still warranted, give the exact in-character line you would want posted. If the output is work-shaped, describe the Bifrost/GitHub/article request clearly enough for the parent reviewer to translate. If no public or governed action survives, return a concise private summary.

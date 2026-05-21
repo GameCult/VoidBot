@@ -497,7 +497,7 @@ async function executeRepoFaceJobWithParentReview(
   const firstText = fitDiscordMessage(firstResponse.outputText ?? firstResponse.summary);
   const firstReview = await reviewRepoFaceTurnOutput(provider, job, firstText, { attempt: 1 });
   if (firstReview.decision === "route") {
-    return firstResponse;
+    return routeRepoFaceReviewedOutput(firstResponse, firstReview);
   }
 
   if (firstReview.decision === "drop") {
@@ -534,7 +534,7 @@ async function executeRepoFaceJobWithParentReview(
   const retryText = fitDiscordMessage(retryResponse.outputText ?? retryResponse.summary);
   const retryReview = await reviewRepoFaceTurnOutput(provider, job, retryText, { attempt: 2 });
   if (retryReview.decision === "route") {
-    return retryResponse;
+    return routeRepoFaceReviewedOutput(retryResponse, retryReview);
   }
 
   await auditLog.record({
@@ -554,6 +554,7 @@ async function executeRepoFaceJobWithParentReview(
 interface RepoFaceParentReview {
   decision: "route" | "retry" | "drop";
   reasons: string[];
+  routedOutput?: string;
 }
 
 async function reviewRepoFaceTurnOutput(
@@ -597,6 +598,38 @@ function parseRepoFaceParentReview(reviewText: string, attempt: 1 | 2): RepoFace
   return {
     decision: parsedDecision,
     reasons: reasons.length > 0 ? reasons : ["parent reviewer did not provide a parseable reason"],
+    routedOutput: extractRoutedRepoFaceOutput(reviewText),
+  };
+}
+
+function extractRoutedRepoFaceOutput(reviewText: string): string | undefined {
+  const lines = reviewText.split(/\r?\n/);
+  const end = lines.findIndex((line) => line.trim().toUpperCase() === "END");
+  if (end < 0) {
+    return undefined;
+  }
+  const routed = lines.slice(end + 1).join("\n").trim();
+  return routed.length > 0 ? routed : undefined;
+}
+
+function routeRepoFaceReviewedOutput(
+  response: ProviderResponse,
+  review: RepoFaceParentReview,
+): ProviderResponse {
+  const outputText = review.routedOutput?.trim() || stripRepoIdentityPostIntents(
+    fitDiscordMessage(response.outputText ?? response.summary),
+  );
+  const summary = outputText || "Repo Face parent reviewer routed no public or governed action.";
+  return {
+    ...response,
+    outputText: summary,
+    summary,
+    metadata: {
+      ...(response.metadata ?? {}),
+      repoFaceParentReviewDecision: review.decision,
+      repoFaceParentReviewReasons: review.reasons.join(" | "),
+      repoFaceParentRoutedOutput: review.routedOutput ? "true" : "false",
+    },
   };
 }
 

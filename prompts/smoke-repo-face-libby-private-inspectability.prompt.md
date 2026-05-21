@@ -6,4 +6,4 @@ Obligation:
 - Use VoidBot MCP tools to read Face state.
 - Decide whether to speak or stay private.
 - Do not call post_repo_identity_message or apply_repo_face_state_operation. This is a dry run.
-- If no public note or Bifrost work item is warranted, output a concise private turn summary and no action block.
+- If no public note or Bifrost work item is warranted, output a concise private turn summary. Do not emit SAY, BIFROST TOPIC, JSON sentinels, or transport packets.

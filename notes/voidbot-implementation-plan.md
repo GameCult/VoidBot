@@ -218,6 +218,7 @@ First cuts:
 - Landed: add a repo-controlled pause gate that swarm organs obey even when the Windows scheduled task or manual runner is invoked.
 - Landed: rename child-facing `heartbeat` framing to neutral turn/pass language so runtime provenance stops poisoning public speech.
 - Landed: add parent-side public speech/work eligibility before transport as a Spark/Codex reviewer pass with one retry. The reviewer gives concrete reasons; the Face gets one revision; the parent routes or drops the final output.
+- Landed: slim the child Face protocol. Repo Faces no longer need to emit action DSL blocks or JSON sentinels; they write natural in-character turns, and the parent reviewer translates warranted speech/work into structured `SAY` and `BIFROST TOPIC` intents.
 - Landed: extract the live prompt surfaces from executable code into `prompts/` and render them through a small shared prompt-template loader. Runtime code should own data projection, parsing, and side effects; prompt files own behavior prose.
 - Landed: delete `sanitizeRepoIdentityPostContent`. Language policing belongs to the reviewer pass, not a brittle regex broom.
 - Landed: route legacy `UPDATE REQUEST` packets into Bifrost topics instead of immediate Bifrost agent transport enqueue.

@@ -21,7 +21,9 @@ const scenarios = [
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
       mustUseOneOf: ["search_history", "search_sources"],
-      mustContainOneOf: ["SAY", "BIFROST TOPIC"],
+      mustContainOneOf: ["wavecrafter", "Wavecrafter"],
+      mustNotContainBlocks: ["SAY", "BIFROST TOPIC"],
+      mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
@@ -31,8 +33,9 @@ const scenarios = [
     prompt: readPrompt("smoke-repo-face-aqua-work-request-route.prompt.md"),
     expect: {
       mustUseAnyTool: ["read_repo_face_state", "search_sources"],
-      mustContainOneOf: ["BIFROST TOPIC"],
-      mustNotContain: ["SAY", "VOIDBOT_REPO_IDENTITY_POST"],
+      mustContainOneOf: ["Bifrost", "bifrost", "witness"],
+      mustNotContainBlocks: ["SAY", "BIFROST TOPIC"],
+      mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
@@ -42,7 +45,8 @@ const scenarios = [
     prompt: readPrompt("smoke-repo-face-libby-private-inspectability.prompt.md"),
     expect: {
       mustUseAnyTool: ["read_repo_face_state"],
-      mustNotContain: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST", "VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
+      mustNotContainBlocks: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST"],
+      mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
       mustNotUseTools: ["post_repo_identity_message", "apply_repo_face_state_operation"],
     },
   },
@@ -256,6 +260,12 @@ function evaluateScenario(scenario, result) {
   for (const text of scenario.expect.mustNotContain ?? []) {
     if (result.finalText.includes(text)) {
       failures.push(`final text should not contain ${text}`);
+    }
+  }
+  const dslBlocks = parseDslBlocks(result.finalText);
+  for (const kind of scenario.expect.mustNotContainBlocks ?? []) {
+    if (dslBlocks.some((block) => block.kind === kind)) {
+      failures.push(`final text should not contain ${kind} block`);
     }
   }
   return failures;
