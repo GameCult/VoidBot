@@ -551,7 +551,10 @@ async function executeRepoFaceJobWithInterpreter(
         attempt: 1,
       });
   if (firstInterpretation.decision === "route") {
-    return routeRepoFaceInterpretedOutput(firstResponse, firstInterpretation);
+    return routeRepoFaceInterpretedOutput(firstResponse, firstInterpretation, {
+      job,
+      faceOutputText: firstText,
+    });
   }
 
   if (firstInterpretation.decision === "drop") {
@@ -601,7 +604,10 @@ async function executeRepoFaceJobWithInterpreter(
         attempt: 2,
       });
   if (retryInterpretation.decision === "route") {
-    return routeRepoFaceInterpretedOutput(retryResponse, retryInterpretation);
+    return routeRepoFaceInterpretedOutput(retryResponse, retryInterpretation, {
+      job,
+      faceOutputText: retryText,
+    });
   }
 
   await auditLog.record({
@@ -729,10 +735,12 @@ function extractRoutedRepoFaceOutput(reviewText: string): string | undefined {
 function routeRepoFaceInterpretedOutput(
   response: ProviderResponse,
   interpretation: RepoFaceParentInterpretation,
+  input: { job: JobRecord; faceOutputText: string },
 ): ProviderResponse {
-  const outputText =
+  const rawOutputText =
     interpretation.routedOutput?.trim() ||
     stripRepoIdentityPostIntents(fitDiscordMessage(response.outputText ?? response.summary));
+  const outputText = normalizeInterpretedRepoFaceSpeechDestinations(rawOutputText, input);
   const summary = outputText || "Repo Face parent interpreter routed no public or governed action.";
   return {
     ...response,
@@ -745,6 +753,77 @@ function routeRepoFaceInterpretedOutput(
       repoFaceParentInterpretedOutput: interpretation.routedOutput ? "true" : "false",
     },
   };
+}
+
+function normalizeInterpretedRepoFaceSpeechDestinations(
+  outputText: string,
+  input: { job: JobRecord; faceOutputText: string },
+): string {
+  if (input.job.command !== "repo-face-rumination") {
+    return outputText;
+  }
+  if (repoFaceOutputHasExplicitSayChannel(input.faceOutputText)) {
+    return outputText;
+  }
+  if (!input.job.guildContext?.channelId) {
+    return outputText;
+  }
+
+  return rewriteRepoFaceSayChannels(outputText, "current_room");
+}
+
+function repoFaceOutputHasExplicitSayChannel(outputText: string): boolean {
+  return parseRepoFaceActionBlocks(outputText).some((block) =>
+    block.kind === "say" &&
+    Boolean(optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId))
+  );
+}
+
+function rewriteRepoFaceSayChannels(outputText: string, channelSelector: string): string {
+  const lines = outputText.split(/\r?\n/);
+  const rewritten: string[] = [];
+  let insideSay = false;
+  let sawChannel = false;
+
+  const insertChannelIfNeeded = (): void => {
+    if (insideSay && !sawChannel) {
+      rewritten.push(`channel: ${channelSelector}`);
+      sawChannel = true;
+    }
+  };
+
+  for (const line of lines) {
+    const kind = parseRepoFaceActionKind(line);
+    if (kind) {
+      insertChannelIfNeeded();
+      insideSay = kind === "say";
+      sawChannel = false;
+      rewritten.push(line);
+      continue;
+    }
+
+    if (insideSay && line.trim() === "END") {
+      insertChannelIfNeeded();
+      insideSay = false;
+      rewritten.push(line);
+      continue;
+    }
+
+    if (insideSay && /^channel(?:Id)?:/i.test(line.trim())) {
+      rewritten.push(`channel: ${channelSelector}`);
+      sawChannel = true;
+      continue;
+    }
+
+    rewritten.push(line);
+    if (insideSay && /^identity:/i.test(line.trim()) && !sawChannel) {
+      rewritten.push(`channel: ${channelSelector}`);
+      sawChannel = true;
+    }
+  }
+
+  insertChannelIfNeeded();
+  return rewritten.join("\n");
 }
 
 function parseInterpretationBlock(interpretationText: string): Record<string, string> {
@@ -1041,7 +1120,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  const requestedChannelId = intent.channelId ?? job.outputChannelId;
+  const requestedChannelId = intent.channelId ?? repoIdentityDefaultSpeechChannel(job);
   const channelId = normalizeRepoIdentitySpeechChannel(identity, job, requestedChannelId);
   if (!channelId) {
     console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
@@ -1049,7 +1128,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   }
   if (requestedChannelId && requestedChannelId !== channelId) {
     console.warn(
-      `Coerced repo identity ${identity.id} speech for job ${job.id} from owner DM alias to output channel ${channelId}.`,
+      `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
     );
   }
   if (isOwnerDmChannelAlias(channelId)) {
@@ -2491,11 +2570,25 @@ function isOwnerDmChannelAlias(channelId: string): boolean {
   return ["owner", "dm", "owner_dm", "private", "meta"].includes(channelId.trim().toLowerCase());
 }
 
+function isCurrentRoomChannelAlias(channelId: string): boolean {
+  return ["current", "current_room", "room", "here"].includes(channelId.trim().toLowerCase());
+}
+
+function repoIdentityDefaultSpeechChannel(job: JobRecord): string | undefined {
+  return job.guildContext?.channelId && !isOwnerDmChannelAlias(job.guildContext.channelId)
+    ? job.guildContext.channelId
+    : job.outputChannelId;
+}
+
 function normalizeRepoIdentitySpeechChannel(
   identity: { channelPermissions?: Array<{ channelId: string; label?: string }> },
   job: JobRecord,
   requestedChannelId: string | undefined,
 ): string | undefined {
+  if (requestedChannelId && isCurrentRoomChannelAlias(requestedChannelId)) {
+    return repoIdentityDefaultSpeechChannel(job);
+  }
+
   const explicitChannelId = resolveRepoIdentityChannelSelector(identity, requestedChannelId);
   if (explicitChannelId) {
     return explicitChannelId;
@@ -2509,9 +2602,7 @@ function normalizeRepoIdentitySpeechChannel(
     return requestedChannelId;
   }
 
-  return job.outputChannelId && !isOwnerDmChannelAlias(job.outputChannelId)
-    ? job.outputChannelId
-    : undefined;
+  return repoIdentityDefaultSpeechChannel(job);
 }
 
 function resolveRepoIdentityChannelSelector(
