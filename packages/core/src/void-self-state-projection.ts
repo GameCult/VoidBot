@@ -180,11 +180,20 @@ export function renderVoidSelfStateSummary(
     .sort((left, right) => right.priority - left.priority)
     .slice(0, 4)
     .map((value) => value.label);
-  const memories = state.thoughtMemory.memories
-    .filter((memory) => !memory.retiredAt)
+  const activeMemories = state.thoughtMemory.memories
+    .filter((memory) => !memory.retiredAt);
+  const memories = activeMemories
     .slice(-6)
     .reverse()
     .map((memory) => renderTypedMemory(memory, identityName));
+  const detailedMemoryIds = new Set(
+    activeMemories
+      .slice(-6)
+      .map((memory) => memory.memoryId),
+  );
+  const memoryAnchors = activeMemories
+    .filter((memory) => !detailedMemoryIds.has(memory.memoryId))
+    .map((memory) => renderTypedMemoryAnchor(memory));
   const shortTermMemories = state.thoughtMemory.shortTerm
     .slice(-6)
     .reverse()
@@ -239,6 +248,9 @@ export function renderVoidSelfStateSummary(
     memories.length > 0
       ? [`- What ${identityName} remembers:`, ...memories].join("\n")
       : `- What ${identityName} remembers: nothing durable yet.`,
+    memoryAnchors.length > 0
+      ? [`- Other durable memory anchors still in reach:`, ...memoryAnchors].join("\n")
+      : `- Other durable memory anchors still in reach: none.`,
     shortTermMemories.length > 0
       ? ["- Short-term residue awaiting sleep:", ...shortTermMemories].join("\n")
       : "- Short-term residue awaiting sleep: none.",
@@ -427,6 +439,22 @@ function renderTypedMemory(
     lines.push(`  How it should change the next move: ${memory.actionImplication}`);
   }
   return lines.join("\n");
+}
+
+function renderTypedMemoryAnchor(
+  memory: VoidThoughtMemory["memories"][number],
+): string {
+  const target = memory.target.label ?? memory.target.id;
+  const summary = truncateOptionalText(memory.summary, 180) ?? memory.summary;
+  const tags = memory.tags
+    .filter((tag) =>
+      tag.startsWith("repo:") ||
+      tag.startsWith("topic:") ||
+      tag.startsWith("value:") ||
+      tag.startsWith("identity:")
+    )
+    .slice(0, 4);
+  return `- ${target}: ${summary}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`;
 }
 
 function renderTypedIncubationThread(thread: VoidThoughtMemory["incubation"][number]): string {
