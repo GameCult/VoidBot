@@ -505,16 +505,19 @@ async function queueRepoFaceTurn(input: {
         bifrostRoot: input.config.bifrostRoot,
         repoName: identity.repoName,
         agentIdentity: identity.id,
-      })
+    })
     : undefined;
+  const roomContext = {
+    recentMessages,
+    channelSnapshots,
+  };
+  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
   const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
     identity,
     input.config,
     input.registryIdentities,
-    {
-      recentMessages,
-      channelSnapshots,
-    },
+    roomContext,
+    humanPronounGuidance,
   );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
@@ -533,6 +536,7 @@ async function queueRepoFaceTurn(input: {
     memorySurface,
     repoActivitySurface,
     conversationMemorySurface,
+    humanPronounGuidance,
     bifrostDigest,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
@@ -1576,6 +1580,7 @@ function buildHeartbeatPrompt(input: {
   memorySurface?: string;
   repoActivitySurface?: string;
   conversationMemorySurface?: string;
+  humanPronounGuidance?: RepoFaceHumanPronounGuidance[];
   bifrostDigest?: BifrostGovernanceDigest;
   participant: FaceHeartbeatParticipant;
   pendingMentions: RepoFacePendingMention[];
@@ -1591,6 +1596,8 @@ function buildHeartbeatPrompt(input: {
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
+    humanPronounDirective: renderRepoFaceHumanPronounFacts(input.humanPronounGuidance ?? [])
+      ?? "Known human pronoun guidance:\n- No explicit human pronoun guidance is attached for this turn. Use names or neutral phrasing instead of guessing.",
     roomWeatherDirective: renderRepoFaceRoomWeatherDirective(input.identity, {
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
@@ -1671,12 +1678,20 @@ async function assembleRepoFaceTurnPrompt(input: {
         })
       : Promise.resolve(undefined),
   ]);
+  const roomContext = {
+    recentMessages,
+    channelSnapshots,
+  };
+  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
   const memorySurface = input.memorySurfacePath
     ? await readOptionalMemorySurface(input.memorySurfacePath)
-    : await renderRepoFaceMemorySurfaceForTurn(identity, input.config, registry.identities, {
-        recentMessages,
-        channelSnapshots,
-      });
+    : await renderRepoFaceMemorySurfaceForTurn(
+        identity,
+        input.config,
+        registry.identities,
+        roomContext,
+        humanPronounGuidance,
+      );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
@@ -1700,6 +1715,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurface,
     repoActivitySurface,
     conversationMemorySurface,
+    humanPronounGuidance,
     bifrostDigest,
     participant,
     pendingMentions: [],
@@ -1731,16 +1747,16 @@ async function renderRepoFaceMemorySurfaceForTurn(
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
+  humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
 ): Promise<string> {
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(config, roomContext);
   const statePacket = renderRepoFaceStatePacket(
     identity,
     typedState,
     registryIdentities,
     roomContext,
-    humanPronounGuidance,
+    humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
   );
   if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
     return rejectLeakyMemorySurface(statePacket);
@@ -2378,7 +2394,7 @@ function repoFacePronounGuidanceFromProfile(
 
   const evidence = [...profile.pronounEvidence]
     .filter((entry) => entry.stance === "prefer" || entry.stance === "avoid")
-    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0];
+    .sort((left, right) => pronounEvidenceRank(profile, right) - pronounEvidenceRank(profile, left))[0];
 
   return {
     actorId,
@@ -2389,6 +2405,22 @@ function repoFacePronounGuidanceFromProfile(
     confidence: profile.pronounConfidence,
     evidenceExcerpt: evidence?.excerpt,
   };
+}
+
+function pronounEvidenceRank(profile: InteractionMemoryProfile, entry: InteractionMemoryProfile["pronounEvidence"][number]): number {
+  const sourceRank: Record<string, number> = {
+    explicit_self_statement: 10_000,
+    explicit_correction: 9_000,
+    direct_third_party_statement: 7_000,
+    contextual_relational_inference: 3_000,
+    ambient_usage: 1_000,
+  };
+  const resolvedSetBonus = profile.resolvedPronounSets.includes(entry.pronounSet) ? 50_000 : 0;
+  const stanceBonus = entry.stance === "prefer" ? 1_000 : 0;
+  const confidenceBonus = Math.round(entry.confidence * 100);
+  const timestampMs = Date.parse(entry.timestamp);
+  const recencyBonus = Number.isFinite(timestampMs) ? timestampMs / 10_000_000_000 : 0;
+  return resolvedSetBonus + (sourceRank[entry.source] ?? 0) + stanceBonus + confidenceBonus + recencyBonus;
 }
 
 function renderRepoFaceHumanPronounFacts(

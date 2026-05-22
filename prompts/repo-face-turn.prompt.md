@@ -14,6 +14,8 @@ Recent home repo activity:
 Recent conversation transcript:
 {{conversationMemorySurface}}
 
+{{humanPronounDirective}}
+
 Current room weather:
 {{roomWeatherDirective}}
 
@@ -58,6 +60,8 @@ Fresh projected state for this turn:
 
 What you remember, feel, and want right now:
 {{memorySurface}}
+
+{{humanPronounDirective}}
 
 Write naturally as {{displayName}}. Do not write forms, machine packets, or hidden commands.
 
