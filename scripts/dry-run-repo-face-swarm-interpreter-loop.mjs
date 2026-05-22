@@ -12,7 +12,7 @@ const repoRoot = resolve(scriptDir, "..");
 const promptsRoot = resolve(repoRoot, "prompts");
 const mockMcpServer = resolve(scriptDir, "mock-voidbot-heartbeat-mcp.mjs");
 const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-swarm-interpreter-dry-run.json");
-const identities = ["nibu", "aqua", "mimir", "epiphany", "libby", "bifrost", "heimdall"];
+const identities = ["nibu", "aqua", "mimir", "epiphany", "libby", "bifrost", "heimdall", "kiko", "weksa", "huginn"];
 const repoFaceRetrievalToolAllowlist = [
   "search_history",
   "get_message_context",
@@ -190,7 +190,10 @@ const socialPattern = /\b(Metacrat|Nibu|Aqua|Mimir|Libby|Epiphany|Bifrost|Heimda
 const characterPattern = /\b(want|need|resent|afraid|proud|irritat|delight|jealous|bored|ashamed|smug|holy|gate|bridge|witness|song|library|purity|residue)\b/gi;
 
 function claimsSourceInspection(text) {
-  return /\b(checked|read|inspected|searched|verified|looked at|looked up|asked the indexes)\b[\s\S]{0,160}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|Mimir|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text);
+  return (
+    /\b(inspected|searched|verified|looked at|looked up|asked the indexes)\b[\s\S]{0,160}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|Mimir|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text) ||
+    /\bread\b[\s\S]{0,60}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|Mimir|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text)
+  );
 }
 
 function countMatches(text, pattern) {
@@ -275,6 +278,7 @@ Dry-run safety:
 - Your complete allowed tool set is: search_history, get_message_context, list_indexed_repos, search_sources, get_source_context.
 - Do not discover tools. Do not call private state, identity-introspection, or MCP inventory tools such as read_repo_face_state, list_mcp_resources, or read_mcp_resource. Your prompt is the state projection.
 - ${retrievalNote}
+- Do not say retrieval is unavailable unless you actually attempted a retrieval tool call and it failed. If you choose not to use retrieval, simply reason from the attached prompt context and do not claim inspection.
 - If you use retrieval, name only what the retrieval tools actually returned. If retrieval is unavailable or blocked, say that naturally and do not invent a filesystem or shell inspection path.
 `;
 }

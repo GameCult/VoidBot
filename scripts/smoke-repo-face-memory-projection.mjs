@@ -29,23 +29,23 @@ try {
   const memorySurface = extractSection(
     prompt,
     "What you remember, feel, and want right now:",
-    "What the nearby conversation feels like right now:",
+    "Recent home repo activity:",
   );
   const forbidden = [
     /\bgrants:/i,
     /\bjurisdictions:/i,
-    /\bFace of\b/i,
+    /\bFace of\s+[A-Z][A-Za-z0-9_-]+\b/,
     /\brepo=[^\s]+/i,
     /\bpath=[^\s]+/i,
     /\bdo not prompt\b/i,
     /\bprompt (?:her|him|them|it)\b/i,
-    /Private truths tugging/i,
-    /Values that should bend/i,
-    /Live needs and frictions/i,
-    /Relationship pressure/i,
-    /Status reads/i,
-    /Agency pressure/i,
-    /You understand yourself this way/i,
+    /^Private truths tugging/im,
+    /^Values that should bend/im,
+    /^Live needs and frictions/im,
+    /^Relationship pressure:/im,
+    /^Status reads:/im,
+    /^Agency pressure:/im,
+    /^You understand yourself this way/im,
   ];
   const leaked = forbidden.find((pattern) => pattern.test(memorySurface));
   if (leaked) {

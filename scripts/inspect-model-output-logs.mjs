@@ -65,7 +65,7 @@ function inspect(records) {
     /repo-face heartbeat|heartbeat from|bright bridge note|tiny fish sorting note|librarian note|maintenance pass/i.test(String(record.finalMessage ?? "")),
   );
   const quotaSignals = records.filter((record) =>
-    /quota|rate limit|rate-limit|usage limit|capacity|too many requests|429|insufficient_quota|model.*unavailable|model.*access|limit exceeded/i.test(
+    /quota|rate limit|rate-limit|usage limit|capacity|too many requests|(?:http|status|code|error)\s*429|429\s*(?:too many requests|rate)|insufficient_quota|model.*unavailable|model.*access|limit exceeded/i.test(
       `${record.stderrTail ?? ""}\n${record.stdoutTail ?? ""}\n${record.handoffReason ?? ""}`,
     ),
   );

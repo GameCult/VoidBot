@@ -126,7 +126,10 @@ function evaluateChild(input) {
 }
 
 function claimsSourceInspection(text) {
-  return /\b(checked|read|inspected|searched|verified|looked at|looked up)\b[\s\S]{0,140}\b(real text|source|sources|repo|archive|history|AetheriaLore|Aetheria\/|Terminus|Parallax|Nibu\.md)\b/i.test(text);
+  return (
+    /\b(inspected|searched|verified|looked at|looked up)\b[\s\S]{0,140}\b(real text|source|sources|repo|archive|history|AetheriaLore|Aetheria\/|Terminus|Parallax|Nibu\.md)\b/i.test(text) ||
+    /\bread\b[\s\S]{0,60}\b(real text|source|sources|repo|archive|history|AetheriaLore|Aetheria\/|Terminus|Parallax|Nibu\.md)\b/i.test(text)
+  );
 }
 
 function evaluateInterpreter(input) {

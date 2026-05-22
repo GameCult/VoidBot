@@ -1966,7 +1966,7 @@ function rejectLeakyMemorySurface(surface: string): string {
   const leaks = [
     /\bgrants:/i,
     /\bjurisdictions:/i,
-    /\bFace of\b/i,
+    /\bFace of\s+[A-Z][A-Za-z0-9_-]+\b/,
     /\brepo=[^\s]+/i,
     /\bpath=[^\s]+/i,
     /\bdo not prompt\b/i,
