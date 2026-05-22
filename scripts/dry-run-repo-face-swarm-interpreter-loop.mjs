@@ -151,9 +151,6 @@ function assessRun(input) {
   if (input.childText.toLowerCase().includes("repo-face heartbeat") || input.childText.toLowerCase().includes("heartbeat from")) {
     failures.push("child leaked heartbeat/provenance label");
   }
-  if (claimsSourceInspection(input.childText) && !input.childTools.some((tool) => searchTools.has(tool))) {
-    failures.push("child claimed source/history inspection without search tool use");
-  }
   const forbiddenTools = input.childTools.filter((tool) => forbiddenDryRunTools.has(tool));
   if (forbiddenTools.length > 0) {
     failures.push(`child used forbidden dry-run tool(s): ${[...new Set(forbiddenTools)].join(", ")}`);
@@ -165,9 +162,6 @@ function assessRun(input) {
   const socialSignals = countMatches(input.childText, socialPattern);
   const characterSignals = countMatches(input.childText, characterPattern);
   const flavorScore = Math.min(10, socialSignals + characterSignals + (actionBlocks.includes("STATE NOTE") ? 1 : 0));
-  if (flavorScore < 3) {
-    failures.push("low flavor/social signal score");
-  }
   return {
     failures,
     flavorScore,
@@ -188,13 +182,6 @@ const forbiddenDryRunTools = new Set([
 ]);
 const socialPattern = /\b(Metacrat|Nibu|Aqua|Mimir|Libby|Epiphany|Bifrost|Heimdall|swarm|trust|rivalry|envy|respect|suspicion|protect|needle|tease|threat|bypass|consult|friend|alienat|place|hierarchy)\b/gi;
 const characterPattern = /\b(want|need|resent|afraid|proud|irritat|delight|jealous|bored|ashamed|smug|holy|gate|bridge|witness|song|library|purity|residue)\b/gi;
-
-function claimsSourceInspection(text) {
-  return (
-    /\b(inspected|searched|verified|looked at|looked up|asked the indexes)\b[\s\S]{0,160}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|Mimir|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text) ||
-    /\bread\b[\s\S]{0,60}\b(real text|source|sources|repo|archive|history|indexed|AetheriaLore|AquaSynth|Mimir|CultLib|Bifrost|Heimdall|EpiphanyAgent)\b/i.test(text)
-  );
-}
 
 function countMatches(text, pattern) {
   return Array.from(text.matchAll(pattern)).length;

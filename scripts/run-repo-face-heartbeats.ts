@@ -2220,7 +2220,7 @@ function runCodexTextProjectionWithModels(input: {
 
 function isRetryableProjectionModelFailure(input: { stdout: string; stderr: string }): boolean {
   const text = `${input.stdout}\n${input.stderr}`.toLowerCase();
-  return /quota|rate limit|rate-limit|usage limit|capacity|too many requests|429|insufficient_quota|model.*unavailable|model.*access|limit exceeded/.test(text);
+  return /quota|rate limit|rate-limit|usage limit|capacity|too many requests|(?:http|status|code|error)\s*429|429\s*(?:too many requests|rate)|insufficient_quota|model.*unavailable|model.*access|limit exceeded/.test(text);
 }
 
 async function appendProjectionModelOutputLog(input: {
