@@ -54,6 +54,13 @@ async function main(): Promise<void> {
         channelId,
         limit: options.limit,
       });
+  const explicitLiveMessages = options.archiveOnly || !channelId || options.messageIds.length === 0
+    ? []
+    : await fetchExplicitLiveDiscordMessages({
+        token: requireBotToken(config.botToken),
+        channelId,
+        messageIds: options.messageIds,
+      });
   const archiveMessages = options.discordOnly
     ? []
     : await fetchArchivedMessages({
@@ -61,8 +68,19 @@ async function main(): Promise<void> {
         channelId,
         limit: Math.max(options.limit, options.messageIds.length),
       });
+  const explicitArchiveMessages = options.discordOnly || options.messageIds.length === 0
+    ? []
+    : await fetchExplicitArchivedMessages({
+        archiveRepository,
+        messageIds: options.messageIds,
+      });
 
-  const candidates = selectCandidates([...liveMessages, ...archiveMessages], options);
+  const candidates = selectCandidates([
+    ...liveMessages,
+    ...explicitLiveMessages,
+    ...archiveMessages,
+    ...explicitArchiveMessages,
+  ], options);
   const uniqueCandidates = dedupeCandidates(candidates);
 
   printPlan(uniqueCandidates, options);
@@ -222,6 +240,51 @@ async function fetchLiveDiscordMessages(input: {
   })).filter((message) => message.id && message.channelId);
 }
 
+async function fetchExplicitLiveDiscordMessages(input: {
+  token: string;
+  channelId: string;
+  messageIds: string[];
+}): Promise<CandidateMessage[]> {
+  const messages: CandidateMessage[] = [];
+
+  for (const messageId of input.messageIds) {
+    const response = await fetch(`https://discord.com/api/v10/channels/${input.channelId}/messages/${messageId}`, {
+      headers: {
+        Authorization: `Bot ${input.token}`,
+      },
+    });
+
+    if (response.status === 404) {
+      messages.push({
+        id: messageId,
+        channelId: input.channelId,
+        timestamp: "",
+        content: "",
+        source: "live",
+      });
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Discord explicit fetch failed for ${messageId} with ${response.status}: ${await response.text()}`);
+    }
+
+    const payload = await response.json();
+    messages.push({
+      id: readPayloadString(payload, "id"),
+      channelId: readPayloadString(payload, "channel_id") || input.channelId,
+      timestamp: readPayloadString(payload, "timestamp"),
+      authorId: readPayloadString(payload?.author, "id"),
+      authorName: readPayloadString(payload?.author, "global_name") ||
+        readPayloadString(payload?.author, "username"),
+      content: readPayloadString(payload, "content"),
+      source: "live",
+    });
+  }
+
+  return messages;
+}
+
 async function fetchArchivedMessages(input: {
   archiveRepository: FileMessageArchiveRepository;
   channelId?: string;
@@ -240,6 +303,31 @@ async function fetchArchivedMessages(input: {
     content: message.content,
     source: "archive",
   }));
+}
+
+async function fetchExplicitArchivedMessages(input: {
+  archiveRepository: FileMessageArchiveRepository;
+  messageIds: string[];
+}): Promise<CandidateMessage[]> {
+  const messages: CandidateMessage[] = [];
+
+  for (const messageId of input.messageIds) {
+    const message = await input.archiveRepository.get(messageId);
+    if (!message || message.deletedAt) {
+      continue;
+    }
+    messages.push({
+      id: message.id,
+      channelId: message.channelId,
+      timestamp: message.timestamp,
+      authorId: message.authorId,
+      authorName: message.authorName,
+      content: message.content,
+      source: "archive",
+    });
+  }
+
+  return messages;
 }
 
 function selectCandidates(messages: CandidateMessage[], options: CliOptions): CandidateMessage[] {
@@ -276,11 +364,23 @@ function dedupeCandidates(candidates: CandidateMessage[]): CandidateMessage[] {
   const byId = new Map<string, CandidateMessage>();
   for (const candidate of candidates) {
     const existing = byId.get(candidate.id);
-    if (!existing || existing.source === "archive") {
+    if (!existing || shouldReplaceCandidate(existing, candidate)) {
       byId.set(candidate.id, candidate);
     }
   }
   return [...byId.values()].sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+}
+
+function shouldReplaceCandidate(existing: CandidateMessage, candidate: CandidateMessage): boolean {
+  const existingHasBody = existing.timestamp.length > 0 || existing.content.trim().length > 0;
+  const candidateHasBody = candidate.timestamp.length > 0 || candidate.content.trim().length > 0;
+  if (!existingHasBody && candidateHasBody) {
+    return true;
+  }
+  if (existing.source === "archive" && candidate.source === "live" && candidateHasBody) {
+    return true;
+  }
+  return false;
 }
 
 function printPlan(candidates: CandidateMessage[], options: CliOptions): void {
@@ -292,7 +392,7 @@ function printPlan(candidates: CandidateMessage[], options: CliOptions): void {
   for (const candidate of candidates) {
     console.log([
       candidate.id,
-      candidate.timestamp,
+      candidate.timestamp || "missing-live-message",
       `channel=${candidate.channelId}`,
       `source=${candidate.source}`,
       `${candidate.authorName ?? "unknown"} (${candidate.authorId ?? "unknown"})`,
