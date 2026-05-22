@@ -2628,6 +2628,7 @@ function renderRepoFaceConversationTranscript(input: {
     "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Face.",
     "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
     "If you answer the live conversation, default to the current room unless a human explicitly asks to move elsewhere.",
+    "Message IDs are shown so a public reply can target the message that gives it context. If you revive an older side thread, either reply_to that message id or include enough context in your message for readers to know what you mean.",
   ].join("\n"));
   const chronology = renderVisibleConversationChronology(input);
   if (chronology) {
@@ -2691,7 +2692,7 @@ function renderVisibleConversationChronology(input: {
     "Visible cross-channel chronology, oldest to newest:",
     ...messages.map((message) => {
       const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-      return `- [${message.channelLabel}] ${speaker}: ${collapseWhitespace(message.content, 700)}`;
+      return `- [${message.channelLabel}] ${speaker} (message ${message.id}): ${collapseWhitespace(message.content, 700)}`;
     }),
   ].join("\n");
 }
@@ -2752,7 +2753,7 @@ function formatConversationMessages(messages: SourceMessage[], limit: number): s
   }
   return messages.slice(-limit).map((message) => {
     const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-    return `- ${speaker}: ${collapseWhitespace(message.content, 900)}`;
+    return `- ${speaker} (message ${message.id}): ${collapseWhitespace(message.content, 900)}`;
   });
 }
 
