@@ -70,6 +70,19 @@ interface ActiveTurnScan {
   staleRecovered: StaleActiveTurn[];
 }
 
+interface IdleCoolingSnapshot {
+  enabled: boolean;
+  active: boolean;
+  reason?: string;
+  checkedChannelIds: string[];
+  lastHumanActivityAt?: string;
+  idleForMinutes?: number;
+  idleAfterMinutes: number;
+  recoveryMinutes: number;
+  lastUnpromptedTurnQueuedAt?: string;
+  nextUnpromptedTurnAllowedAt?: string;
+}
+
 interface StaleActiveTurn {
   identityId: string;
   jobId: string;
@@ -230,12 +243,19 @@ async function main(): Promise<void> {
   );
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
+  const idleCooling = await readIdleCoolingSnapshot({
+    config,
+    identities: registry.identities,
+    state,
+    now,
+  });
 
   const selected = selectReadyParticipants(
     state,
     config.repoFaceHeartbeats.maxJobsPerTick,
     completedThisTick,
     restStates,
+    idleCooling,
   );
   const queuedIdentityIds: string[] = [];
 
@@ -347,6 +367,7 @@ async function main(): Promise<void> {
       selected: selected.map((entry) => entry.identityId),
       queued: queuedIdentityIds,
       statePath: config.repoFaceHeartbeats.statePath,
+      idleCooling,
     })}\n`,
   );
 }
@@ -1311,6 +1332,7 @@ function selectReadyParticipants(
   maxJobs: number,
   completedThisTick: Set<string>,
   restStates: Map<string, RepoFaceRestSnapshot>,
+  idleCooling: IdleCoolingSnapshot,
 ): FaceHeartbeatParticipant[] {
   const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
   const eligible = state.participants
@@ -1333,7 +1355,7 @@ function selectReadyParticipants(
     return [];
   }
 
-  return eligible
+  const ready = eligible
     .filter((participant) => participant.nextTurnAt <= state.initiativeClock)
     .sort((left, right) => {
       const pendingDelta =
@@ -1353,8 +1375,20 @@ function selectReadyParticipants(
         return right.effectiveSpeed - left.effectiveSpeed;
       }
       return left.identityId.localeCompare(right.identityId);
-    })
-    .slice(0, maxJobs);
+    });
+
+  if (!idleCooling.enabled || !idleCooling.active) {
+    return ready.slice(0, maxJobs);
+  }
+
+  const mentioned = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) > 0);
+  const unprompted = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) === 0);
+  const coolingAllowsUnpromptedTurn =
+    !idleCooling.nextUnpromptedTurnAllowedAt ||
+    Date.parse(idleCooling.nextUnpromptedTurnAllowedAt) <= Date.now();
+  const cooled = coolingAllowsUnpromptedTurn && mentioned.length < maxJobs ? unprompted.slice(0, 1) : [];
+
+  return [...mentioned, ...cooled].slice(0, maxJobs);
 }
 
 function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Date): void {
@@ -1426,6 +1460,111 @@ function countPendingMentionsByIdentity(
     counts.set(mention.identityId, (counts.get(mention.identityId) ?? 0) + 1);
   }
   return counts;
+}
+
+async function readIdleCoolingSnapshot(input: {
+  config: ReturnType<typeof loadConfig>;
+  identities: RepoDiscordIdentity[];
+  state: FaceHeartbeatState;
+  now: Date;
+}): Promise<IdleCoolingSnapshot> {
+  const policy = input.config.repoFaceHeartbeats.idleCooling;
+  const checkedChannelIds = collectIdleCoolingChannelIds(input.config, input.identities);
+  const base = {
+    enabled: policy.enabled,
+    active: false,
+    checkedChannelIds,
+    idleAfterMinutes: policy.idleAfterMinutes,
+    recoveryMinutes: policy.recoveryMinutes,
+    lastUnpromptedTurnQueuedAt: newestUnpromptedTurnQueuedAt(input.state),
+  };
+
+  if (!policy.enabled) {
+    return { ...base, reason: "disabled" };
+  }
+  if (!input.config.botToken) {
+    return { ...base, reason: "missing_discord_bot_token" };
+  }
+  if (checkedChannelIds.length === 0) {
+    return { ...base, reason: "no_watched_discord_channels" };
+  }
+
+  let newestHumanActivityAt: string | undefined;
+  const fetchErrors: string[] = [];
+  for (const channelId of checkedChannelIds) {
+    try {
+      const messages = await fetchRecentDiscordMessages({
+        botToken: input.config.botToken,
+        channelId,
+        limit: 10,
+      });
+      for (const message of messages) {
+        if (message.isBot || !message.content.trim()) {
+          continue;
+        }
+        const timestampMs = Date.parse(message.timestamp);
+        const newestMs = Date.parse(newestHumanActivityAt ?? "");
+        if (Number.isFinite(timestampMs) && (!Number.isFinite(newestMs) || timestampMs > newestMs)) {
+          newestHumanActivityAt = message.timestamp;
+        }
+      }
+    } catch (error) {
+      fetchErrors.push(`${channelId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const lastUnpromptedTurnQueuedAt = base.lastUnpromptedTurnQueuedAt;
+  const lastUnpromptedTurnQueuedMs = Date.parse(lastUnpromptedTurnQueuedAt ?? "");
+  const nextUnpromptedTurnAllowedAt = Number.isFinite(lastUnpromptedTurnQueuedMs)
+    ? new Date(lastUnpromptedTurnQueuedMs + policy.recoveryMinutes * 60_000).toISOString()
+    : undefined;
+
+  if (!newestHumanActivityAt) {
+    return {
+      ...base,
+      active: true,
+      reason: fetchErrors.length > 0 ? "activity_fetch_failed_or_no_human_messages" : "no_recent_human_messages",
+      nextUnpromptedTurnAllowedAt,
+    };
+  }
+
+  const idleForMinutes = Math.max(0, (input.now.getTime() - Date.parse(newestHumanActivityAt)) / 60_000);
+  return {
+    ...base,
+    active: idleForMinutes >= policy.idleAfterMinutes,
+    reason: fetchErrors.length > 0 ? "partial_activity_fetch_failure" : undefined,
+    lastHumanActivityAt: newestHumanActivityAt,
+    idleForMinutes: round3(idleForMinutes),
+    nextUnpromptedTurnAllowedAt,
+  };
+}
+
+function collectIdleCoolingChannelIds(
+  config: ReturnType<typeof loadConfig>,
+  identities: RepoDiscordIdentity[],
+): string[] {
+  return Array.from(new Set([
+    config.repoFaceHeartbeats.defaultChannelId,
+    config.bifrostDiscordChannelId,
+    ...config.indexedChannelIds,
+    ...identities.flatMap((identity) => getRepoDiscordIdentityAllowedChannelIds(identity)),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
+}
+
+function newestUnpromptedTurnQueuedAt(state: FaceHeartbeatState): string | undefined {
+  for (const entry of [...state.history].reverse()) {
+    if (entry.type !== "queued" && entry.type !== "dry_run_selected") {
+      continue;
+    }
+    if (typeof entry.queuedAt !== "string") {
+      continue;
+    }
+    if (typeof entry.pendingMentionCount === "number" && entry.pendingMentionCount > 0) {
+      continue;
+    }
+    return entry.queuedAt;
+  }
+  return undefined;
 }
 
 function buildHeartbeatPrompt(input: {

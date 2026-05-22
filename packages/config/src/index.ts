@@ -115,6 +115,9 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES: z.coerce.number().positive().default(10),
   REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
+  REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED: booleanFromEnv.default(true),
+  REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(30),
+  REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(30),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.3-codex-spark"),
@@ -174,6 +177,11 @@ export interface AppConfig {
     defaultChannelId?: string;
     baseRecoveryMinutes: number;
     globalHeat: number;
+    idleCooling: {
+      enabled: boolean;
+      idleAfterMinutes: number;
+      recoveryMinutes: number;
+    };
     speedOverrides: Record<string, number>;
     heatOverrides: Record<string, number>;
     codexModel?: string;
@@ -400,6 +408,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       defaultChannelId: parsed.REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID,
       baseRecoveryMinutes: parsed.REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES,
       globalHeat: parsed.REPO_FACE_HEARTBEAT_GLOBAL_HEAT,
+      idleCooling: {
+        enabled: parsed.REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED,
+        idleAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES,
+        recoveryMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES,
+      },
       speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
       heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
       codexModel: parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL,
