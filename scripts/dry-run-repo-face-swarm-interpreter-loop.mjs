@@ -78,25 +78,119 @@ async function main() {
     const interpreterEvents = parseJsonEvents(interpreterRun.stdout);
     const interpreterText = extractFinalText(interpreterEvents, interpreterRun.stdout);
     const parsed = parseInterpreterOutput(interpreterText);
-    const assessment = assessRun({ identity, childText, childTools, interpreterRun, childRun, parsed });
+
+    let finalChildRun = childRun;
+    let finalChildText = childText;
+    let finalChildTools = childTools;
+    let finalInterpreterRun = interpreterRun;
+    let finalInterpreterText = interpreterText;
+    let finalParsed = parsed;
+    let retry;
+
+    if (parsed.decision === "retry") {
+      process.stderr.write(`[dry-run] retry face turn ${identity}\n`);
+      const retryPrompt = renderRetryPrompt({
+        originalPrompt: facePrompt,
+        reasons: [parsed.reason ?? "Interpreter requested one revision."],
+      });
+      const retryLogPath = resolve(repoRoot, ".voidbot", "status", "mock-mcp", `swarm-dry-run-${identity}-retry-${Date.now()}.jsonl`);
+      await rm(retryLogPath, { force: true }).catch(() => undefined);
+      const retryChildRun = await runCodex(appendDryRunSafety(retryPrompt, mcpMode), {
+        model: faceModel,
+        reasoningEffort,
+        scenarioId: `${identity}_swarm_dry_run_retry_child`,
+        logPath: retryLogPath,
+        mcpMode,
+      });
+      const retryChildEvents = parseJsonEvents(retryChildRun.stdout);
+      const retryChildText = extractFinalText(retryChildEvents, retryChildRun.stdout);
+      const retryChildTools = mcpMode === "mock"
+        ? (await readToolCalls(retryLogPath)).map((call) => call.tool)
+        : extractToolNames(retryChildEvents);
+
+      process.stderr.write(`[dry-run] retry interpreter ${identity}\n`);
+      const retryInterpreterPrompt = renderTemplate("repo-face-turn-interpreter.prompt.md", {
+        attempt: "2",
+        facePrompt,
+        faceOutput: retryChildText,
+      });
+      const retryInterpreterRun = await runCodex(retryInterpreterPrompt, {
+        model: interpreterModel,
+        reasoningEffort,
+        scenarioId: `${identity}_swarm_dry_run_retry_interpreter`,
+        mcpMode: "none",
+      });
+      const retryInterpreterEvents = parseJsonEvents(retryInterpreterRun.stdout);
+      const retryInterpreterText = extractFinalText(retryInterpreterEvents, retryInterpreterRun.stdout);
+      const retryParsed = parseInterpreterOutput(retryInterpreterText);
+
+      retry = {
+        child: {
+          exitCode: retryChildRun.code,
+          durationMs: retryChildRun.durationMs,
+          tools: retryChildTools,
+          text: retryChildText,
+          stderrTail: retryChildRun.stderr.slice(-1600),
+        },
+        interpreter: {
+          exitCode: retryInterpreterRun.code,
+          durationMs: retryInterpreterRun.durationMs,
+          text: retryInterpreterText,
+          parsed: retryParsed,
+          stderrTail: retryInterpreterRun.stderr.slice(-1600),
+        },
+      };
+      finalChildRun = retryChildRun;
+      finalChildText = retryChildText;
+      finalChildTools = retryChildTools;
+      finalInterpreterRun = retryInterpreterRun;
+      finalInterpreterText = retryInterpreterText;
+      finalParsed = retryParsed;
+    }
+
+    const assessment = assessRun({
+      identity,
+      childText: finalChildText,
+      childTools: finalChildTools,
+      interpreterRun: finalInterpreterRun,
+      childRun: finalChildRun,
+      parsed: finalParsed,
+    });
 
     runs.push({
       identity,
       promptPath,
       child: {
-        exitCode: childRun.code,
-        durationMs: childRun.durationMs,
-        tools: childTools,
-        text: childText,
-        stderrTail: childRun.stderr.slice(-1600),
+        exitCode: finalChildRun.code,
+        durationMs: finalChildRun.durationMs,
+        tools: finalChildTools,
+        text: finalChildText,
+        stderrTail: finalChildRun.stderr.slice(-1600),
       },
       interpreter: {
-        exitCode: interpreterRun.code,
-        durationMs: interpreterRun.durationMs,
-        text: interpreterText,
-        parsed,
-        stderrTail: interpreterRun.stderr.slice(-1600),
+        exitCode: finalInterpreterRun.code,
+        durationMs: finalInterpreterRun.durationMs,
+        text: finalInterpreterText,
+        parsed: finalParsed,
+        stderrTail: finalInterpreterRun.stderr.slice(-1600),
       },
+      firstAttempt: {
+        child: {
+          exitCode: childRun.code,
+          durationMs: childRun.durationMs,
+          tools: childTools,
+          text: childText,
+          stderrTail: childRun.stderr.slice(-1600),
+        },
+        interpreter: {
+          exitCode: interpreterRun.code,
+          durationMs: interpreterRun.durationMs,
+          text: interpreterText,
+          parsed,
+          stderrTail: interpreterRun.stderr.slice(-1600),
+        },
+      },
+      retry,
       assessment,
     });
   }
@@ -318,6 +412,18 @@ function renderTemplate(name, variables) {
     template = template.replaceAll(`{{${key}}}`, String(value));
   }
   return template;
+}
+
+function renderRetryPrompt(input) {
+  const reasons = input.reasons.map((reason) => `- ${reason}`).join("\n");
+  return `${input.originalPrompt}
+
+Revision request:
+Your previous turn could not be used cleanly for these reasons:
+${reasons}
+
+Revise once. Keep the same identity and evidence. Write naturally in your own voice; do not write forms, machine packets, or hidden commands. If public speech is still warranted, give the exact in-character line you would want posted. If the output is work-shaped, describe the review, article, or change request plainly enough to remember or discuss later. Do not package it as governance or dispatch. If no public action survives, return a concise private summary.
+`;
 }
 
 function parseJsonEvents(stdout) {

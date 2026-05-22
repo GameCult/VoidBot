@@ -485,6 +485,10 @@ async function queueRepoFaceTurn(input: {
     identity,
     input.config,
     input.registryIdentities,
+    {
+      recentMessages,
+      channelSnapshots,
+    },
   );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
@@ -1454,6 +1458,10 @@ function buildHeartbeatPrompt(input: {
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     socialOpportunitySurface: input.socialOpportunitySurface ?? "- No live social affordances were attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
+    roomWeatherDirective: renderRepoFaceRoomWeatherDirective(input.identity, {
+      recentMessages: input.recentMessages,
+      channelSnapshots: input.channelSnapshots,
+    }),
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -1508,7 +1516,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
   }
 
-  const [recentMessages, channelSnapshots, bifrostDigest, memorySurface] = await Promise.all([
+  const [recentMessages, channelSnapshots, bifrostDigest] = await Promise.all([
     fetchRecentDiscordMessages({
       botToken: input.config.botToken,
       channelId,
@@ -1529,10 +1537,13 @@ async function assembleRepoFaceTurnPrompt(input: {
           agentIdentity: identity.id,
         })
       : Promise.resolve(undefined),
-    input.memorySurfacePath
-      ? readOptionalMemorySurface(input.memorySurfacePath)
-      : renderRepoFaceMemorySurfaceForTurn(identity, input.config, registry.identities),
   ]);
+  const memorySurface = input.memorySurfacePath
+    ? await readOptionalMemorySurface(input.memorySurfacePath)
+    : await renderRepoFaceMemorySurfaceForTurn(identity, input.config, registry.identities, {
+        recentMessages,
+        channelSnapshots,
+      });
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
     identity,
@@ -1592,10 +1603,14 @@ async function renderRepoFaceMemorySurfaceForTurn(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
   registryIdentities: RepoDiscordIdentity[] = [],
+  roomContext?: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
 ): Promise<string> {
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  const statePacket = renderRepoFaceStatePacket(identity, typedState, registryIdentities);
+  const statePacket = renderRepoFaceStatePacket(identity, typedState, registryIdentities, roomContext);
   if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
     return rejectLeakyMemorySurface(statePacket);
   }
@@ -1611,6 +1626,10 @@ function renderRepoFaceStatePacket(
   identity: RepoDiscordIdentity,
   state: VoidSelfStateTypedProjection,
   registryIdentities: RepoDiscordIdentity[] = [],
+  roomContext?: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
 ): string {
   const name = identity.displayName;
   const lines: string[] = [];
@@ -1686,6 +1705,13 @@ function renderRepoFaceStatePacket(
     lines.push(socialGraphFacts);
   }
 
+  const roomTextureFacts = roomContext
+    ? renderRepoFaceRoomTextureFacts(identity, roomContext)
+    : undefined;
+  if (roomTextureFacts) {
+    lines.push(roomTextureFacts);
+  }
+
   if (agencyPressures.length > 0) {
     lines.push([
       "What wants action later:",
@@ -1710,6 +1736,123 @@ function renderRepoFaceStatePacket(
   }
 
   return rejectLeakyMemorySurface(lines.join("\n\n"));
+}
+
+function renderRepoFaceRoomTextureFacts(
+  identity: RepoDiscordIdentity,
+  input: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string | undefined {
+  const stats = collectRepoFaceRoomTextureStats(identity, input);
+  if (!stats) {
+    return undefined;
+  }
+
+  const temporaryPressures = stats.texture === "heavy" || stats.agentShare >= 0.55
+    ? [
+        "- Temporary affect pressure candidates: play, rest, and social_contact may be hungry because the room is carrying sustained work/agent weight.",
+        "- These are not stored needs and not orders. Project whether this character gets mischievous, bored, sharp, withdrawn, socially hungry, status-testing, or still work-focused.",
+      ]
+    : [];
+
+  return [
+    "Room texture facts:",
+    `- Observed messages: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
+    `- Long messages: ${stats.longMessages}; short messages: ${stats.shortMessages}; average length: ${stats.averageCharacters} characters.`,
+    `- This Face's own recent messages in the attached window: ${stats.ownMessages}.`,
+    `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
+    ...temporaryPressures,
+  ].join("\n");
+}
+
+function renderRepoFaceRoomWeatherDirective(
+  identity: RepoDiscordIdentity,
+  input: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string {
+  const stats = collectRepoFaceRoomTextureStats(identity, input);
+  if (!stats) {
+    return "- No current room weather was available.";
+  }
+
+  const pressure =
+    stats.texture === "heavy" || stats.agentShare >= 0.55
+      ? "The room is currently structurally work-heavy or agent-heavy. Treat that as conversational weather: it may create boredom, play hunger, restlessness, social hunger, withdrawal, or sharper status-testing, depending on who you are. This is not an order to joke; it is permission to feel the weight instead of answering every opening with more work."
+      : stats.texture === "light"
+        ? "The room is currently light enough for compact social motion. You still need an actual reason to speak, but not a work ticket."
+        : "The room is mixed. Use the transcript to decide whether the living pressure is social, practical, or private.";
+
+  return [
+    `- Messages observed: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
+    `- Texture: ${stats.texture}; your own recent messages in this window: ${stats.ownMessages}.`,
+    `- ${pressure}`,
+  ].join("\n");
+}
+
+interface RepoFaceRoomTextureStats {
+  total: number;
+  agentMessages: number;
+  humanMessages: number;
+  ownMessages: number;
+  longMessages: number;
+  shortMessages: number;
+  averageCharacters: number;
+  speakerCount: number;
+  texture: "heavy" | "light" | "mixed";
+  agentShare: number;
+}
+
+function collectRepoFaceRoomTextureStats(
+  identity: RepoDiscordIdentity,
+  input: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): RepoFaceRoomTextureStats | undefined {
+  const messages = [
+    ...input.recentMessages,
+    ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
+  ];
+  if (messages.length === 0) {
+    return undefined;
+  }
+
+  const ownToken = normalizeSocialLabel(identity.displayName);
+  const total = messages.length;
+  const agentMessages = messages.filter((message) => message.isBot).length;
+  const humanMessages = total - agentMessages;
+  const ownMessages = messages.filter((message) => normalizeSocialLabel(message.authorName) === ownToken).length;
+  const longMessages = messages.filter((message) => collapseWhitespace(message.content, 10_000).length >= 220).length;
+  const shortMessages = messages.filter((message) => collapseWhitespace(message.content, 10_000).length <= 90).length;
+  const averageCharacters = Math.round(
+    messages.reduce((sum, message) => sum + collapseWhitespace(message.content, 10_000).length, 0) / total,
+  );
+  const speakerCount = new Set(
+    messages.map((message) => normalizeSocialLabel(message.authorName || message.authorId)).filter(Boolean),
+  ).size;
+  const texture =
+    longMessages >= Math.ceil(total * 0.45) || averageCharacters >= 180
+      ? "heavy"
+      : shortMessages >= Math.ceil(total * 0.55)
+        ? "light"
+        : "mixed";
+
+  return {
+    total,
+    agentMessages,
+    humanMessages,
+    ownMessages,
+    longMessages,
+    shortMessages,
+    averageCharacters,
+    speakerCount,
+    texture,
+    agentShare: agentMessages / total,
+  };
 }
 
 function renderRepoFaceSocialGraphFacts(
