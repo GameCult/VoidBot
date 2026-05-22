@@ -1,6 +1,6 @@
 {
-  "paused": true,
-  "reason": "Paused after live retry immediately resurfaced stale witness discourse despite prior scrub and direct operator correction. Diagnose input/context/state before more Face turns.",
+  "paused": false,
+  "reason": "Operator requested a live retry after fixing Face display-name introduction detection and preserving pending mention source-channel context.",
   "pausedAt": "2026-05-22T18:00:20.1264989Z",
-  "resumedAt": "2026-05-22T17:40:15.1719039Z"
+  "resumedAt": "2026-05-22T21:09:36.3840571Z"
 }
