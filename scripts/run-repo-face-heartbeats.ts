@@ -1228,8 +1228,8 @@ function reconcileParticipants(
           "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
         ),
         status: hasChannel
-          ? current.status === "withdrawn"
-            ? "withdrawn"
+          ? current.status === "withdrawn" || current.status === "blocked"
+            ? current.status
             : "active"
           : "blocked",
       };
@@ -2454,9 +2454,14 @@ function renderRepoFaceConversationTranscript(input: {
   sections.push([
     "Read this as raw recent message evidence, not as a summary and not as consensus.",
     "Messages are ordered oldest to newest inside each section. Newer human corrections can supersede older agent proposals.",
+    "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Face.",
     "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
     "If you answer the live conversation, default to the current room unless a human explicitly asks to move elsewhere.",
   ].join("\n"));
+  const chronology = renderVisibleConversationChronology(input);
+  if (chronology) {
+    sections.push(chronology);
+  }
   if (input.pendingMentions.length > 0) {
     sections.push([
       "Direct calls:",
@@ -2481,6 +2486,43 @@ function renderRepoFaceConversationTranscript(input: {
     ].join("\n"));
   }
   return sections.join("\n\n");
+}
+
+function renderVisibleConversationChronology(input: {
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  channelPlan: RepoFaceChannelPlan;
+}): string {
+  const byId = new Map<string, SourceMessage & { channelLabel: string }>();
+  const primaryLabel = input.channelPlan.options.find((option) =>
+    option.channelId === input.channelPlan.primaryChannelId
+  )?.label ?? "current room";
+  for (const message of input.recentMessages) {
+    byId.set(message.id, { ...message, channelLabel: primaryLabel });
+  }
+  for (const snapshot of input.channelSnapshots) {
+    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
+      "nearby room";
+    for (const message of snapshot.messages) {
+      byId.set(message.id, { ...message, channelLabel: label });
+    }
+  }
+
+  const messages = [...byId.values()]
+    .filter((message) => Number.isFinite(Date.parse(message.timestamp)))
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+    .slice(-24);
+  if (messages.length === 0) {
+    return "";
+  }
+
+  return [
+    "Visible cross-channel chronology, oldest to newest:",
+    ...messages.map((message) => {
+      const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
+      return `- [${message.channelLabel}] ${speaker}: ${collapseWhitespace(message.content, 700)}`;
+    }),
+  ].join("\n");
 }
 
 function renderRepoFaceRepoActivitySurface(
