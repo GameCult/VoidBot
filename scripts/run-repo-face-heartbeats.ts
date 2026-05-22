@@ -1716,8 +1716,8 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
   const relations = collectRepoFaceSocialRelations(typedState);
   if (relations.length === 0) {
     return [
-      "No durable social reads are attached yet.",
-      "Use the raw conversation to notice who earns trust, irritation, protection, rivalry, respect, or suspicion; do not fake intimacy just to fill the gap.",
+      "Derived social placement: no active person-bonds or person-status reads exist yet, so this Face has not found a stable place in the swarm's social graph.",
+      "Use the raw conversation to look for a first real social edge: who earns trust, irritation, protection, rivalry, respect, suspicion, deference, or a careful question. Do not fake intimacy just to fill the gap.",
     ].join("\n");
   }
 
@@ -1732,8 +1732,8 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
 
   if (hookedRelations.length === 0) {
     return [
-      "No durable bond target appears to have spoken in the attached recent messages.",
-      "Treat the transcript itself as fresh social evidence: notice who is interrupting, protecting, escalating, ignoring, joking, or asking for recognition before you decide whether to speak.",
+      "Derived social placement: existing person-bonds/status reads have no matching speaker in the attached recent messages.",
+      "Treat the transcript itself as fresh social evidence: notice who is interrupting, protecting, escalating, ignoring, joking, asking for recognition, or touching your jurisdiction before you decide whether to speak.",
     ].join("\n");
   }
 
