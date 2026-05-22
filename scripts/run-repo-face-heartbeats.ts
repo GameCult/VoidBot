@@ -2201,17 +2201,23 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
   const relations = collectRepoFaceSocialRelations(typedState);
   const unmappedPeers = collectUnmappedSocialPeers(input.identity, input.registryIdentities, relations);
+  const messages = collectSocialOpportunityMessages(input);
+  const unmappedPeerHooks = collectUnmappedPeerSocialHooks({
+    identity: input.identity,
+    unmappedPeers,
+    messages,
+  });
   if (relations.length === 0) {
     return [
       "No existing person-bond or person-status read matched this turn.",
       "Use the transcript as evidence only when someone gives a real hook for trust, irritation, protection, rivalry, respect, suspicion, deference, or a careful question.",
+      ...formatUnmappedPeerHookLines(unmappedPeerHooks),
       unmappedPeers.length > 0
         ? `Unmapped registered peers: ${formatUnmappedPeers(unmappedPeers)}. Do not greet the whole roster at once.`
         : "No peer roster was available for comparison this turn.",
     ].join("\n");
   }
 
-  const messages = collectSocialOpportunityMessages(input);
   const hookedRelations = relations
     .map((relation) => ({
       relation,
@@ -2224,6 +2230,7 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
     return [
       "Existing person-bonds/status reads have no matching speaker in the attached recent messages.",
       "Treat the transcript itself as possible fresh social evidence, not as an obligation to invent a relationship.",
+      ...formatUnmappedPeerHookLines(unmappedPeerHooks),
       unmappedPeers.length > 0
         ? `Still-unmapped peers: ${formatUnmappedPeers(unmappedPeers)}. If one of them appears in the transcript, there is evidence available for a possible first read.`
         : "No unmapped registered peers were found for this turn.",
@@ -2239,6 +2246,7 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
   }
 
   if (unmappedPeers.length > 0) {
+    lines.push(...formatUnmappedPeerHookLines(unmappedPeerHooks));
     lines.push(`Unmapped registered peers: ${formatUnmappedPeers(unmappedPeers)}.`);
   }
 
@@ -2322,6 +2330,59 @@ function socialTargetTokens(...values: Array<string | undefined>): string[] {
 
 function formatUnmappedPeers(peers: RepoDiscordIdentity[]): string {
   return peers.map((peer) => `${peer.displayName}/${peer.repoName}`).join(", ");
+}
+
+function collectUnmappedPeerSocialHooks(input: {
+  identity: RepoDiscordIdentity;
+  unmappedPeers: RepoDiscordIdentity[];
+  messages: Array<{ label: string; message: SourceMessage }>;
+}): Array<{ peer: RepoDiscordIdentity; hooks: Array<{ label: string; message: SourceMessage }> }> {
+  const selfTokens = new Set(socialTargetTokens(input.identity.displayName, input.identity.id, input.identity.repoName));
+  const peersByToken = new Map<string, RepoDiscordIdentity>();
+  for (const peer of input.unmappedPeers) {
+    for (const token of socialTargetTokens(peer.displayName, peer.id, peer.repoName)) {
+      if (!selfTokens.has(token)) {
+        peersByToken.set(token, peer);
+      }
+    }
+  }
+
+  const byPeer = new Map<string, { peer: RepoDiscordIdentity; hooks: Array<{ label: string; message: SourceMessage }> }>();
+  for (const entry of input.messages) {
+    if (!entry.message.isBot || !entry.message.content.trim()) {
+      continue;
+    }
+    const peer = peersByToken.get(normalizeSocialLabel(entry.message.authorName));
+    if (!peer) {
+      continue;
+    }
+    const bucket = byPeer.get(peer.id) ?? { peer, hooks: [] };
+    bucket.hooks.push(entry);
+    byPeer.set(peer.id, bucket);
+  }
+
+  return [...byPeer.values()]
+    .map((entry) => ({
+      peer: entry.peer,
+      hooks: entry.hooks.slice(-2),
+    }))
+    .sort((left, right) => left.peer.displayName.localeCompare(right.peer.displayName))
+    .slice(0, 5);
+}
+
+function formatUnmappedPeerHookLines(
+  peerHooks: Array<{ peer: RepoDiscordIdentity; hooks: Array<{ label: string; message: SourceMessage }> }>,
+): string[] {
+  if (peerHooks.length === 0) {
+    return [];
+  }
+  return [
+    "Possible first-read hooks from unmapped peers who actually spoke nearby:",
+    ...peerHooks.map((entry) =>
+      `- ${entry.peer.displayName}: ${entry.hooks.map(formatSocialOpportunityMessage).join(" | ")}`,
+    ),
+    "Use one of these only if it sparks a real first read, question, tease, alliance, irritation, or rivalry. Do not manufacture intimacy from a single quote.",
+  ];
 }
 
 function collectSocialOpportunityMessages(input: {
