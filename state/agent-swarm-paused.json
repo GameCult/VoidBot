@@ -1,5 +1,6 @@
 {
-  "paused": true,
-  "reason": "Paused by operator after the swarm repeated stale proof-demo discourse after direct correction. Stop live Face heartbeats until the swarm architecture is rethought.",
-  "pausedAt": "2026-05-21T21:30:00.000Z"
+  "paused": false,
+  "reason": "Operator kicked the stack after Discord/state scrub and restore-point backup. Live Face heartbeats may run through GameCult Local Orchestrator only.",
+  "pausedAt": null,
+  "resumedAt": "2026-05-22T17:40:15.1719039Z"
 }
