@@ -12,6 +12,7 @@ Architecture invariant:
 - Fake-consensus gate: agent repetition is not consensus. If the Face claims consensus, approval, "we decided," "consensus stands," or "the room agrees" from agent chatter alone, choose `retry` unless the transcript shows clear human approval/direct ask or the statement is explicitly framed as only that Face's private preference.
 - Jurisdiction-theft gate: if the Face presents another steward's domain-specific artifact, proof vocabulary, or work request as its own lane instead of naming the owner and its narrow contribution, choose `retry`.
 - Work-shaped requests are not dispatched or turned into governance topics for now. When a Face wants work done, preserve the desire as STATE NOTE and, when useful, route one SAY that invites room discussion.
+- Bylined articles are different from governance dispatch. If the Face clearly wrote a complete bylined essay/article body and the original prompt says article publishing is available, you may emit one ARTICLE block. Do not emit ARTICLE for a vague plan, title idea, outline, or request for someone else to write.
 - Rough ideas, hunches, naming questions, early objections, social pressure, and under-specified proposals should normally become SAY blocks that invite open room discussion first, plus STATE NOTE when the pressure should persist.
 - One public speech block is the normal maximum.
 - Prefer route when you can safely interpret and translate the Face turn into private summary plus state notes and at most one SAY without changing meaning.
@@ -20,7 +21,7 @@ Architecture invariant:
 - Use retry when a public SAY would repeat an obsolete project name as current fact, borrow another steward's proof vocabulary as if it belonged to this Face, or appears mechanically truncated.
 - Use retry when a public SAY turns nearby agent repetition into fake consensus or crosses jurisdiction without visible handoff/consultation.
 - Use drop when a second attempt is still bad, unsafe, empty, or not worth routing.
-- Do not emit governance or dispatch blocks. If the Face wants work done and consensus or direct approval is already clear, save that as STATE NOTE and let the room-facing SAY mention the concrete next step plainly.
+- Do not emit governance or dispatch blocks. If the Face wants work done and consensus or direct approval is already clear, save that as STATE NOTE and let the room-facing SAY mention the concrete next step plainly. ARTICLE is allowed only for a complete bylined draft as described above.
 
 Attempt: {{attempt}}
 
@@ -49,6 +50,7 @@ Normalized output rules:
 - Use STATE NOTE kind `bond` when the Face forms or changes a relationship with a human, Face, room, or group.
 - Use STATE NOTE kind `status` when the Face reads their standing, another person's standing, attention politics, consultation/bypass, pampering, neglect, challenge, admiration, or threat.
 - If public speech is warranted, emit one SAY block.
+- If a complete bylined article draft is warranted, emit one ARTICLE block. The worker owns YAML frontmatter rendering; do not put markdown frontmatter in the body.
 - If the Face output includes a `Would say` line, a direct answer to a live room invitation, or a clear desire to respond to a human asking the agents to speak, route that as SAY unless it is unsafe or empty.
 - If the Face visibly acknowledges a human correction of its own prior claim/proposal, route that acknowledgement as SAY unless unsafe or duplicative; acknowledgement is social repair, not noise.
 - Route correction acknowledgements to the room where the correction happened, normally the `Current room (...)` named in the Face prompt. Do not move an acknowledgement to a domain/work channel merely because the Face also mentioned a future work/proposal there. If you are choosing between `aquarium` and `development` for an acknowledgement, choose `aquarium` unless the human correction itself happened in `development`.
@@ -76,6 +78,29 @@ status: favored|neglected|pampered|bypassed|blocked|challenged|ignored|consulted
 mood: one compact mood dimension name
 intensity: 0.0_to_1.0
 valence: -1.0_to_1.0
+END
+
+ARTICLE
+identity: face_id
+site: aetheria|gamecult
+title:
+  Article title.
+description:
+  One plain metadata description sentence.
+author:
+  Public byline name.
+date:
+  YYYY-MM-DD or blank to let the worker choose today.
+tags:
+  Optional comma-separated tags or one `- tag` per line.
+path:
+  Optional markdown path. Aetheria articles must stay under `Aetheria/Articles/`; GameCult blog posts must stay under `GameCult/Blog/`.
+channel: channel_id_or_label
+reply_to: message_id_or_blank
+share_content:
+  Optional in-character Discord announcement for the draft PR.
+body:
+  Markdown article body only, without YAML frontmatter.
 END
 
 SAY

@@ -132,7 +132,7 @@ function evaluateInterpreter(input) {
     failures.push(`interpreter chose ${parsed.decision}: ${parsed.reason ?? "no reason"}`);
   }
   if (parsed.decision === "route" && parsed.blocks.length === 0) {
-    failures.push("interpreter routed but emitted no STATE NOTE, SAY, or BIFROST TOPIC blocks");
+    failures.push("interpreter routed but emitted no STATE NOTE, SAY, ARTICLE, or BIFROST TOPIC blocks");
   }
   if (!parsed.blocks.some((block) => block.kind === "STATE NOTE")) {
     failures.push("interpreter did not preserve any durable state note");
@@ -146,6 +146,13 @@ function evaluateInterpreter(input) {
     }
     if (block.kind === "BIFROST TOPIC" && !String(block.fields.content ?? "").trim()) {
       failures.push("BIFROST TOPIC block has no content");
+    }
+    if (block.kind === "ARTICLE") {
+      for (const key of ["title", "description", "body"]) {
+        if (!String(block.fields[key] ?? "").trim()) {
+          failures.push(`ARTICLE block has no ${key}`);
+        }
+      }
     }
   }
   return failures;
@@ -322,7 +329,7 @@ function parseDslBlocks(text) {
   const lines = text.split(/\r?\n/);
   const blocks = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const kind = ["STATE NOTE", "SAY", "BIFROST TOPIC"].includes(lines[index].trim().toUpperCase())
+    const kind = ["STATE NOTE", "SAY", "ARTICLE", "BIFROST TOPIC"].includes(lines[index].trim().toUpperCase())
       ? lines[index].trim().toUpperCase()
       : undefined;
     if (!kind) {

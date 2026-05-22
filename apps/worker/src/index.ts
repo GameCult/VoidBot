@@ -46,10 +46,18 @@ import {
   type ProviderResponse,
   loadPromptTemplate,
 } from "@voidbot/shared";
+import {
+  type RepoIdentityArticleIntent,
+  isValidArticleDate,
+  normalizeArticlePath,
+  normalizeArticleSite,
+  renderRepoIdentityArticleMarkdown,
+  resolveArticleRepoRoot,
+  validateRenderedArticleMarkdown,
+} from "./repo-face-article.js";
 
 const config = loadConfig();
 const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
-const REPO_IDENTITY_ARTICLE_SENTINEL = "VOIDBOT_REPO_IDENTITY_ARTICLE:";
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
@@ -358,7 +366,7 @@ async function processJob(job: JobRecord): Promise<void> {
         ? parseRepoIdentityUpdateRequestIntents(repoFaceOutput)
         : [];
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
-        ? parseRepoIdentityArticleIntents(repoFaceOutput)
+        ? parseRepoFaceArticleIntents(repoFaceOutput)
         : [];
       const repoIdentityProposals = config.repoFaceGithubActionsEnabled
         ? parseRepoIdentityProposalPrIntents(repoFaceOutput)
@@ -935,16 +943,6 @@ interface RepoIdentityStateNoteIntent {
   valence?: number;
 }
 
-interface RepoIdentityArticleIntent {
-  identity?: string;
-  title: string;
-  path?: string;
-  content: string;
-  shareContent?: string;
-  channelId?: string;
-  replyToMessageId?: string;
-}
-
 interface RepoIdentityProposalPrIntent {
   identity?: string;
   title: string;
@@ -1226,6 +1224,39 @@ function parseRepoIdentityStateNoteIntents(finalResponse: string): RepoIdentityS
     });
 }
 
+function parseRepoFaceArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
+  return parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "article")
+    .flatMap((block): RepoIdentityArticleIntent[] => {
+      const title = requiredDslString(block.fields.title);
+      const description = requiredDslString(block.fields.description);
+      const body = requiredDslString(block.fields.body ?? block.fields.content);
+      if (!title || !description || !body) {
+        return [];
+      }
+      const site = normalizeArticleSite(optionalDslString(block.fields.site));
+      const date = optionalDslString(block.fields.date);
+      if (date && !isValidArticleDate(date)) {
+        return [];
+      }
+      return [{
+        identity: optionalDslString(block.fields.identity),
+        site,
+        title,
+        description,
+        author: optionalDslString(block.fields.author),
+        date,
+        tags: parseDslList(block.fields.tags),
+        path: optionalDslString(block.fields.path),
+        body,
+        shareContent: optionalDslString(block.fields.share_content) ?? optionalDslString(block.fields.shareContent),
+        channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+        replyToMessageId:
+          optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+      }];
+    });
+}
+
 async function applyRepoIdentityStateNoteIntent(
   job: JobRecord,
   intent: RepoIdentityStateNoteIntent,
@@ -1391,14 +1422,19 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     throw new Error(`No registered repo identity matched "${identityId}" for article intent on job ${job.id}.`);
   }
 
-  const repoRoot = resolveRepoRoot(identity);
+  const repoRoot = resolveArticleRepoRoot(intent, identity, {
+    sourceRepoRoot: config.sourceRepoRoot,
+    storageRoot: config.storageRoot,
+  });
   const relativePath = normalizeArticlePath(intent, identity);
   const articlePath = resolve(repoRoot, relativePath);
   if (!isPathInside(repoRoot, articlePath)) {
     throw new Error(`Article path escapes repo root for ${identity.id}: ${relativePath}`);
   }
 
-  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-article.md`, ensureTrailingNewline(intent.content));
+  const articleMarkdown = renderRepoIdentityArticleMarkdown(intent, identity);
+  validateRenderedArticleMarkdown(articleMarkdown, intent);
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-article.md`, ensureTrailingNewline(articleMarkdown));
   const pr = runBifrostBridge([
     "github-draft-pr",
     "--repo-root",
@@ -1881,41 +1917,6 @@ function parseRepoIdentityBifrostTopicIntents(finalResponse: string): RepoIdenti
   return intents;
 }
 
-function parseRepoIdentityArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
-  const intents: RepoIdentityArticleIntent[] = [];
-
-  for (const line of finalResponse.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL)) {
-      continue;
-    }
-
-    const payload = trimmed.slice(REPO_IDENTITY_ARTICLE_SENTINEL.length).trim();
-    try {
-      const parsed = JSON.parse(payload) as Record<string, unknown>;
-      const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
-      if (!title || !content) {
-        continue;
-      }
-      intents.push({
-        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
-        title,
-        path: typeof parsed.path === "string" ? parsed.path.trim() : undefined,
-        content,
-        shareContent: typeof parsed.shareContent === "string" ? parsed.shareContent.trim() : undefined,
-        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
-        replyToMessageId:
-          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
-      });
-    } catch {
-      continue;
-    }
-  }
-
-  return intents;
-}
-
 function parseRepoIdentityProposalPrIntents(finalResponse: string): RepoIdentityProposalPrIntent[] {
   const intents: RepoIdentityProposalPrIntent[] = [];
 
@@ -1986,12 +1987,11 @@ function parseRepoIdentityPrCommentIntents(finalResponse: string): RepoIdentityP
 }
 
 function countRepoIdentityGithubActionIntents(finalResponse: string): number {
-  let count = 0;
+  let count = parseRepoFaceActionBlocks(finalResponse).filter((block) => block.kind === "article").length;
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (
-      trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL) ||
       trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL) ||
       trimmed.startsWith(REPO_IDENTITY_PR_COMMENT_SENTINEL)
     ) {
@@ -2003,7 +2003,7 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
 }
 
 interface RepoFaceActionBlock {
-  kind: "say" | "state_note" | "bifrost_topic" | "update_request";
+  kind: "say" | "state_note" | "article" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 }
 
@@ -2036,6 +2036,8 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
       return "say";
     case "STATE NOTE":
       return "state_note";
+    case "ARTICLE":
+      return "article";
     case "BIFROST TOPIC":
       return "bifrost_topic";
     case "UPDATE REQUEST":
@@ -2264,19 +2266,6 @@ function resolveRepoRoot(identity: { repoName: string; repoPath?: string }): str
   return resolve(config.storageRoot, "repo-article-drafts", identity.repoName);
 }
 
-function normalizeArticlePath(
-  intent: RepoIdentityArticleIntent,
-  identity: { displayName: string },
-): string {
-  const path = intent.path?.trim();
-  if (path && !isAbsolute(path) && !path.split(/[\\/]+/).includes("..")) {
-    return path.replace(/\\/g, "/");
-  }
-
-  const date = new Date().toISOString().slice(0, 10);
-  return `Aetheria/Articles/${sanitizePathSegment(identity.displayName)}/${date}-${slugify(intent.title)}.md`;
-}
-
 function normalizeProposalPath(
   intent: RepoIdentityProposalPrIntent,
   identity: { displayName: string },
@@ -2299,7 +2288,6 @@ function stripRepoIdentityPostIntents(finalResponse: string): string {
         !trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_BIFROST_TOPIC_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_UPDATE_REQUEST_SENTINEL) &&
-        !trimmed.startsWith(REPO_IDENTITY_ARTICLE_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_PROPOSAL_PR_SENTINEL) &&
         !trimmed.startsWith(REPO_IDENTITY_PR_COMMENT_SENTINEL)
       );
