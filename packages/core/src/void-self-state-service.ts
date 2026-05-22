@@ -245,11 +245,14 @@ function normalizeTypedStateForWrite(
 }
 
 function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
+  state.moderationCursor.openCases = state.moderationCursor.openCases.filter((entry) =>
+    !isTerminalCaseStatus(entry.status)
+  );
   state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(isNotRetiredEntry);
   state.thoughtMemory.memories = state.thoughtMemory.memories.filter(isNotRetiredEntry);
   state.thoughtMemory.incubation = state.thoughtMemory.incubation.filter(isNotRetiredEntry);
   state.agencyPressure.pressures = state.agencyPressure.pressures.filter(isNotRetiredEntry);
-  state.candidateInterventions.interventions = state.candidateInterventions.interventions.filter(isNotRetiredEntry);
+  state.candidateInterventions.interventions = state.candidateInterventions.interventions.filter(isLiveCandidateIntervention);
   state.faceAffect.needs = state.faceAffect.needs.filter(isNotRetiredEntry);
   state.faceAffect.socialBonds = state.faceAffect.socialBonds.filter(isNotRetiredEntry);
   state.faceAffect.statusReads = state.faceAffect.statusReads.filter(isNotRetiredEntry);
@@ -257,6 +260,10 @@ function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
 
 function isNotRetiredEntry(entry: { status?: string; retiredAt?: string }): boolean {
   return entry.status !== "retired" && !entry.retiredAt;
+}
+
+function isLiveCandidateIntervention(entry: { status?: string; retiredAt?: string }): boolean {
+  return (entry.status === "queued" || entry.status === "deferred") && !entry.retiredAt;
 }
 
 function clampFutureTimestampFields<T extends Record<string, unknown>>(

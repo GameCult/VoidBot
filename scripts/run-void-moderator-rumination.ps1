@@ -395,7 +395,7 @@ function Test-CandidateMatchesPressure {
     [Parameter(Mandatory = $true)]
     [string] $PressureId,
     [string] $PressureTargetKey,
-    [string[]] $AllowedStatuses = @("queued", "spoken")
+    [string[]] $AllowedStatuses = @("queued", "deferred")
   )
 
   $status = Get-ObjectPropertyString -Value $Candidate -Name "status"
@@ -511,7 +511,7 @@ function Get-SpeechPressureObligations {
         $pressureId = Get-ObjectPropertyString -Value $_ -Name "pressureId"
         $pressureTargetKey = Get-ThoughtTargetKey -Target (Get-ObjectPropertyValue -Value $_ -Name "target")
         -not ($candidateInterventions | Where-Object {
-          Test-CandidateMatchesPressure -Candidate $_ -PressureId $pressureId -PressureTargetKey $pressureTargetKey -AllowedStatuses @("queued")
+          Test-CandidateMatchesPressure -Candidate $_ -PressureId $pressureId -PressureTargetKey $pressureTargetKey -AllowedStatuses @("queued", "deferred")
         } | Select-Object -First 1)
       } |
       ForEach-Object {
@@ -845,17 +845,17 @@ function Assert-SpokenCandidateApplied {
   $candidate = @(
     @(Convert-ToValueArray -Value $state.candidateInterventions.interventions) |
       Where-Object { (Get-ObjectPropertyString -Value $_ -Name "interventionId") -eq $InterventionId }
-  )[0]
+  ) | Select-Object -First 1
   $receipt = @(
     @(Convert-ToValueArray -Value $state.speechReceipts.recentReceipts) |
       Where-Object { (Get-ObjectPropertyString -Value $_ -Name "receiptKey") -eq $ReceiptKey }
-  )[0]
+  ) | Select-Object -First 1
 
-  if ($null -eq $candidate -or (Get-ObjectPropertyString -Value $candidate -Name "status") -ne "spoken") {
-    throw "Delivery receipt '$ReceiptKey' was recorded without retiring candidate '$InterventionId' as spoken."
+  if ($null -ne $candidate) {
+    throw "Delivery receipt '$ReceiptKey' was recorded but terminal candidate '$InterventionId' stayed in current state."
   }
   if ($null -eq $receipt -or (Get-ObjectPropertyString -Value $receipt -Name "candidateInterventionId") -ne $InterventionId) {
-    throw "Candidate '$InterventionId' was marked spoken without a linked delivery receipt '$ReceiptKey'."
+    throw "Candidate '$InterventionId' was delivered without a linked delivery receipt '$ReceiptKey'."
   }
 }
 

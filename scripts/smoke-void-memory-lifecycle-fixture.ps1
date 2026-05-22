@@ -139,8 +139,8 @@ try {
   if ($activeMemories.Count -ne 1 -or $identityMemory.memoryId -ne "identity-memory-plasticity") {
     throw "Memory lifecycle fixture expected one active crystallized identity memory."
   }
-  if ($retiredMemories.Count -lt 2) {
-    throw "Memory lifecycle fixture expected superseded durable memories to be retired."
+  if ($retiredMemories.Count -ne 0) {
+    throw "Memory lifecycle fixture left superseded durable memories in current state."
   }
   if ($null -eq $value) {
     throw "Memory lifecycle fixture did not crystallize a self-profile value."
@@ -149,7 +149,7 @@ try {
   @{
     status = "ok"
     activeMemoryCount = $activeMemories.Count
-    retiredMemoryCount = $retiredMemories.Count
+    retainedRetiredMemoryCount = $retiredMemories.Count
     value = $value.label
   } | ConvertTo-Json -Compress
 } finally {

@@ -269,8 +269,8 @@ try {
   $stateJson = Invoke-NodeChecked -Arguments @("-e", "const core=require('./packages/core/dist/index.js'); core.loadVoidSelfStateTypedDocuments({canonicalPath: process.argv[1]}).then((state)=>console.log(JSON.stringify(state))).catch((error)=>{ console.error(error); process.exit(1); })", $candidate.stateFilePath)
   $state = $stateJson | ConvertFrom-Json
   $queued = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-pressure-candidate" })[0]
-  if ($null -eq $queued -or $queued.status -ne "queued" -or -not @($queued.tags).Contains("source_pressure:fixture-pressure-wants-a-mouth")) {
-    throw "Candidate speech-pressure fixture did not preserve the queued pressure candidate."
+  if ($null -eq $queued -or $queued.status -ne "deferred" -or -not @($queued.tags).Contains("source_pressure:fixture-pressure-wants-a-mouth")) {
+    throw "Candidate speech-pressure fixture did not preserve the live deferred pressure candidate."
   }
 
   @{

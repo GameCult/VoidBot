@@ -242,7 +242,8 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
 
   $status = Get-Content -LiteralPath $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($status.status -ne "ok") {
-    throw "Speech fixture did not finish ok."
+    $failureMessage = if ($null -ne $status.PSObject.Properties["failureMessage"]) { [string]$status.failureMessage } else { "(no failure message)" }
+    throw "Speech fixture did not finish ok: $failureMessage"
   }
   if ([int]$status.proposedOperationCount -ne 3 -or [int]$status.appliedOperationCount -ne 5 -or [int]$status.deliveredCandidateCount -ne 1) {
     throw "Speech fixture expected three proposals, five applied operations, and one delivered candidate."
@@ -250,25 +251,25 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
 
   $stateJson = node -e "const core=require('./packages/core/dist/index.js'); core.loadVoidSelfStateTypedDocuments({canonicalPath: process.argv[1]}).then((state)=>console.log(JSON.stringify(state))).catch((error)=>{ console.error(error); process.exit(1); })" $stateFilePath
   $state = $stateJson | ConvertFrom-Json
-  $candidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-parent-owned-speech" })[0]
-  $duplicateCandidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-duplicate-same-reply-target" })[0]
-  $alreadyAnsweredCandidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-already-answered-reply-target" })[0]
+  $candidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-parent-owned-speech" }) | Select-Object -First 1
+  $duplicateCandidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-duplicate-same-reply-target" }) | Select-Object -First 1
+  $alreadyAnsweredCandidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-already-answered-reply-target" }) | Select-Object -First 1
   $receipt = @(
     $state.speechReceipts.recentReceipts |
       Where-Object {
         $property = $_.PSObject.Properties["candidateInterventionId"]
         $null -ne $property -and $property.Value -eq "fixture-parent-owned-speech"
       }
-  )[0]
+  ) | Select-Object -First 1
 
-  if ($candidate.status -ne "spoken") {
-    throw "Speech fixture did not mark the candidate spoken."
+  if ($null -ne $candidate) {
+    throw "Speech fixture left the delivered candidate in current state."
   }
-  if ($duplicateCandidate.status -ne "retired") {
-    throw "Speech fixture did not retire the duplicate same-target candidate."
+  if ($null -ne $duplicateCandidate) {
+    throw "Speech fixture left the duplicate same-target candidate in current state."
   }
-  if ($alreadyAnsweredCandidate.status -ne "retired") {
-    throw "Speech fixture did not retire the already-answered reply target candidate."
+  if ($null -ne $alreadyAnsweredCandidate) {
+    throw "Speech fixture left the already-answered reply target candidate in current state."
   }
   if ($receipt.channelId -ne "fixture-channel-id" -or $receipt.replyToMessageId -ne "fixture-message-id") {
     throw "Speech fixture did not preserve the delivery receipt target."
@@ -276,9 +277,9 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   if ($receipt.candidateInterventionId -ne "fixture-parent-owned-speech") {
     throw "Speech fixture did not link the delivery receipt back to the spoken candidate."
   }
-  $answeredCase = @($state.moderationCursor.openCases | Where-Object { $_.sourceMessageId -eq "fixture-answered-message-id" })[0]
-  if ($answeredCase.status -ne "answered" -or $answeredCase.summary -match "not answered") {
-    throw "Speech fixture did not normalize the answered open-case summary."
+  $answeredCase = @($state.moderationCursor.openCases | Where-Object { $_.sourceMessageId -eq "fixture-answered-message-id" }) | Select-Object -First 1
+  if ($null -ne $answeredCase) {
+    throw "Speech fixture left an answered open case in current state."
   }
   $lastMessage = Get-Content -LiteralPath (Join-Path $fixtureStatusDir "moderation-rumination-last-message.txt") -Raw -Encoding UTF8
   if ($lastMessage -notmatch "deliveredCandidates=1") {
@@ -287,8 +288,8 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
 
   @{
     status = "ok"
-    candidateStatus = $candidate.status
-    staleDuplicateStatus = $alreadyAnsweredCandidate.status
+    candidateRetained = $null -ne $candidate
+    staleDuplicateRetained = $null -ne $alreadyAnsweredCandidate
     receiptCount = @($state.speechReceipts.recentReceipts).Count
     deliveredCandidateCount = [int]$status.deliveredCandidateCount
   } | ConvertTo-Json -Compress
