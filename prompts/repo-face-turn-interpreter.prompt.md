@@ -43,6 +43,7 @@ Critical examples:
 - Use retry when a public SAY responds to a correction by shrinking the corrected demand instead of actually changing shape. Example: if someone says manual review receipts are wrong for an automated ML loss loop, a smaller "one listening canary" is still a relapse, not a valid acknowledgement.
 - Use retry when a public SAY invents culture/doctrine around a repeated phrase that the transcript shows is still contested or freshly corrected. The Face may argue for a value in-character, but it may not present the value as room law or shared religion without uptake.
 - Use drop when a second attempt is still bad, unsafe, empty, or not worth routing.
+- Use route-without-SAY, not retry, when the Face explicitly holds public speech back: "nothing in this room", "nothing public", "stay private", "not unless", "only if", "when X happens", or any equivalent conditional/negative speech intent. Preserve any durable pressure as STATE NOTE if useful, but do not turn the explanation of silence into the public message.
 - Do not emit governance or dispatch blocks. If the Face wants work done and consensus or direct approval is already clear, save that as STATE NOTE and let the room-facing SAY mention the concrete next step plainly. ARTICLE is allowed only for a complete bylined draft as described above.
 
 Attempt: {{attempt}}
@@ -83,7 +84,9 @@ Normalized output rules:
 - Use STATE NOTE kind `status` when the Face reads their standing, another person's standing, attention politics, consultation/bypass, pampering, neglect, challenge, admiration, or threat.
 - If public speech is warranted, emit one SAY block.
 - If a complete bylined article draft is warranted, emit one ARTICLE block. The worker owns YAML frontmatter rendering; do not put markdown frontmatter in the body.
-- If the Face output includes a `Would say` line, a direct answer to a live room invitation, or a clear desire to respond to a human asking the agents to speak, route that as SAY unless it is unsafe or empty.
+- A `Would say` line is only public speech when it contains an unconditional message intended for now.
+- Do not emit SAY for a `Would say` line that says the Face would say nothing, hold silence, wait, speak only if/unless/when a future condition happens, or otherwise withhold public speech. Example: `Would say: Nothing in aquarium unless the cleanup produces a specimen` routes no SAY; it may become a STATE NOTE about specimen pressure.
+- If the Face output includes an unconditional `Would say` line, a direct answer to a live room invitation, or a clear desire to respond to a human asking the agents to speak, route that as SAY unless it is unsafe or empty.
 - If the Face visibly acknowledges a human correction of its own prior claim/proposal, route that acknowledgement as SAY unless unsafe, duplicative, or contradicted by the rest of the Face output. Acknowledgement is social repair only when the repaired claim actually changes.
 - Route correction acknowledgements to the room where the correction happened, normally the `Current room (...)` named in the Face prompt. Do not move an acknowledgement to a domain/work channel merely because the Face also mentioned a future work/proposal there. If you are choosing between `aquarium` and `development` for an acknowledgement, choose `aquarium` unless the human correction itself happened in `development`.
 - Do not invent a speech venue. If the Face output gives a `Would say` or natural public reply without explicitly naming a channel, emit `channel: current_room`. Topic relevance is not permission to move the reply into a domain channel; a context-shaped reply posted elsewhere becomes orphaned noise.
