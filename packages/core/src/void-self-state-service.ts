@@ -206,6 +206,8 @@ function normalizeTypedStateForWrite(
   state: VoidSelfStateTypedProjection,
   observedAt = new Date().toISOString(),
 ): void {
+  pruneRetiredTypedState(state);
+
   let thoughtMemoryChanged = false;
   for (const memory of state.thoughtMemory.shortTerm) {
     thoughtMemoryChanged = clampFutureTimestampFields(memory, observedAt, [
@@ -240,6 +242,21 @@ function normalizeTypedStateForWrite(
   if (candidateInterventionsChanged) {
     state.candidateInterventions.updatedAt = observedAt;
   }
+}
+
+function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
+  state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(isNotRetiredEntry);
+  state.thoughtMemory.memories = state.thoughtMemory.memories.filter(isNotRetiredEntry);
+  state.thoughtMemory.incubation = state.thoughtMemory.incubation.filter(isNotRetiredEntry);
+  state.agencyPressure.pressures = state.agencyPressure.pressures.filter(isNotRetiredEntry);
+  state.candidateInterventions.interventions = state.candidateInterventions.interventions.filter(isNotRetiredEntry);
+  state.faceAffect.needs = state.faceAffect.needs.filter(isNotRetiredEntry);
+  state.faceAffect.socialBonds = state.faceAffect.socialBonds.filter(isNotRetiredEntry);
+  state.faceAffect.statusReads = state.faceAffect.statusReads.filter(isNotRetiredEntry);
+}
+
+function isNotRetiredEntry(entry: { status?: string; retiredAt?: string }): boolean {
+  return entry.status !== "retired" && !entry.retiredAt;
 }
 
 function clampFutureTimestampFields<T extends Record<string, unknown>>(
