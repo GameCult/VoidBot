@@ -24,7 +24,7 @@ import {
   type RepoDiscordIdentity,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
-import { loadPromptTemplate, type SourceMessage } from "@voidbot/shared";
+import { loadPromptTemplate, type InteractionMemoryProfile, type SourceMessage } from "@voidbot/shared";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
@@ -1610,7 +1610,14 @@ async function renderRepoFaceMemorySurfaceForTurn(
 ): Promise<string> {
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  const statePacket = renderRepoFaceStatePacket(identity, typedState, registryIdentities, roomContext);
+  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(config, roomContext);
+  const statePacket = renderRepoFaceStatePacket(
+    identity,
+    typedState,
+    registryIdentities,
+    roomContext,
+    humanPronounGuidance,
+  );
   if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
     return rejectLeakyMemorySurface(statePacket);
   }
@@ -1630,6 +1637,7 @@ function renderRepoFaceStatePacket(
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
+  humanPronounGuidance: RepoFaceHumanPronounGuidance[] = [],
 ): string {
   const name = identity.displayName;
   const lines: string[] = [];
@@ -1767,6 +1775,11 @@ function renderRepoFaceStatePacket(
   const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
   if (socialGraphFacts) {
     lines.push(socialGraphFacts);
+  }
+
+  const pronounFacts = renderRepoFaceHumanPronounFacts(humanPronounGuidance);
+  if (pronounFacts) {
+    lines.push(pronounFacts);
   }
 
   const roomTextureFacts = roomContext
@@ -2072,6 +2085,108 @@ function renderRepoFaceSocialGraphFacts(
 
   lines.push("- These are topology facts only; they do not say how the gap should feel.");
   return lines.join("\n");
+}
+
+interface RepoFaceHumanPronounGuidance {
+  actorId: string;
+  actorName: string;
+  guidance: string;
+  resolvedPronounSet?: string;
+  policy: string;
+  confidence?: number;
+  evidenceExcerpt?: string;
+}
+
+async function loadRepoFaceHumanPronounGuidance(
+  config: ReturnType<typeof loadConfig>,
+  roomContext?: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): Promise<RepoFaceHumanPronounGuidance[]> {
+  const visibleHumans = new Map<string, string>();
+  for (const message of [
+    ...(roomContext?.recentMessages ?? []),
+    ...(roomContext?.channelSnapshots.flatMap((snapshot) => snapshot.messages) ?? []),
+  ]) {
+    if (!message.isBot && message.authorId) {
+      visibleHumans.set(message.authorId, message.authorName || message.authorId);
+    }
+  }
+  visibleHumans.set(config.ownerDiscordId, visibleHumans.get(config.ownerDiscordId) ?? "Metacrat");
+
+  const storage = await createStateStorage({
+    backend: config.stateStorageBackend,
+    databaseDsn: config.databaseDsn,
+    jobsFile: config.jobsFile,
+    auditLogFile: config.auditLogFile,
+    interactionMemoryFile: config.interactionMemoryFile,
+    rateLimitStateFile: config.rateLimitStateFile,
+  });
+
+  try {
+    const profiles = await Promise.all(
+      [...visibleHumans.entries()].map(async ([actorId, fallbackName]) => ({
+        actorId,
+        fallbackName,
+        profile: await storage.interactionMemory.getProfile(actorId),
+      })),
+    );
+
+    return profiles
+      .map(({ actorId, fallbackName, profile }) =>
+        profile ? repoFacePronounGuidanceFromProfile(actorId, fallbackName, profile) : undefined,
+      )
+      .filter((entry): entry is RepoFaceHumanPronounGuidance => entry !== undefined);
+  } finally {
+    await storage.close();
+  }
+}
+
+function repoFacePronounGuidanceFromProfile(
+  actorId: string,
+  fallbackName: string,
+  profile: InteractionMemoryProfile,
+): RepoFaceHumanPronounGuidance | undefined {
+  if (profile.pronounPolicy === "unknown" || profile.resolvedPronounSets.length === 0) {
+    return undefined;
+  }
+
+  const evidence = [...profile.pronounEvidence]
+    .filter((entry) => entry.stance === "prefer" || entry.stance === "avoid")
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0];
+
+  return {
+    actorId,
+    actorName: profile.actorName || fallbackName,
+    guidance: profile.pronounGuidance,
+    resolvedPronounSet: profile.resolvedPronounSet,
+    policy: profile.pronounPolicy,
+    confidence: profile.pronounConfidence,
+    evidenceExcerpt: evidence?.excerpt,
+  };
+}
+
+function renderRepoFaceHumanPronounFacts(
+  guidance: RepoFaceHumanPronounGuidance[],
+): string | undefined {
+  if (guidance.length === 0) {
+    return undefined;
+  }
+
+  return [
+    "Known human pronoun guidance:",
+    ...guidance.map((entry) =>
+      [
+        `- ${entry.actorName}: ${entry.guidance}`,
+        entry.resolvedPronounSet ? `Resolved set: ${entry.resolvedPronounSet}.` : "",
+        entry.policy ? `Policy: ${entry.policy}.` : "",
+        typeof entry.confidence === "number" ? `Confidence: ${entry.confidence.toFixed(2)}.` : "",
+        entry.evidenceExcerpt ? `Evidence: "${collapseWhitespace(entry.evidenceExcerpt, 180)}"` : "",
+      ].filter(Boolean).join(" "),
+    ),
+    "Use this when referring to humans in social or relationship prose. If guidance is absent for someone, use their name or neutral phrasing rather than guessing.",
+  ].join("\n");
 }
 
 async function renderRepoFaceSocialOpportunitySurface(input: {

@@ -54,6 +54,23 @@ try {
   if (memorySurface.trim().length < 240) {
     throw new Error(`projected memory surface is too thin:\n${memorySurface}`);
   }
+  if (identity.toLowerCase() === "nibu") {
+    if (
+      !/\bMetacrat\b[\s\S]{0,320}\bshe\/her\b/i.test(memorySurface) &&
+      !/\bMetacrat\b[\s\S]{0,320}\bher approval\b/i.test(memorySurface)
+    ) {
+      throw new Error(`Nibu projection did not preserve Metacrat's explicit she/her pronoun guidance:\n${memorySurface}`);
+    }
+    const badMetacratMasculine = [
+      /\bMetacrat\b[\s\S]{0,240}\bhis attention\b/i,
+      /\bMetacrat\b[\s\S]{0,240}\bwhen he turns away\b/i,
+      /\bMetacrat\b[\s\S]{0,240}\bhe listens\b/i,
+    ];
+    const badPattern = badMetacratMasculine.find((pattern) => pattern.test(memorySurface));
+    if (badPattern) {
+      throw new Error(`Nibu projection used masculine pronouns for Metacrat (${badPattern}):\n${memorySurface}`);
+    }
+  }
 
   process.stdout.write(`${JSON.stringify({ ok: true, identity, outPath, chars: memorySurface.length })}\n`);
 } finally {
