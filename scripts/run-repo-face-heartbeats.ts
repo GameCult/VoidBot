@@ -1831,7 +1831,40 @@ function renderRepoFaceStatePacket(
     return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
   }
 
-  return rejectLeakyMemorySurface(lines.join("\n\n"));
+  return rejectLeakyMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
+}
+
+function cleanRepoFaceProjectorLoopVocabulary(
+  identity: RepoDiscordIdentity,
+  surface: string,
+): string {
+  let cleaned = surface
+    .replace(/\bLocalCastBridge\b/g, "the retired bridge alias")
+    .replace(/\bwet-voice-01\b/g, "the old voice-demo artifact")
+    .replace(/\bwet-voice\b/g, "old voice-demo")
+    .replace(/\bcanary-style\b/gi, "small-scope")
+    .replace(/\bnamed canary\b/gi, "named small-scope check")
+    .replace(/\bcanary utterance\b/gi, "small-scope utterance")
+    .replace(/\bcanary demo\b/gi, "small-scope demo")
+    .replace(/\bcanary\b/gi, "small-scope check")
+    .replace(/\bwitness receipts?\b/gi, "reviewable evidence")
+    .replace(/\bwitness data\b/gi, "proof data")
+    .replace(/\bwitness-first\b/gi, "evidence-first")
+    .replace(/\bwitness demo\b/gi, "proof demo")
+    .replace(/\bwitness artifact\b/gi, "evidence artifact")
+    .replace(/\bwitness culture\b/gi, "proof ceremony")
+    .replace(/\bwitness ceremon(?:y|ies)\b/gi, "proof ceremony");
+
+  if (identity.id !== "nibu") {
+    cleaned = cleaned
+      .replace(/\bwitnessability\b/gi, "inspectability")
+      .replace(/\bwitnesses\b/gi, "evidence points")
+      .replace(/\bwitnessing\b/gi, "inspection")
+      .replace(/\bwitnessed\b/gi, "measured")
+      .replace(/\bwitness\b/gi, "evidence");
+  }
+
+  return cleaned;
 }
 
 function sortAffectByStatusAndIntensity(
