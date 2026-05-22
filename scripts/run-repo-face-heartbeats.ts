@@ -484,10 +484,12 @@ async function queueRepoFaceTurn(input: {
   const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
     identity,
     input.config,
+    input.registryIdentities,
   );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
     identity,
+    registryIdentities: input.registryIdentities,
     config: input.config,
     recentMessages,
     channelSnapshots,
@@ -1529,11 +1531,12 @@ async function assembleRepoFaceTurnPrompt(input: {
       : Promise.resolve(undefined),
     input.memorySurfacePath
       ? readOptionalMemorySurface(input.memorySurfacePath)
-      : renderRepoFaceMemorySurfaceForTurn(identity, input.config),
+      : renderRepoFaceMemorySurfaceForTurn(identity, input.config, registry.identities),
   ]);
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
     identity,
+    registryIdentities: registry.identities,
     config: input.config,
     recentMessages,
     channelSnapshots,
@@ -1588,10 +1591,11 @@ async function assembleRepoFaceTurnPrompt(input: {
 async function renderRepoFaceMemorySurfaceForTurn(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
+  registryIdentities: RepoDiscordIdentity[] = [],
 ): Promise<string> {
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  const statePacket = renderRepoFaceStatePacket(identity, typedState);
+  const statePacket = renderRepoFaceStatePacket(identity, typedState, registryIdentities);
   if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
     return rejectLeakyMemorySurface(statePacket);
   }
@@ -1606,6 +1610,7 @@ async function renderRepoFaceMemorySurfaceForTurn(
 function renderRepoFaceStatePacket(
   identity: RepoDiscordIdentity,
   state: VoidSelfStateTypedProjection,
+  registryIdentities: RepoDiscordIdentity[] = [],
 ): string {
   const name = identity.displayName;
   const lines: string[] = [];
@@ -1660,22 +1665,25 @@ function renderRepoFaceStatePacket(
     lines.push([
       "The social map has teeth:",
       ...bonds.map((bond) => {
-      const target = bond.target.label ?? bond.target.id;
+        const target = bond.target.label ?? bond.target.id;
         return `- ${target} draws ${bond.stance}: ${asSentence(bond.summary)} ${asSentence(bond.actionImplication)}`;
       }),
     ].join("\n"));
-  } else {
-    lines.push(`${name} does not have enough settled bonds yet, and that absence should feel a little socially cold. Use the room to decide who earns trust, irritation, protection, rivalry, or a carefully labeled shelf.`);
   }
 
   if (statusReads.length > 0) {
     lines.push([
       "Status in the swarm is part of the weather:",
       ...statusReads.map((read) => {
-      const target = read.target.label ?? read.target.id;
+        const target = read.target.label ?? read.target.id;
         return `- Around ${target}, ${name} feels ${read.status}: ${asSentence(read.summary)} ${asSentence(read.actionImplication)}`;
       }),
     ].join("\n"));
+  }
+
+  const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
+  if (socialGraphFacts) {
+    lines.push(socialGraphFacts);
   }
 
   if (agencyPressures.length > 0) {
@@ -1704,8 +1712,35 @@ function renderRepoFaceStatePacket(
   return rejectLeakyMemorySurface(lines.join("\n\n"));
 }
 
+function renderRepoFaceSocialGraphFacts(
+  identity: RepoDiscordIdentity,
+  registryIdentities: RepoDiscordIdentity[],
+  state: VoidSelfStateTypedProjection,
+): string | undefined {
+  const relations = collectRepoFaceSocialRelations(state);
+  const unmappedPeers = collectUnmappedSocialPeers(identity, registryIdentities, relations);
+  if (registryIdentities.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    "Social graph topology:",
+    relations.length === 0
+      ? "- No active person-bonds or person-status reads exist yet."
+      : `- Active mapped people: ${relations.map((relation) => relation.targetLabel).join(", ")}.`,
+  ];
+
+  if (unmappedPeers.length > 0) {
+    lines.push(`- Unmapped active peers: ${formatUnmappedPeers(unmappedPeers)}.`);
+  }
+
+  lines.push("- These are topology facts only; they do not say how the gap should feel.");
+  return lines.join("\n");
+}
+
 async function renderRepoFaceSocialOpportunitySurface(input: {
   identity: RepoDiscordIdentity;
+  registryIdentities: RepoDiscordIdentity[];
   config: ReturnType<typeof loadConfig>;
   recentMessages: SourceMessage[];
   channelSnapshots: ChannelSnapshot[];
@@ -1714,10 +1749,14 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
   const statePath = resolveRepoFaceStatePath(input.identity, input.config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
   const relations = collectRepoFaceSocialRelations(typedState);
+  const unmappedPeers = collectUnmappedSocialPeers(input.identity, input.registryIdentities, relations);
   if (relations.length === 0) {
     return [
-      "Derived social placement: no active person-bonds or person-status reads exist yet, so this Face has not found a stable place in the swarm's social graph.",
-      "Use the raw conversation to look for a first real social edge: who earns trust, irritation, protection, rivalry, respect, suspicion, deference, or a careful question. Do not fake intimacy just to fill the gap.",
+      "No existing person-bond or person-status read matched this turn.",
+      "Use the transcript as evidence only when someone gives a real hook for trust, irritation, protection, rivalry, respect, suspicion, deference, or a careful question.",
+      unmappedPeers.length > 0
+        ? `Unmapped registered peers: ${formatUnmappedPeers(unmappedPeers)}. Do not greet the whole roster at once.`
+        : "No peer roster was available for comparison this turn.",
     ].join("\n");
   }
 
@@ -1732,8 +1771,11 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
 
   if (hookedRelations.length === 0) {
     return [
-      "Derived social placement: existing person-bonds/status reads have no matching speaker in the attached recent messages.",
-      "Treat the transcript itself as fresh social evidence: notice who is interrupting, protecting, escalating, ignoring, joking, asking for recognition, or touching your jurisdiction before you decide whether to speak.",
+      "Existing person-bonds/status reads have no matching speaker in the attached recent messages.",
+      "Treat the transcript itself as possible fresh social evidence, not as an obligation to invent a relationship.",
+      unmappedPeers.length > 0
+        ? `Still-unmapped peers: ${formatUnmappedPeers(unmappedPeers)}. If one of them appears in the transcript, there is evidence available for a possible first read.`
+        : "No unmapped registered peers were found for this turn.",
     ].join("\n");
   }
 
@@ -1743,6 +1785,10 @@ async function renderRepoFaceSocialOpportunitySurface(input: {
 
   for (const { relation, hooks } of hookedRelations) {
     lines.push(`- ${relation.targetLabel}: ${relation.pressure} Recent hook: ${hooks.map(formatSocialOpportunityMessage).join(" | ")}`);
+  }
+
+  if (unmappedPeers.length > 0) {
+    lines.push(`Unmapped registered peers: ${formatUnmappedPeers(unmappedPeers)}.`);
   }
 
   return rejectLeakyMemorySurface(lines.join("\n"));
@@ -1795,6 +1841,36 @@ function collectRepoFaceSocialRelations(
     }))
     .filter((entry) => entry.pressure.length > 0)
     .sort((left, right) => right.intensity - left.intensity);
+}
+
+function collectUnmappedSocialPeers(
+  identity: RepoDiscordIdentity,
+  registryIdentities: RepoDiscordIdentity[],
+  relations: Array<{ targetLabel: string }>,
+): RepoDiscordIdentity[] {
+  const mappedTokens = new Set(
+    relations.flatMap((relation) => socialTargetTokens(relation.targetLabel)),
+  );
+  const selfTokens = new Set(socialTargetTokens(identity.displayName, identity.id, identity.repoName));
+
+  return registryIdentities
+    .filter((peer) => {
+      const peerTokens = socialTargetTokens(peer.displayName, peer.id, peer.repoName);
+      if (peerTokens.some((token) => selfTokens.has(token))) {
+        return false;
+      }
+      return !peerTokens.some((token) => mappedTokens.has(token));
+    })
+    .sort((left, right) => left.displayName.localeCompare(right.displayName))
+    .slice(0, 8);
+}
+
+function socialTargetTokens(...values: Array<string | undefined>): string[] {
+  return [...new Set(values.map(normalizeSocialLabel).filter((value) => value.length > 0))];
+}
+
+function formatUnmappedPeers(peers: RepoDiscordIdentity[]): string {
+  return peers.map((peer) => `${peer.displayName}/${peer.repoName}`).join(", ");
 }
 
 function collectSocialOpportunityMessages(input: {
