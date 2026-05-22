@@ -14,6 +14,9 @@ What you remember, feel, and want right now:
 Recent home repo activity:
 {{repoActivitySurface}}
 
+Live social affordances:
+{{socialOpportunitySurface}}
+
 Recent conversation transcript:
 {{conversationMemorySurface}}
 

@@ -486,6 +486,13 @@ async function queueRepoFaceTurn(input: {
     input.config,
   );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
+    identity,
+    config: input.config,
+    recentMessages,
+    channelSnapshots,
+    channelPlan,
+  });
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
     recentMessages,
@@ -501,6 +508,7 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     memorySurface,
     repoActivitySurface,
+    socialOpportunitySurface,
     conversationMemorySurface,
     bifrostDigest,
     participant: input.participant,
@@ -1426,6 +1434,7 @@ function buildHeartbeatPrompt(input: {
   recentMessages: SourceMessage[];
   memorySurface?: string;
   repoActivitySurface?: string;
+  socialOpportunitySurface?: string;
   conversationMemorySurface?: string;
   bifrostDigest?: BifrostGovernanceDigest;
   participant: FaceHeartbeatParticipant;
@@ -1441,6 +1450,7 @@ function buildHeartbeatPrompt(input: {
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
+    socialOpportunitySurface: input.socialOpportunitySurface ?? "- No live social affordances were attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
@@ -1522,6 +1532,13 @@ async function assembleRepoFaceTurnPrompt(input: {
       : renderRepoFaceMemorySurfaceForTurn(identity, input.config),
   ]);
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
+    identity,
+    config: input.config,
+    recentMessages,
+    channelSnapshots,
+    channelPlan,
+  });
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
     : renderRepoFaceConversationTranscript({
@@ -1543,6 +1560,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     recentMessages,
     memorySurface,
     repoActivitySurface,
+    socialOpportunitySurface,
     conversationMemorySurface,
     bifrostDigest,
     participant,
@@ -1684,6 +1702,147 @@ function renderRepoFaceStatePacket(
   }
 
   return rejectLeakyMemorySurface(lines.join("\n\n"));
+}
+
+async function renderRepoFaceSocialOpportunitySurface(input: {
+  identity: RepoDiscordIdentity;
+  config: ReturnType<typeof loadConfig>;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  channelPlan: RepoFaceChannelPlan;
+}): Promise<string> {
+  const statePath = resolveRepoFaceStatePath(input.identity, input.config.storageRoot);
+  const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
+  const relations = collectRepoFaceSocialRelations(typedState);
+  if (relations.length === 0) {
+    return [
+      "No durable social reads are attached yet.",
+      "Use the raw conversation to notice who earns trust, irritation, protection, rivalry, respect, or suspicion; do not fake intimacy just to fill the gap.",
+    ].join("\n");
+  }
+
+  const messages = collectSocialOpportunityMessages(input);
+  const hookedRelations = relations
+    .map((relation) => ({
+      relation,
+      hooks: findMessagesForSocialTarget(messages, relation.targetLabel, input.identity.displayName),
+    }))
+    .filter((entry) => entry.hooks.length > 0)
+    .slice(0, 5);
+
+  if (hookedRelations.length === 0) {
+    return [
+      "No durable bond target appears to have spoken in the attached recent messages.",
+      "Treat the transcript itself as fresh social evidence: notice who is interrupting, protecting, escalating, ignoring, joking, or asking for recognition before you decide whether to speak.",
+    ].join("\n");
+  }
+
+  const lines = [
+    "These are live relationship hooks, not orders. If one fits the room, maintain or complicate the bond in character instead of treating it as private trivia.",
+  ];
+
+  for (const { relation, hooks } of hookedRelations) {
+    lines.push(`- ${relation.targetLabel}: ${relation.pressure} Recent hook: ${hooks.map(formatSocialOpportunityMessage).join(" | ")}`);
+  }
+
+  return rejectLeakyMemorySurface(lines.join("\n"));
+}
+
+function collectRepoFaceSocialRelations(
+  state: VoidSelfStateTypedProjection,
+): Array<{ targetLabel: string; pressure: string; intensity: number }> {
+  const byTarget = new Map<string, { targetLabel: string; parts: string[]; intensity: number }>();
+
+  for (const bond of state.faceAffect.socialBonds ?? []) {
+    if (bond.status !== "active") {
+      continue;
+    }
+    if (bond.target.kind !== "person") {
+      continue;
+    }
+    const targetLabel = cleanSocialTargetLabel(bond.target.label ?? bond.target.id);
+    if (!targetLabel) {
+      continue;
+    }
+    const entry = byTarget.get(targetLabel) ?? { targetLabel, parts: [], intensity: 0 };
+    entry.parts.push(`${bond.stance}: ${asSentence(bond.summary)} ${asSentence(bond.actionImplication)}`);
+    entry.intensity = Math.max(entry.intensity, bond.intensity);
+    byTarget.set(targetLabel, entry);
+  }
+
+  for (const read of state.faceAffect.statusReads ?? []) {
+    if (read.retiredAt) {
+      continue;
+    }
+    if (read.target.kind !== "person") {
+      continue;
+    }
+    const targetLabel = cleanSocialTargetLabel(read.target.label ?? read.target.id);
+    if (!targetLabel) {
+      continue;
+    }
+    const entry = byTarget.get(targetLabel) ?? { targetLabel, parts: [], intensity: 0 };
+    entry.parts.push(`${read.status}: ${asSentence(read.summary)} ${asSentence(read.actionImplication)}`);
+    entry.intensity = Math.max(entry.intensity, read.intensity);
+    byTarget.set(targetLabel, entry);
+  }
+
+  return [...byTarget.values()]
+    .map((entry) => ({
+      targetLabel: entry.targetLabel,
+      pressure: entry.parts.map(cleanCharacterFacingSentence).filter(Boolean).join(" "),
+      intensity: entry.intensity,
+    }))
+    .filter((entry) => entry.pressure.length > 0)
+    .sort((left, right) => right.intensity - left.intensity);
+}
+
+function collectSocialOpportunityMessages(input: {
+  channelPlan: RepoFaceChannelPlan;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+}): Array<{ label: string; message: SourceMessage }> {
+  const currentLabel = input.channelPlan.options.find((option) =>
+    option.channelId === input.channelPlan.primaryChannelId
+  )?.label ?? "current room";
+  const messages = input.recentMessages.map((message) => ({ label: currentLabel, message }));
+
+  for (const snapshot of input.channelSnapshots) {
+    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
+      "nearby room";
+    messages.push(...snapshot.messages.map((message) => ({ label, message })));
+  }
+
+  return messages;
+}
+
+function findMessagesForSocialTarget(
+  messages: Array<{ label: string; message: SourceMessage }>,
+  targetLabel: string,
+  selfName: string,
+): Array<{ label: string; message: SourceMessage }> {
+  const targetToken = normalizeSocialLabel(targetLabel);
+  const selfToken = normalizeSocialLabel(selfName);
+  if (!targetToken || targetToken === selfToken) {
+    return [];
+  }
+
+  return messages
+    .filter(({ message }) => normalizeSocialLabel(message.authorName) === targetToken)
+    .slice(-2);
+}
+
+function formatSocialOpportunityMessage(entry: { label: string; message: SourceMessage }): string {
+  const speaker = entry.message.isBot ? `${entry.message.authorName} (agent)` : entry.message.authorName;
+  return `${entry.label}/${speaker}: "${collapseWhitespace(entry.message.content, 220)}"`;
+}
+
+function cleanSocialTargetLabel(value: string | undefined): string {
+  return collapseWhitespace(value ?? "").replace(/^repo:/i, "").trim();
+}
+
+function normalizeSocialLabel(value: string | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function projectPrivateNoteForMemorySurface(note: string): string {
