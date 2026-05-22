@@ -1634,30 +1634,43 @@ function renderRepoFaceStatePacket(
   const name = identity.displayName;
   const lines: string[] = [];
   const profile = state.selfProfile;
-  const privateNotes = profile.privateNotes.slice(-4);
+  const privateNotes = profile.privateNotes;
   const values = [...profile.values]
-    .sort((left, right) => right.priority - left.priority)
-    .slice(0, 5);
+    .sort((left, right) => right.priority - left.priority);
   const needs = [...state.faceAffect.needs]
-    .filter((need) => ["active", "neglected"].includes(need.status))
-    .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 3);
+    .filter((need) => need.status !== "retired")
+    .sort(sortAffectByStatusAndIntensity);
   const bonds = [...state.faceAffect.socialBonds]
-    .filter((bond) => bond.status === "active")
-    .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 3);
+    .filter((bond) => bond.status !== "retired")
+    .sort(sortAffectByStatusAndIntensity);
   const statusReads = [...state.faceAffect.statusReads]
     .filter((read) => !read.retiredAt)
-    .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 3);
+    .sort(sortAffectByStatusAndIntensity);
+  const moodDimensions = [...state.faceAffect.moodDimensions]
+    .sort((left, right) => right.value - left.value);
   const agencyPressures = [...state.agencyPressure.pressures]
-    .filter((pressure) => ["active", "cooling", "ready_to_act"].includes(pressure.status))
-    .sort((left, right) => right.intensity - left.intensity)
-    .slice(0, 2);
+    .filter((pressure) => pressure.status !== "retired")
+    .sort(sortAffectByStatusAndIntensity);
+  const durableMemories = [...state.thoughtMemory.memories]
+    .filter((memory) => !memory.retiredAt)
+    .slice(-12)
+    .reverse();
+  const shortTermResidue = [...state.thoughtMemory.shortTerm]
+    .filter((memory) => !memory.retiredAt)
+    .slice(-12)
+    .reverse();
   const incubation = [...state.thoughtMemory.incubation]
     .filter((thread) => thread.status !== "retired")
-    .sort((left, right) => right.maturation - left.maturation)
-    .slice(0, 4);
+    .sort((left, right) => right.maturation - left.maturation);
+  const candidateInterventions = [...state.candidateInterventions.interventions]
+    .filter((intervention) => intervention.status !== "retired")
+    .slice(-8)
+    .reverse();
+  const recentReceipts = [...state.speechReceipts.recentReceipts]
+    .slice(-6)
+    .reverse();
+  const activationFacts = renderRepoFaceActivationProfileFacts(profile.activationProfile);
+  const runtimeFacts = renderRepoFaceRuntimePressureFacts(name, state);
 
   const selfTexture = [
     ...privateNotes.map(projectPrivateNoteForMemorySurface),
@@ -1665,17 +1678,35 @@ function renderRepoFaceStatePacket(
   ]
     .map(cleanCharacterFacingSentence)
     .filter((entry) => entry.length > 0)
-    .slice(0, 5);
+    .slice(0, 18);
   if (selfTexture.length > 0) {
     lines.push(`Right now, ${name} is carrying this close to the skin: ${joinAsNarrativeList(selfTexture)}.`);
   }
 
+  if (activationFacts) {
+    lines.push(activationFacts);
+  }
+
+  if (runtimeFacts) {
+    lines.push(runtimeFacts);
+  }
+
   if (needs.length > 0) {
     lines.push([
-      `${name}'s current pressures:`,
+      `${name}'s explicit needs and frictions:`,
       ...needs.map((need) => {
-      const target = need.target.label ?? need.target.id;
-        return `- ${target}: ${asSentence(need.summary)} The catch: ${asSentence(need.tension)} Next: ${asSentence(need.actionImplication)}`;
+        const target = targetLabel(need.target);
+        const claimOrQuestion = need.claim
+          ? `Claim: ${asSentence(need.claim)}`
+          : need.question
+            ? `Question: ${asSentence(need.question)}`
+            : "";
+        return [
+          `- ${need.kind} need toward ${target} [${need.status}, intensity ${need.intensity.toFixed(2)}, valence ${need.valence.toFixed(2)}]: ${asSentence(need.summary)}`,
+          claimOrQuestion,
+          `Tension: ${asSentence(need.tension)}`,
+          `Behavioral pull: ${asSentence(need.actionImplication)}`,
+        ].filter(Boolean).join(" ");
       }),
     ].join("\n"));
   }
@@ -1684,8 +1715,13 @@ function renderRepoFaceStatePacket(
     lines.push([
       "The social map has teeth:",
       ...bonds.map((bond) => {
-        const target = bond.target.label ?? bond.target.id;
-        return `- ${target} draws ${bond.stance}: ${asSentence(bond.summary)} ${asSentence(bond.actionImplication)}`;
+        const target = targetLabel(bond.target);
+        return [
+          `- ${target} draws ${bond.stance} [${bond.status}, intensity ${bond.intensity.toFixed(2)}]: ${asSentence(bond.summary)}`,
+          `Read: ${asSentence(bond.claim)}`,
+          `Tension: ${asSentence(bond.tension)}`,
+          `Behavioral pull: ${asSentence(bond.actionImplication)}`,
+        ].join(" ");
       }),
     ].join("\n"));
   }
@@ -1694,9 +1730,37 @@ function renderRepoFaceStatePacket(
     lines.push([
       "Status in the swarm is part of the weather:",
       ...statusReads.map((read) => {
-        const target = read.target.label ?? read.target.id;
-        return `- Around ${target}, ${name} feels ${read.status}: ${asSentence(read.summary)} ${asSentence(read.actionImplication)}`;
+        const target = targetLabel(read.target);
+        return [
+          `- Around ${target}, ${name} feels ${read.status} [intensity ${read.intensity.toFixed(2)}]: ${asSentence(read.summary)}`,
+          `Read: ${asSentence(read.claim)}`,
+          `Tension: ${asSentence(read.tension)}`,
+          `Behavioral pull: ${asSentence(read.actionImplication)}`,
+        ].join(" ");
       }),
+    ].join("\n"));
+  }
+
+  if (moodDimensions.length > 0) {
+    lines.push([
+      "Mood dimensions currently bending the turn:",
+      ...moodDimensions.map((dimension) =>
+        `- ${dimension.name}=${dimension.value.toFixed(2)}${dimension.source ? ` from ${cleanCharacterFacingSentence(dimension.source)}` : ""}`,
+      ),
+    ].join("\n"));
+  }
+
+  if (durableMemories.length > 0) {
+    lines.push([
+      "Durable memories that should still bias judgment:",
+      ...durableMemories.map((memory) => renderRepoFaceMemoryFact(name, memory)),
+    ].join("\n"));
+  }
+
+  if (shortTermResidue.length > 0) {
+    lines.push([
+      "Short-term residue waiting to settle:",
+      ...shortTermResidue.map((memory) => renderRepoFaceMemoryFact(name, memory)),
     ].join("\n"));
   }
 
@@ -1714,21 +1778,53 @@ function renderRepoFaceStatePacket(
 
   if (agencyPressures.length > 0) {
     lines.push([
-      "What wants action later:",
+      "Agency pressures that want eventual motion:",
       ...agencyPressures.map((pressure) =>
-        `- ${asSentence(pressure.summary)} ${asSentence(pressure.actionImplication)}`,
+        [
+          `- ${pressure.kind} toward ${targetLabel(pressure.target)} [${pressure.status}, intensity ${pressure.intensity.toFixed(2)}]: ${asSentence(pressure.summary)}`,
+          pressure.claim ? `Claim: ${asSentence(pressure.claim)}` : "",
+          pressure.question ? `Question: ${asSentence(pressure.question)}` : "",
+          pressure.tension ? `Tension: ${asSentence(pressure.tension)}` : "",
+          `Behavioral pull: ${asSentence(pressure.actionImplication)}`,
+        ].filter(Boolean).join(" "),
       ),
     ].join("\n"));
   }
 
   if (incubation.length > 0) {
-    lines.push(`Thoughts still moving under the floorboards: ${incubation.map((thread) =>
-      `${cleanCharacterFacingSentence(thread.topic)}: ${cleanCharacterFacingSentence(thread.summary)}`,
-    ).join(" ")}`);
+    lines.push([
+      "Thoughts still moving under the floorboards:",
+      ...incubation.map((thread) =>
+        [
+          `- ${cleanCharacterFacingSentence(thread.topic)} [${thread.status}, maturation ${thread.maturation.toFixed(2)}]: ${cleanCharacterFacingSentence(thread.summary)}`,
+          typeof thread.desireToSpeak === "number" ? `desire to speak ${thread.desireToSpeak.toFixed(2)}` : "",
+          typeof thread.noveltyToRoom === "number" ? `room novelty ${thread.noveltyToRoom.toFixed(2)}` : "",
+          typeof thread.saturationScore === "number" ? `saturation ${thread.saturationScore.toFixed(2)}` : "",
+        ].filter(Boolean).join("; "),
+      ),
+    ].join("\n"));
   }
 
-  if (state.candidateInterventions.interventions.some((intervention) => intervention.status === "queued")) {
-    lines.push(`${name} may already have an unsaid line waiting. Do not repeat it unless the room gives it a sharper angle.`);
+  if (candidateInterventions.length > 0) {
+    lines.push([
+      "Unsaid or recently deferred speech pressure:",
+      ...candidateInterventions.map((intervention) =>
+        [
+          `- ${intervention.kind} [${intervention.status}, priority ${intervention.priority.toFixed(2)}${intervention.mustEventuallyShare ? ", must eventually share" : ""}]: ${asSentence(intervention.summary)}`,
+          `Draft residue: ${cleanCharacterFacingSentence(intervention.draft)}`,
+        ].join(" "),
+      ),
+      "Do not repeat a waiting line unless the room gives it a sharper angle.",
+    ].join("\n"));
+  }
+
+  if (recentReceipts.length > 0) {
+    lines.push([
+      "Recent speech residue:",
+      ...recentReceipts.map((receipt) =>
+        `- Said recently${receipt.preview ? `: ${cleanCharacterFacingSentence(receipt.preview)}` : "."} Let this create repetition caution, confidence, embarrassment, or follow-through as appropriate.`,
+      ),
+    ].join("\n"));
   }
 
   if (lines.length === 0) {
@@ -1736,6 +1832,103 @@ function renderRepoFaceStatePacket(
   }
 
   return rejectLeakyMemorySurface(lines.join("\n\n"));
+}
+
+function sortAffectByStatusAndIntensity(
+  left: { status?: string; intensity?: number },
+  right: { status?: string; intensity?: number },
+): number {
+  const rank = (status: string | undefined): number => {
+    switch (status) {
+      case "neglected":
+      case "ready_to_act":
+        return 0;
+      case "active":
+        return 1;
+      case "challenged":
+        return 1;
+      case "cooling":
+        return 2;
+      case "satisfied":
+      case "resolved":
+        return 3;
+      default:
+        return 4;
+    }
+  };
+  const rankDelta = rank(left.status) - rank(right.status);
+  if (rankDelta !== 0) {
+    return rankDelta;
+  }
+  return (right.intensity ?? 0) - (left.intensity ?? 0);
+}
+
+function targetLabel(target: { label?: string; id?: string; kind?: string } | undefined): string {
+  if (!target) {
+    return "an unnamed target";
+  }
+  return target.label ?? target.id ?? target.kind ?? "an unnamed target";
+}
+
+function renderRepoFaceActivationProfileFacts(
+  activationProfile: VoidSelfStateTypedProjection["selfProfile"]["activationProfile"],
+): string | undefined {
+  const sections = Object.entries(activationProfile)
+    .map(([section, values]) => {
+      const entries = Object.entries(values)
+        .sort(([, left], [, right]) => right.weight - left.weight)
+        .map(([key, value]) => `${key}=${value.weight.toFixed(2)}${value.note ? ` (${cleanCharacterFacingSentence(value.note)})` : ""}`);
+      return entries.length > 0 ? `- ${section}: ${entries.join("; ")}` : undefined;
+    })
+    .filter((entry): entry is string => typeof entry === "string");
+
+  return sections.length > 0
+    ? ["Activation profile that should color behavior:", ...sections].join("\n")
+    : undefined;
+}
+
+function renderRepoFaceRuntimePressureFacts(
+  name: string,
+  state: VoidSelfStateTypedProjection,
+): string | undefined {
+  const lines: string[] = [];
+  const sleep = state.scheduledRuntime.sleepCycle;
+  if (sleep.isNapping || sleep.activeDreamThemes.length > 0) {
+    lines.push(
+      `${name}'s rest state: ${sleep.isNapping ? "currently in a sleep/low-output phase" : "awake but carrying dream residue"}${sleep.activeDreamThemes.length > 0 ? ` around ${joinAsNarrativeList(sleep.activeDreamThemes.map(cleanCharacterFacingSentence))}` : ""}.`,
+    );
+  }
+
+  const speaking = state.scheduledRuntime.speakingPressure;
+  const speakingParts = [
+    `need to speak ${speaking.needToSpeak.toFixed(2)}`,
+    typeof speaking.confessionPressure === "number" ? `confession ${speaking.confessionPressure.toFixed(2)}` : "",
+    typeof speaking.noveltyPressure === "number" ? `novelty ${speaking.noveltyPressure.toFixed(2)}` : "",
+    typeof speaking.recentSpeechDamping === "number" ? `recent-speech damping ${speaking.recentSpeechDamping.toFixed(2)}` : "",
+  ].filter(Boolean);
+  lines.push(`Speaking pressure: ${speakingParts.join(", ")}. Treat this as appetite/restraint, not an order.`);
+
+  if (state.scheduledRuntime.lastRuns.length > 0) {
+    lines.push(`Recent internal passes: ${state.scheduledRuntime.lastRuns.slice(-4).map((run) =>
+      cleanCharacterFacingSentence(run.summary),
+    ).join(" | ")}`);
+  }
+
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
+function renderRepoFaceMemoryFact(
+  name: string,
+  memory: VoidSelfStateTypedProjection["thoughtMemory"]["memories"][number],
+): string {
+  const parts = [
+    `- ${memory.kind} about ${targetLabel(memory.target)}: ${asSentence(memory.summary)}`,
+    memory.claim ? `Claim: ${asSentence(memory.claim)}` : "",
+    memory.question ? `Question: ${asSentence(memory.question)}` : "",
+    memory.tension ? `Tension: ${asSentence(memory.tension)}` : "",
+    memory.actionImplication ? `Behavioral pull for ${name}: ${asSentence(memory.actionImplication)}` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
 }
 
 function renderRepoFaceRoomTextureFacts(
