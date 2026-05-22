@@ -491,14 +491,6 @@ async function queueRepoFaceTurn(input: {
     },
   );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
-  const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
-    identity,
-    registryIdentities: input.registryIdentities,
-    config: input.config,
-    recentMessages,
-    channelSnapshots,
-    channelPlan,
-  });
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
     recentMessages,
@@ -514,7 +506,6 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     memorySurface,
     repoActivitySurface,
-    socialOpportunitySurface,
     conversationMemorySurface,
     bifrostDigest,
     participant: input.participant,
@@ -1440,7 +1431,6 @@ function buildHeartbeatPrompt(input: {
   recentMessages: SourceMessage[];
   memorySurface?: string;
   repoActivitySurface?: string;
-  socialOpportunitySurface?: string;
   conversationMemorySurface?: string;
   bifrostDigest?: BifrostGovernanceDigest;
   participant: FaceHeartbeatParticipant;
@@ -1456,7 +1446,6 @@ function buildHeartbeatPrompt(input: {
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
-    socialOpportunitySurface: input.socialOpportunitySurface ?? "- No live social affordances were attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     roomWeatherDirective: renderRepoFaceRoomWeatherDirective(input.identity, {
       recentMessages: input.recentMessages,
@@ -1545,14 +1534,6 @@ async function assembleRepoFaceTurnPrompt(input: {
         channelSnapshots,
       });
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
-  const socialOpportunitySurface = await renderRepoFaceSocialOpportunitySurface({
-    identity,
-    registryIdentities: registry.identities,
-    config: input.config,
-    recentMessages,
-    channelSnapshots,
-    channelPlan,
-  });
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
     : renderRepoFaceConversationTranscript({
@@ -1574,7 +1555,6 @@ async function assembleRepoFaceTurnPrompt(input: {
     recentMessages,
     memorySurface,
     repoActivitySurface,
-    socialOpportunitySurface,
     conversationMemorySurface,
     bifrostDigest,
     participant,
@@ -1775,6 +1755,13 @@ function renderRepoFaceStatePacket(
   const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
   if (socialGraphFacts) {
     lines.push(socialGraphFacts);
+  }
+
+  const peerOpeningFacts = roomContext
+    ? renderRepoFacePeerOpeningFacts(identity, registryIdentities, roomContext)
+    : undefined;
+  if (peerOpeningFacts) {
+    lines.push(peerOpeningFacts);
   }
 
   const pronounFacts = renderRepoFaceHumanPronounFacts(humanPronounGuidance);
@@ -2087,6 +2074,66 @@ function renderRepoFaceSocialGraphFacts(
   return lines.join("\n");
 }
 
+function renderRepoFacePeerOpeningFacts(
+  identity: RepoDiscordIdentity,
+  registryIdentities: RepoDiscordIdentity[],
+  roomContext: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string | undefined {
+  const selfTokens = new Set(socialTargetTokens(identity.displayName, identity.id, identity.repoName));
+  const peersByToken = new Map<string, RepoDiscordIdentity>();
+  for (const peer of registryIdentities) {
+    for (const token of socialTargetTokens(peer.displayName, peer.id, peer.repoName)) {
+      if (!selfTokens.has(token)) {
+        peersByToken.set(token, peer);
+      }
+    }
+  }
+
+  const entries: Array<{ label: string; message: SourceMessage }> = [
+    ...roomContext.recentMessages.map((message) => ({ label: "current room", message })),
+    ...roomContext.channelSnapshots.flatMap((snapshot) =>
+      snapshot.messages.map((message) => ({ label: "nearby room", message })),
+    ),
+  ];
+  const byPeer = new Map<string, { peer: RepoDiscordIdentity; entries: Array<{ label: string; message: SourceMessage }> }>();
+
+  for (const entry of entries) {
+    if (!entry.message.isBot || !entry.message.content.trim()) {
+      continue;
+    }
+    const peer = peersByToken.get(normalizeSocialLabel(entry.message.authorName));
+    if (!peer) {
+      continue;
+    }
+    const bucket = byPeer.get(peer.id) ?? { peer, entries: [] };
+    bucket.entries.push(entry);
+    byPeer.set(peer.id, bucket);
+  }
+
+  const peerFacts = [...byPeer.values()]
+    .sort((left, right) => right.entries.length - left.entries.length)
+    .slice(0, 6)
+    .map(({ peer, entries }) => {
+      const latest = entries.at(-1);
+      const channelLabels = [...new Set(entries.map((entry) => entry.label))].join(", ");
+      const excerpt = latest ? collapseWhitespace(latest.message.content, 180) : "";
+      return `- ${peer.displayName}: ${entries.length} recent nearby message${entries.length === 1 ? "" : "s"} in ${channelLabels}. Latest visible line: "${excerpt}"`;
+    });
+
+  if (peerFacts.length === 0) {
+    return undefined;
+  }
+
+  return [
+    "Recent peer openings for possible social reads:",
+    ...peerFacts,
+    "These are raw openings for the projector to translate into possible trust, irritation, rivalry, alliance, or no social move at all. Do not treat them as consensus.",
+  ].join("\n");
+}
+
 interface RepoFaceHumanPronounGuidance {
   actorId: string;
   actorName: string;
@@ -2189,70 +2236,6 @@ function renderRepoFaceHumanPronounFacts(
   ].join("\n");
 }
 
-async function renderRepoFaceSocialOpportunitySurface(input: {
-  identity: RepoDiscordIdentity;
-  registryIdentities: RepoDiscordIdentity[];
-  config: ReturnType<typeof loadConfig>;
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-  channelPlan: RepoFaceChannelPlan;
-}): Promise<string> {
-  const statePath = resolveRepoFaceStatePath(input.identity, input.config.storageRoot);
-  const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  const relations = collectRepoFaceSocialRelations(typedState);
-  const unmappedPeers = collectUnmappedSocialPeers(input.identity, input.registryIdentities, relations);
-  const messages = collectSocialOpportunityMessages(input);
-  const unmappedPeerHooks = collectUnmappedPeerSocialHooks({
-    identity: input.identity,
-    unmappedPeers,
-    messages,
-  });
-  if (relations.length === 0) {
-    return [
-      "No existing person-bond or person-status read matched this turn.",
-      "Use the transcript as evidence only when someone gives a real hook for trust, irritation, protection, rivalry, respect, suspicion, deference, or a careful question.",
-      ...formatUnmappedPeerHookLines(unmappedPeerHooks),
-      unmappedPeers.length > 0
-        ? `Unmapped registered peers: ${formatUnmappedPeers(unmappedPeers)}. Do not greet the whole roster at once.`
-        : "No peer roster was available for comparison this turn.",
-    ].join("\n");
-  }
-
-  const hookedRelations = relations
-    .map((relation) => ({
-      relation,
-      hooks: findMessagesForSocialTarget(messages, relation.targetLabel, input.identity.displayName),
-    }))
-    .filter((entry) => entry.hooks.length > 0)
-    .slice(0, 5);
-
-  if (hookedRelations.length === 0) {
-    return [
-      "Existing person-bonds/status reads have no matching speaker in the attached recent messages.",
-      "Treat the transcript itself as possible fresh social evidence, not as an obligation to invent a relationship.",
-      ...formatUnmappedPeerHookLines(unmappedPeerHooks),
-      unmappedPeers.length > 0
-        ? `Still-unmapped peers: ${formatUnmappedPeers(unmappedPeers)}. If one of them appears in the transcript, there is evidence available for a possible first read.`
-        : "No unmapped registered peers were found for this turn.",
-    ].join("\n");
-  }
-
-  const lines = [
-    "These are live relationship hooks, not orders. If one fits the room, maintain or complicate the bond in character instead of treating it as private trivia.",
-  ];
-
-  for (const { relation, hooks } of hookedRelations) {
-    lines.push(`- ${relation.targetLabel}: ${relation.pressure} Recent hook: ${hooks.map(formatSocialOpportunityMessage).join(" | ")}`);
-  }
-
-  if (unmappedPeers.length > 0) {
-    lines.push(...formatUnmappedPeerHookLines(unmappedPeerHooks));
-    lines.push(`Unmapped registered peers: ${formatUnmappedPeers(unmappedPeers)}.`);
-  }
-
-  return rejectLeakyMemorySurface(lines.join("\n"));
-}
-
 function collectRepoFaceSocialRelations(
   state: VoidSelfStateTypedProjection,
 ): Array<{ targetLabel: string; pressure: string; intensity: number }> {
@@ -2330,99 +2313,6 @@ function socialTargetTokens(...values: Array<string | undefined>): string[] {
 
 function formatUnmappedPeers(peers: RepoDiscordIdentity[]): string {
   return peers.map((peer) => `${peer.displayName}/${peer.repoName}`).join(", ");
-}
-
-function collectUnmappedPeerSocialHooks(input: {
-  identity: RepoDiscordIdentity;
-  unmappedPeers: RepoDiscordIdentity[];
-  messages: Array<{ label: string; message: SourceMessage }>;
-}): Array<{ peer: RepoDiscordIdentity; hooks: Array<{ label: string; message: SourceMessage }> }> {
-  const selfTokens = new Set(socialTargetTokens(input.identity.displayName, input.identity.id, input.identity.repoName));
-  const peersByToken = new Map<string, RepoDiscordIdentity>();
-  for (const peer of input.unmappedPeers) {
-    for (const token of socialTargetTokens(peer.displayName, peer.id, peer.repoName)) {
-      if (!selfTokens.has(token)) {
-        peersByToken.set(token, peer);
-      }
-    }
-  }
-
-  const byPeer = new Map<string, { peer: RepoDiscordIdentity; hooks: Array<{ label: string; message: SourceMessage }> }>();
-  for (const entry of input.messages) {
-    if (!entry.message.isBot || !entry.message.content.trim()) {
-      continue;
-    }
-    const peer = peersByToken.get(normalizeSocialLabel(entry.message.authorName));
-    if (!peer) {
-      continue;
-    }
-    const bucket = byPeer.get(peer.id) ?? { peer, hooks: [] };
-    bucket.hooks.push(entry);
-    byPeer.set(peer.id, bucket);
-  }
-
-  return [...byPeer.values()]
-    .map((entry) => ({
-      peer: entry.peer,
-      hooks: entry.hooks.slice(-2),
-    }))
-    .sort((left, right) => left.peer.displayName.localeCompare(right.peer.displayName))
-    .slice(0, 5);
-}
-
-function formatUnmappedPeerHookLines(
-  peerHooks: Array<{ peer: RepoDiscordIdentity; hooks: Array<{ label: string; message: SourceMessage }> }>,
-): string[] {
-  if (peerHooks.length === 0) {
-    return [];
-  }
-  return [
-    "Possible first-read hooks from unmapped peers who actually spoke nearby:",
-    ...peerHooks.map((entry) =>
-      `- ${entry.peer.displayName}: ${entry.hooks.map(formatSocialOpportunityMessage).join(" | ")}`,
-    ),
-    "Use one of these only if it sparks a real first read, question, tease, alliance, irritation, or rivalry. Do not manufacture intimacy from a single quote.",
-  ];
-}
-
-function collectSocialOpportunityMessages(input: {
-  channelPlan: RepoFaceChannelPlan;
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-}): Array<{ label: string; message: SourceMessage }> {
-  const currentLabel = input.channelPlan.options.find((option) =>
-    option.channelId === input.channelPlan.primaryChannelId
-  )?.label ?? "current room";
-  const messages = input.recentMessages.map((message) => ({ label: currentLabel, message }));
-
-  for (const snapshot of input.channelSnapshots) {
-    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
-      "nearby room";
-    messages.push(...snapshot.messages.map((message) => ({ label, message })));
-  }
-
-  return messages;
-}
-
-function findMessagesForSocialTarget(
-  messages: Array<{ label: string; message: SourceMessage }>,
-  targetLabel: string,
-  selfName: string,
-): Array<{ label: string; message: SourceMessage }> {
-  const targetToken = normalizeSocialLabel(targetLabel);
-  const selfToken = normalizeSocialLabel(selfName);
-  if (!targetToken || targetToken === selfToken) {
-    return [];
-  }
-
-  return messages
-    .filter(({ message }) => normalizeSocialLabel(message.authorName) === targetToken)
-    .slice(-2);
-}
-
-function formatSocialOpportunityMessage(entry: { label: string; message: SourceMessage }): string {
-  const speaker = entry.message.isBot ? `${entry.message.authorName} (agent)` : entry.message.authorName;
-  return `${entry.label}/${speaker}: "${collapseWhitespace(entry.message.content, 220)}"`;
 }
 
 function cleanSocialTargetLabel(value: string | undefined): string {

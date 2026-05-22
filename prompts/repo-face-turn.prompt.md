@@ -68,6 +68,3 @@ Fresh projected state for this turn:
 
 What you remember, feel, and want right now:
 {{memorySurface}}
-
-Live social affordances:
-{{socialOpportunitySurface}}
