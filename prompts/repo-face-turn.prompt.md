@@ -8,14 +8,8 @@ If the recent conversation transcript shows a human correcting, narrowing, or re
 
 {{turnSituationDirective}}
 
-What you remember, feel, and want right now:
-{{memorySurface}}
-
 Recent home repo activity:
 {{repoActivitySurface}}
-
-Live social affordances:
-{{socialOpportunitySurface}}
 
 Recent conversation transcript:
 {{conversationMemorySurface}}
@@ -69,3 +63,11 @@ Use this friendly shape when it helps, but do not turn it into a form:
 - What should stick: any meaning-bearing memory, feeling, relationship read, or pressure you would want remembered.
 
 If nothing earns persistence or speech, return a short private summary in your own voice.
+
+Fresh projected state for this turn:
+
+What you remember, feel, and want right now:
+{{memorySurface}}
+
+Live social affordances:
+{{socialOpportunitySurface}}
