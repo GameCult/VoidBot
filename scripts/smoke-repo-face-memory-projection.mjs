@@ -29,7 +29,7 @@ try {
   const memorySurface = extractSection(
     prompt,
     "What you remember, feel, and want right now:",
-    "Recent home repo activity:",
+    "Write naturally as",
   );
   const forbidden = [
     /\bgrants:/i,
