@@ -440,7 +440,12 @@ async function queueRepoFaceTurn(input: {
     return { created: false };
   }
 
-  const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
+  const preferredChannelId = newestPendingMentionChannel(input.pendingMentions);
+  const channelPlan = buildChannelPlan(
+    identity,
+    input.config.repoFaceHeartbeats.defaultChannelId,
+    preferredChannelId,
+  );
   const channelId = channelPlan.primaryChannelId;
   if (!channelId) {
     input.participant.status = "blocked";
@@ -2767,6 +2772,7 @@ function buildInspectionParticipant(
 function buildChannelPlan(
   identity: RepoDiscordIdentity,
   defaultChannelId?: string,
+  preferredChannelId?: string,
 ): RepoFaceChannelPlan {
   const explicit = identity.channelPermissions.map((permission): RepoFaceChannelOption => ({
     channelId: permission.channelId,
@@ -2800,19 +2806,34 @@ function buildChannelPlan(
       }]
     : [];
   const options = [...explicit, ...legacy, ...fallback];
-  const primary = options
+  const preferred = preferredChannelId
+    ? options.find((option) => option.channelId === preferredChannelId)
+    : undefined;
+  const primary = preferred ?? options
     .slice()
     .sort((left, right) => thresholdRank(left.speechThreshold) - thresholdRank(right.speechThreshold))
     [0];
 
   return {
     primaryChannelId: primary?.channelId,
-    snapshotChannelIds: options.map((option) => option.channelId),
+    snapshotChannelIds: [
+      ...new Set([
+        ...options.map((option) => option.channelId),
+        ...(preferredChannelId ? [preferredChannelId] : []),
+      ]),
+    ],
     options,
     lowThresholdTopics: options
       .filter((option) => thresholdRank(option.speechThreshold) <= thresholdRank("low"))
       .map((option) => option.topic),
   };
+}
+
+function newestPendingMentionChannel(pendingMentions: RepoFacePendingMention[]): string | undefined {
+  return pendingMentions
+    .slice()
+    .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))
+    [0]?.channelId;
 }
 
 function renderChannelPermissionDirective(plan: RepoFaceChannelPlan): string {

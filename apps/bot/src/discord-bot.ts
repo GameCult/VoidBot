@@ -19,6 +19,7 @@ import {
   faceRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentityByPersonaName,
   findRepoDiscordIdentityByRoleIds,
+  findRepoDiscordIdentitiesByTextMentions,
   findRepoDiscordIdentityByTextAddress,
   loadFaceIdentityRegistry,
   queueAgentHeartbeatMention,
@@ -333,9 +334,22 @@ export async function startBot(): Promise<void> {
           message.mentions.roles.keys(),
           message.channelId,
         );
+    const roleAddressedRepoIdentities = isDirectMessage
+      ? []
+      : repoDiscordIdentities.identities.filter((identity) =>
+          identity.roleId &&
+          message.mentions.roles.has(identity.roleId),
+        );
     const textAddressedRepoIdentity = isDirectMessage
       ? undefined
       : findRepoDiscordIdentityByTextAddress(
+          repoDiscordIdentities,
+          stripBotMention(message.content),
+          message.channelId,
+        );
+    const textMentionedRepoIdentities = isDirectMessage
+      ? []
+      : findRepoDiscordIdentitiesByTextMentions(
           repoDiscordIdentities,
           stripBotMention(message.content),
           message.channelId,
@@ -345,10 +359,15 @@ export async function startBot(): Promise<void> {
       textAddressedRepoIdentity
       ? undefined
       : await resolveRepliedRepoIdentity(message, repoDiscordIdentities);
+    const addressedRepoIdentities = uniqueRepoIdentities([
+      ...roleAddressedRepoIdentities,
+      ...textMentionedRepoIdentities,
+      ...(repliedRepoIdentity ? [repliedRepoIdentity] : []),
+    ]);
     const addressedRepoIdentity = roleAddressedRepoIdentity ?? textAddressedRepoIdentity ?? repliedRepoIdentity;
     const isBotMentioned = Boolean(client.user && message.mentions.has(client.user));
 
-    if (!client.user || (!isDirectMessage && !isBotMentioned && !addressedRepoIdentity)) {
+    if (!client.user || (!isDirectMessage && !isBotMentioned && addressedRepoIdentities.length === 0)) {
       return;
     }
 
@@ -366,35 +385,51 @@ export async function startBot(): Promise<void> {
         : stripBotMention(message.content).trim();
 
     try {
-      if (addressedRepoIdentity) {
-        if (!visiblePrompt) {
-          console.log(`Ignored empty repo Face mention ${message.id} for ${addressedRepoIdentity.id}.`);
-          return;
+      if (addressedRepoIdentities.length > 0) {
+        let queuedCount = 0;
+        for (const identity of addressedRepoIdentities) {
+          const identityVisiblePrompt = renderRepoIdentityVisiblePrompt({
+            message,
+            identity,
+            roleAddressed: roleAddressedRepoIdentities.some((entry) => entry.id === identity.id),
+            textAddressed: textAddressedRepoIdentity?.id === identity.id,
+            replied: repliedRepoIdentity?.id === identity.id,
+          });
+          if (!identityVisiblePrompt) {
+            console.log(`Ignored empty repo Face mention ${message.id} for ${identity.id}.`);
+            continue;
+          }
+          const faceInitialization = await ensureRepoFaceInitialized({
+            identity,
+            storageRoot: config.storageRoot,
+            sourceRepoRoot: config.sourceRepoRoot,
+            epiphanyAgentRoot: config.epiphanyAgentRoot,
+            workspaceRoot: process.cwd(),
+            birthMode: config.repoFaceBirthMode,
+            birthExecutor: config.repoFaceBirthExecutor,
+          });
+          const queuedMention = await queueRepoFaceMention({
+            statePath: config.repoFaceHeartbeats.statePath,
+            identity,
+            channelId: message.channelId,
+            messageId: message.id,
+            authorId: message.author.id,
+            authorName: message.author.username,
+            content: message.content,
+            visiblePrompt: identityVisiblePrompt,
+          });
+          if (queuedMention.queued) {
+            queuedCount += 1;
+          }
+          console.log(
+            `Queued repo Face mention ${message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
+              faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
+            }`,
+          );
         }
-        const faceInitialization = await ensureRepoFaceInitialized({
-          identity: addressedRepoIdentity,
-          storageRoot: config.storageRoot,
-          sourceRepoRoot: config.sourceRepoRoot,
-          epiphanyAgentRoot: config.epiphanyAgentRoot,
-          workspaceRoot: process.cwd(),
-          birthMode: config.repoFaceBirthMode,
-          birthExecutor: config.repoFaceBirthExecutor,
-        });
-        const queuedMention = await queueRepoFaceMention({
-          statePath: config.repoFaceHeartbeats.statePath,
-          identity: addressedRepoIdentity,
-          channelId: message.channelId,
-          messageId: message.id,
-          authorId: message.author.id,
-          authorName: message.author.username,
-          content: message.content,
-          visiblePrompt,
-        });
-        console.log(
-          `Queued repo Face mention ${message.id} for ${addressedRepoIdentity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
-            faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
-          }`,
-        );
+        if (queuedCount === 0) {
+          console.log(`Repo Face mention ${message.id} matched existing pending obligations only.`);
+        }
         return;
       }
 
@@ -687,6 +722,49 @@ function renderRepliedRepoIdentityPrompt(
   }
 
   return "";
+}
+
+function renderRepoIdentityVisiblePrompt(input: {
+  message: Message;
+  identity: RepoDiscordIdentity;
+  roleAddressed: boolean;
+  textAddressed: boolean;
+  replied: boolean;
+}): string {
+  const strippedBotMention = stripBotMention(input.message.content);
+  if (input.roleAddressed || input.textAddressed) {
+    const strippedAddress = stripRepoIdentityTextAddress(
+      stripAddressingMentions(strippedBotMention, input.roleAddressed ? input.identity.roleId : undefined),
+      input.identity,
+    ).trim();
+    if (strippedAddress.length > 0) {
+      return strippedAddress;
+    }
+  }
+
+  if (input.message.content.trim().length > 0) {
+    return strippedBotMention.trim();
+  }
+
+  return renderRepliedRepoIdentityPrompt(
+    input.message,
+    input.identity,
+    input.replied ? input.identity : undefined,
+  );
+}
+
+function uniqueRepoIdentities(identities: RepoDiscordIdentity[]): RepoDiscordIdentity[] {
+  const seen = new Set<string>();
+  const result: RepoDiscordIdentity[] = [];
+  for (const identity of identities) {
+    const key = identity.id.trim().toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(identity);
+  }
+  return result;
 }
 
 async function ensureRepoIdentityRoles(options: {

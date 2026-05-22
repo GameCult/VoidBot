@@ -5,7 +5,6 @@ import { mkdir } from "node:fs/promises";
 import {
   type RepoDiscordIdentity,
   type RepoDiscordIdentityRegistry,
-  isRepoDiscordIdentityAllowedInChannel,
 } from "./repo-discord-identities";
 
 export const REPO_FACE_HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_face_heartbeat_state.v1";
@@ -91,12 +90,21 @@ export function findRepoDiscordIdentityByTextAddress(
   channelId: string,
 ): RepoDiscordIdentity | undefined {
   const trimmed = content.trimStart();
+  void channelId;
 
   return registry.identities.find((identity) => {
-    return (
-      isRepoDiscordIdentityAllowedInChannel(identity, channelId) &&
-      textStartsWithIdentityAddress(trimmed, identity)
-    );
+    return textStartsWithIdentityAddress(trimmed, identity);
+  });
+}
+
+export function findRepoDiscordIdentitiesByTextMentions(
+  registry: RepoDiscordIdentityRegistry,
+  content: string,
+  channelId: string,
+): RepoDiscordIdentity[] {
+  void channelId;
+  return registry.identities.filter((identity) => {
+    return textContainsIdentityMention(content, identity);
   });
 }
 
@@ -174,6 +182,12 @@ function textStartsWithIdentityAddress(content: string, identity: RepoDiscordIde
     });
 }
 
+function textContainsIdentityMention(content: string, identity: RepoDiscordIdentity): boolean {
+  return [identity.displayName, identity.id]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .some((candidate) => containsStandaloneToken(content, candidate));
+}
+
 function isPendingMention(value: unknown): value is RepoFacePendingMention {
   if (!value || typeof value !== "object") {
     return false;
@@ -194,6 +208,11 @@ function isPendingMention(value: unknown): value is RepoFacePendingMention {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsStandaloneToken(text: string, token: string): boolean {
+  const escaped = escapeRegExp(token.trim());
+  return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}([^\\p{L}\\p{N}_]|$)`, "iu").test(text);
 }
 
 function stripLeadingBom(input: string): string {

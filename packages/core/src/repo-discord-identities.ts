@@ -90,13 +90,10 @@ export function findRepoDiscordIdentityByRoleIds(
   channelId: string,
 ): RepoDiscordIdentity | undefined {
   const mentionedRoles = new Set(roleIds);
+  void channelId;
 
   return registry.identities.find((identity) => {
-    return (
-      identity.roleId &&
-      mentionedRoles.has(identity.roleId) &&
-      isRepoDiscordIdentityAllowedInChannel(identity, channelId)
-    );
+    return identity.roleId && mentionedRoles.has(identity.roleId);
   });
 }
 
