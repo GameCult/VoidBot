@@ -62,6 +62,22 @@ const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
 const REPO_IDENTITY_BIFROST_TOPIC_SENTINEL = "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC:";
+const CURRENT_REPO_FACE_IDENTITY_SELECTORS = new Set([
+  "face_id",
+  "faceid",
+  "current_face",
+  "current_face_id",
+  "currentface",
+  "currentfaceid",
+  "current_identity",
+  "current_identity_id",
+  "currentidentity",
+  "currentidentityid",
+  "job_identity",
+  "job_identity_id",
+  "jobidentity",
+  "jobidentityid",
+]);
 const REPO_FACE_FORBIDDEN_CHILD_TOOLS = new Set([
   "read_repo_face_state",
   "list_mcp_resources",
@@ -1118,9 +1134,11 @@ async function resolveRepoIdentityForJobIntent(
   const jobIdentityId = job.command === "repo-face-rumination"
     ? parseRepoIdentityIdFromRequestMessageId(job.requestMessageId) ?? parseRepoIdentityIdFromPrompt(job.prompt)
     : undefined;
+  const identitySelectorIsCurrentFaceAlias = isCurrentRepoFaceIdentitySelector(identitySelector);
   if (
     jobIdentityId &&
     identitySelector &&
+    !identitySelectorIsCurrentFaceAlias &&
     normalizeChannelSelector(jobIdentityId) !== normalizeChannelSelector(identitySelector)
   ) {
     console.warn(
@@ -1129,7 +1147,7 @@ async function resolveRepoIdentityForJobIntent(
   }
   const identityId =
     jobIdentityId ??
-    identitySelector ??
+    (identitySelectorIsCurrentFaceAlias ? undefined : identitySelector) ??
     parseRepoIdentityIdFromPrompt(job.prompt) ??
     parseRepoIdentityIdFromRequestMessageId(job.requestMessageId);
   if (!identityId) {
@@ -2019,6 +2037,10 @@ function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[]
     const bodyLines: string[] = [];
     index += 1;
     while (index < lines.length && lines[index].trim() !== "END") {
+      if (parseRepoFaceActionKind(lines[index])) {
+        index -= 1;
+        break;
+      }
       bodyLines.push(lines[index]);
       index += 1;
     }
@@ -2028,6 +2050,11 @@ function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[]
     });
   }
   return blocks;
+}
+
+function isCurrentRepoFaceIdentitySelector(identitySelector: string | undefined): boolean {
+  const normalized = identitySelector ? normalizeChannelSelector(identitySelector) : "";
+  return normalized.length > 0 && CURRENT_REPO_FACE_IDENTITY_SELECTORS.has(normalized);
 }
 
 function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | undefined {

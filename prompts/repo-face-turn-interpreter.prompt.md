@@ -88,7 +88,7 @@ Normalized output rules:
 - SAY content must be one compact, complete Discord message. Do not end with `...` or an unfinished word.
 
 STATE NOTE
-identity: face_id
+identity: current_face_id
 kind: memory|need|bond|status|mood|agency
 target: person_repo_room_topic_or_self
 summary:
@@ -109,7 +109,7 @@ valence: -1.0_to_1.0
 END
 
 ARTICLE
-identity: face_id
+identity: current_face_id
 site: aetheria|gamecult
 title:
   Article title.
@@ -132,7 +132,7 @@ body:
 END
 
 SAY
-identity: face_id
+identity: current_face_id
 channel: channel_id
 reply_to: message_id_or_blank
 content:
