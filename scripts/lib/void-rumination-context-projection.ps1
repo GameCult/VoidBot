@@ -136,6 +136,7 @@ function Project-RecentHistoryForRumination {
       $messages | ForEach-Object {
         @{
           id = Get-ObjectPropertyString -Value $_ -Name "id"
+          channelId = Get-ObjectPropertyString -Value $_ -Name "channelId"
           authorId = Get-ObjectPropertyString -Value $_ -Name "authorId"
           authorName = Get-ObjectPropertyString -Value $_ -Name "authorName"
           isBot = [bool](Get-ObjectPropertyValue -Value $_ -Name "isBot")
@@ -145,6 +146,55 @@ function Project-RecentHistoryForRumination {
       }
     )
   }
+}
+
+function Project-RecentConversationTargetForRumination {
+  param(
+    $History,
+    [string] $PersonaName,
+    [string] $PersonaAvatarUrl
+  )
+
+  $messages = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $History -Name "messages"))
+  if ($messages.Count -eq 0) {
+    return $null
+  }
+
+  $anchor = $null
+  for ($index = $messages.Count - 1; $index -ge 0; $index--) {
+    $candidate = $messages[$index]
+    $channelId = Get-ObjectPropertyString -Value $candidate -Name "channelId"
+    if ([string]::IsNullOrWhiteSpace($channelId)) {
+      continue
+    }
+
+    if (-not [bool](Get-ObjectPropertyValue -Value $candidate -Name "isBot")) {
+      $anchor = $candidate
+      break
+    }
+
+    if ($null -eq $anchor) {
+      $anchor = $candidate
+    }
+  }
+
+  if ($null -eq $anchor) {
+    return $null
+  }
+
+  $target = @{
+    mode = "channel"
+    channelId = Get-ObjectPropertyString -Value $anchor -Name "channelId"
+    replyToMessageId = Get-ObjectPropertyString -Value $anchor -Name "id"
+    personaName = if ([string]::IsNullOrWhiteSpace($PersonaName)) { "Void" } else { $PersonaName.Trim() }
+    reason = "Latest concrete recent-history conversation anchor. Use this instead of the configured public room when replying to that conversation."
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($PersonaAvatarUrl)) {
+    $target.personaAvatarUrl = $PersonaAvatarUrl.Trim()
+  }
+
+  return $target
 }
 
 function Project-OpenCasesForRumination {

@@ -217,10 +217,19 @@ process.stdin.on("end", () => {
   }
 
   $contextRaw = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8
-  if ($contextRaw -match '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}') {
+  $context = $contextRaw | ConvertFrom-Json
+  $contextForTimestampCheck = $contextRaw | ConvertFrom-Json
+  foreach ($repo in @($contextForTimestampCheck.repoActivity.freshRepos)) {
+    foreach ($commit in @($repo.commits)) {
+      if ($null -ne $commit.PSObject.Properties["contentHints"]) {
+        $commit.contentHints = @()
+      }
+    }
+  }
+  $timestampCheckRaw = $contextForTimestampCheck | ConvertTo-Json -Depth 32
+  if ($timestampCheckRaw -match '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}') {
     throw "Rumination fixture context leaked exact ISO timestamps into the prompt-facing packet."
   }
-  $context = $contextRaw | ConvertFrom-Json
   if ($context.publicSpeechTarget.channelId -ne "fixture-public-room") {
     throw "Rumination fixture context did not project the configured public speech target."
   }
