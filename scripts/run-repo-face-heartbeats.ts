@@ -1602,7 +1602,7 @@ function buildHeartbeatPrompt(input: {
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
     }),
-    topicSaturationDirective: renderRoomTopicSaturationDirective(input.recentMessages),
+    topicSaturationDirective: renderRoomTopicSaturationDirective(input.identity, input.recentMessages),
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -2150,6 +2150,7 @@ function renderRepoFaceRoomTextureFacts(
         "- These are not stored needs and not orders. Project whether this character gets mischievous, bored, sharp, withdrawn, socially hungry, status-testing, or still work-focused.",
       ]
     : [];
+  const topicAttractorFacts = renderRepoFaceTopicAttractorFacts(identity, input.recentMessages);
 
   return [
     "Room texture facts:",
@@ -2158,6 +2159,7 @@ function renderRepoFaceRoomTextureFacts(
     `- This Face's own recent messages in the attached window: ${stats.ownMessages}.`,
     `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
     ...temporaryPressures,
+    ...(topicAttractorFacts ? [topicAttractorFacts] : []),
   ].join("\n");
 }
 
@@ -3344,18 +3346,23 @@ function renderRepetitionSamplingDirective(messages: SourceMessage[]): string {
   });
 }
 
-function renderRoomTopicSaturationDirective(messages: SourceMessage[]): string {
+function renderRoomTopicSaturationDirective(identity: RepoDiscordIdentity, messages: SourceMessage[]): string {
   const signal = detectRoomTopicSaturation(messages);
   if (!signal) {
     return "";
   }
+  const topicRelation = estimateTopicRelationToIdentity(identity, signal);
+  const relationLine = topicRelation.isHomeAdjacent
+    ? `- For ${identity.displayName}, this looks home-adjacent because the repeated terms overlap its territory (${topicRelation.matchedTerms.join(", ")}). That permits deeper engagement, but it still needs fresh anchors or closure.`
+    : `- For ${identity.displayName}, this looks like another steward's gravity well, not its own territory. Treat the pull as possible neglect, boredom, jealousy, territorial itch, or a reason to pivot toward ${identity.displayName}'s own priorities unless it has a distinct social move.`;
 
   return [
     "Current room topic saturation:",
     `- The last ${signal.messageCount} current-room messages are circling repeated terms: ${signal.terms.map((term) => `${term.term} (${term.count})`).join(", ")}.`,
     `- Topic coverage: ${signal.coveredMessages}/${signal.messageCount} messages touch those repeated terms.`,
+    relationLine,
     "- Treat this as staleness pressure, not a ban. Stay with the topic only if you add a genuinely new anchor, answer a live question, make a decision-driving distinction, draft a concrete artifact, or intentionally close/defer the thread.",
-    "- If you only have another tasteful variation on the same point, choose a different social move or keep it private.",
+    "- If you only have another tasteful variation on the same point, choose a different social move, name your frustration with the room's orbit, pivot toward your own neglected fascination, or keep it private.",
   ].join("\n");
 }
 
@@ -3363,6 +3370,60 @@ interface RoomTopicSaturationSignal {
   messageCount: number;
   coveredMessages: number;
   terms: Array<{ term: string; count: number }>;
+}
+
+interface TopicRelationToIdentity {
+  isHomeAdjacent: boolean;
+  matchedTerms: string[];
+}
+
+function renderRepoFaceTopicAttractorFacts(
+  identity: RepoDiscordIdentity,
+  messages: SourceMessage[],
+): string | undefined {
+  const signal = detectRoomTopicSaturation(messages);
+  if (!signal) {
+    return undefined;
+  }
+  const relation = estimateTopicRelationToIdentity(identity, signal);
+  const repeatedTerms = signal.terms.map((term) => `${term.term} (${term.count})`).join(", ");
+  const base = `- Current-room topic attractor: ${signal.coveredMessages}/${signal.messageCount} messages orbit repeated terms ${repeatedTerms}.`;
+  if (relation.isHomeAdjacent) {
+    return [
+      base,
+      `- This attractor touches ${identity.displayName}'s own territory through ${relation.matchedTerms.join(", ")}. Project sustained attention as a chance for deeper stewardship, but include fatigue if the room is polishing the same branch without new evidence.`,
+    ].join("\n");
+  }
+
+  return [
+    base,
+    `- This attractor does not obviously belong to ${identity.displayName}'s territory. Project it as social weather: another domain is absorbing the room, so this character may feel neglected, bored, crowded out, competitive, relieved, or tempted to pull attention back toward its own unfinished fascinations.`,
+  ].join("\n");
+}
+
+function estimateTopicRelationToIdentity(
+  identity: RepoDiscordIdentity,
+  signal: RoomTopicSaturationSignal,
+): TopicRelationToIdentity {
+  const identityTerms = new Set(significantTopicTerms([
+    identity.id,
+    identity.displayName,
+    identity.repoName,
+    identity.description ?? "",
+    ...identity.channelPermissions.flatMap((permission) => [
+      permission.label ?? "",
+      permission.topic ?? "",
+      permission.posture ?? "",
+    ]),
+  ].join(" ")));
+  const matchedTerms = signal.terms
+    .map((term) => term.term)
+    .filter((term) => identityTerms.has(term));
+
+  return {
+    isHomeAdjacent: matchedTerms.length > 0,
+    matchedTerms,
+  };
 }
 
 function detectRoomTopicSaturation(messages: SourceMessage[]): RoomTopicSaturationSignal | undefined {
