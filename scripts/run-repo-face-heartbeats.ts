@@ -1925,6 +1925,13 @@ function renderRepoFaceStatePacket(
     lines.push(peerOpeningFacts);
   }
 
+  const socialPressureFacts = roomContext
+    ? renderRepoFaceRelationshipPressureFacts(identity, registryIdentities, state, roomContext)
+    : undefined;
+  if (socialPressureFacts) {
+    lines.push(socialPressureFacts);
+  }
+
   const pronounFacts = renderRepoFaceHumanPronounFacts(humanPronounGuidance);
   if (pronounFacts) {
     lines.push(pronounFacts);
@@ -2326,6 +2333,201 @@ function renderRepoFacePeerOpeningFacts(
     ...peerFacts,
     "These are raw openings for the projector to translate into possible trust, irritation, rivalry, alliance, or no social move at all. Do not treat them as consensus.",
   ].join("\n");
+}
+
+function renderRepoFaceRelationshipPressureFacts(
+  identity: RepoDiscordIdentity,
+  registryIdentities: RepoDiscordIdentity[],
+  state: VoidSelfStateTypedProjection,
+  roomContext: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string | undefined {
+  const selfTokens = socialPressureTokensForIdentity(identity);
+  const jurisdictionTokens = socialPressureJurisdictionTokens(identity);
+  const peerProfiles = registryIdentities
+    .filter((peer) => normalizeSocialLabel(peer.id) !== normalizeSocialLabel(identity.id))
+    .map((peer) => ({
+      identity: peer,
+      tokens: socialPressureTokensForIdentity(peer),
+    }));
+  const relationTargets = collectRepoFaceSocialRelations(state)
+    .map((relation) => ({
+      label: relation.targetLabel,
+      tokens: socialPressureTokens(relation.targetLabel),
+    }))
+    .filter((relation) => relation.tokens.length > 0);
+  const entries: Array<{ label: string; message: SourceMessage }> = [
+    ...roomContext.recentMessages.map((message) => ({ label: "current room", message })),
+    ...roomContext.channelSnapshots.flatMap((snapshot) =>
+      snapshot.messages.map((message) => ({ label: "nearby room", message })),
+    ),
+  ];
+  const byId = new Map<string, {
+    label: string;
+    message: SourceMessage;
+    score: number;
+    signals: string[];
+  }>();
+
+  for (const entry of entries) {
+    const content = collapseWhitespace(entry.message.content, 10_000);
+    if (!content) {
+      continue;
+    }
+    const normalizedContent = normalizeSocialLabel(content);
+    const authorToken = normalizeSocialLabel(entry.message.authorName ?? entry.message.authorId);
+    const signals: string[] = [];
+    let score = 0;
+
+    const authorIsSelf = tokenAppearsInNormalizedText(authorToken, selfTokens);
+    const contentNamesSelf = tokenAppearsInNormalizedText(normalizedContent, selfTokens);
+    if (contentNamesSelf) {
+      score += 3;
+      signals.push(`names ${identity.displayName}`);
+    } else if (authorIsSelf) {
+      score += 1;
+      signals.push(`${identity.displayName}'s own recent line`);
+    }
+
+    const peerMatches = peerProfiles
+      .filter((peer) =>
+        tokenAppearsInNormalizedText(authorToken, peer.tokens) ||
+        tokenAppearsInNormalizedText(normalizedContent, peer.tokens),
+      )
+      .slice(0, 3);
+    if (peerMatches.length > 0) {
+      score += peerMatches.length;
+      signals.push(`touches peer ${peerMatches.map((peer) => peer.identity.displayName).join("/")}`);
+    }
+
+    const relationMatches = relationTargets
+      .filter((relation) =>
+        tokenAppearsInNormalizedText(authorToken, relation.tokens) ||
+        tokenAppearsInNormalizedText(normalizedContent, relation.tokens),
+      )
+      .slice(0, 3);
+    if (relationMatches.length > 0) {
+      score += relationMatches.length;
+      signals.push(`touches existing social target ${relationMatches.map((relation) => relation.label).join("/")}`);
+    }
+
+    if (tokenAppearsInNormalizedText(normalizedContent, jurisdictionTokens)) {
+      score += 1;
+      signals.push("touches this jurisdiction or its domain language");
+    }
+
+    const socialPressureKinds = socialPressureLanguageKinds(content);
+    if (socialPressureKinds.length > 0) {
+      score += 2;
+      signals.push(`uses social/status language (${socialPressureKinds.join(", ")})`);
+    }
+
+    if (!entry.message.isBot && score > 0) {
+      score += 1;
+      signals.push("human voice");
+    }
+
+    if (score < 4) {
+      continue;
+    }
+
+    const existing = byId.get(entry.message.id);
+    if (!existing || score > existing.score) {
+      byId.set(entry.message.id, {
+        label: entry.label,
+        message: entry.message,
+        score,
+        signals: [...new Set(signals)],
+      });
+    }
+  }
+
+  const facts = [...byId.values()]
+    .sort((left, right) => {
+      const leftMs = Date.parse(left.message.timestamp);
+      const rightMs = Date.parse(right.message.timestamp);
+      if (Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs !== rightMs) {
+        return leftMs - rightMs;
+      }
+      return left.message.id.localeCompare(right.message.id);
+    })
+    .slice(-8);
+
+  if (facts.length === 0) {
+    return undefined;
+  }
+
+  return [
+    "Recent relationship-pressure evidence:",
+    ...facts.map((fact) => {
+      const speaker = fact.message.isBot ? `${fact.message.authorName} (agent/bot)` : fact.message.authorName;
+      return `- [${fact.label}] ${speaker} said: "${collapseWhitespace(fact.message.content, 260)}" Signals: ${fact.signals.join("; ")}.`;
+    }),
+    "These are raw provocations, not settled memories. Project them as tentative felt pressure only where this character's values, territory, current mood, or existing relationships make them matter.",
+  ].join("\n");
+}
+
+function socialPressureTokensForIdentity(identity: RepoDiscordIdentity): string[] {
+  return socialPressureTokens(identity.displayName, identity.id, identity.repoName);
+}
+
+function socialPressureJurisdictionTokens(identity: RepoDiscordIdentity): string[] {
+  return socialPressureTokens(
+    identity.repoName,
+    identity.displayName,
+    identity.description,
+    ...identity.channelPermissions.flatMap((permission) => [permission.label, permission.topic]),
+  )
+    .filter((token) => token.length >= 5);
+}
+
+function socialPressureTokens(...values: Array<string | undefined>): string[] {
+  const tokens = new Set<string>();
+  for (const value of values) {
+    const normalized = normalizeSocialLabel(value);
+    if (normalized.length >= 3) {
+      tokens.add(normalized);
+    }
+    for (const part of splitSocialPressureWords(value)) {
+      const token = normalizeSocialLabel(part);
+      if (token.length >= 4) {
+        tokens.add(token);
+      }
+    }
+  }
+  return [...tokens];
+}
+
+function splitSocialPressureWords(value: string | undefined): string[] {
+  return (value ?? "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function tokenAppearsInNormalizedText(normalizedText: string, tokens: string[]): boolean {
+  return tokens.some((token) => token.length > 0 && normalizedText.includes(token));
+}
+
+function socialPressureLanguageKinds(content: string): string[] {
+  const text = content.toLowerCase();
+  const kinds: string[] = [];
+  const groups: Array<[string, RegExp]> = [
+    ["status", /\b(status|standing|rank|hierarchy|authority|overbearing|defer(?:red|ring)?|challenge[ds]?|humiliat(?:e|ed|ing)|respect)\b/],
+    ["territory", /\b(turf|jurisdiction|steward(?:ship)?|custody|owner|ownership|belongs?|domain|lane|stepp(?:ed|ing)? on)\b/],
+    ["consultation", /\b(consult(?:ed|ation|ing)?|ask(?:ed|ing)?|permission|bypass(?:ed|ing)?|decorative|flavo[u]?r theater|rubber[- ]?stamp)\b/],
+    ["affiliation", /\b(friend(?:ship)?|rival(?:ry)?|alliance|resent(?:ment|s|ed|ing)?|trust|protect(?:ion|ive)?|envy|jealous|wrapped around)\b/],
+    ["attention", /\b(attention|ignored|neglected|noticed|summon(?:ed|s)?|called out|directly challenged|approval)\b/],
+  ];
+  for (const [kind, pattern] of groups) {
+    if (pattern.test(text)) {
+      kinds.push(kind);
+    }
+  }
+  return kinds;
 }
 
 interface RepoFaceHumanPronounGuidance {
