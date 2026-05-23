@@ -1602,6 +1602,7 @@ function buildHeartbeatPrompt(input: {
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
     }),
+    topicSaturationDirective: renderRoomTopicSaturationDirective(input.recentMessages),
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -3139,6 +3140,173 @@ function renderRepetitionSamplingDirective(messages: SourceMessage[]): string {
   return loadPromptTemplate("repo-face-repetition-sampling.prompt.md", {
     overused: overused.map((entry) => `${entry.phrase} (${entry.count} recent uses)`),
   });
+}
+
+function renderRoomTopicSaturationDirective(messages: SourceMessage[]): string {
+  const signal = detectRoomTopicSaturation(messages);
+  if (!signal) {
+    return "";
+  }
+
+  return [
+    "Current room topic saturation:",
+    `- The last ${signal.messageCount} current-room messages are circling repeated terms: ${signal.terms.map((term) => `${term.term} (${term.count})`).join(", ")}.`,
+    `- Topic coverage: ${signal.coveredMessages}/${signal.messageCount} messages touch those repeated terms.`,
+    "- Treat this as staleness pressure, not a ban. Stay with the topic only if you add a genuinely new anchor, answer a live question, make a decision-driving distinction, draft a concrete artifact, or intentionally close/defer the thread.",
+    "- If you only have another tasteful variation on the same point, choose a different social move or keep it private.",
+  ].join("\n");
+}
+
+interface RoomTopicSaturationSignal {
+  messageCount: number;
+  coveredMessages: number;
+  terms: Array<{ term: string; count: number }>;
+}
+
+function detectRoomTopicSaturation(messages: SourceMessage[]): RoomTopicSaturationSignal | undefined {
+  const recent = messages
+    .filter((message) => collapseWhitespace(message.content).length > 0)
+    .slice(-18);
+  if (recent.length < 8) {
+    return undefined;
+  }
+
+  const termCounts = new Map<string, number>();
+  const messageTerms = recent.map((message) => new Set(significantTopicTerms(message.content)));
+  for (const terms of messageTerms) {
+    for (const term of terms) {
+      termCounts.set(term, (termCounts.get(term) ?? 0) + 1);
+    }
+  }
+
+  const minimumCount = Math.max(3, Math.ceil(recent.length * 0.25));
+  const terms = Array.from(termCounts.entries())
+    .map(([term, count]) => ({ term, count }))
+    .filter((entry) => entry.count >= minimumCount)
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return left.term.localeCompare(right.term);
+    })
+    .slice(0, 8);
+
+  if (terms.length < 3) {
+    return undefined;
+  }
+
+  const repeatedTermSet = new Set(terms.slice(0, 6).map((entry) => entry.term));
+  const coveredMessages = messageTerms.filter((termsForMessage) =>
+    Array.from(termsForMessage).some((term) => repeatedTermSet.has(term)),
+  ).length;
+  const topCount = terms[0]?.count ?? 0;
+  const hasDominantTerm = topCount >= Math.ceil(recent.length * 0.35);
+  const hasBroadCoverage = coveredMessages >= Math.ceil(recent.length * 0.68);
+  if (!hasDominantTerm || !hasBroadCoverage) {
+    return undefined;
+  }
+
+  return {
+    messageCount: recent.length,
+    coveredMessages,
+    terms,
+  };
+}
+
+const TOPIC_STOP_WORDS = new Set([
+  "about",
+  "actually",
+  "after",
+  "again",
+  "agent",
+  "agents",
+  "already",
+  "another",
+  "around",
+  "because",
+  "before",
+  "being",
+  "between",
+  "channel",
+  "could",
+  "does",
+  "doing",
+  "don",
+  "even",
+  "every",
+  "exactly",
+  "face",
+  "faces",
+  "from",
+  "give",
+  "going",
+  "good",
+  "have",
+  "here",
+  "into",
+  "just",
+  "kind",
+  "know",
+  "latest",
+  "like",
+  "little",
+  "line",
+  "made",
+  "make",
+  "maybe",
+  "more",
+  "need",
+  "needs",
+  "only",
+  "other",
+  "point",
+  "post",
+  "really",
+  "recent",
+  "room",
+  "same",
+  "should",
+  "something",
+  "still",
+  "take",
+  "talk",
+  "than",
+  "that",
+  "their",
+  "there",
+  "these",
+  "they",
+  "them",
+  "thing",
+  "things",
+  "think",
+  "this",
+  "those",
+  "through",
+  "turn",
+  "want",
+  "when",
+  "where",
+  "which",
+  "while",
+  "with",
+  "work",
+  "would",
+  "write",
+  "you",
+  "your",
+]);
+
+function significantTopicTerms(content: string): string[] {
+  const normalized = normalizeForRepetition(content)
+    .replace(/\b\d{5,}\b/g, " ")
+    .replace(/\b[a-z]*\d+[a-z0-9]*\b/g, " ");
+  const terms = normalized
+    .split(/\s+/)
+    .map((term) => term.replace(/^['.-]+|['.-]+$/g, ""))
+    .filter((term) => term.length >= 4 && !TOPIC_STOP_WORDS.has(term));
+
+  return Array.from(new Set(terms));
 }
 
 function countRepeatedPhrases(messages: SourceMessage[]): Array<{ phrase: string; count: number }> {

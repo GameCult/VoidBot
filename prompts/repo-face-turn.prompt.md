@@ -20,6 +20,8 @@ Recent conversation transcript:
 Current room weather:
 {{roomWeatherDirective}}
 
+{{topicSaturationDirective}}
+
 {{pendingMentionDirective}}
 
 {{bifrostDigestDirective}}
