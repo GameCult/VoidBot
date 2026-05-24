@@ -37,7 +37,7 @@ Open the LAN URL printed by the command on the iPad. The server refreshes the sn
 
 The CTB strip is intentionally compact: avatar icons show upcoming Face turns in scheduler order. It occupies the long side of the viewport: top edge in landscape, left edge in portrait. A direct mention should appear as a shuffle in the mirrored snapshot once the heartbeat state records the pending obligation or queued turn.
 
-The graph surface is the interface, not decoration. Face nodes represent scheduler participants. UI facts and controls are graph nodes too: the cadence node contains the slider, the manual-turn node contains the selector/button, status/count nodes show their live values, and the selected-Face node carries the currently focused participant facts. The SPA starts from a deterministic force-style layout, then runs a DOM-aware settle pass so spring-attached UI nodes stay near the viewport center while avoiding rendered graph content.
+The main viewport is a direct cockpit: summary, controls, participant list, selected-Face detail, and recent mesh events. The screen should be readable first and clever never.
 
 For a one-shot render without serving:
 
