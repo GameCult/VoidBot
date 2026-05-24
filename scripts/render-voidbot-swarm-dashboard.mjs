@@ -440,7 +440,7 @@ function renderHtml(snapshot) {
       --coral: #ff7b72;
       --violet: #b99dff;
       --rail: 124px;
-      --status-size: clamp(118px, 17vmin, 168px);
+      --status-size: clamp(112px, 16vmin, 150px);
       --font: "Ubuntu", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --display: "Montserrat", "Ubuntu", ui-sans-serif, system-ui, sans-serif;
       --arcade: "Press Start 2P", "VT323", monospace;
@@ -559,6 +559,8 @@ function renderHtml(snapshot) {
     .status-panel {
       width: var(--status-size);
       height: var(--status-size);
+      position: absolute;
+      z-index: 5;
       align-self: center;
       justify-self: center;
       display: grid;
@@ -726,7 +728,7 @@ function renderHtml(snapshot) {
     .badge.repo-face { background: var(--violet); }
 
     @media (orientation: landscape) {
-      .shell { grid-template-rows: var(--rail) minmax(0, 1fr) var(--status-size); }
+      .shell { grid-template-rows: var(--rail) minmax(0, 1fr); }
       .ctb-rail {
         grid-row: 1;
         grid-column: 1;
@@ -734,14 +736,14 @@ function renderHtml(snapshot) {
         align-items: center;
         border-bottom: 1px solid var(--line);
       }
-      .workspace { grid-row: 2; grid-column: 1; }
-      .status-panel { grid-row: 3; grid-column: 1; }
+      .workspace { grid-row: 2; grid-column: 1; padding-bottom: calc(var(--status-size) + 20px); }
+      .status-panel { left: 50%; bottom: 8px; transform: translateX(-50%); }
       .turn-card { width: 76px; height: 96px; }
     }
 
     @media (orientation: portrait) {
       :root { --rail: 94px; }
-      .shell { grid-template-columns: var(--rail) minmax(0, 1fr) var(--status-size); }
+      .shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
       .ctb-rail {
         grid-row: 1;
         grid-column: 1;
@@ -752,6 +754,7 @@ function renderHtml(snapshot) {
       .workspace {
         grid-row: 1;
         grid-column: 2;
+        padding-right: calc(var(--status-size) + 18px);
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 0.88fr);
         grid-template-areas:
@@ -760,7 +763,7 @@ function renderHtml(snapshot) {
           "detail"
           "queue";
       }
-      .status-panel { grid-row: 1; grid-column: 3; }
+      .status-panel { right: 8px; top: 50%; transform: translateY(-50%); }
       .events-pane { display: none; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -893,25 +896,69 @@ function renderHtml(snapshot) {
 
     function renderStatusPanel(snapshot, agent) {
       const summary = snapshot.summary || {};
+      const organs = snapshot.orchestrator?.organs || [];
+      const watchdog = findOrgan(organs, "watchdog");
+      const face = findOrgan(organs, "repo-face-heartbeats");
+      const mood = findOrgan(organs, "mood");
+      const rumination = findOrgan(organs, "rumination");
       const sourceFreshness = snapshot.sources?.heartbeatStateUpdatedAt ? Math.max(0, 100 - ((Date.now() - Date.parse(snapshot.sources.heartbeatStateUpdatedAt)) / 600)) : 0;
       const meshOk = snapshot.cultMesh?.writeStatus === "ok" ? 100 : snapshot.cultMesh?.writeStatus === "pending" ? 50 : 10;
-      const cadence = clampPercent(((snapshot.controls?.cadenceMultiplier || 1) / 12) * 100);
-      const heat = clampPercent(((summary.globalHeat || 0) / 12) * 100);
-      const ready = summary.participantCount ? clampPercent((summary.readyNowCount / summary.participantCount) * 100) : 0;
-      const mentions = summary.participantCount ? clampPercent((summary.pendingMentionCount / Math.max(1, summary.participantCount)) * 100) : 0;
       const turn = agent?.nextTurnInMinutes ?? null;
       const turnFill = typeof turn === "number" ? clampPercent(100 - Math.max(0, turn) * 4) : 0;
       const load = clampPercent((agent?.currentLoad || 0) * 100);
       return "<aside class=\\"status-panel\\" aria-label=\\"Compact swarm status\\"><h2><span>VOID</span><span>" + esc(String(summary.state || "UNK").slice(0, 4).toUpperCase()) + "</span></h2><div class=\\"status-grid\\">" +
-        hud("MESH", snapshot.cultMesh?.writeStatus || "MISS", meshOk) +
+        hud("WDOG", organCode(watchdog), organFill(watchdog), organWarn(watchdog)) +
+        hud("ORCH", shortState(snapshot.orchestrator?.state), statusFill(snapshot.orchestrator?.state), statusWarn(snapshot.orchestrator?.state)) +
+        hud("FACE", organCode(face), organFill(face), organWarn(face)) +
+        hud("MOOD", organCode(mood), organFill(mood), organWarn(mood)) +
+        hud("RUM", organCode(rumination), organFill(rumination), organWarn(rumination)) +
+        hud("MESH", shortState(snapshot.cultMesh?.writeStatus), meshOk, snapshot.cultMesh?.writeStatus !== "ok") +
         hud("AGE", relative(snapshot.sources?.heartbeatStateUpdatedAt).replace(/ ago$/, ""), sourceFreshness, sourceFreshness < 50) +
-        hud("CAD", "x" + number(snapshot.controls?.cadenceMultiplier || 1), cadence) +
-        hud("HEAT", number(summary.globalHeat), heat) +
-        hud("READY", number(summary.readyNowCount), ready) +
-        hud("PING", number(summary.pendingMentionCount), mentions, summary.pendingMentionCount > 0) +
-        hud("TURN", minutes(turn), turnFill) +
-        hud("LOAD", number(agent?.currentLoad), load, load > 70) +
+        hud("TURN", minutes(turn), turnFill, load > 70) +
       "</div></aside>";
+    }
+
+    function findOrgan(organs, needle) {
+      const lower = String(needle).toLowerCase();
+      return organs.find((organ) => String(organ.id || "").toLowerCase().includes(lower) || String(organ.label || "").toLowerCase().includes(lower));
+    }
+
+    function shortState(value) {
+      const state = String(value || "missing").toLowerCase();
+      if (state === "ok") return "OK";
+      if (state === "ready") return "RDY";
+      if (state === "running") return "RUN";
+      if (state === "paused") return "PAUS";
+      if (state === "warning") return "WARN";
+      if (state === "skipped_disabled") return "SKIP";
+      if (state === "missing") return "MISS";
+      if (state === "failed" || state === "error") return "FAIL";
+      return state.slice(0, 4).toUpperCase();
+    }
+
+    function organCode(organ) {
+      return organ ? shortState(organ.lastStatus) : "MISS";
+    }
+
+    function organFill(organ) {
+      return organ ? statusFill(organ.lastStatus) : 0;
+    }
+
+    function organWarn(organ) {
+      return !organ || statusWarn(organ.lastStatus);
+    }
+
+    function statusFill(value) {
+      const state = String(value || "missing").toLowerCase();
+      if (state === "ok" || state === "ready" || state === "skipped_disabled") return 100;
+      if (state === "running") return 82;
+      if (state === "warning" || state === "paused") return 46;
+      return 12;
+    }
+
+    function statusWarn(value) {
+      const state = String(value || "missing").toLowerCase();
+      return !["ok", "ready", "running", "skipped_disabled"].includes(state);
     }
 
     function hud(label, value, fill, warn = false) {
