@@ -1185,7 +1185,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     identity.displayName,
     ...(identity.avatarUrl ? ["--persona-avatar-url", identity.avatarUrl] : []),
     ...(intent.replyToMessageId ? ["--reply-to-message-id", intent.replyToMessageId] : []),
-  ]);
+  ], { retries: 1 });
   if (!posted.messageId || !posted.transport) {
     throw new Error(`Bifrost Discord bridge returned no message receipt for job ${job.id}.`);
   }
@@ -1871,23 +1871,55 @@ function bifrostMirrorArgs(
   ];
 }
 
-function runBifrostBridge(args: string[]): BifrostBridgeReceipt {
+function runBifrostBridge(args: string[], options: { retries?: number } = {}): BifrostBridgeReceipt {
   const bridgeScript = resolve(config.bifrostRoot, "tools", "bifrost-bridge.mjs");
-  const result = spawnSync("node", [bridgeScript, ...args], {
-    cwd: config.bifrostRoot,
-    encoding: "utf8",
-    windowsHide: true,
-  });
+  const maxAttempts = 1 + Math.max(0, Math.floor(options.retries ?? 0));
+  let lastFailure = "";
 
-  if (result.status !== 0) {
-    throw new Error(`Bifrost bridge failed: ${result.stderr || result.stdout}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = spawnSync("node", [bridgeScript, ...args], {
+      cwd: config.bifrostRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    });
+
+    if (result.status !== 0 || result.error) {
+      lastFailure = renderBridgeFailure(result, attempt, maxAttempts);
+      if (attempt < maxAttempts) {
+        console.warn(`Bifrost bridge attempt ${attempt}/${maxAttempts} failed; retrying. ${lastFailure}`);
+        continue;
+      }
+      throw new Error(`Bifrost bridge failed. ${lastFailure}`);
+    }
+
+    try {
+      return JSON.parse(result.stdout) as BifrostBridgeReceipt;
+    } catch {
+      throw new Error(`Bifrost bridge returned non-JSON output: ${result.stdout}`);
+    }
   }
 
-  try {
-    return JSON.parse(result.stdout) as BifrostBridgeReceipt;
-  } catch {
-    throw new Error(`Bifrost bridge returned non-JSON output: ${result.stdout}`);
-  }
+  throw new Error(`Bifrost bridge failed. ${lastFailure || "No bridge attempt completed."}`);
+}
+
+function renderBridgeFailure(
+  result: ReturnType<typeof spawnSync>,
+  attempt: number,
+  maxAttempts: number,
+): string {
+  const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+  const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+  const errorMessage = result.error instanceof Error ? result.error.message : undefined;
+  return [
+    `attempt=${attempt}/${maxAttempts}`,
+    `status=${result.status ?? "null"}`,
+    `signal=${result.signal ?? "none"}`,
+    errorMessage ? `error=${errorMessage}` : undefined,
+    stderr ? `stderr=${stderr}` : undefined,
+    stdout ? `stdout=${stdout}` : undefined,
+  ]
+    .filter((entry): entry is string => Boolean(entry))
+    .join(" ");
 }
 
 function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdentityUpdateRequestIntent[] {

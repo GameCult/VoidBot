@@ -21,6 +21,7 @@ import {
   findRepoDiscordIdentityByRoleIds,
   findRepoDiscordIdentitiesByTextMentions,
   findRepoDiscordIdentityByTextAddress,
+  isRepoDiscordIdentityAllowedInChannel,
   loadFaceIdentityRegistry,
   queueAgentHeartbeatMention,
   queueRepoFaceMention,
@@ -364,10 +365,19 @@ export async function startBot(): Promise<void> {
       ...textMentionedRepoIdentities,
       ...(repliedRepoIdentity ? [repliedRepoIdentity] : []),
     ]);
+    const broadcastAddressedRepoIdentities = !isDirectMessage && addressedRepoIdentities.length === 0 &&
+      isRepoFaceBroadcastInvitation(stripBotMention(message.content))
+      ? repoDiscordIdentities.identities.filter((identity) =>
+          isRepoDiscordIdentityAllowedInChannel(identity, message.channelId),
+        )
+      : [];
+    const pendingRepoIdentities = addressedRepoIdentities.length > 0
+      ? addressedRepoIdentities
+      : broadcastAddressedRepoIdentities;
     const addressedRepoIdentity = roleAddressedRepoIdentity ?? textAddressedRepoIdentity ?? repliedRepoIdentity;
     const isBotMentioned = Boolean(client.user && message.mentions.has(client.user));
 
-    if (!client.user || (!isDirectMessage && !isBotMentioned && addressedRepoIdentities.length === 0)) {
+    if (!client.user || (!isDirectMessage && !isBotMentioned && pendingRepoIdentities.length === 0)) {
       return;
     }
 
@@ -385,15 +395,16 @@ export async function startBot(): Promise<void> {
         : stripBotMention(message.content).trim();
 
     try {
-      if (addressedRepoIdentities.length > 0) {
+      if (pendingRepoIdentities.length > 0) {
         let queuedCount = 0;
-        for (const identity of addressedRepoIdentities) {
+        for (const identity of pendingRepoIdentities) {
           const identityVisiblePrompt = renderRepoIdentityVisiblePrompt({
             message,
             identity,
             roleAddressed: roleAddressedRepoIdentities.some((entry) => entry.id === identity.id),
             textAddressed: textAddressedRepoIdentity?.id === identity.id,
             replied: repliedRepoIdentity?.id === identity.id,
+            broadcastAddressed: broadcastAddressedRepoIdentities.some((entry) => entry.id === identity.id),
           });
           if (!identityVisiblePrompt) {
             console.log(`Ignored empty repo Face mention ${message.id} for ${identity.id}.`);
@@ -730,6 +741,7 @@ function renderRepoIdentityVisiblePrompt(input: {
   roleAddressed: boolean;
   textAddressed: boolean;
   replied: boolean;
+  broadcastAddressed: boolean;
 }): string {
   const strippedBotMention = stripBotMention(input.message.content);
   if (input.roleAddressed || input.textAddressed) {
@@ -742,6 +754,10 @@ function renderRepoIdentityVisiblePrompt(input: {
     }
   }
 
+  if (input.broadcastAddressed && strippedBotMention.trim().length > 0) {
+    return `The room was explicitly invited to answer. For ${input.identity.displayName}, this invitation is live: ${strippedBotMention.trim()}`;
+  }
+
   if (input.message.content.trim().length > 0) {
     return strippedBotMention.trim();
   }
@@ -751,6 +767,24 @@ function renderRepoIdentityVisiblePrompt(input: {
     input.identity,
     input.replied ? input.identity : undefined,
   );
+}
+
+function isRepoFaceBroadcastInvitation(content: string): boolean {
+  const normalized = collapseWhitespace(content).toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  return [
+    /\b(everyone|everybody|all of you|anyone|anybody|the swarm|you all|y'all)\b/,
+    /\bhow (are|is) (everyone|everybody|you all|y'all)\b/,
+    /\bwhat about (your|everyone's|everybody's) (minds?|bodies?|feelings?)\b/,
+    /\banything i can do to help\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function uniqueRepoIdentities(identities: RepoDiscordIdentity[]): RepoDiscordIdentity[] {
