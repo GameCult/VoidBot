@@ -89,7 +89,7 @@ async function buildSnapshot() {
   const heartbeat = await readJsonFile(heartbeatStatePath);
   const orchestrator = await readJsonFile(orchestratorPath);
   const pause = await readJsonFile(pausePath);
-  const avatarByIdentity = await readIdentityAvatars(env.REPO_DISCORD_IDENTITIES_PATH);
+  const identityMetadata = await readIdentityMetadata(env.REPO_DISCORD_IDENTITIES_PATH);
   const heartbeatMtime = await getMtime(heartbeatStatePath);
   const orchestratorMtime = await getMtime(orchestratorPath);
   const paused = pause.ok ? pause.value?.paused !== false : false;
@@ -98,8 +98,17 @@ async function buildSnapshot() {
   const pendingMentions = Array.isArray(heartbeat.value?.pendingMentions) ? heartbeat.value.pendingMentions : [];
   const initiativeClock = numberOrNull(heartbeat.value?.initiativeClock);
   const participantSnapshots = participants.map((participant) =>
-    projectParticipant(participant, pendingMentions, initiativeClock, avatarByIdentity),
+    projectParticipant(participant, pendingMentions, initiativeClock, identityMetadata),
   );
+  const faceStates = await readFaceStates(identityMetadata);
+  for (const participant of participantSnapshots) {
+    participant.faceState = faceStates.get(participant.identityId.toLowerCase()) ?? {
+      readable: false,
+      path: participant.faceStatePath,
+      error: participant.faceStatePath ? "State file was not readable." : "No Face state path registered.",
+      tree: [],
+    };
+  }
   const activeTurns = participantSnapshots.filter((participant) => participant.activeJobId);
   const readyNow = participantSnapshots.filter((participant) =>
     participant.status === "active" &&
@@ -243,8 +252,9 @@ function findLastShuffleEvent(events) {
   return null;
 }
 
-function projectParticipant(participant, pendingMentions, initiativeClock, avatarByIdentity) {
+function projectParticipant(participant, pendingMentions, initiativeClock, identityMetadata) {
   const identityId = String(participant.identityId ?? "unknown");
+  const metadata = identityMetadata.get(identityId.toLowerCase()) ?? {};
   const nextTurnAt = numberOrNull(participant.nextTurnAt);
   const lastTurnAt = numberOrNull(participant.lastTurnAt);
   const activeTurnStartedAt = numberOrNull(participant.activeTurnStartedAt);
@@ -259,9 +269,20 @@ function projectParticipant(participant, pendingMentions, initiativeClock, avata
 
   return {
     identityId,
-    displayName: String(participant.displayName ?? identityId),
-    repoName: String(participant.repoName ?? "unknown"),
-    avatarUrl: avatarByIdentity.get(identityId.toLowerCase()) ?? null,
+    displayName: String(participant.displayName ?? metadata.displayName ?? identityId),
+    repoName: String(participant.repoName ?? metadata.repoName ?? "unknown"),
+    repoPath: stringOrNull(metadata.repoPath),
+    faceStatePath: stringOrNull(metadata.faceStatePath),
+    description: stringOrNull(metadata.description),
+    avatarUrl: metadata.avatarUrl ?? null,
+    channelPermissions: Array.isArray(metadata.channelPermissions)
+      ? metadata.channelPermissions.slice(0, 12).map((entry) => ({
+        label: stringOrNull(entry?.label),
+        topic: stringOrNull(entry?.topic),
+        speechThreshold: stringOrNull(entry?.speechThreshold),
+        speedMultiplier: numberOrNull(entry?.speedMultiplier),
+      }))
+      : [],
     participantKind: String(participant.participantKind ?? "repo_face"),
     turnKind: String(participant.turnKind ?? "repo_face_rumination"),
     status: String(participant.status ?? "unknown"),
@@ -311,8 +332,8 @@ function projectHistoryEvent(event) {
   };
 }
 
-async function readIdentityAvatars(registryPathValue) {
-  const avatars = new Map();
+async function readIdentityMetadata(registryPathValue) {
+  const metadata = new Map();
   const registryPath = resolveConfigPath(registryPathValue, resolve(repoRoot, ".voidbot", "private", "repo-discord-identities.json"));
   const registry = await readJsonFile(registryPath);
   const identities = Array.isArray(registry.value?.identities)
@@ -322,12 +343,209 @@ async function readIdentityAvatars(registryPathValue) {
       : [];
   for (const identity of identities) {
     const id = typeof identity?.id === "string" ? identity.id.toLowerCase() : "";
-    const avatarUrl = typeof identity?.avatarUrl === "string" ? identity.avatarUrl : "";
-    if (id && avatarUrl) {
-      avatars.set(id, avatarUrl);
+    if (id) {
+      metadata.set(id, {
+        id,
+        displayName: stringOrNull(identity?.displayName),
+        repoName: stringOrNull(identity?.repoName),
+        repoPath: stringOrNull(identity?.repoPath),
+        faceStatePath: stringOrNull(identity?.faceStatePath),
+        description: stringOrNull(identity?.description),
+        avatarUrl: stringOrNull(identity?.avatarUrl),
+        channelPermissions: Array.isArray(identity?.channelPermissions) ? identity.channelPermissions : [],
+      });
     }
   }
-  return avatars;
+  return metadata;
+}
+
+async function readFaceStates(identityMetadata) {
+  const states = new Map();
+  let core = null;
+  try {
+    const requireCore = createRequire(resolve(repoRoot, "packages", "core", "package.json"));
+    core = requireCore(resolve(repoRoot, "packages", "core", "dist", "index.js"));
+  } catch (error) {
+    for (const [id, identity] of identityMetadata.entries()) {
+      states.set(id, {
+        readable: false,
+        path: identity.faceStatePath ?? null,
+        error: `Core typed-state loader unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        tree: [],
+      });
+    }
+    return states;
+  }
+
+  for (const [id, identity] of identityMetadata.entries()) {
+    if (!identity.faceStatePath) {
+      states.set(id, {
+        readable: false,
+        path: null,
+        error: "No Face state path registered.",
+        tree: [],
+      });
+      continue;
+    }
+    try {
+      const typedState = await core.loadVoidSelfStateTypedDocuments({
+        canonicalPath: identity.faceStatePath,
+        identity: {
+          agentId: id,
+          publicName: identity.displayName ?? id,
+          publicDescription: identity.description ?? undefined,
+        },
+      });
+      const rendered = core.buildVoidSelfStateContext
+        ? core.buildVoidSelfStateContext(typedState, {
+          sourcePath: identity.faceStatePath,
+          identity: {
+            agentId: id,
+            publicName: identity.displayName ?? id,
+            publicDescription: identity.description ?? undefined,
+          },
+        })
+        : null;
+      states.set(id, {
+        readable: true,
+        path: identity.faceStatePath,
+        summary: truncate(rendered?.summary ?? "", 1200),
+        counts: countFaceState(typedState),
+        tree: buildFaceStateTree(typedState),
+      });
+    } catch (error) {
+      states.set(id, {
+        readable: false,
+        path: identity.faceStatePath,
+        error: error instanceof Error ? error.message : String(error),
+        tree: [],
+      });
+    }
+  }
+  return states;
+}
+
+function countFaceState(typedState) {
+  return {
+    shortTerm: typedState?.thoughtMemory?.shortTerm?.length ?? 0,
+    memories: typedState?.thoughtMemory?.memories?.length ?? 0,
+    incubation: typedState?.thoughtMemory?.incubation?.length ?? 0,
+    bonds: typedState?.faceAffect?.socialBonds?.length ?? 0,
+    pressures: typedState?.agencyPressure?.pressures?.length ?? 0,
+    candidates: typedState?.candidateInterventions?.interventions?.length ?? 0,
+  };
+}
+
+function buildFaceStateTree(typedState) {
+  return [
+    node("Self Profile", "selfProfile", [
+      leaf("Public Name", typedState?.selfProfile?.publicName),
+      leaf("Description", typedState?.selfProfile?.publicDescription),
+      collectionNode("Values", "selfProfile.values", typedState?.selfProfile?.values, valueNode),
+      objectNode("Activation", "selfProfile.activationProfile", typedState?.selfProfile?.activationProfile),
+      collectionNode("Private Notes", "selfProfile.privateNotes", typedState?.selfProfile?.privateNotes, valueNode),
+    ]),
+    node("Thought Memory", "thoughtMemory", [
+      collectionNode("Short Term", "thoughtMemory.shortTerm", typedState?.thoughtMemory?.shortTerm, memoryNode),
+      collectionNode("Durable Memories", "thoughtMemory.memories", typedState?.thoughtMemory?.memories, memoryNode),
+      collectionNode("Incubation", "thoughtMemory.incubation", typedState?.thoughtMemory?.incubation, memoryNode),
+    ]),
+    node("Affect", "faceAffect", [
+      collectionNode("Needs", "faceAffect.needs", typedState?.faceAffect?.needs, valueNode),
+      collectionNode("Social Bonds", "faceAffect.socialBonds", typedState?.faceAffect?.socialBonds, memoryNode),
+      collectionNode("Status Reads", "faceAffect.statusReads", typedState?.faceAffect?.statusReads, memoryNode),
+      objectNode("Mood", "faceAffect.moodDimensions", typedState?.faceAffect?.moodDimensions),
+      collectionNode("Social Biases", "faceAffect.socialBiases", typedState?.faceAffect?.socialBiases, valueNode),
+    ]),
+    node("Agency", "agencyPressure", [
+      collectionNode("Pressures", "agencyPressure.pressures", typedState?.agencyPressure?.pressures, memoryNode),
+      collectionNode("Candidates", "candidateInterventions.interventions", typedState?.candidateInterventions?.interventions, memoryNode),
+    ]),
+    node("Runtime", "scheduledRuntime", [
+      objectNode("Sleep Cycle", "scheduledRuntime.sleepCycle", typedState?.scheduledRuntime?.sleepCycle),
+      objectNode("Speaking Pressure", "scheduledRuntime.speakingPressure", typedState?.scheduledRuntime?.speakingPressure),
+      objectNode("Last Runs", "scheduledRuntime.lastRuns", typedState?.scheduledRuntime?.lastRuns),
+    ]),
+  ].filter(Boolean);
+}
+
+function node(label, path, children = []) {
+  const compactChildren = children.filter(Boolean);
+  return { kind: "branch", label, path, children: compactChildren, count: compactChildren.length };
+}
+
+function leaf(label, value, path = label) {
+  if (value === null || value === undefined || value === "") return null;
+  return {
+    kind: "leaf",
+    label,
+    path,
+    title: label,
+    preview: truncate(renderValuePreview(value), 120),
+    detail: renderValueDetail(value),
+  };
+}
+
+function collectionNode(label, path, values, projector) {
+  if (!Array.isArray(values) || values.length === 0) return node(label, path, [leaf("empty", "No entries.", `${path}.empty`)]);
+  return node(label, path, values.slice(0, 80).map((value, index) => projector(value, `${path}.${index}`, index)));
+}
+
+function objectNode(label, path, value) {
+  if (!value || typeof value !== "object") return node(label, path, [leaf("empty", "No entries.", `${path}.empty`)]);
+  const children = Object.entries(value).slice(0, 80).map(([key, entry]) => {
+    if (entry && typeof entry === "object") return objectNode(key, `${path}.${key}`, entry);
+    return leaf(key, entry, `${path}.${key}`);
+  });
+  return node(label, path, children);
+}
+
+function valueNode(value, path, index) {
+  if (value && typeof value === "object") {
+    const title = value.label ?? value.name ?? value.kind ?? value.id ?? `entry ${index + 1}`;
+    return leaf(String(title), value, path);
+  }
+  return leaf(`entry ${index + 1}`, value, path);
+}
+
+function memoryNode(value, path, index) {
+  if (!value || typeof value !== "object") return leaf(`entry ${index + 1}`, value, path);
+  const target = value.target?.label ?? value.target?.id ?? value.targetKind ?? value.target ?? value.kind;
+  const title = value.summary ?? value.claim ?? value.question ?? value.title ?? value.id ?? value.memoryId ?? `entry ${index + 1}`;
+  const label = target ? `${target}: ${title}` : title;
+  return {
+    kind: "leaf",
+    label: truncate(String(label), 120),
+    path,
+    title: String(title),
+    preview: truncate(value.claim ?? value.question ?? value.tension ?? value.actionImplication ?? value.summary ?? renderValuePreview(value), 180),
+    detail: renderMemoryDetail(value),
+  };
+}
+
+function renderMemoryDetail(value) {
+  const lines = [];
+  for (const key of ["kind", "summary", "claim", "question", "tension", "actionImplication", "status", "intensity", "createdAt", "updatedAt"]) {
+    if (value?.[key] !== null && value?.[key] !== undefined && value?.[key] !== "") {
+      lines.push(`${key}: ${renderValuePreview(value[key])}`);
+    }
+  }
+  if (value?.target) lines.push(`target: ${renderValuePreview(value.target)}`);
+  if (Array.isArray(value?.anchorRefs) && value.anchorRefs.length > 0) {
+    lines.push(`anchors:\n${value.anchorRefs.map((anchor) => `- ${renderValuePreview(anchor)}`).join("\n")}`);
+  }
+  if (Array.isArray(value?.tags) && value.tags.length > 0) lines.push(`tags: ${value.tags.join(", ")}`);
+  return lines.join("\n\n") || renderValueDetail(value);
+}
+
+function renderValuePreview(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+function renderValueDetail(value) {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function projectPendingMention(mention) {
@@ -460,7 +678,7 @@ function renderHtml(snapshot) {
     }
 
     h1, h2, h3, p { margin: 0; }
-    h1, h2, h3, .kicker, .badge, .metric strong, .turn-card strong, .agent-row strong {
+    h1, h2, h3, .kicker, .badge, .metric strong, .turn-card strong, .state-leaf strong {
       font-family: var(--display);
       font-weight: 100;
       letter-spacing: 0;
@@ -516,6 +734,7 @@ function renderHtml(snapshot) {
       text-align: center;
     }
     .turn-card.active-turn { border-color: var(--cyan); box-shadow: 0 0 24px rgba(105, 226, 239, 0.22); }
+    .turn-card.selected { border-color: var(--amber); background: rgba(255, 174, 88, 0.11); }
     .turn-card.mention-turn { border-color: var(--amber); }
     .turn-card strong, .turn-card span {
       width: 100%;
@@ -549,20 +768,17 @@ function renderHtml(snapshot) {
       gap: 12px;
       padding: 12px;
       overflow: hidden;
-      grid-template-columns: minmax(280px, 0.88fr) minmax(360px, 1.4fr) minmax(280px, 0.92fr);
-      grid-template-rows: auto var(--status-size) minmax(0, 1fr);
+      grid-template-columns: minmax(210px, 0.78fr) minmax(280px, 1.06fr) minmax(320px, 1.34fr) minmax(240px, 0.86fr);
+      grid-template-rows: minmax(0, 1fr);
       grid-template-areas:
-        "header header controls"
-        "queue detail status"
-        "queue detail events";
+        "inspector tree memory command";
     }
 
     .status-panel {
-      width: var(--status-size);
-      height: var(--status-size);
-      grid-area: status;
-      align-self: center;
-      justify-self: center;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      align-self: start;
+      justify-self: stretch;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       gap: 7px;
@@ -658,14 +874,13 @@ function renderHtml(snapshot) {
       overflow: hidden;
     }
     .pane-scroll { overflow: auto; }
-    .header-pane { grid-area: header; align-content: center; }
-    .controls-pane { grid-area: controls; align-content: center; }
-    .queue-pane { grid-area: queue; }
-    .detail-pane { grid-area: detail; }
-    .events-pane { grid-area: events; }
+    .inspector-pane { grid-area: inspector; grid-template-rows: auto auto minmax(0, 1fr); }
+    .tree-pane { grid-area: tree; grid-template-rows: auto minmax(0, 1fr); }
+    .memory-pane { grid-area: memory; grid-template-rows: auto minmax(0, 1fr); }
+    .command-pane { grid-area: command; grid-template-rows: minmax(0, auto) minmax(0, 1fr); align-content: start; }
 
     .kicker { color: var(--green); font-size: 0.74rem; text-transform: uppercase; }
-    h1 { font-size: clamp(1.8rem, 5vw, 4rem); line-height: 0.95; }
+    h1 { font-size: clamp(1.55rem, 3.4vw, 3rem); line-height: 0.98; }
     h2 { font-size: 1rem; text-transform: uppercase; }
     .muted { color: var(--muted); }
     .mono { font-family: var(--mono); }
@@ -682,33 +897,101 @@ function renderHtml(snapshot) {
     .metric strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.12rem; }
     .fact strong { display: block; overflow-wrap: anywhere; font: 0.9rem/1.15 var(--mono); }
 
-    .control-grid { display: grid; gap: 10px; }
+    .control-grid { display: grid; gap: 10px; align-content: start; }
     .control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
     .force-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 
-    .queue-list, .event-list { display: grid; gap: 8px; overflow: auto; }
-    .agent-row {
+    .inspector-hero {
       display: grid;
-      grid-template-columns: 42px minmax(0, 1fr) auto;
-      gap: 9px;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 12px;
       align-items: center;
-      width: 100%;
-      min-height: 58px;
+    }
+    .inspector-hero .avatar { width: 64px; height: 64px; }
+    .inspector-hero h1, .inspector-hero p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inspector-lore {
+      overflow: auto;
+      color: var(--muted);
+      font-size: 0.83rem;
+    }
+    .channel-list, .state-tree, .detail-body {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+    .channel-chip {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
       padding: 8px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: rgba(142, 223, 176, 0.06);
+      font-size: 0.78rem;
+    }
+    .channel-chip strong, .channel-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    details.state-node {
+      border: 1px solid rgba(142, 223, 176, 0.12);
+      border-radius: 8px;
+      background: rgba(142, 223, 176, 0.045);
+      overflow: hidden;
+    }
+    details.state-node[open] { border-color: rgba(105, 226, 239, 0.22); }
+    details.state-node > summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 10px;
+      cursor: pointer;
+      color: var(--text);
+      font-family: var(--display);
+      font-weight: 100;
+    }
+    .state-children {
+      display: grid;
+      gap: 6px;
+      padding: 0 8px 8px 14px;
+      border-top: 1px solid rgba(142, 223, 176, 0.08);
+    }
+    .state-leaf {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+      padding: 8px;
+      border: 1px solid rgba(142, 223, 176, 0.1);
+      border-radius: 8px;
+      background: rgba(3, 7, 13, 0.34);
       color: var(--text);
       text-align: left;
     }
-    .agent-row.selected { border-color: var(--amber); }
-    .agent-row strong, .agent-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .agent-row span { color: var(--muted); font: 0.72rem/1.1 var(--mono); }
+    .state-leaf:hover, .state-leaf.selected { border-color: var(--amber); background: rgba(255, 174, 88, 0.09); }
+    .state-leaf strong, .state-leaf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .state-leaf span { color: var(--muted); font: 0.72rem/1.15 var(--mono); }
 
-    .details-head { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 12px; align-items: center; }
-    .details-head .avatar { width: 58px; height: 58px; }
-    .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-    .event-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px; border: 1px solid rgba(142, 223, 176, 0.1); border-radius: 8px; background: rgba(142, 223, 176, 0.05); color: var(--muted); font-size: 0.82rem; }
+    .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .detail-card {
+      min-height: 0;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      padding: 12px;
+      border: 1px solid rgba(105, 226, 239, 0.16);
+      border-radius: 8px;
+      background: rgba(3, 7, 13, 0.42);
+    }
+    .detail-card pre {
+      min-height: 0;
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: rgba(239, 252, 248, 0.88);
+      font: 0.84rem/1.35 var(--mono);
+    }
 
     .badge {
       display: inline-flex;
@@ -753,18 +1036,13 @@ function renderHtml(snapshot) {
       .workspace {
         grid-row: 1;
         grid-column: 2;
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto auto var(--status-size) minmax(0, 1fr) minmax(0, 0.88fr);
+        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
         grid-template-areas:
-          "header"
-          "controls"
-          "status"
-          "detail"
-          "queue";
+          "inspector command"
+          "tree memory";
       }
-      .status-panel { justify-self: end; }
-      .events-pane { display: none; }
-      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .status-panel { max-height: 34vh; }
       .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .turn-card { width: 72px; height: 96px; }
     }
@@ -772,8 +1050,15 @@ function renderHtml(snapshot) {
     @media (max-width: 760px) {
       .workspace { padding: 10px; gap: 10px; }
       .pane { padding: 12px; }
-      .header-pane .muted { display: none; }
-      .controls-pane { align-content: start; }
+      .inspector-lore { display: none; }
+      .status-panel { max-height: none; }
+    }
+
+    @media (max-width: 980px) and (orientation: landscape) {
+      .workspace {
+        grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) minmax(260px, 1.16fr) minmax(210px, 0.86fr);
+      }
+      .inspector-lore { display: none; }
     }
   </style>
 </head>
@@ -784,6 +1069,7 @@ function renderHtml(snapshot) {
     const initialSnapshot = JSON.parse(document.getElementById("initial-snapshot").textContent);
     const app = document.getElementById("app");
     let selectedIdentity = null;
+    let selectedStatePath = null;
 
     const tone = (value) => String(value || "unknown").toLowerCase().replace(/_/g, "-");
     const text = (value) => value === null || value === undefined || value === "" ? "missing" : String(value);
@@ -809,23 +1095,24 @@ function renderHtml(snapshot) {
       const participants = sortedParticipants(snapshot);
       if (!selectedIdentity || !participants.some((agent) => agent.identityId === selectedIdentity)) {
         selectedIdentity = (snapshot.upcomingTurns || [])[0]?.identityId || participants[0]?.identityId || null;
+        selectedStatePath = null;
       }
       const selected = participants.find((agent) => agent.identityId === selectedIdentity) || participants[0] || null;
+      const selectedLeaf = findSelectedLeaf(selected);
       app.innerHTML = [
         "<div class=\\"shell\\">",
           renderCtb(snapshot.upcomingTurns || []),
           "<section class=\\"workspace\\" aria-label=\\"VoidBot swarm control\\">",
-            renderHeader(snapshot),
-            renderControls(snapshot, participants),
-            renderQueue(participants),
-            renderDetails(selected),
-            renderEvents(snapshot),
-            renderStatusPanel(snapshot, selected),
+            renderInspector(selected),
+            renderStateTree(selected),
+            renderStateDetail(selected, selectedLeaf),
+            renderCommandColumn(snapshot, participants, selected),
           "</section>",
         "</div>",
       ].join("");
       attachControls();
       attachSelection();
+      attachStateSelection();
     }
 
     function sortedParticipants(snapshot) {
@@ -840,57 +1127,95 @@ function renderHtml(snapshot) {
 
     function renderCtb(turns) {
       return "<nav class=\\"ctb-rail\\" aria-label=\\"Upcoming CTB turns\\">" + turns.map((turn) => {
-        const klass = ["turn-card", turn.activeJobId ? "active-turn" : "", turn.pendingMentionCount > 0 ? "mention-turn" : ""].filter(Boolean).join(" ");
+        const klass = ["turn-card", turn.identityId === selectedIdentity ? "selected" : "", turn.activeJobId ? "active-turn" : "", turn.pendingMentionCount > 0 ? "mention-turn" : ""].filter(Boolean).join(" ");
         return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(turn.identityId) + "\\" title=\\"" + esc(turn.displayName + " / " + minutes(turn.nextTurnInMinutes)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span>" + esc(minutes(turn.nextTurnInMinutes)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</button>";
       }).join("") + "</nav>";
     }
 
-    function renderHeader(snapshot) {
-      const summary = snapshot.summary || {};
-      return "<header class=\\"pane header-pane\\"><p class=\\"kicker\\">VoidBot Swarm Control</p><h1>CTB Cockpit</h1><p class=\\"muted\\">CultMesh mirror and scheduler command surface. State comes from the heartbeat snapshot.</p><div class=\\"metrics\\">" +
-        metric("State", badge(summary.state)) +
-        metric("Participants", number(summary.participantCount)) +
-        metric("Ready", number(summary.readyNowCount)) +
-        metric("Mentions", number(summary.pendingMentionCount)) +
-        metric("Shuffle", summary.lastShuffle ? summary.lastShuffle.kind.replace(/_/g, " ") : "none") +
-      "</div></header>";
+    function renderInspector(agent) {
+      if (!agent) return "<section class=\\"pane inspector-pane\\"><p class=\\"kicker\\">Face</p><p class=\\"muted\\">No selected Face.</p></section>";
+      const counts = agent.faceState?.counts || {};
+      return "<section class=\\"pane inspector-pane\\"><div class=\\"inspector-hero\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Face</p><h1>" + esc(agent.displayName) + "</h1><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div class=\\"facts\\">" +
+        fact("Turn", minutes(agent.nextTurnInMinutes)) +
+        fact("Status", agent.activeJobId ? "running" : agent.status) +
+        fact("Memory", number((counts.shortTerm || 0) + (counts.memories || 0))) +
+        fact("Pressure", number(counts.pressures || 0)) +
+        fact("Heat", number(agent.heat)) +
+        fact("Load", number(agent.currentLoad)) +
+      "</div><div class=\\"inspector-lore\\"><p>" + esc(agent.description || "No Face description registered.") + "</p><div class=\\"channel-list\\">" + (agent.channelPermissions || []).map((channel) => "<div class=\\"channel-chip\\"><strong>" + esc(channel.label || "channel") + "</strong><span>x" + esc(number(channel.speedMultiplier || 1)) + "</span><span class=\\"muted\\">" + esc(channel.topic || "no topic") + "</span><span class=\\"mono muted\\">" + esc(channel.speechThreshold || "threshold") + "</span></div>").join("") + "</div></div></section>";
     }
 
     function renderControls(snapshot, participants) {
       const controls = snapshot.controls || {};
       const latest = (controls.manualTurnRequests || [])[0];
-      return "<section class=\\"pane controls-pane\\"><p class=\\"kicker\\">Controls</p><div class=\\"control-grid\\">" +
+      return "<div class=\\"control-grid\\"><p class=\\"kicker\\">Controls</p>" +
         "<div><div class=\\"muted\\">Heartbeat cadence</div><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.1\\" max=\\"12\\" step=\\"0.1\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div><button id=\\"cadence-apply\\" type=\\"button\\">Apply</button></div>" +
         "<div><div class=\\"muted\\">Manual next turn</div><div class=\\"force-row\\"><select id=\\"force-identity\\">" + participants.map((agent) => "<option value=\\"" + esc(agent.identityId) + "\\">" + esc(agent.displayName) + " / " + esc(agent.repoName) + "</option>").join("") + "</select><button id=\\"force-turn\\" type=\\"button\\">Pull</button></div></div>" +
         "<div class=\\"mono muted\\">Latest request: " + esc(latest?.identityId || "none") + " " + esc(latest?.status || "") + "</div>" +
-      "</div></section>";
+      "</div>";
     }
 
-    function renderQueue(participants) {
-      return "<section class=\\"pane queue-pane\\"><p class=\\"kicker\\">Participants</p><div class=\\"queue-list\\">" + participants.map((agent) => {
-        const klass = "agent-row" + (agent.identityId === selectedIdentity ? " selected" : "");
-        return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(agent.identityId) + "\\">" + avatarHtml(agent) + "<span><strong>" + esc(agent.displayName) + "</strong><span>" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</span></span>" + badge(agent.activeJobId ? "running" : agent.status) + "</button>";
-      }).join("") + "</div></section>";
+    function renderStateTree(agent) {
+      const state = agent?.faceState;
+      if (!agent) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">No Face selected.</p></section>";
+      if (!state?.readable) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">" + esc(state?.error || "Face state unreadable.") + "</p></section>";
+      return "<section class=\\"pane tree-pane\\"><div><p class=\\"kicker\\">State Graph</p><h2>" + esc(agent.displayName) + " memory tree</h2><p class=\\"muted mono\\">" + esc(state.path || "state path missing") + "</p></div><div class=\\"state-tree\\">" + renderTreeNodes(state.tree || []) + "</div></section>";
     }
 
-    function renderDetails(agent) {
-      if (!agent) return "<section class=\\"pane detail-pane\\"><p class=\\"kicker\\">Selected Face</p><p class=\\"muted\\">No participant state.</p></section>";
-      return "<section class=\\"pane detail-pane\\"><div class=\\"details-head\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Face</p><h2>" + esc(agent.displayName) + "</h2><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div>" + badge(agent.activeJobId ? "running" : agent.status) + " " + (agent.pendingMentionCount > 0 ? badge("warning", "mention") : "") + "</div><div class=\\"facts\\">" +
-        fact("Next", minutes(agent.nextTurnInMinutes)) +
-        fact("Load", number(agent.currentLoad)) +
-        fact("Speed", number(agent.effectiveSpeed)) +
-        fact("Heat", number(agent.heat)) +
-        fact("Queued", number(agent.queuedCount)) +
-        fact("Mentions", number(agent.pendingMentionCount)) +
-        fact("Channels", number(agent.channelCount)) +
-        fact("Last queued", relative(agent.lastQueuedAt)) +
-        fact("Job", agent.activeJobId || "none") +
-      "</div></section>";
+    function renderTreeNodes(nodes) {
+      return (nodes || []).map((node) => {
+        if (node.kind === "branch") {
+          return "<details class=\\"state-node\\" open><summary><span>" + esc(node.label) + "</span><span class=\\"mono muted\\">" + esc(node.count || 0) + "</span></summary><div class=\\"state-children\\">" + renderTreeNodes(node.children || []) + "</div></details>";
+        }
+        const klass = "state-leaf" + (node.path === selectedStatePath ? " selected" : "");
+        return "<button class=\\"" + klass + "\\" type=\\"button\\" data-state-path=\\"" + esc(node.path) + "\\"><strong>" + esc(node.label) + "</strong><span>" + esc(node.preview || "") + "</span></button>";
+      }).join("");
     }
 
-    function renderEvents(snapshot) {
-      const events = (snapshot.recentEvents || []).slice(0, 18);
-      return "<section class=\\"pane events-pane\\"><p class=\\"kicker\\">Mesh Events</p><div class=\\"event-list\\">" + (events.length ? events.map((event) => "<div class=\\"event-row\\"><span>" + esc(event.type) + " " + esc(event.identityId || "") + "</span><span>" + esc(relative(event.observedAt)) + "</span></div>").join("") : "<p class=\\"muted\\">No recent events.</p>") + "</div></section>";
+    function renderStateDetail(agent, leaf) {
+      if (!agent) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">No selected Face.</p></section>";
+      if (!agent.faceState?.readable) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">" + esc(agent.faceState?.error || "Face state unreadable.") + "</p></section>";
+      const selected = leaf || firstLeaf(agent.faceState.tree || []);
+      if (!selected) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">No entries in this state file.</p></section>";
+      selectedStatePath = selected.path;
+      return "<section class=\\"pane memory-pane\\"><div><p class=\\"kicker\\">State Detail</p><h2>" + esc(selected.title || selected.label) + "</h2><p class=\\"muted mono\\">" + esc(selected.path) + "</p></div><div class=\\"detail-body\\"><div class=\\"detail-card\\"><pre>" + esc(selected.detail || selected.preview || "") + "</pre></div></div></section>";
+    }
+
+    function renderCommandColumn(snapshot, participants, selected) {
+      return "<section class=\\"pane command-pane\\">" + renderStatusPanel(snapshot, selected) + renderControls(snapshot, participants) + "</section>";
+    }
+
+    function findSelectedLeaf(agent) {
+      const leaves = flattenLeaves(agent?.faceState?.tree || []);
+      if (!leaves.length) return null;
+      if (selectedStatePath) {
+        const existing = leaves.find((leaf) => leaf.path === selectedStatePath);
+        if (existing) return existing;
+      }
+      const memory = leaves.find((leaf) =>
+        leaf.label !== "empty" && (
+          leaf.path.startsWith("thoughtMemory.shortTerm") ||
+          leaf.path.startsWith("thoughtMemory.memories") ||
+          leaf.path.startsWith("thoughtMemory.incubation")
+        )
+      );
+      if (memory) return memory;
+      return leaves[0];
+    }
+
+    function firstLeaf(nodes) {
+      return flattenLeaves(nodes)[0] || null;
+    }
+
+    function flattenLeaves(nodes) {
+      const output = [];
+      const visit = (node) => {
+        if (!node) return;
+        if (node.kind === "leaf") output.push(node);
+        for (const child of node.children || []) visit(child);
+      };
+      for (const node of nodes || []) visit(node);
+      return output;
     }
 
     function renderStatusPanel(snapshot, agent) {
@@ -987,6 +1312,16 @@ function renderHtml(snapshot) {
       document.querySelectorAll("[data-select]").forEach((element) => {
         element.addEventListener("click", () => {
           selectedIdentity = element.getAttribute("data-select");
+          selectedStatePath = null;
+          refresh();
+        });
+      });
+    }
+
+    function attachStateSelection() {
+      document.querySelectorAll("[data-state-path]").forEach((element) => {
+        element.addEventListener("click", () => {
+          selectedStatePath = element.getAttribute("data-state-path");
           refresh();
         });
       });
@@ -1074,6 +1409,16 @@ function redactSnapshot(snapshot) {
     activeJobId: participant.activeJobId ? "active" : null,
     constraints: [],
     constraintCount: participant.constraintCount,
+    description: participant.description ? truncate(participant.description, 220) : null,
+    faceStatePath: null,
+    faceState: participant.faceState
+      ? {
+        readable: participant.faceState.readable,
+        counts: participant.faceState.counts,
+        path: null,
+        tree: [],
+      }
+      : undefined,
   }));
   redacted.activeTurns = redacted.activeTurns.map((participant) => ({
     ...participant,
