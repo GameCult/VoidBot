@@ -1,6 +1,6 @@
 {
-  "paused": true,
-  "reason": "Paused by operator after controlled live curiosity trial.",
+  "paused": false,
+  "reason": "Resumed by operator request.",
   "pausedAt": "2026-05-24T09:14:06.6535422Z",
-  "resumedAt": "2026-05-24T08:35:53.9885614Z"
+  "resumedAt": "2026-05-24T10:19:00Z"
 }
