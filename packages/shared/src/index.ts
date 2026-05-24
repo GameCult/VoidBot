@@ -173,6 +173,12 @@ export interface VoidSelfStateProjection {
       value: number;
       source?: string;
     }>;
+    socialBiases: Array<{
+      name: string;
+      value: number;
+      summary: string;
+      behavioralPull: string;
+    }>;
   };
 }
 

@@ -750,6 +750,13 @@ function buildRepoFaceSpeakingPressure(
         : 0.025;
       return sum + entry.value * expressiveWeight;
     }, 0);
+  const socialBiasPressure = (typedState.faceAffect.socialBiases ?? [])
+    .reduce((sum, entry) => {
+      const pressureWeight = ["neuroticism", "threat_sensitivity", "hostile_attribution_bias", "reassurance_need", "grievance_retention", "status_vigilance"].includes(entry.name)
+        ? 0.055
+        : -0.025;
+      return sum + entry.value * pressureWeight;
+    }, 0);
   const agencyPressure = typedState.agencyPressure.pressures
     .filter((entry) => entry.status === "active" || entry.status === "ready_to_act")
     .reduce((sum, entry) => sum + entry.intensity * (entry.kind.includes("advocacy") ? 0.22 : 0.11), 0);
@@ -759,7 +766,7 @@ function buildRepoFaceSpeakingPressure(
   const silencePressure = clamp(hoursSinceSpeech / 8, 0, 1);
   const sleepiness = sleepCycle.isNapping ? 0.22 : 0;
   const targetNeed = clamp(
-    0.12 + silencePressure * 0.18 + affectNeedPressure + statusReadPressure + socialBondPressure + moodPressure + agencyPressure + candidatePressure - recentSpeechDamping * 0.24 - sleepiness,
+    0.12 + silencePressure * 0.18 + affectNeedPressure + statusReadPressure + socialBondPressure + moodPressure + socialBiasPressure + agencyPressure + candidatePressure - recentSpeechDamping * 0.24 - sleepiness,
     0,
     1,
   );
@@ -767,8 +774,8 @@ function buildRepoFaceSpeakingPressure(
 
   return {
     needToSpeak,
-    confessionPressure: round3(clamp((previous.confessionPressure ?? 0.2) * 0.7 + moodPressure * 0.42 + socialBondPressure * 0.18, 0, 1)),
-    noveltyPressure: round3(clamp((previous.noveltyPressure ?? 0.25) * 0.62 + affectNeedPressure * 0.35 + statusReadPressure * 0.24 + candidatePressure * 0.28, 0, 1)),
+    confessionPressure: round3(clamp((previous.confessionPressure ?? 0.2) * 0.7 + moodPressure * 0.42 + socialBondPressure * 0.18 + socialBiasPressure * 0.2, 0, 1)),
+    noveltyPressure: round3(clamp((previous.noveltyPressure ?? 0.25) * 0.62 + affectNeedPressure * 0.35 + statusReadPressure * 0.24 + socialBiasPressure * 0.18 + candidatePressure * 0.28, 0, 1)),
     recentSpeechDamping: round3(recentSpeechDamping),
     lastSpokeAt,
   };
@@ -2042,6 +2049,8 @@ function renderRepoFaceStatePacket(
     .sort(sortAffectByStatusAndIntensity);
   const moodDimensions = [...state.faceAffect.moodDimensions]
     .sort((left, right) => right.value - left.value);
+  const socialBiases = [...state.faceAffect.socialBiases]
+    .sort((left, right) => right.value - left.value);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => pressure.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
@@ -2144,6 +2153,15 @@ function renderRepoFaceStatePacket(
       "Mood dimensions currently bending the turn:",
       ...moodDimensions.map((dimension) =>
         `- ${dimension.name}=${dimension.value.toFixed(2)}${dimension.source ? ` from ${cleanCharacterFacingSentence(dimension.source)}` : ""}`,
+      ),
+    ].join("\n"));
+  }
+
+  if (socialBiases.length > 0) {
+    lines.push([
+      "Social interpretation biases that shape ambiguous signals:",
+      ...socialBiases.map((bias) =>
+        `- ${bias.name}=${bias.value.toFixed(2)}: ${asSentence(bias.summary)} Behavioral pull: ${asSentence(bias.behavioralPull)}`,
       ),
     ].join("\n"));
   }

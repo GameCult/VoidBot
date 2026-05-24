@@ -434,6 +434,15 @@ function applyTypedOperation(
         .slice(0, 32);
       state.faceAffect.updatedAt = operation.updatedAt;
       return;
+    case "update_social_biases":
+      for (const bias of operation.biases) {
+        upsertBy(state.faceAffect.socialBiases, bias, (entry) => entry.name);
+      }
+      state.faceAffect.socialBiases = state.faceAffect.socialBiases
+        .sort((left, right) => right.value - left.value)
+        .slice(0, 16);
+      state.faceAffect.updatedAt = operation.updatedAt;
+      return;
     case "update_sleep_cycle":
       state.scheduledRuntime.sleepCycle = operation.sleepCycle;
       state.scheduledRuntime.updatedAt = new Date().toISOString();

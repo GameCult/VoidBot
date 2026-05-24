@@ -141,6 +141,7 @@ export function createEmptyVoidSelfState(
       socialBonds: [],
       statusReads: [],
       moodDimensions: [],
+      socialBiases: [],
       updatedAt: createdAt,
     }),
   };
@@ -310,8 +311,12 @@ function renderFaceAffectSummary(
     .slice()
     .sort((left, right) => right.value - left.value)
     .slice(0, 8);
+  const biases = affect.socialBiases
+    .slice()
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
 
-  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0) {
+  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0 && biases.length === 0) {
     return `- What ${identityName} feels and wants: no explicit affect state yet.`;
   }
 
@@ -345,6 +350,10 @@ function renderFaceAffectSummary(
     dimensions.length > 0
       ? `- Mood dimensions: ${dimensions.map((dimension) => `${dimension.name}=${dimension.value.toFixed(2)}`).join(", ")}`
       : undefined,
+    ...biases.map((bias) => [
+      `- Social bias/${bias.name} (${bias.value.toFixed(2)}): ${bias.summary}`,
+      `  How it bends interpretation: ${bias.behavioralPull}`,
+    ].join("\n")),
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");
@@ -415,6 +424,14 @@ export function buildVoidSelfStateProjection(
           name: dimension.name,
           value: dimension.value,
           source: dimension.source,
+        })),
+      socialBiases: typedState.faceAffect.socialBiases
+        .slice(0, 16)
+        .map((bias) => ({
+          name: bias.name,
+          value: bias.value,
+          summary: bias.summary,
+          behavioralPull: bias.behavioralPull,
         })),
     },
   };

@@ -344,6 +344,22 @@ const faceMoodDimensionSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+const faceSocialBiasSchema = z.object({
+  name: z.enum([
+    "neuroticism",
+    "threat_sensitivity",
+    "hostile_attribution_bias",
+    "reassurance_need",
+    "grievance_retention",
+    "status_vigilance",
+    "trust_baseline",
+  ]),
+  value: z.number().min(0).max(1),
+  summary: z.string().trim().min(1).max(1000),
+  behavioralPull: z.string().trim().min(1).max(1000),
+  updatedAt: timestampSchema,
+}).strict();
+
 const selfProfileValueSchema = z.object({
   id: nonEmptyStringSchema,
   label: nonEmptyStringSchema,
@@ -435,6 +451,7 @@ export const voidFaceAffectSchema = z.object({
   socialBonds: z.array(faceSocialBondSchema).default([]),
   statusReads: z.array(faceStatusReadSchema).default([]),
   moodDimensions: z.array(faceMoodDimensionSchema).default([]),
+  socialBiases: z.array(faceSocialBiasSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
 
@@ -624,6 +641,11 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
   z.object({
     operation: z.literal("update_mood_dimensions"),
     dimensions: z.array(faceMoodDimensionSchema).min(1),
+    updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("update_social_biases"),
+    biases: z.array(faceSocialBiasSchema).min(1),
     updatedAt: timestampSchema,
   }).strict(),
   z.object({

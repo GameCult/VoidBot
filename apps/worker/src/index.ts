@@ -1024,7 +1024,7 @@ interface RepoIdentityPostIntent {
 
 interface RepoIdentityStateNoteIntent {
   identity?: string;
-  kind: "memory" | "need" | "bond" | "status" | "mood" | "agency";
+  kind: "memory" | "need" | "bond" | "status" | "mood" | "bias" | "agency";
   target?: string;
   summary: string;
   claim?: string;
@@ -1034,6 +1034,7 @@ interface RepoIdentityStateNoteIntent {
   stance?: string;
   status?: string;
   mood?: string;
+  bias?: string;
   intensity?: number;
   valence?: number;
 }
@@ -1315,6 +1316,7 @@ function parseRepoIdentityStateNoteIntents(finalResponse: string): RepoIdentityS
         stance: optionalDslString(block.fields.stance),
         status: optionalDslString(block.fields.status),
         mood: optionalDslString(block.fields.mood),
+        bias: optionalDslString(block.fields.bias),
         intensity: parseDslNumber(block.fields.intensity),
         valence: parseDslNumber(block.fields.valence),
       }];
@@ -1445,6 +1447,18 @@ async function applyRepoIdentityStateNoteIntent(
             name: sanitizeStateToken(intent.mood ?? intent.target ?? "mood"),
             value: intensity,
             source: intent.summary.slice(0, 240),
+            updatedAt: now,
+          }],
+          updatedAt: now,
+        };
+      case "bias":
+        return {
+          operation: "update_social_biases",
+          biases: [{
+            name: normalizeSocialBias(intent.bias ?? intent.mood ?? intent.target),
+            value: intensity,
+            summary: intent.summary,
+            behavioralPull: intent.action ?? intent.tension ?? "Let this bias bend ambiguous social interpretation without treating it as objective fact.",
             updatedAt: now,
           }],
           updatedAt: now,
@@ -2266,9 +2280,35 @@ function parseDslList(value: string | undefined): string[] {
 
 function normalizeStateNoteKind(value: string | undefined): RepoIdentityStateNoteIntent["kind"] | undefined {
   const normalized = value?.trim().toLowerCase();
-  return ["memory", "need", "bond", "status", "mood", "agency"].includes(normalized ?? "")
+  return ["memory", "need", "bond", "status", "mood", "bias", "agency"].includes(normalized ?? "")
     ? normalized as RepoIdentityStateNoteIntent["kind"]
     : undefined;
+}
+
+function normalizeSocialBias(value: string | undefined): "neuroticism" | "threat_sensitivity" | "hostile_attribution_bias" | "reassurance_need" | "grievance_retention" | "status_vigilance" | "trust_baseline" {
+  const normalized = sanitizeStateToken(value ?? "threat_sensitivity").toLowerCase();
+  if (["neuroticism", "neurotic"].includes(normalized)) {
+    return "neuroticism";
+  }
+  if (["threat_sensitivity", "threat", "suspicion", "paranoia"].includes(normalized)) {
+    return "threat_sensitivity";
+  }
+  if (["hostile_attribution_bias", "hostile_attribution", "hostility_bias", "persecution_complex"].includes(normalized)) {
+    return "hostile_attribution_bias";
+  }
+  if (["reassurance_need", "reassurance", "approval_hunger"].includes(normalized)) {
+    return "reassurance_need";
+  }
+  if (["grievance_retention", "grievance", "resentment", "memory_of_slights"].includes(normalized)) {
+    return "grievance_retention";
+  }
+  if (["status_vigilance", "status", "hierarchy_vigilance"].includes(normalized)) {
+    return "status_vigilance";
+  }
+  if (["trust_baseline", "trust", "baseline_trust"].includes(normalized)) {
+    return "trust_baseline";
+  }
+  return "threat_sensitivity";
 }
 
 function stateNoteTarget(
