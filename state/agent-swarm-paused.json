@@ -1,7 +1,5 @@
 {
-  "paused": false,
-  "reason": "Operator requested swarm restart after global doctrine and Face prompt inheritance updates. Restart deliberately under observation; watch topic saturation, social tension, source-channel routing, and Face prompt behavior.",
-  "pausedAt": "2026-05-23T12:31:04.330Z",
-  "resumedAt": "2026-05-24T02:11:38.839Z",
-  "lastPausedAt": "2026-05-23T12:31:04.330Z"
+  "paused": true,
+  "reason": "Paused by operator after unintelligible Face speech; inspect recent Face turns before resuming.",
+  "pausedAt": "2026-05-24T04:10:49.7761305Z"
 }
