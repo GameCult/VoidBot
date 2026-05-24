@@ -78,6 +78,28 @@ export interface SourceMessage {
   content: string;
   timestamp: string;
   isBot?: boolean;
+  attachments?: SourceMessageAttachment[];
+}
+
+export interface SourceMessageAttachment {
+  id?: string;
+  filename?: string;
+  contentType?: string;
+  url?: string;
+  proxyUrl?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  localPath?: string;
+  kind: "image" | "other";
+}
+
+export interface PromptImageAttachment {
+  messageId: string;
+  authorName: string;
+  filename?: string;
+  contentType?: string;
+  localPath: string;
 }
 
 export interface RetrievalResult {
@@ -434,6 +456,7 @@ export interface ContextBundle {
   actor: Actor;
   guildContext: GuildContext;
   recentMessages: SourceMessage[];
+  imageAttachments?: PromptImageAttachment[];
   retrieval: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
   situationalSocialRead?: SituationalSocialRead;

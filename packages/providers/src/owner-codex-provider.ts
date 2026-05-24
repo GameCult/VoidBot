@@ -415,6 +415,7 @@ export class OwnerCodexProvider implements ProviderAdapter {
         timeoutMs: this.options.timeoutMs,
         workingDirectory: this.options.workingDirectory,
         prompt: input.prompt,
+        imagePaths: collectCodexImagePaths(input.request.contextBundle),
         mcpServers: input.command === "repo-face-rumination"
           ? restrictMcpServersToRepoFaceExploration(this.options.mcpServers ?? [])
           : this.options.mcpServers ?? [],
@@ -436,9 +437,17 @@ export class OwnerCodexProvider implements ProviderAdapter {
       timeoutMs: this.options.timeoutMs,
       workingDirectory: this.options.workingDirectory,
       prompt: input.prompt,
+      imagePaths: collectCodexImagePaths(input.request.contextBundle),
       mcpServers: this.options.mcpServers ?? [],
     });
   }
+}
+
+function collectCodexImagePaths(contextBundle: ProviderRequest["contextBundle"]): string[] {
+  return (contextBundle.imageAttachments ?? [])
+    .map((attachment) => attachment.localPath)
+    .filter((localPath): localPath is string => typeof localPath === "string" && localPath.trim().length > 0)
+    .slice(0, 8);
 }
 
 function getStringOption(value: unknown): string | undefined {

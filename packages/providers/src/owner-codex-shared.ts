@@ -127,6 +127,7 @@ export function buildRequestPayload(
     stylePack: request.contextBundle.stylePack,
     voidSelfState: request.contextBundle.voidSelfState,
     recentMessages: request.contextBundle.recentMessages,
+    imageAttachments: request.contextBundle.imageAttachments ?? [],
     retrieval: request.contextBundle.retrieval,
     options: request.options ?? {},
   };

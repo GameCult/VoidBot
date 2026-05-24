@@ -34,7 +34,7 @@ export function buildDiscordReplyPrompt(
     ? context.recentMessages
         .map(
           (message) =>
-            `- [${message.timestamp}] ${message.authorName}: ${message.content}`,
+            `- [${message.timestamp}] ${message.authorName}: ${message.content}${renderAttachmentSuffix(message)}`,
         )
         .join("\n")
     : "- No recent messages captured.";
@@ -116,7 +116,7 @@ export function renderMarkdownBundle(context: ContextBundle): string {
     ? context.recentMessages
         .map(
           (message) =>
-            `- [${message.timestamp}] ${message.authorName} (${message.authorId}): ${message.content}`,
+            `- [${message.timestamp}] ${message.authorName} (${message.authorId}): ${message.content}${renderAttachmentSuffix(message)}`,
         )
         .join("\n")
     : "- No recent messages captured.";
@@ -181,6 +181,20 @@ export function renderMarkdownBundle(context: ContextBundle): string {
     "- If the request needs edits, broader tools, or longer work, hand it off to a fuller Codex session.",
     "",
   ].join("\n");
+}
+
+function renderAttachmentSuffix(message: ContextBundle["recentMessages"][number]): string {
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 0) {
+    return "";
+  }
+  return ` [media: ${attachments.map((attachment) => {
+    const kind = attachment.kind === "image" ? "image" : "attachment";
+    const name = attachment.filename ?? attachment.id ?? "unnamed";
+    const dimensions = attachment.width && attachment.height ? ` ${attachment.width}x${attachment.height}` : "";
+    const local = attachment.localPath ? ` local=${attachment.localPath}` : "";
+    return `${kind} ${name}${dimensions}${local}`;
+  }).join("; ")}]`;
 }
 
 function renderVoidSelfState(context: ContextBundle): string {

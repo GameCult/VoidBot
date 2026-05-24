@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
@@ -25,11 +25,18 @@ import {
   type RepoDiscordIdentity,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
-import { loadPromptTemplate, type InteractionMemoryProfile, type SourceMessage } from "@voidbot/shared";
+import {
+  loadPromptTemplate,
+  type InteractionMemoryProfile,
+  type PromptImageAttachment,
+  type SourceMessage,
+  type SourceMessageAttachment,
+} from "@voidbot/shared";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
 const MIN_STALE_ACTIVE_JOB_MS = 45 * 60_000;
+const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 interface FaceHeartbeatParticipant {
   identityId: string;
@@ -546,6 +553,10 @@ async function queueRepoFaceTurn(input: {
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
     globalAgentDoctrine,
   });
+  const imageAttachments = collectPromptImageAttachments([
+    recentMessages,
+    ...channelSnapshots.map((snapshot) => snapshot.messages),
+  ].flat());
   const contextBundle = contextBuilder.build({
     prompt,
     actor: {
@@ -558,6 +569,7 @@ async function queueRepoFaceTurn(input: {
       channelId,
     },
     recentMessages,
+    imageAttachments,
     retrieval: [],
     voidSelfState: undefined,
   });
@@ -903,16 +915,24 @@ async function fetchRecentDiscordMessages(input: {
   }
 
   const messages = await response.json() as DiscordApiMessage[];
-  return messages
+  const sourceMessages = await Promise.all(messages
     .filter((message) => !(input.ignoreBotMessages && message.author.bot === true))
-    .map((message) => ({
-      id: message.id,
-      authorId: message.author.id,
-      authorName: message.author.global_name ?? message.member?.nick ?? message.author.username,
-      content: message.content,
-      timestamp: message.timestamp,
-      isBot: message.author.bot === true,
-    }))
+    .map(async (message) => {
+      const attachments = await materializeDiscordAttachments({
+        channelId: input.channelId,
+        message,
+      });
+      return {
+        id: message.id,
+        authorId: message.author.id,
+        authorName: message.author.global_name ?? message.member?.nick ?? message.author.username,
+        content: message.content,
+        timestamp: message.timestamp,
+        isBot: message.author.bot === true,
+        ...(attachments.length > 0 ? { attachments } : {}),
+      };
+    }));
+  return sourceMessages
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
 }
 
@@ -951,6 +971,110 @@ async function fetchChannelSnapshots(input: {
     }
   }
   return snapshots;
+}
+
+async function materializeDiscordAttachments(input: {
+  channelId: string;
+  message: DiscordApiMessage;
+}): Promise<SourceMessageAttachment[]> {
+  const attachments = input.message.attachments ?? [];
+  if (attachments.length === 0) {
+    return [];
+  }
+
+  const materialized: SourceMessageAttachment[] = [];
+  for (const attachment of attachments.slice(0, 4)) {
+    const kind = isDiscordImageAttachment(attachment) ? "image" : "other";
+    let localPath: string | undefined;
+    if (kind === "image" && isWithinFaceImageSizeLimit(attachment)) {
+      localPath = await cacheDiscordImageAttachment({
+        channelId: input.channelId,
+        messageId: input.message.id,
+        attachment,
+      });
+    }
+    materialized.push({
+      kind,
+      id: attachment.id,
+      filename: attachment.filename,
+      contentType: attachment.content_type,
+      url: attachment.url,
+      proxyUrl: attachment.proxy_url,
+      size: typeof attachment.size === "number" ? attachment.size : undefined,
+      width: typeof attachment.width === "number" ? attachment.width : undefined,
+      height: typeof attachment.height === "number" ? attachment.height : undefined,
+      localPath,
+    });
+  }
+  return materialized;
+}
+
+function isWithinFaceImageSizeLimit(attachment: DiscordApiAttachment): boolean {
+  return typeof attachment.size !== "number" || attachment.size <= MAX_FACE_IMAGE_ATTACHMENT_BYTES;
+}
+
+function isDiscordImageAttachment(attachment: DiscordApiAttachment): boolean {
+  const contentType = attachment.content_type?.toLowerCase() ?? "";
+  if (contentType.startsWith("image/")) {
+    return true;
+  }
+  return /\.(png|jpe?g|gif|webp)$/i.test(attachment.filename ?? attachment.url ?? "");
+}
+
+async function cacheDiscordImageAttachment(input: {
+  channelId: string;
+  messageId: string;
+  attachment: DiscordApiAttachment;
+}): Promise<string | undefined> {
+  const sourceUrl = input.attachment.url ?? input.attachment.proxy_url;
+  if (!sourceUrl) {
+    return undefined;
+  }
+  const safeExtension = normalizedImageExtension(input.attachment);
+  const fileStem = [
+    input.messageId,
+    input.attachment.id ?? createHash("sha256").update(sourceUrl).digest("hex").slice(0, 12),
+  ].join("-");
+  const directory = resolve(".voidbot", "media", "discord-images", input.channelId);
+  const localPath = resolve(directory, `${fileStem}${safeExtension}`);
+  try {
+    await stat(localPath);
+    return localPath;
+  } catch {
+    // Cache miss. Fall through to fetch.
+  }
+
+  try {
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      return undefined;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    await mkdir(directory, { recursive: true });
+    await writeFile(localPath, Buffer.from(arrayBuffer));
+    return localPath;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizedImageExtension(attachment: DiscordApiAttachment): string {
+  const fromName = extname(attachment.filename ?? "").toLowerCase();
+  if (/^\.(png|jpe?g|gif|webp)$/.test(fromName)) {
+    return fromName;
+  }
+  const contentType = attachment.content_type?.toLowerCase();
+  switch (contentType) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/gif":
+      return ".gif";
+    case "image/webp":
+      return ".webp";
+    case "image/png":
+    default:
+      return ".png";
+  }
 }
 
 async function fetchBifrostGovernanceDigest(input: {
@@ -1019,6 +1143,7 @@ interface DiscordApiMessage {
   id: string;
   content: string;
   timestamp: string;
+  attachments?: DiscordApiAttachment[];
   author: {
     id: string;
     username: string;
@@ -1028,6 +1153,17 @@ interface DiscordApiMessage {
   member?: {
     nick?: string | null;
   };
+}
+
+interface DiscordApiAttachment {
+  id?: string;
+  filename?: string;
+  content_type?: string;
+  size?: number;
+  url?: string;
+  proxy_url?: string;
+  width?: number | null;
+  height?: number | null;
 }
 
 async function startVoidModerationTurn(input: {
@@ -2937,7 +3073,8 @@ function renderVisibleConversationChronology(input: {
     "Visible cross-channel chronology, oldest to newest:",
     ...messages.map((message) => {
       const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-      return `- [${message.channelLabel}] ${speaker} (message ${message.id}): ${collapseWhitespace(message.content, 700)}`;
+      const content = collapseWhitespace(message.content, 700) || "[no text]";
+      return `- [${message.channelLabel}] ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
     }),
   ].join("\n");
 }
@@ -2998,8 +3135,49 @@ function formatConversationMessages(messages: SourceMessage[], limit: number): s
   }
   return messages.slice(-limit).map((message) => {
     const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-    return `- ${speaker} (message ${message.id}): ${collapseWhitespace(message.content, 900)}`;
+    const content = collapseWhitespace(message.content, 900) || "[no text]";
+    return `- ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
   });
+}
+
+function renderMessageAttachmentSuffix(message: SourceMessage): string {
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 0) {
+    return "";
+  }
+  const rendered = attachments.map((attachment, index) => {
+    const label = attachment.kind === "image" ? "image" : "attachment";
+    const dimensions = attachment.width && attachment.height ? ` ${attachment.width}x${attachment.height}` : "";
+    const filename = attachment.filename ? ` ${attachment.filename}` : ` ${index + 1}`;
+    const local = attachment.localPath ? ` local=${attachment.localPath}` : "";
+    return `${label}${filename}${dimensions}${local}`;
+  });
+  return ` [media: ${rendered.join("; ")}]`;
+}
+
+function collectPromptImageAttachments(messages: SourceMessage[]): PromptImageAttachment[] {
+  const seen = new Set<string>();
+  const images: PromptImageAttachment[] = [];
+  for (const message of messages) {
+    for (const attachment of message.attachments ?? []) {
+      if (attachment.kind !== "image" || !attachment.localPath) {
+        continue;
+      }
+      const key = attachment.localPath;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      images.push({
+        messageId: message.id,
+        authorName: message.authorName,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        localPath: attachment.localPath,
+      });
+    }
+  }
+  return images.slice(0, 8);
 }
 
 function runCodexTextProjection(input: {

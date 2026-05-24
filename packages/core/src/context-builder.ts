@@ -3,6 +3,7 @@ import {
   type ContextBundle,
   type GuildContext,
   type InteractionMemoryProfile,
+  type PromptImageAttachment,
   type RetrievalResult,
   type SituationalSocialRead,
   type SourceGroundingHint,
@@ -16,6 +17,7 @@ export interface BuildContextInput {
   actor: Actor;
   guildContext: GuildContext;
   recentMessages?: SourceMessage[];
+  imageAttachments?: PromptImageAttachment[];
   retrieval?: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
   situationalSocialRead?: SituationalSocialRead;
@@ -31,6 +33,7 @@ export class ContextBuilder {
       actor: input.actor,
       guildContext: input.guildContext,
       recentMessages: input.recentMessages ?? [],
+      imageAttachments: input.imageAttachments,
       retrieval: input.retrieval ?? [],
       interactionMemory: input.interactionMemory,
       situationalSocialRead: input.situationalSocialRead,

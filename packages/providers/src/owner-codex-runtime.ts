@@ -47,6 +47,7 @@ export async function runCodexExec(input: {
   timeoutMs: number;
   workingDirectory: string;
   prompt: string;
+  imagePaths?: string[];
   mcpServers: CodexMcpServerConfig[];
 }): Promise<CodexRunResult> {
   return new Promise<CodexRunResult>((resolve) => {
@@ -62,6 +63,7 @@ export async function runCodexExec(input: {
       "-c",
       `model_reasoning_effort=${JSON.stringify(input.reasoningEffort)}`,
       ...buildMcpConfigArguments(input.mcpServers),
+      ...buildImageArguments(input.imagePaths ?? []),
       "--json",
       "--skip-git-repo-check",
       "-s",
@@ -224,6 +226,19 @@ export async function runCodexExec(input: {
       });
     }, input.timeoutMs);
   });
+}
+
+function buildImageArguments(imagePaths: string[]): string[] {
+  const args: string[] = [];
+  const seen = new Set<string>();
+  for (const imagePath of imagePaths) {
+    if (seen.has(imagePath)) {
+      continue;
+    }
+    seen.add(imagePath);
+    args.push("--image", imagePath);
+  }
+  return args;
 }
 
 export function normalizeDiscordReply(stdout: string): NormalizedDiscordReply {

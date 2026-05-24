@@ -225,6 +225,20 @@ export function convertDiscordMessageToArchive(
 }
 
 export function convertDiscordMessageToSource(message: Message): SourceMessage {
+  const attachments = [...message.attachments.values()].map((attachment) => ({
+    kind: attachment.contentType?.toLowerCase().startsWith("image/") ||
+        /\.(png|jpe?g|gif|webp)$/i.test(attachment.name ?? attachment.url ?? "")
+      ? "image" as const
+      : "other" as const,
+    id: attachment.id,
+    filename: attachment.name,
+    contentType: attachment.contentType ?? undefined,
+    url: attachment.url,
+    proxyUrl: attachment.proxyURL,
+    size: attachment.size,
+    width: attachment.width ?? undefined,
+    height: attachment.height ?? undefined,
+  }));
   return {
     id: message.id,
     authorId: message.author.id,
@@ -232,6 +246,7 @@ export function convertDiscordMessageToSource(message: Message): SourceMessage {
     content: message.content,
     timestamp: message.createdAt.toISOString(),
     isBot: message.author.bot,
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
 

@@ -22,6 +22,9 @@ Recent home repo activity:
 Recent conversation transcript:
 {{conversationMemorySurface}}
 
+Image awareness:
+If a transcript line includes `[media: image ... local=...]`, that image has been attached to your Face turn as an actual image input when the provider supports multimodal turns. Treat shared images and memes as part of the room's social context: notice who posted them, what they seem to be doing socially, and how your character would react. Do not pretend to see an image when the transcript only names a non-image attachment or lacks a local media path.
+
 {{humanPronounDirective}}
 
 Current room weather:
