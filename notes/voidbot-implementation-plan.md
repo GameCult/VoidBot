@@ -154,7 +154,7 @@ The runner can hand these to a CLI/MCP tool. The store decides what survives.
 - Self-state prompt summaries are derived from typed documents.
 - Recent room context is derived from Discord archive and the current poll.
 - Prompt-facing recent chronology is derived as relative phrases. Exact timestamps remain state/status/cursor data and should not be fed to the child rumination loop unless a tool or parent-owned operation specifically needs them.
-- Topic saturation is derived from incubation/memory support, not separately stored as another truth.
+- Topic saturation and curiosity are derived surfaces, not stored truths. Repo Face turns now build a semantic curiosity graph from configured history/source vector retrieval plus current room/state/identity seeds, decode weighted attractor clusters, and hand the projector prominence, saturation, novelty, density, jurisdiction fit, suggested motion, and evidence labels. The old repeated-term detector is fallback room weather; it no longer owns curiosity.
 - Source coverage is derived from recent anchors and repo/archive metadata.
 - Need-to-speak can keep a small pressure field, but its inputs remain receipts, candidates, and time since last speech.
 - Legacy top-level mirrors are deleted. If a consumer needs a projection, render it on demand.
