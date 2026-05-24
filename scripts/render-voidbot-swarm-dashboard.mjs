@@ -658,7 +658,6 @@ function renderHtml(snapshot) {
       --coral: #ff7b72;
       --violet: #b99dff;
       --rail: 124px;
-      --status-size: clamp(112px, 16vmin, 150px);
       --font: "Ubuntu", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --display: "Montserrat", "Ubuntu", ui-sans-serif, system-ui, sans-serif;
       --arcade: "Press Start 2P", "VT323", monospace;
@@ -714,6 +713,7 @@ function renderHtml(snapshot) {
       background: rgba(3, 7, 13, 0.86);
       backdrop-filter: blur(18px);
       overflow: auto;
+      min-width: 0;
       scrollbar-width: thin;
       scrollbar-color: rgba(142, 223, 176, 0.58) rgba(3, 7, 13, 0.32);
     }
@@ -768,21 +768,25 @@ function renderHtml(snapshot) {
       gap: 12px;
       padding: 12px;
       overflow: hidden;
-      grid-template-columns: minmax(210px, 0.78fr) minmax(280px, 1.06fr) minmax(320px, 1.34fr) minmax(240px, 0.86fr);
+      grid-template-columns: minmax(230px, 0.82fr) minmax(360px, 1.15fr) minmax(420px, 1.38fr);
       grid-template-rows: minmax(0, 1fr);
       grid-template-areas:
-        "inspector tree memory command";
+        "inspector tree memory";
     }
 
     .status-panel {
-      width: 100%;
-      aspect-ratio: 1 / 1;
-      align-self: start;
-      justify-self: stretch;
+      position: sticky;
+      right: 10px;
+      z-index: 2;
+      flex: 0 0 250px;
+      width: 250px;
+      height: 96px;
+      margin-left: auto;
+      align-self: center;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
-      gap: 7px;
-      padding: 9px;
+      gap: 5px;
+      padding: 7px;
       border: 1px solid rgba(255, 174, 88, 0.34);
       border-radius: 8px;
       background:
@@ -810,7 +814,7 @@ function renderHtml(snapshot) {
       min-height: 0;
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 5px 7px;
+      gap: 4px 7px;
       align-content: start;
     }
 
@@ -825,7 +829,7 @@ function renderHtml(snapshot) {
       justify-content: space-between;
       gap: 3px;
       color: rgba(239, 252, 248, 0.74);
-      font-size: 0.5rem;
+      font-size: 0.43rem;
       line-height: 1;
       text-transform: uppercase;
       white-space: nowrap;
@@ -844,7 +848,7 @@ function renderHtml(snapshot) {
     }
 
     .hud-bar {
-      height: 5px;
+      height: 4px;
       overflow: hidden;
       border: 1px solid rgba(239, 252, 248, 0.16);
       border-radius: 999px;
@@ -874,10 +878,10 @@ function renderHtml(snapshot) {
       overflow: hidden;
     }
     .pane-scroll { overflow: auto; }
-    .inspector-pane { grid-area: inspector; grid-template-rows: auto auto minmax(0, 1fr); }
+    .inspector-pane { grid-area: inspector; grid-template-rows: auto auto auto minmax(0, 1fr); }
     .tree-pane { grid-area: tree; grid-template-rows: auto minmax(0, 1fr); }
+    .tree-pane .mono { overflow-wrap: anywhere; }
     .memory-pane { grid-area: memory; grid-template-rows: auto minmax(0, 1fr); }
-    .command-pane { grid-area: command; grid-template-rows: minmax(0, auto) minmax(0, 1fr); align-content: start; }
 
     .kicker { color: var(--green); font-size: 0.74rem; text-transform: uppercase; }
     h1 { font-size: clamp(1.55rem, 3.4vw, 3rem); line-height: 0.98; }
@@ -886,7 +890,7 @@ function renderHtml(snapshot) {
     .mono { font-family: var(--mono); }
 
     .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-    .metric, .fact {
+    .metric, .fact, .agent-stat {
       min-width: 0;
       padding: 10px;
       border: 1px solid rgba(142, 223, 176, 0.12);
@@ -897,7 +901,15 @@ function renderHtml(snapshot) {
     .metric strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.12rem; }
     .fact strong { display: block; overflow-wrap: anywhere; font: 0.9rem/1.15 var(--mono); }
 
-    .control-grid { display: grid; gap: 10px; align-content: start; }
+    .control-grid {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      padding: 10px;
+      border: 1px solid rgba(105, 226, 239, 0.16);
+      border-radius: 8px;
+      background: rgba(3, 7, 13, 0.36);
+    }
     .control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
     .force-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 
@@ -914,6 +926,43 @@ function renderHtml(snapshot) {
       color: var(--muted);
       font-size: 0.83rem;
     }
+    .agent-stats { display: grid; gap: 8px; }
+    .agent-stat {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+    }
+    .agent-stat-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: rgba(239, 252, 248, 0.88);
+      font: 0.72rem/1.1 var(--mono);
+      text-transform: uppercase;
+    }
+    .agent-stat-head span:first-child {
+      color: var(--muted);
+      font-family: var(--display);
+      font-weight: 300;
+    }
+    .agent-bar {
+      height: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(239, 252, 248, 0.16);
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.38);
+      box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.34);
+    }
+    .agent-fill {
+      display: block;
+      width: calc(var(--fill, 0) * 1%);
+      max-width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+      box-shadow: 0 0 12px rgba(105, 226, 239, 0.28);
+    }
+    .agent-fill.hot { background: linear-gradient(90deg, var(--amber), var(--coral)); }
+    .agent-fill.cool { background: linear-gradient(90deg, var(--violet), var(--cyan)); }
     .channel-list, .state-tree, .detail-body {
       min-height: 0;
       overflow: auto;
@@ -938,7 +987,7 @@ function renderHtml(snapshot) {
       border: 1px solid rgba(142, 223, 176, 0.12);
       border-radius: 8px;
       background: rgba(142, 223, 176, 0.045);
-      overflow: hidden;
+      overflow: clip;
     }
     details.state-node[open] { border-color: rgba(105, 226, 239, 0.22); }
     details.state-node > summary {
@@ -954,7 +1003,7 @@ function renderHtml(snapshot) {
     .state-children {
       display: grid;
       gap: 6px;
-      padding: 0 8px 8px 14px;
+      padding: 6px 8px 8px 12px;
       border-top: 1px solid rgba(142, 223, 176, 0.08);
     }
     .state-leaf {
@@ -969,7 +1018,20 @@ function renderHtml(snapshot) {
       text-align: left;
     }
     .state-leaf:hover, .state-leaf.selected { border-color: var(--amber); background: rgba(255, 174, 88, 0.09); }
-    .state-leaf strong, .state-leaf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .state-leaf strong {
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
+    }
+    .state-leaf span {
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
+    }
     .state-leaf span { color: var(--muted); font: 0.72rem/1.15 var(--mono); }
 
     .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -1036,27 +1098,27 @@ function renderHtml(snapshot) {
       .workspace {
         grid-row: 1;
         grid-column: 2;
-        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-        grid-template-areas:
-          "inspector command"
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas:
+          "inspector memory"
           "tree memory";
       }
-      .status-panel { max-height: 34vh; }
       .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .turn-card { width: 72px; height: 96px; }
+      .status-panel { flex-basis: 230px; width: 230px; height: 84px; }
     }
 
     @media (max-width: 760px) {
       .workspace { padding: 10px; gap: 10px; }
       .pane { padding: 12px; }
       .inspector-lore { display: none; }
-      .status-panel { max-height: none; }
+      .status-panel { flex-basis: 210px; width: 210px; }
     }
 
     @media (max-width: 980px) and (orientation: landscape) {
       .workspace {
-        grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) minmax(260px, 1.16fr) minmax(210px, 0.86fr);
+        grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 1.1fr) minmax(340px, 1.28fr);
       }
       .inspector-lore { display: none; }
     }
@@ -1099,14 +1161,14 @@ function renderHtml(snapshot) {
       }
       const selected = participants.find((agent) => agent.identityId === selectedIdentity) || participants[0] || null;
       const selectedLeaf = findSelectedLeaf(selected);
+      if (selectedLeaf) selectedStatePath = selectedLeaf.path;
       app.innerHTML = [
         "<div class=\\"shell\\">",
-          renderCtb(snapshot.upcomingTurns || []),
+          renderCtb(snapshot.upcomingTurns || [], snapshot, selected),
           "<section class=\\"workspace\\" aria-label=\\"VoidBot swarm control\\">",
-            renderInspector(selected),
+            renderInspector(snapshot, participants, selected),
             renderStateTree(selected),
             renderStateDetail(selected, selectedLeaf),
-            renderCommandColumn(snapshot, participants, selected),
           "</section>",
         "</div>",
       ].join("");
@@ -1125,23 +1187,24 @@ function renderHtml(snapshot) {
       });
     }
 
-    function renderCtb(turns) {
+    function renderCtb(turns, snapshot, selected) {
       return "<nav class=\\"ctb-rail\\" aria-label=\\"Upcoming CTB turns\\">" + turns.map((turn) => {
         const klass = ["turn-card", turn.identityId === selectedIdentity ? "selected" : "", turn.activeJobId ? "active-turn" : "", turn.pendingMentionCount > 0 ? "mention-turn" : ""].filter(Boolean).join(" ");
         return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(turn.identityId) + "\\" title=\\"" + esc(turn.displayName + " / " + minutes(turn.nextTurnInMinutes)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span>" + esc(minutes(turn.nextTurnInMinutes)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</button>";
-      }).join("") + "</nav>";
+      }).join("") + renderStatusPanel(snapshot, selected) + "</nav>";
     }
 
-    function renderInspector(agent) {
+    function renderInspector(snapshot, participants, agent) {
       if (!agent) return "<section class=\\"pane inspector-pane\\"><p class=\\"kicker\\">Face</p><p class=\\"muted\\">No selected Face.</p></section>";
       const counts = agent.faceState?.counts || {};
-      return "<section class=\\"pane inspector-pane\\"><div class=\\"inspector-hero\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Face</p><h1>" + esc(agent.displayName) + "</h1><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div class=\\"facts\\">" +
-        fact("Turn", minutes(agent.nextTurnInMinutes)) +
-        fact("Status", agent.activeJobId ? "running" : agent.status) +
-        fact("Memory", number((counts.shortTerm || 0) + (counts.memories || 0))) +
-        fact("Pressure", number(counts.pressures || 0)) +
-        fact("Heat", number(agent.heat)) +
-        fact("Load", number(agent.currentLoad)) +
+      const memoryCount = (counts.shortTerm || 0) + (counts.memories || 0);
+      return "<section class=\\"pane inspector-pane\\">" + renderControls(snapshot, participants) + "<div class=\\"inspector-hero\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Face</p><h1>" + esc(agent.displayName) + "</h1><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div class=\\"agent-stats\\">" +
+        statBar("Turn", minutes(agent.nextTurnInMinutes), turnPercent(agent.nextTurnInMinutes), "cool") +
+        statBar("Memory", number(memoryCount), Math.min(100, memoryCount * 7), "cool") +
+        statBar("Pressure", number(counts.pressures || 0), Math.min(100, (counts.pressures || 0) * 14), (counts.pressures || 0) > 4 ? "hot" : "") +
+        statBar("Heat", number(agent.heat), Math.min(100, (agent.heat || 0) * 34), (agent.heat || 0) > 1.5 ? "hot" : "") +
+        statBar("Load", number(agent.currentLoad), Math.min(100, (agent.currentLoad || 0) * 100), (agent.currentLoad || 0) > 0.7 ? "hot" : "") +
+        statBar("Speed", number(agent.effectiveSpeed), Math.min(100, (agent.effectiveSpeed || 0) * 34), "") +
       "</div><div class=\\"inspector-lore\\"><p>" + esc(agent.description || "No Face description registered.") + "</p><div class=\\"channel-list\\">" + (agent.channelPermissions || []).map((channel) => "<div class=\\"channel-chip\\"><strong>" + esc(channel.label || "channel") + "</strong><span>x" + esc(number(channel.speedMultiplier || 1)) + "</span><span class=\\"muted\\">" + esc(channel.topic || "no topic") + "</span><span class=\\"mono muted\\">" + esc(channel.speechThreshold || "threshold") + "</span></div>").join("") + "</div></div></section>";
     }
 
@@ -1155,17 +1218,27 @@ function renderHtml(snapshot) {
       "</div>";
     }
 
+    function statBar(label, value, fill, variant = "") {
+      return "<div class=\\"agent-stat\\"><div class=\\"agent-stat-head\\"><span>" + esc(label) + "</span><strong>" + esc(value) + "</strong></div><div class=\\"agent-bar\\"><span class=\\"agent-fill " + esc(variant) + "\\" style=\\"--fill:" + esc(clampPercent(fill)) + "\\"></span></div></div>";
+    }
+
+    function turnPercent(value) {
+      if (typeof value !== "number") return 0;
+      return value <= 0 ? 100 : clampPercent(100 - value * 5);
+    }
+
     function renderStateTree(agent) {
       const state = agent?.faceState;
       if (!agent) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">No Face selected.</p></section>";
       if (!state?.readable) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">" + esc(state?.error || "Face state unreadable.") + "</p></section>";
-      return "<section class=\\"pane tree-pane\\"><div><p class=\\"kicker\\">State Graph</p><h2>" + esc(agent.displayName) + " memory tree</h2><p class=\\"muted mono\\">" + esc(state.path || "state path missing") + "</p></div><div class=\\"state-tree\\">" + renderTreeNodes(state.tree || []) + "</div></section>";
+      return "<section class=\\"pane tree-pane\\"><div><p class=\\"kicker\\">State Graph</p><h2>" + esc(agent.displayName) + " memory tree</h2><p class=\\"muted mono\\">" + esc(state.path || "state path missing") + "</p></div><div class=\\"state-tree\\">" + renderTreeNodes(state.tree || [], 0) + "</div></section>";
     }
 
-    function renderTreeNodes(nodes) {
+    function renderTreeNodes(nodes, depth = 0) {
       return (nodes || []).map((node) => {
         if (node.kind === "branch") {
-          return "<details class=\\"state-node\\" open><summary><span>" + esc(node.label) + "</span><span class=\\"mono muted\\">" + esc(node.count || 0) + "</span></summary><div class=\\"state-children\\">" + renderTreeNodes(node.children || []) + "</div></details>";
+          const open = depth === 0 || branchContainsSelection(node);
+          return "<details class=\\"state-node\\" " + (open ? "open" : "") + "><summary><span>" + esc(node.label) + "</span><span class=\\"mono muted\\">" + esc(node.count || 0) + "</span></summary><div class=\\"state-children\\">" + renderTreeNodes(node.children || [], depth + 1) + "</div></details>";
         }
         const klass = "state-leaf" + (node.path === selectedStatePath ? " selected" : "");
         return "<button class=\\"" + klass + "\\" type=\\"button\\" data-state-path=\\"" + esc(node.path) + "\\"><strong>" + esc(node.label) + "</strong><span>" + esc(node.preview || "") + "</span></button>";
@@ -1179,10 +1252,6 @@ function renderHtml(snapshot) {
       if (!selected) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">No entries in this state file.</p></section>";
       selectedStatePath = selected.path;
       return "<section class=\\"pane memory-pane\\"><div><p class=\\"kicker\\">State Detail</p><h2>" + esc(selected.title || selected.label) + "</h2><p class=\\"muted mono\\">" + esc(selected.path) + "</p></div><div class=\\"detail-body\\"><div class=\\"detail-card\\"><pre>" + esc(selected.detail || selected.preview || "") + "</pre></div></div></section>";
-    }
-
-    function renderCommandColumn(snapshot, participants, selected) {
-      return "<section class=\\"pane command-pane\\">" + renderStatusPanel(snapshot, selected) + renderControls(snapshot, participants) + "</section>";
     }
 
     function findSelectedLeaf(agent) {
@@ -1216,6 +1285,12 @@ function renderHtml(snapshot) {
       };
       for (const node of nodes || []) visit(node);
       return output;
+    }
+
+    function branchContainsSelection(node) {
+      if (!selectedStatePath) return false;
+      if (node.path && selectedStatePath.startsWith(node.path)) return true;
+      return (node.children || []).some((child) => child.kind === "branch" ? branchContainsSelection(child) : child.path === selectedStatePath);
     }
 
     function renderStatusPanel(snapshot, agent) {
