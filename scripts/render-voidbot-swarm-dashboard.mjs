@@ -420,6 +420,722 @@ function renderHtml(snapshot) {
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>VoidBot Swarm Control</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #03070d;
+      --field: #07110f;
+      --panel: rgba(5, 13, 17, 0.78);
+      --panel-strong: rgba(8, 19, 24, 0.92);
+      --line: rgba(142, 223, 176, 0.18);
+      --line-strong: rgba(142, 223, 176, 0.38);
+      --text: #effcf8;
+      --muted: rgba(239, 252, 248, 0.66);
+      --green: #8edfb0;
+      --amber: #ffae58;
+      --cyan: #69e2ef;
+      --coral: #ff7b72;
+      --violet: #b99dff;
+      --rail: 124px;
+      --font: Ubuntu, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background:
+        radial-gradient(circle at 72% 12%, rgba(255, 174, 88, 0.16), transparent 24%),
+        radial-gradient(circle at 10% 18%, rgba(142, 223, 176, 0.16), transparent 28%),
+        linear-gradient(180deg, #03070d, #07110f 52%, #091712);
+      color: var(--text);
+      font: 15px/1.45 var(--font);
+      letter-spacing: 0;
+    }
+
+    button, select, input { font: inherit; }
+    button, select {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(142, 223, 176, 0.09);
+      color: var(--text);
+      font-weight: 760;
+    }
+    button { cursor: pointer; padding: 0 12px; }
+    button:hover, select:hover { border-color: var(--amber); }
+    select { min-width: 0; padding: 0 10px; }
+    input[type="range"] { width: 100%; accent-color: var(--cyan); }
+    h1, h2, h3, p { margin: 0; }
+
+    .shell {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      width: 100vw;
+      height: 100dvh;
+      background: rgba(3, 7, 13, 0.72);
+    }
+
+    .ctb-rail {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      border-color: var(--line);
+      background: rgba(3, 7, 13, 0.84);
+      backdrop-filter: blur(18px);
+      z-index: 4;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(142, 223, 176, 0.58) rgba(3, 7, 13, 0.32);
+    }
+
+    .turn-card {
+      flex: 0 0 auto;
+      width: 72px;
+      height: 96px;
+      display: grid;
+      justify-items: center;
+      align-content: start;
+      gap: 4px;
+      padding: 7px 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(8, 19, 24, 0.88);
+      color: var(--text);
+      text-align: center;
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.24);
+    }
+    .turn-card.active-turn { border-color: var(--cyan); box-shadow: 0 0 24px rgba(105, 226, 239, 0.24); }
+    .turn-card.mention-turn { border-color: var(--amber); }
+    .turn-card strong, .turn-card span {
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .turn-card strong { font-size: 0.68rem; line-height: 1.05; }
+    .turn-card span { color: var(--muted); font: 0.64rem/1.05 var(--mono); }
+    .turn-card .turn-reason { color: var(--amber); text-transform: uppercase; }
+
+    .avatar {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      overflow: hidden;
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      background: linear-gradient(160deg, #69e2ef, #c2f5f0);
+      color: #08313a;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .graph-stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .graph-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .edge { stroke: rgba(142, 223, 176, 0.28); stroke-width: 1.5; }
+    .edge.hot { stroke: rgba(255, 174, 88, 0.52); stroke-width: 2.4; }
+    .hub-core { fill: rgba(142, 223, 176, 0.16); stroke: rgba(142, 223, 176, 0.56); stroke-width: 2; }
+
+    .graph-node-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+    }
+
+    .graph-node {
+      position: absolute;
+      display: grid;
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      width: var(--node-width, 190px);
+      min-height: var(--node-height, 96px);
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(18px);
+      opacity: 0.9;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.16s ease, transform 0.16s ease, border-color 0.16s ease;
+    }
+    .graph-node.spring-node { z-index: 3; }
+    .graph-node.graph-content-node { z-index: 2; }
+    .graph-node:hover, .graph-node:focus-within, .graph-node.selected {
+      opacity: 1;
+      transform: translate(-50%, calc(-50% - 2px));
+      border-color: var(--line-strong);
+    }
+    .graph-node.hot { border-color: rgba(255, 174, 88, 0.58); }
+    .graph-node.face-node { --node-width: 110px; --node-height: 100px; justify-items: center; text-align: center; }
+    .graph-node.active-focus { box-shadow: 0 0 38px rgba(105, 226, 239, 0.28), 0 24px 80px rgba(0, 0, 0, 0.34); }
+    .graph-node.system-node { --node-width: 210px; --node-height: 112px; border-color: rgba(142, 223, 176, 0.46); background: rgba(5, 13, 17, 0.86); }
+    .graph-node.control-node { --node-width: 220px; }
+    .graph-node.detail-node { --node-width: 238px; }
+    .graph-node.event-node { --node-width: 238px; }
+    .graph-node.metric-node { --node-width: 130px; --node-height: 78px; align-content: space-between; }
+    .graph-node.metric-node strong { font-size: 1.25rem; line-height: 1; }
+    .node-title { display: grid; min-width: 0; gap: 2px; }
+    .node-title h2, .node-title h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .face-node .avatar { width: 44px; height: 44px; }
+    .face-node strong, .face-node span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .face-node strong { font-size: 0.92rem; line-height: 1.05; }
+    .face-node span { color: var(--muted); font: 0.72rem/1.1 var(--mono); }
+
+    .system-node h1 { font-size: clamp(1.3rem, 3vw, 2rem); line-height: 0.95; }
+    .system-node p.muted { max-height: 2.8em; overflow: hidden; }
+    .kicker { color: var(--green); font-size: 0.74rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+    .muted { color: var(--muted); }
+    .mono { font-family: var(--mono); }
+
+    .control-grid { display: grid; gap: 10px; }
+    .control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .force-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+
+    .details-head { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; align-items: center; }
+    .details-head h2 { overflow-wrap: anywhere; font-size: 1.22rem; }
+    .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .fact {
+      min-width: 0;
+      padding: 6px;
+      border: 1px solid rgba(142, 223, 176, 0.12);
+      border-radius: 8px;
+      background: rgba(142, 223, 176, 0.06);
+    }
+    .fact span { display: block; color: var(--muted); font-size: 0.68rem; font-weight: 800; text-transform: uppercase; }
+    .fact strong { display: block; overflow-wrap: anywhere; font: 0.82rem/1.1 var(--mono); }
+    .event-list { display: grid; gap: 6px; }
+    .event-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; color: var(--muted); font-size: 0.82rem; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--green);
+      color: #06100d;
+      font-size: 0.7rem;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .badge.running, .badge.info { background: var(--cyan); }
+    .badge.paused, .badge.warning { background: var(--amber); }
+    .badge.failed, .badge.missing, .badge.error { background: var(--coral); }
+    .badge.repo-face { background: var(--violet); }
+
+    @media (orientation: landscape) {
+      .shell { grid-template-rows: var(--rail) minmax(0, 1fr); }
+      .ctb-rail {
+        grid-row: 1;
+        grid-column: 1;
+        flex-direction: row;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+      }
+      .graph-stage { grid-row: 2; grid-column: 1; }
+      .turn-card { width: 76px; height: 96px; }
+    }
+
+    @media (orientation: portrait) {
+      :root { --rail: 94px; }
+      .shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
+      .ctb-rail {
+        grid-row: 1;
+        grid-column: 1;
+        flex-direction: column;
+        align-items: center;
+        border-right: 1px solid var(--line);
+      }
+      .graph-stage { grid-row: 1; grid-column: 2; }
+      .turn-card { width: 72px; height: 96px; }
+      .graph-node { --node-width: 168px; }
+      .graph-node.face-node { --node-width: 112px; --node-height: 108px; padding: 9px; }
+      .graph-node.system-node { --node-width: 230px; }
+      .graph-node.control-node, .graph-node.detail-node, .graph-node.event-node { --node-width: 220px; }
+    }
+
+    @media (max-width: 760px) {
+      .system-node p { display: none; }
+      .facts { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script id="initial-snapshot" type="application/json">${escapeScriptJson(JSON.stringify(snapshot))}</script>
+  <script>
+    const initialSnapshot = JSON.parse(document.getElementById("initial-snapshot").textContent);
+    const app = document.getElementById("app");
+    let selectedIdentity = null;
+
+    const tone = (value) => String(value || "unknown").toLowerCase().replace(/_/g, "-");
+    const text = (value) => value === null || value === undefined || value === "" ? "missing" : String(value);
+    const esc = (value) => text(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const number = (value) => typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "missing";
+    const minutes = (value) => typeof value === "number" ? (value <= 0 ? "ready" : value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + "m") : "missing";
+    const relative = (timestamp) => {
+      if (!timestamp) return "missing";
+      const time = Date.parse(timestamp);
+      if (!Number.isFinite(time)) return timestamp;
+      const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+      if (seconds < 60) return seconds + "s ago";
+      const mins = Math.round(seconds / 60);
+      if (mins < 60) return mins + "m ago";
+      const hours = Math.round(mins / 60);
+      if (hours < 48) return hours + "h ago";
+      return Math.round(hours / 24) + "d ago";
+    };
+    const initials = (value) => text(value).split(/\\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "?";
+    const badge = (value, label = value) => "<span class=\\"badge " + tone(value) + "\\">" + esc(String(label).replace(/_/g, " ")) + "</span>";
+
+    function render(snapshot) {
+      const participants = sortedParticipants(snapshot);
+      if (!selectedIdentity || !participants.some((agent) => agent.identityId === selectedIdentity)) {
+        selectedIdentity = (snapshot.upcomingTurns || [])[0]?.identityId || participants[0]?.identityId || null;
+      }
+      const selected = participants.find((agent) => agent.identityId === selectedIdentity) || participants[0] || null;
+      app.innerHTML = [
+        "<div class=\\"shell\\">",
+          renderCtb(snapshot.upcomingTurns || []),
+          "<section class=\\"graph-stage\\" aria-label=\\"VoidBot swarm graph\\">",
+            renderGraph(snapshot, participants, selected),
+          "</section>",
+        "</div>",
+      ].join("");
+      attachControls();
+      attachGraphSelection();
+      window.requestAnimationFrame(settleGraphNodes);
+    }
+
+    function sortedParticipants(snapshot) {
+      return [...(snapshot.participants || [])].sort((a, b) => {
+        const active = Number(Boolean(b.activeJobId)) - Number(Boolean(a.activeJobId));
+        if (active) return active;
+        const mentions = (b.pendingMentionCount || 0) - (a.pendingMentionCount || 0);
+        if (mentions) return mentions;
+        return (a.nextTurnInMinutes ?? 999999) - (b.nextTurnInMinutes ?? 999999);
+      });
+    }
+
+    function renderCtb(turns) {
+      return "<nav class=\\"ctb-rail\\" aria-label=\\"Upcoming CTB turns\\">" + turns.map((turn) => {
+        const klass = ["turn-card", turn.activeJobId ? "active-turn" : "", turn.pendingMentionCount > 0 ? "mention-turn" : ""].filter(Boolean).join(" ");
+        return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(turn.identityId) + "\\" title=\\"" + esc(turn.displayName + " / " + minutes(turn.nextTurnInMinutes)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span>" + esc(minutes(turn.nextTurnInMinutes)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</button>";
+      }).join("") + "</nav>";
+    }
+
+    function renderGraph(snapshot, participants, selectedAgent) {
+      const nodes = graphNodes(snapshot, participants, selectedAgent);
+      const hub = nodes.find((node) => node.id === "system") || { x: 50, y: 50 };
+      const edges = nodes.map((node) => {
+        if (node.kind === "system") return "";
+        return "<line class=\\"edge " + (node.hot ? "hot" : "") + "\\" x1=\\"" + hub.x + "\\" y1=\\"" + hub.y + "\\" x2=\\"" + node.x + "\\" y2=\\"" + node.y + "\\" />";
+      }).join("");
+      return "<svg class=\\"graph-svg\\" viewBox=\\"0 0 100 100\\" preserveAspectRatio=\\"none\\" role=\\"img\\" aria-label=\\"Face swarm graph edges\\">" +
+        "<defs><filter id=\\"soft-glow\\"><feGaussianBlur stdDeviation=\\"5\\" result=\\"blur\\"/><feMerge><feMergeNode in=\\"blur\\"/><feMergeNode in=\\"SourceGraphic\\"/></feMerge></filter></defs>" +
+        edges +
+      "</svg><div class=\\"graph-node-layer\\">" + nodes.map(renderGraphNode).join("") + "</div>";
+    }
+
+    function graphNodes(snapshot, participants, selectedAgent) {
+      const summary = snapshot.summary || {};
+      const controls = snapshot.controls || {};
+      const latestRequest = (controls.manualTurnRequests || [])[0];
+      const activeAgent = participants.find((agent) => agent.activeJobId) || selectedAgent || participants[0] || null;
+      const focus = focusPointForAgent(participants, activeAgent);
+      const nodes = [
+        {
+          id: "system",
+          kind: "system",
+          spring: true,
+          anchorX: 50,
+          anchorY: 50,
+          selected: false,
+          hot: summary.state === "running" || summary.state === "paused",
+          html: "<p class=\\"kicker\\">VoidBot Swarm Control</p><h1>CTB Mesh</h1><p class=\\"muted\\">CultMesh mirror. The graph is made of interface facts; each node carries its own affordance.</p><div>" + badge(summary.state) + " <span class=\\"mono muted\\">" + esc(relative(snapshot.generatedAt)) + "</span></div>",
+        },
+        metricNode("participants", 34, 25, "Participants", number(summary.participantCount), "metric-node"),
+        metricNode("pending", 66, 25, "Pending Mentions", number(summary.pendingMentionCount), summary.pendingMentionCount > 0 ? "metric-node hot" : "metric-node"),
+        metricNode("ready", 34, 75, "Ready Now", number(summary.readyNowCount), summary.readyNowCount > 0 ? "metric-node hot" : "metric-node"),
+        metricNode("shuffle", 66, 75, "Last Shuffle", summary.lastShuffle ? summary.lastShuffle.kind.replace(/_/g, " ") : "none", summary.lastShuffle ? "metric-node hot" : "metric-node"),
+        {
+          id: "cadence-control",
+          kind: "control",
+          spring: true,
+          anchorX: 70,
+          anchorY: 45,
+          selected: false,
+          hot: controls.cadenceMultiplier !== 1,
+          html: "<p class=\\"kicker\\">Cadence</p><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.1\\" max=\\"12\\" step=\\"0.1\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div><button id=\\"cadence-apply\\" type=\\"button\\">Apply</button>",
+        },
+        {
+          id: "force-control",
+          kind: "control",
+          spring: true,
+          anchorX: 70,
+          anchorY: 55,
+          selected: false,
+          hot: Boolean(latestRequest && latestRequest.status !== "consumed"),
+          html: "<p class=\\"kicker\\">Manual Next Turn</p><div class=\\"force-row\\"><select id=\\"force-identity\\">" + participants.map((agent) => "<option value=\\"" + esc(agent.identityId) + "\\">" + esc(agent.displayName) + " / " + esc(agent.repoName) + "</option>").join("") + "</select><button id=\\"force-turn\\" type=\\"button\\">Pull</button></div><div class=\\"mono muted\\">" + esc(latestRequest?.identityId || "none") + " " + esc(latestRequest?.status || "") + "</div>",
+        },
+        detailNode(selectedAgent),
+        eventNode(snapshot),
+      ];
+      const count = Math.max(participants.length, 1);
+      for (const [index, agent] of participants.entries()) {
+        const angle = -Math.PI / 2 + (index / count) * Math.PI * 2;
+        const isFocus = agent.identityId === focus.identityId;
+        const heat = Math.max(0, Math.min(1, (agent.heat || 0) / 4));
+        const radiusX = isFocus ? 6 : 20 + heat * 3;
+        const radiusY = isFocus ? 5 : 20 + heat * 2;
+        nodes.push({
+          id: "face-" + agent.identityId,
+          kind: "face",
+          graphContent: true,
+          agent,
+          focus: isFocus,
+          selected: agent.identityId === selectedIdentity,
+          hot: Boolean(agent.activeJobId || agent.pendingMentionCount > 0),
+          x: Math.round((focus.x + Math.cos(angle) * radiusX) * 10) / 10,
+          y: Math.round((focus.y + Math.sin(angle) * radiusY) * 10) / 10,
+          width: 9,
+          height: 17,
+          html: faceNodeHtml(agent),
+        });
+      }
+      return forceLayout(nodes, focus);
+    }
+
+    function metricNode(id, x, y, label, value, klass) {
+      return {
+        id,
+        kind: klass || "metric-node",
+        spring: true,
+        anchorX: x,
+        anchorY: y,
+        selected: false,
+        hot: String(klass || "").includes("hot"),
+        html: "<p class=\\"kicker\\">" + esc(label) + "</p><strong>" + esc(value) + "</strong>",
+      };
+    }
+
+    function focusPointForAgent(participants, activeAgent) {
+      const index = Math.max(0, participants.findIndex((agent) => agent.identityId === activeAgent?.identityId));
+      const count = Math.max(participants.length, 1);
+      const angle = -Math.PI / 2 + (index / count) * Math.PI * 2;
+      return {
+        identityId: activeAgent?.identityId || null,
+        x: Math.round((50 + Math.cos(angle) * 24) * 10) / 10,
+        y: Math.round((50 + Math.sin(angle) * 20) * 10) / 10,
+      };
+    }
+
+    function forceLayout(nodes, focus) {
+      const laidOut = nodes.map((node) => ({
+        ...node,
+        x: node.x ?? node.anchorX ?? 50,
+        y: node.y ?? node.anchorY ?? 50,
+        vx: 0,
+        vy: 0,
+        width: node.width ?? widthForKind(node.kind),
+        height: node.height ?? heightForKind(node.kind),
+      }));
+      for (let tick = 0; tick < 160; tick += 1) {
+        for (const node of laidOut) {
+          if (node.spring) {
+            node.vx += ((node.anchorX ?? 50) - node.x) * 0.01;
+            node.vy += ((node.anchorY ?? 50) - node.y) * 0.01;
+          } else if (node.graphContent && node.focus) {
+            node.vx += (focus.x - node.x) * 0.035;
+            node.vy += (focus.y - node.y) * 0.035;
+          } else if (node.graphContent) {
+            node.vx += (focus.x - node.x) * 0.004;
+            node.vy += (focus.y - node.y) * 0.004;
+          }
+        }
+        for (let i = 0; i < laidOut.length; i += 1) {
+          for (let j = i + 1; j < laidOut.length; j += 1) {
+            repelIfOverlapping(laidOut[i], laidOut[j]);
+          }
+        }
+        for (const node of laidOut) {
+          node.vx *= 0.72;
+          node.vy *= 0.72;
+          node.x = clampNumber(node.x + node.vx, node.width / 2 + 1, 99 - node.width / 2);
+          node.y = clampNumber(node.y + node.vy, node.height / 2 + 1, 99 - node.height / 2);
+        }
+      }
+      return laidOut.map((node) => ({
+        ...node,
+        x: Math.round(node.x * 10) / 10,
+        y: Math.round(node.y * 10) / 10,
+      }));
+    }
+
+    function repelIfOverlapping(left, right) {
+      const dx = right.x - left.x || 0.1;
+      const dy = right.y - left.y || 0.1;
+      const minX = (left.width + right.width) / 2 + 2;
+      const minY = (left.height + right.height) / 2 + 2;
+      const overlapX = minX - Math.abs(dx);
+      const overlapY = minY - Math.abs(dy);
+      if (overlapX <= 0 || overlapY <= 0) return;
+      const force = Math.min(8, Math.min(overlapX, overlapY) * 0.28);
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const nx = dx / length;
+      const ny = dy / length;
+      const leftWeight = left.spring && right.graphContent ? 3.8 : 1.1;
+      const rightWeight = right.spring && left.graphContent ? 3.8 : 1.1;
+      left.vx -= nx * force * leftWeight;
+      left.vy -= ny * force * leftWeight;
+      right.vx += nx * force * rightWeight;
+      right.vy += ny * force * rightWeight;
+    }
+
+    function widthForKind(kind) {
+      if (kind === "system") return 20;
+      if (kind === "control") return 18;
+      if (kind === "detail" || kind === "event") return 20;
+      if (String(kind).includes("metric")) return 11;
+      return 9;
+    }
+
+    function heightForKind(kind) {
+      if (kind === "system") return 24;
+      if (kind === "control") return 22;
+      if (kind === "detail") return 32;
+      if (kind === "event") return 26;
+      if (String(kind).includes("metric")) return 15;
+      return 17;
+    }
+
+    function clampNumber(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function detailNode(agent) {
+      if (!agent) {
+        return { id: "details", kind: "detail", spring: true, anchorX: 28, anchorY: 60, selected: false, hot: false, html: "<p class=\\"kicker\\">Selected Face</p><p class=\\"muted\\">No participant state.</p>" };
+      }
+      return {
+        id: "details",
+        kind: "detail",
+        spring: true,
+        anchorX: 28,
+        anchorY: 60,
+        selected: true,
+        hot: Boolean(agent.activeJobId || agent.pendingMentionCount > 0),
+        html: "<div class=\\"details-head\\">" + avatarHtml(agent) + "<div class=\\"node-title\\"><p class=\\"kicker\\">Selected Face</p><h2>" + esc(agent.displayName) + "</h2><p class=\\"muted mono\\">" + esc(agent.identityId) + "</p></div></div><div class=\\"facts\\">" + fact("Next", minutes(agent.nextTurnInMinutes)) + fact("Heat", number(agent.heat)) + fact("Speed", number(agent.effectiveSpeed)) + fact("Mentions", number(agent.pendingMentionCount)) + "</div>",
+      };
+    }
+
+    function eventNode(snapshot) {
+      const events = (snapshot.recentEvents || []).slice(0, 4);
+      return {
+        id: "events",
+        kind: "event",
+        spring: true,
+        anchorX: 28,
+        anchorY: 40,
+        selected: false,
+        hot: Boolean(snapshot.summary?.lastShuffle),
+        html: "<p class=\\"kicker\\">Mesh Events</p><div class=\\"event-list\\">" + (events.length ? events.map((event) => "<div class=\\"event-row\\"><span>" + esc(event.type) + " " + esc(event.identityId || "") + "</span><span>" + esc(relative(event.observedAt)) + "</span></div>").join("") : "<p class=\\"muted\\">No recent events.</p>") + "</div>",
+      };
+    }
+
+    function faceNodeHtml(agent) {
+      return avatarHtml(agent) + "<strong>" + esc(agent.displayName) + "</strong><span>" + esc(minutes(agent.nextTurnInMinutes)) + "</span>" + (agent.pendingMentionCount > 0 ? "<span class=\\"turn-reason\\">mention</span>" : agent.activeJobId ? "<span class=\\"turn-reason\\">active</span>" : "");
+    }
+
+    function renderGraphNode(node) {
+      const kindClass = node.kind.includes("metric-node") ? "metric-node" : node.kind + "-node";
+      const className = [
+        "graph-node",
+        kindClass,
+        node.spring ? "spring-node" : "graph-content-node",
+        node.focus ? "active-focus" : "",
+        node.hot ? "hot" : "",
+        node.selected ? "selected" : "",
+      ].filter(Boolean).join(" ");
+      const selectable = node.agent ? " data-select=\\"" + esc(node.agent.identityId) + "\\" role=\\"button\\" tabindex=\\"0\\"" : "";
+      return "<article class=\\"" + className + "\\"" + selectable + " data-anchor-x=\\"" + esc(node.anchorX ?? node.x) + "\\" data-anchor-y=\\"" + esc(node.anchorY ?? node.y) + "\\" data-spring=\\"" + (node.spring ? "true" : "false") + "\\" data-content=\\"" + (node.graphContent ? "true" : "false") + "\\" style=\\"left:" + node.x + "%;top:" + node.y + "%\\">" + node.html + "</article>";
+    }
+
+    function settleGraphNodes() {
+      const stage = document.querySelector(".graph-stage");
+      if (!stage) return;
+      const stageRect = stage.getBoundingClientRect();
+      const nodes = [...document.querySelectorAll(".graph-node")].map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          element,
+          spring: element.dataset.spring === "true",
+          content: element.dataset.content === "true",
+          x: ((rect.left + rect.width / 2 - stageRect.left) / stageRect.width) * 100,
+          y: ((rect.top + rect.height / 2 - stageRect.top) / stageRect.height) * 100,
+          anchorX: Number(element.dataset.anchorX || "50"),
+          anchorY: Number(element.dataset.anchorY || "50"),
+          vx: 0,
+          vy: 0,
+          w: (rect.width / stageRect.width) * 100,
+          h: (rect.height / stageRect.height) * 100,
+        };
+      });
+      for (let tick = 0; tick < 140; tick += 1) {
+        for (const node of nodes) {
+          if (node.spring) {
+            node.vx += (node.anchorX - node.x) * 0.008;
+            node.vy += (node.anchorY - node.y) * 0.008;
+          }
+        }
+        for (let i = 0; i < nodes.length; i += 1) {
+          for (let j = i + 1; j < nodes.length; j += 1) {
+            repelDomNodes(nodes[i], nodes[j]);
+          }
+        }
+        for (const node of nodes) {
+          node.vx *= 0.7;
+          node.vy *= 0.7;
+          node.x = clampNumber(node.x + node.vx, node.w / 2 + 0.5, 99.5 - node.w / 2);
+          node.y = clampNumber(node.y + node.vy, node.h / 2 + 0.5, 99.5 - node.h / 2);
+        }
+      }
+      for (const node of nodes) {
+        node.element.style.left = node.x.toFixed(2) + "%";
+        node.element.style.top = node.y.toFixed(2) + "%";
+      }
+    }
+
+    function repelDomNodes(left, right) {
+      const dx = right.x - left.x || 0.1;
+      const dy = right.y - left.y || 0.1;
+      const minX = (left.w + right.w) / 2 + 1.2;
+      const minY = (left.h + right.h) / 2 + 1.2;
+      const overlapX = minX - Math.abs(dx);
+      const overlapY = minY - Math.abs(dy);
+      if (overlapX <= 0 || overlapY <= 0) return;
+      const force = Math.min(6, Math.min(overlapX, overlapY) * 0.22);
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const nx = dx / length;
+      const ny = dy / length;
+      const springContent = (left.spring && right.content) || (right.spring && left.content);
+      const weight = springContent ? 3.5 : 1.2;
+      left.vx -= nx * force * weight;
+      left.vy -= ny * force * weight;
+      right.vx += nx * force * weight;
+      right.vy += ny * force * weight;
+    }
+
+    function fact(label, value) {
+      return "<div class=\\"fact\\"><span>" + esc(label) + "</span><strong>" + esc(value) + "</strong></div>";
+    }
+
+    function avatarHtml(agent) {
+      return agent.avatarUrl
+        ? "<span class=\\"avatar\\"><img src=\\"" + esc(agent.avatarUrl) + "\\" alt=\\"" + esc(agent.displayName) + "\\"></span>"
+        : "<span class=\\"avatar\\">" + esc(initials(agent.displayName)) + "</span>";
+    }
+
+    function attachGraphSelection() {
+      document.querySelectorAll("[data-select]").forEach((element) => {
+        element.addEventListener("click", () => {
+          selectedIdentity = element.getAttribute("data-select");
+          refresh();
+        });
+        element.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectedIdentity = element.getAttribute("data-select");
+            refresh();
+          }
+        });
+      });
+    }
+
+    function attachControls() {
+      const cadenceInput = document.getElementById("cadence-input");
+      const cadenceValue = document.getElementById("cadence-value");
+      const cadenceApply = document.getElementById("cadence-apply");
+      const forceSelect = document.getElementById("force-identity");
+      const forceButton = document.getElementById("force-turn");
+      if (forceSelect && selectedIdentity) forceSelect.value = selectedIdentity;
+      if (cadenceInput && cadenceValue) {
+        cadenceInput.addEventListener("input", () => cadenceValue.textContent = "x" + Number(cadenceInput.value).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+      }
+      if (cadenceApply && cadenceInput) {
+        cadenceApply.addEventListener("click", async () => {
+          await postJson("/api/controls", { cadenceMultiplier: Number(cadenceInput.value) });
+          await refresh();
+        });
+      }
+      if (forceButton && forceSelect) {
+        forceButton.addEventListener("click", async () => {
+          await postJson("/api/turns/force", { identityId: forceSelect.value });
+          selectedIdentity = forceSelect.value;
+          await refresh();
+        });
+      }
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Control request failed.");
+      }
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("swarm-state.json?ts=" + Date.now(), { cache: "no-store" });
+        if (response.ok) {
+          render(await response.json());
+          return;
+        }
+      } catch {}
+      render(initialSnapshot);
+    }
+
+    render(initialSnapshot);
+    setInterval(refresh, 10000);
+    window.addEventListener("orientationchange", () => setTimeout(refresh, 120));
+    window.addEventListener("resize", () => window.requestAnimationFrame(() => refresh()));
+    refresh();
+  </script>
+</body>
+</html>
+`;
+}
+
+function renderLegacyHtml(snapshot) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VoidBot Swarm State</title>
   <style>

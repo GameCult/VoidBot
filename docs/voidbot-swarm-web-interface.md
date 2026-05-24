@@ -33,9 +33,11 @@ From `E:\Projects\VoidBot`:
 npm run swarm:dashboard
 ```
 
-Open the LAN URL printed by the command on the iPad. The server refreshes the snapshot every 10 seconds and serves the page from `.voidbot/status`.
+Open the LAN URL printed by the command on the iPad. The server refreshes the snapshot every 10 seconds and serves a fullscreen single-viewport SPA from `.voidbot/status`.
 
-The top CTB strip is intentionally compact: avatar icons show upcoming Face turns in scheduler order. A direct mention should appear as a shuffle in the mirrored snapshot once the heartbeat state records the pending obligation or queued turn.
+The CTB strip is intentionally compact: avatar icons show upcoming Face turns in scheduler order. It occupies the long side of the viewport: top edge in landscape, left edge in portrait. A direct mention should appear as a shuffle in the mirrored snapshot once the heartbeat state records the pending obligation or queued turn.
+
+The graph surface is the interface, not decoration. Face nodes represent scheduler participants. UI facts and controls are graph nodes too: the cadence node contains the slider, the manual-turn node contains the selector/button, status/count nodes show their live values, and the selected-Face node carries the currently focused participant facts. The SPA starts from a deterministic force-style layout, then runs a DOM-aware settle pass so spring-attached UI nodes stay near the viewport center while avoiding rendered graph content.
 
 For a one-shot render without serving:
 
