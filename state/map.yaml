@@ -14,14 +14,14 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the repo Face swarm online under watch after the 2026-05-21 teardown
+    Keep the repo Face swarm online under watch after the 2026-05-24 deliberate
     restart, with Bifrost work routing paused because the governance bridge
     proved too disorienting for live social traffic. The immediate priority is
-    to harden the Face/Interpreter/speech boundary with live evidence: live-room
-    conversation must arrive as raw transcript evidence, typed social state must
-    become live person-hooks when recent speakers match, no structured action
-    truncation, no fake channel ids, no owner-DM leakage, and no premature
-    dispatch machinery.
+    to observe the Face/Interpreter/speech boundary with live evidence: inherited
+    global doctrine should appear in Face prompts, live-room conversation should
+    arrive as raw transcript evidence, typed social state should become live
+    person-hooks when recent speakers match, and topic gravity should produce
+    character-specific pressure instead of another swarm obsession loop.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -250,5 +250,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, but the repo Face swarm remains deliberately paused through `state/agent-swarm-paused.json` before the operator reboot. `GameCult Local Orchestrator` remains the single pulse owner; paused Face heartbeats should skip without queuing turns. Bifrost work routing is paused by default. The immediate social-state projection gap exposed by Nibu/Void has been patched: raw relationship-pressure evidence now reaches the projector before Face turns.
-  next_action: When the operator is ready, restart the swarm deliberately under observation. Check that topic saturation, source-channel routing, and organic social tension all behave; specifically watch whether new turf/status/consultation events produce character-specific projected pressure and later durable STATE NOTEs without manual typed-state injection.
+  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, and the repo Face swarm was deliberately thawed on 2026-05-24 by setting state/agent-swarm-paused.json paused=false. GameCult Local Orchestrator remains the single pulse owner; a manual repo-face-heartbeats pulse succeeded, resynced CTB wall-clock initiative, and queued Void moderation. Bifrost work routing remains paused by default.
+  next_action: Observe the restarted swarm under normal orchestrator pulses. Check that inherited global doctrine appears in Face prompts, topic saturation/source-channel routing behave, and new turf/status/consultation events produce character-specific projected pressure plus durable STATE NOTEs without manual typed-state injection.
