@@ -122,6 +122,12 @@ interface RepoFaceChannelOption {
   posture?: string;
 }
 
+interface RepoFaceRuntimePressureSnapshot {
+  needToSpeak: number;
+  confessionPressure: number;
+  noveltyPressure: number;
+}
+
 interface BifrostGovernanceDigest {
   generatedAt: string;
   topics: BifrostGovernanceTopic[];
@@ -216,7 +222,7 @@ async function main(): Promise<void> {
   const faceRegistry = await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath);
   const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
-  const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state, { dryRun });
+  const runtimeSnapshots = await loadRepoFaceRuntimeSnapshots(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
@@ -247,6 +253,7 @@ async function main(): Promise<void> {
     state.initiativeClock,
     config.repoFaceHeartbeats.baseRecoveryMinutes,
     config.repoFaceHeartbeats.globalHeat,
+    runtimeSnapshots.pressureByIdentity,
   ).map((participant) =>
     applyActiveTurnFreeze(
       participant,
@@ -268,7 +275,7 @@ async function main(): Promise<void> {
     state,
     config.repoFaceHeartbeats.maxJobsPerTick,
     completedThisTick,
-    restStates,
+    runtimeSnapshots.restStates,
     idleCooling,
   );
   const queuedIdentityIds: string[] = [];
@@ -601,13 +608,17 @@ async function queueRepoFaceTurn(input: {
   };
 }
 
-async function loadRepoFaceRestStates(
+async function loadRepoFaceRuntimeSnapshots(
   identities: RepoDiscordIdentity[],
   storageRoot: string,
   heartbeatState: FaceHeartbeatState,
   options: { dryRun?: boolean } = {},
-): Promise<Map<string, RepoFaceRestSnapshot>> {
+): Promise<{
+  restStates: Map<string, RepoFaceRestSnapshot>;
+  pressureByIdentity: Map<string, RepoFaceRuntimePressureSnapshot>;
+}> {
   const restStates = new Map<string, RepoFaceRestSnapshot>();
+  const pressureByIdentity = new Map<string, RepoFaceRuntimePressureSnapshot>();
   const now = new Date();
 
   for (const identity of identities) {
@@ -647,6 +658,11 @@ async function loadRepoFaceRestStates(
         projected.sleepCycle,
         now,
       );
+      pressureByIdentity.set(identity.id, {
+        needToSpeak: speakingPressure.needToSpeak,
+        confessionPressure: speakingPressure.confessionPressure ?? 0,
+        noveltyPressure: speakingPressure.noveltyPressure ?? 0,
+      });
       if (!options.dryRun && !speakingPressuresEqual(typedState.scheduledRuntime.speakingPressure, speakingPressure)) {
         await applyVoidSelfStateOperation(
           {
@@ -695,7 +711,7 @@ async function loadRepoFaceRestStates(
     }
   }
 
-  return restStates;
+  return { restStates, pressureByIdentity };
 }
 
 function buildRepoFaceSpeakingPressure(
@@ -1363,6 +1379,7 @@ function reconcileParticipants(
   initiativeClock: number,
   baseRecoveryMinutes: number,
   globalHeat: number,
+  pressureByIdentity: Map<string, RepoFaceRuntimePressureSnapshot> = new Map(),
 ): FaceHeartbeatParticipant[] {
   const existingById = new Map(existing.map((entry) => [entry.identityId, entry]));
   const count = Math.max(specs.length, 1);
@@ -1373,10 +1390,18 @@ function reconcileParticipants(
     const speed = initiativeSpeedFor(spec, speedOverrides) * spec.channelSpeedMultiplier;
     const groups = initiativeGroupsFor(spec);
     const heat = heatFor(spec, groups, globalHeat, heatOverrides);
-    const effectiveSpeed = clamp(speed * heat, 0.1, 12);
-    const nextTurnAt = Number.isFinite(current?.nextTurnAt)
+    const urgency = urgencyFor(pressureByIdentity.get(spec.id));
+    const effectiveSpeed = clamp(speed * heat * urgency, 0.1, 12);
+    const defaultNextTurnAt = Number.isFinite(current?.nextTurnAt)
       ? current.nextTurnAt
       : initiativeClock + ((baseRecoveryMinutes / count) * index);
+    const nextTurnAt = pullNextTurnTowardUrgency(
+      defaultNextTurnAt,
+      initiativeClock,
+      baseRecoveryMinutes,
+      effectiveSpeed,
+      urgency,
+    );
     if (current) {
       return {
         ...current,
@@ -1390,12 +1415,17 @@ function reconcileParticipants(
         effectiveSpeed,
         baseRecoveryMinutes,
         nextTurnAt,
-        constraints: mergeStrings(
+        constraints: mergeOptionalString(
           mergeStrings(
-            current.constraints,
-            "Agent runtime uses CTB-style turns.",
+            mergeStrings(
+              current.constraints,
+              "Agent runtime uses CTB-style turns.",
+            ),
+            "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
           ),
-          "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
+          urgency > 1
+            ? "Typed speaking pressure raises initiative urgency and may pull the next turn closer."
+            : undefined,
         ),
         status: hasChannel
           ? current.status === "withdrawn" || current.status === "blocked"
@@ -1425,10 +1455,38 @@ function reconcileParticipants(
       constraints: [
         "Agent runtime uses CTB-style turns.",
         "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
+        ...(urgency > 1 ? ["Typed speaking pressure raises initiative urgency and may pull the next turn closer."] : []),
         "Worker final summaries are not auto-posted as the base bot.",
       ],
     };
   });
+}
+
+function urgencyFor(pressure: RepoFaceRuntimePressureSnapshot | undefined): number {
+  if (!pressure) {
+    return 1;
+  }
+
+  const urgency =
+    pressure.needToSpeak * 1.35 +
+    pressure.noveltyPressure * 0.35 +
+    pressure.confessionPressure * 0.2;
+  return round3(clamp(1 + urgency, 1, 3.2));
+}
+
+function pullNextTurnTowardUrgency(
+  nextTurnAt: number,
+  initiativeClock: number,
+  baseRecoveryMinutes: number,
+  effectiveSpeed: number,
+  urgency: number,
+): number {
+  if (urgency <= 1.05 || nextTurnAt <= initiativeClock) {
+    return nextTurnAt;
+  }
+
+  const maxWait = Math.max(0.75, baseRecoveryMinutes / Math.max(effectiveSpeed, 0.1));
+  return Math.min(nextTurnAt, round3(initiativeClock + maxWait));
 }
 
 function applyActiveTurnFreeze(
@@ -4828,6 +4886,10 @@ function stableUnit(id: string, salt: string): number {
 
 function mergeStrings(values: string[], value: string): string[] {
   return Array.from(new Set([...values, value]));
+}
+
+function mergeOptionalString(values: string[], value: string | undefined): string[] {
+  return value ? mergeStrings(values, value) : values;
 }
 
 function normalizeKey(value: string): string {
