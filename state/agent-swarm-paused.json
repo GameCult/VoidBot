@@ -1,6 +1,6 @@
 {
-  "paused": false,
-  "reason": "Operator requested a controlled live trial after semantic curiosity graph projector fix.",
-  "pausedAt": null,
+  "paused": true,
+  "reason": "Paused by operator after controlled live curiosity trial.",
+  "pausedAt": "2026-05-24T09:14:06.6535422Z",
   "resumedAt": "2026-05-24T08:35:53.9885614Z"
 }
