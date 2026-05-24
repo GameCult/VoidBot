@@ -116,8 +116,9 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES: z.coerce.number().positive().default(10),
   REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
   REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED: booleanFromEnv.default(true),
-  REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(30),
-  REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(30),
+  REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(180),
+  REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(120),
+  REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES: z.coerce.number().positive().default(360),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.3-codex-spark"),
@@ -181,6 +182,7 @@ export interface AppConfig {
       enabled: boolean;
       idleAfterMinutes: number;
       recoveryMinutes: number;
+      napAfterMinutes: number;
     };
     speedOverrides: Record<string, number>;
     heatOverrides: Record<string, number>;
@@ -412,6 +414,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         enabled: parsed.REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED,
         idleAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES,
         recoveryMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES,
+        napAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES,
       },
       speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
       heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),

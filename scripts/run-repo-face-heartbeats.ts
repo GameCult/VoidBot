@@ -93,6 +93,8 @@ interface IdleCoolingSnapshot {
   idleForMinutes?: number;
   idleAfterMinutes: number;
   recoveryMinutes: number;
+  napAfterMinutes: number;
+  napModeActive?: boolean;
   lastUnpromptedTurnQueuedAt?: string;
   nextUnpromptedTurnAllowedAt?: string;
 }
@@ -824,6 +826,9 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
   if (isRecentRunningStatus(currentStatus, 25)) {
     return { started: false, reason: "maintenance_already_running", statusPath: paths.statusPath };
   }
+  if (input.projectedRest.isNapping === true && isStatusCompletedRecently(currentStatus, 60)) {
+    return { started: false, reason: "nap_maintenance_recently_completed", statusPath: paths.statusPath };
+  }
   if (isStatusCompletedAfter(currentStatus, newestTimestampMs(shortTerm))) {
     return { started: false, reason: "maintenance_already_completed_for_sources", statusPath: paths.statusPath };
   }
@@ -911,6 +916,14 @@ function isStatusCompletedAfter(status: Record<string, unknown> | undefined, sou
   }
   const finishedAtMs = typeof status.finishedAt === "string" ? Date.parse(status.finishedAt) : NaN;
   return Number.isFinite(finishedAtMs) && finishedAtMs >= sourceTimestampMs;
+}
+
+function isStatusCompletedRecently(status: Record<string, unknown> | undefined, maxAgeMinutes: number): boolean {
+  if (status?.status !== "ok") {
+    return false;
+  }
+  const finishedAtMs = typeof status.finishedAt === "string" ? Date.parse(status.finishedAt) : NaN;
+  return Number.isFinite(finishedAtMs) && Date.now() - finishedAtMs < maxAgeMinutes * 60_000;
 }
 
 function newestTimestampMs(entries: Array<{ updatedAt: string }>): number {
@@ -1560,7 +1573,8 @@ function selectReadyParticipants(
         !(
           participant.participantKind === "repo_face" &&
           pendingMentionCount === 0 &&
-          restState?.isNapping === true
+          restState?.isNapping === true &&
+          idleCooling.napModeActive !== true
         )
       );
     });
@@ -1597,10 +1611,16 @@ function selectReadyParticipants(
 
   const mentioned = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) > 0);
   const unprompted = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) === 0);
+  const napRuns = idleCooling.napModeActive === true
+    ? unprompted.filter((participant) => restStates.get(participant.identityId)?.isNapping === true)
+    : [];
+  const awakeRuns = unprompted.filter((participant) => restStates.get(participant.identityId)?.isNapping !== true);
   const coolingAllowsUnpromptedTurn =
     !idleCooling.nextUnpromptedTurnAllowedAt ||
     Date.parse(idleCooling.nextUnpromptedTurnAllowedAt) <= Date.now();
-  const cooled = coolingAllowsUnpromptedTurn && mentioned.length < maxJobs ? unprompted.slice(0, 1) : [];
+  const cooled = coolingAllowsUnpromptedTurn && mentioned.length < maxJobs
+    ? (napRuns[0] ? napRuns : awakeRuns).slice(0, 1)
+    : [];
 
   return [...mentioned, ...cooled].slice(0, maxJobs);
 }
@@ -1690,6 +1710,7 @@ async function readIdleCoolingSnapshot(input: {
     checkedChannelIds,
     idleAfterMinutes: policy.idleAfterMinutes,
     recoveryMinutes: policy.recoveryMinutes,
+    napAfterMinutes: policy.napAfterMinutes,
     lastUnpromptedTurnQueuedAt: newestUnpromptedTurnQueuedAt(input.state),
   };
 
@@ -1737,15 +1758,18 @@ async function readIdleCoolingSnapshot(input: {
     return {
       ...base,
       active: true,
+      napModeActive: true,
       reason: fetchErrors.length > 0 ? "activity_fetch_failed_or_no_human_messages" : "no_recent_human_messages",
       nextUnpromptedTurnAllowedAt,
     };
   }
 
   const idleForMinutes = Math.max(0, (input.now.getTime() - Date.parse(newestHumanActivityAt)) / 60_000);
+  const active = idleForMinutes >= policy.idleAfterMinutes;
   return {
     ...base,
-    active: idleForMinutes >= policy.idleAfterMinutes,
+    active,
+    napModeActive: active && idleForMinutes >= policy.napAfterMinutes,
     reason: fetchErrors.length > 0 ? "partial_activity_fetch_failure" : undefined,
     lastHumanActivityAt: newestHumanActivityAt,
     idleForMinutes: round3(idleForMinutes),
