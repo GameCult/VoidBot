@@ -492,39 +492,83 @@ function Get-ProcessCreationTimeUtc {
   }
 }
 
-function Test-ProcessFreshForEntrypoint {
+function Get-NewestRuntimeArtifact {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $RepoRoot,
+    [Parameter(Mandatory = $true)]
+    [string] $Component
+  )
+
+  $paths = @(
+    (Join-Path $RepoRoot "apps\$Component\dist"),
+    (Join-Path $RepoRoot "packages"),
+    (Join-Path $RepoRoot "vendor\cultcache-ts\dist")
+  )
+
+  $newest = $null
+
+  foreach ($path in $paths) {
+    if (-not (Test-Path -LiteralPath $path)) {
+      continue
+    }
+
+    $candidates = if ((Get-Item -LiteralPath $path).PSIsContainer) {
+      Get-ChildItem -LiteralPath $path -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @(".js", ".cjs", ".mjs") }
+    } else {
+      @(Get-Item -LiteralPath $path)
+    }
+
+    foreach ($candidate in $candidates) {
+      if ($null -eq $newest -or $candidate.LastWriteTimeUtc -gt $newest.LastWriteTimeUtc) {
+        $newest = $candidate
+      }
+    }
+  }
+
+  return $newest
+}
+
+function Test-ProcessFreshForRuntimeArtifacts {
   param(
     [Parameter(Mandatory = $true)]
     [int] $ProcessId,
     [Parameter(Mandatory = $true)]
-    [string] $EntrypointPath
+    [string] $RepoRoot,
+    [Parameter(Mandatory = $true)]
+    [string] $Component
   )
 
-  if (-not (Test-Path -LiteralPath $EntrypointPath)) {
+  $newestArtifact = Get-NewestRuntimeArtifact -RepoRoot $RepoRoot -Component $Component
+  if ($null -eq $newestArtifact) {
     return [pscustomobject]@{
       ok = $false
-      reason = "missing_entrypoint"
+      reason = "missing_runtime_artifacts"
       processStartedAt = $null
-      entrypointUpdatedAt = $null
+      newestArtifactPath = $null
+      newestArtifactUpdatedAt = $null
     }
   }
 
   $startedAt = Get-ProcessCreationTimeUtc -ProcessId $ProcessId
-  $updatedAt = (Get-Item -LiteralPath $EntrypointPath).LastWriteTimeUtc
+  $updatedAt = $newestArtifact.LastWriteTimeUtc
   if ($null -eq $startedAt) {
     return [pscustomobject]@{
       ok = $false
       reason = "unknown_process_start_time"
       processStartedAt = $null
-      entrypointUpdatedAt = $updatedAt.ToString("o")
+      newestArtifactPath = $newestArtifact.FullName
+      newestArtifactUpdatedAt = $updatedAt.ToString("o")
     }
   }
 
   return [pscustomobject]@{
     ok = $startedAt -ge $updatedAt
-    reason = if ($startedAt -ge $updatedAt) { "fresh" } else { "process_started_before_entrypoint_update" }
+    reason = if ($startedAt -ge $updatedAt) { "fresh" } else { "process_started_before_runtime_artifact_update" }
     processStartedAt = $startedAt.ToString("o")
-    entrypointUpdatedAt = $updatedAt.ToString("o")
+    newestArtifactPath = $newestArtifact.FullName
+    newestArtifactUpdatedAt = $updatedAt.ToString("o")
   }
 }
 
@@ -848,9 +892,6 @@ try {
         $componentStatus = Get-OptionalPropertyValue -InputObject $runtimeStatus -PropertyName $component
         $processIdValueRaw = Get-OptionalPropertyValue -InputObject $componentStatus -PropertyName "pid"
         $processIdValue = if ($null -ne $processIdValueRaw) { ($processIdValueRaw -as [int]) } else { $null }
-        $entrypointRelativePath = if ($component -eq "bot") { "apps\bot\dist\index.js" } else { "apps\worker\dist\index.js" }
-        $entrypointPath = Join-Path $repoRoot $entrypointRelativePath
-
         if ($null -eq $processIdValue -or $processIdValue -le 0) {
           Add-Check -Name "runtime.$component" -Status "failed" -Detail "$component PID is missing from runtime-stack.json."
           continue
@@ -860,21 +901,21 @@ try {
           Add-Check -Name "runtime.$component" -Status "passed" -Detail "$component process $processIdValue is running." -Data @{
             pid = $processIdValue
           }
-          $freshness = Test-ProcessFreshForEntrypoint -ProcessId $processIdValue -EntrypointPath $entrypointPath
+          $freshness = Test-ProcessFreshForRuntimeArtifacts -ProcessId $processIdValue -RepoRoot $repoRoot -Component $component
           if ($freshness.ok) {
-            Add-Check -Name "runtime.$component.freshness" -Status "passed" -Detail "$component process $processIdValue is fresh for $entrypointPath." -Data @{
+            Add-Check -Name "runtime.$component.freshness" -Status "passed" -Detail "$component process $processIdValue is fresh for newest runtime artifact $($freshness.newestArtifactPath)." -Data @{
               pid = $processIdValue
-              entrypoint = $entrypointPath
               processStartedAt = $freshness.processStartedAt
-              entrypointUpdatedAt = $freshness.entrypointUpdatedAt
+              newestArtifactPath = $freshness.newestArtifactPath
+              newestArtifactUpdatedAt = $freshness.newestArtifactUpdatedAt
             }
           } else {
-            Add-Check -Name "runtime.$component.freshness" -Status "failed" -Detail "$component process $processIdValue is stale or unverifiable for $entrypointPath ($($freshness.reason))." -Data @{
+            Add-Check -Name "runtime.$component.freshness" -Status "failed" -Detail "$component process $processIdValue is stale or unverifiable against runtime artifacts ($($freshness.reason))." -Data @{
               pid = $processIdValue
-              entrypoint = $entrypointPath
               reason = $freshness.reason
               processStartedAt = $freshness.processStartedAt
-              entrypointUpdatedAt = $freshness.entrypointUpdatedAt
+              newestArtifactPath = $freshness.newestArtifactPath
+              newestArtifactUpdatedAt = $freshness.newestArtifactUpdatedAt
             }
           }
         } else {
