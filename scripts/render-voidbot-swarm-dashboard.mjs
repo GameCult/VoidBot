@@ -423,6 +423,8 @@ function renderHtml(snapshot) {
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>VoidBot Swarm Control</title>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@100;300;500&family=Press+Start+2P&family=Ubuntu:wght@400;500;700&display=swap");
+
     :root {
       color-scheme: dark;
       --bg: #03070d;
@@ -438,7 +440,10 @@ function renderHtml(snapshot) {
       --coral: #ff7b72;
       --violet: #b99dff;
       --rail: 124px;
-      --font: Ubuntu, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --status-size: clamp(118px, 17vmin, 168px);
+      --font: "Ubuntu", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --display: "Montserrat", "Ubuntu", ui-sans-serif, system-ui, sans-serif;
+      --arcade: "Press Start 2P", "VT323", monospace;
       --mono: "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
     }
 
@@ -455,6 +460,11 @@ function renderHtml(snapshot) {
     }
 
     h1, h2, h3, p { margin: 0; }
+    h1, h2, h3, .kicker, .badge, .metric strong, .turn-card strong, .agent-row strong {
+      font-family: var(--display);
+      font-weight: 100;
+      letter-spacing: 0;
+    }
     button, select, input { font: inherit; }
     button, select {
       min-height: 40px;
@@ -546,6 +556,93 @@ function renderHtml(snapshot) {
         "queue detail events";
     }
 
+    .status-panel {
+      width: var(--status-size);
+      height: var(--status-size);
+      align-self: center;
+      justify-self: center;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 7px;
+      padding: 9px;
+      border: 1px solid rgba(255, 174, 88, 0.34);
+      border-radius: 8px;
+      background:
+        repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0 3px, rgba(0, 0, 0, 0.24) 3px 4px),
+        linear-gradient(160deg, rgba(255, 174, 88, 0.12), rgba(6, 15, 19, 0.94) 34%, rgba(105, 226, 239, 0.08));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 18px 42px rgba(0, 0, 0, 0.32);
+      color: var(--text);
+      font-family: var(--display);
+      font-weight: 100;
+      overflow: hidden;
+    }
+
+    .status-panel h2 {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 0.62rem;
+      line-height: 1;
+      color: var(--amber);
+      font-family: var(--arcade);
+      font-weight: 400;
+    }
+
+    .status-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px 7px;
+      align-content: start;
+    }
+
+    .hud-stat {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .hud-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 3px;
+      color: rgba(239, 252, 248, 0.74);
+      font-size: 0.5rem;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .hud-label span:first-child {
+      font-family: var(--arcade);
+      font-weight: 400;
+    }
+
+    .hud-label span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--display);
+      font-weight: 100;
+    }
+
+    .hud-bar {
+      height: 5px;
+      overflow: hidden;
+      border: 1px solid rgba(239, 252, 248, 0.16);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.34);
+    }
+
+    .hud-fill {
+      display: block;
+      height: 100%;
+      width: calc(var(--fill, 0) * 1%);
+      max-width: 100%;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+    }
+
+    .hud-fill.warn { background: linear-gradient(90deg, var(--amber), var(--coral)); }
+
     .pane {
       min-width: 0;
       min-height: 0;
@@ -565,7 +662,7 @@ function renderHtml(snapshot) {
     .detail-pane { grid-area: detail; }
     .events-pane { grid-area: events; }
 
-    .kicker { color: var(--green); font-size: 0.74rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+    .kicker { color: var(--green); font-size: 0.74rem; text-transform: uppercase; }
     h1 { font-size: clamp(1.8rem, 5vw, 4rem); line-height: 0.95; }
     h2 { font-size: 1rem; text-transform: uppercase; }
     .muted { color: var(--muted); }
@@ -621,7 +718,6 @@ function renderHtml(snapshot) {
       background: var(--green);
       color: #06100d;
       font-size: 0.7rem;
-      font-weight: 900;
       text-transform: uppercase;
     }
     .badge.running, .badge.info { background: var(--cyan); }
@@ -630,7 +726,7 @@ function renderHtml(snapshot) {
     .badge.repo-face { background: var(--violet); }
 
     @media (orientation: landscape) {
-      .shell { grid-template-rows: var(--rail) minmax(0, 1fr); }
+      .shell { grid-template-rows: var(--rail) minmax(0, 1fr) var(--status-size); }
       .ctb-rail {
         grid-row: 1;
         grid-column: 1;
@@ -639,12 +735,13 @@ function renderHtml(snapshot) {
         border-bottom: 1px solid var(--line);
       }
       .workspace { grid-row: 2; grid-column: 1; }
+      .status-panel { grid-row: 3; grid-column: 1; }
       .turn-card { width: 76px; height: 96px; }
     }
 
     @media (orientation: portrait) {
       :root { --rail: 94px; }
-      .shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
+      .shell { grid-template-columns: var(--rail) minmax(0, 1fr) var(--status-size); }
       .ctb-rail {
         grid-row: 1;
         grid-column: 1;
@@ -663,6 +760,7 @@ function renderHtml(snapshot) {
           "detail"
           "queue";
       }
+      .status-panel { grid-row: 1; grid-column: 3; }
       .events-pane { display: none; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -721,6 +819,7 @@ function renderHtml(snapshot) {
             renderDetails(selected),
             renderEvents(snapshot),
           "</section>",
+          renderStatusPanel(snapshot, selected),
         "</div>",
       ].join("");
       attachControls();
@@ -790,6 +889,38 @@ function renderHtml(snapshot) {
     function renderEvents(snapshot) {
       const events = (snapshot.recentEvents || []).slice(0, 18);
       return "<section class=\\"pane events-pane\\"><p class=\\"kicker\\">Mesh Events</p><div class=\\"event-list\\">" + (events.length ? events.map((event) => "<div class=\\"event-row\\"><span>" + esc(event.type) + " " + esc(event.identityId || "") + "</span><span>" + esc(relative(event.observedAt)) + "</span></div>").join("") : "<p class=\\"muted\\">No recent events.</p>") + "</div></section>";
+    }
+
+    function renderStatusPanel(snapshot, agent) {
+      const summary = snapshot.summary || {};
+      const sourceFreshness = snapshot.sources?.heartbeatStateUpdatedAt ? Math.max(0, 100 - ((Date.now() - Date.parse(snapshot.sources.heartbeatStateUpdatedAt)) / 600)) : 0;
+      const meshOk = snapshot.cultMesh?.writeStatus === "ok" ? 100 : snapshot.cultMesh?.writeStatus === "pending" ? 50 : 10;
+      const cadence = clampPercent(((snapshot.controls?.cadenceMultiplier || 1) / 12) * 100);
+      const heat = clampPercent(((summary.globalHeat || 0) / 12) * 100);
+      const ready = summary.participantCount ? clampPercent((summary.readyNowCount / summary.participantCount) * 100) : 0;
+      const mentions = summary.participantCount ? clampPercent((summary.pendingMentionCount / Math.max(1, summary.participantCount)) * 100) : 0;
+      const turn = agent?.nextTurnInMinutes ?? null;
+      const turnFill = typeof turn === "number" ? clampPercent(100 - Math.max(0, turn) * 4) : 0;
+      const load = clampPercent((agent?.currentLoad || 0) * 100);
+      return "<aside class=\\"status-panel\\" aria-label=\\"Compact swarm status\\"><h2><span>VOID</span><span>" + esc(String(summary.state || "UNK").slice(0, 4).toUpperCase()) + "</span></h2><div class=\\"status-grid\\">" +
+        hud("MESH", snapshot.cultMesh?.writeStatus || "MISS", meshOk) +
+        hud("AGE", relative(snapshot.sources?.heartbeatStateUpdatedAt).replace(/ ago$/, ""), sourceFreshness, sourceFreshness < 50) +
+        hud("CAD", "x" + number(snapshot.controls?.cadenceMultiplier || 1), cadence) +
+        hud("HEAT", number(summary.globalHeat), heat) +
+        hud("READY", number(summary.readyNowCount), ready) +
+        hud("PING", number(summary.pendingMentionCount), mentions, summary.pendingMentionCount > 0) +
+        hud("TURN", minutes(turn), turnFill) +
+        hud("LOAD", number(agent?.currentLoad), load, load > 70) +
+      "</div></aside>";
+    }
+
+    function hud(label, value, fill, warn = false) {
+      return "<div class=\\"hud-stat\\"><div class=\\"hud-label\\"><span>" + esc(label) + "</span><span>" + esc(value) + "</span></div><div class=\\"hud-bar\\"><span class=\\"hud-fill " + (warn ? "warn" : "") + "\\" style=\\"--fill:" + esc(clampPercent(fill)) + "\\"></span></div></div>";
+    }
+
+    function clampPercent(value) {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : 0;
     }
 
     function metric(label, value) {

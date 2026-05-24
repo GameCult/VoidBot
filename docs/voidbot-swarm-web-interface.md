@@ -37,7 +37,7 @@ Open the LAN URL printed by the command on the iPad. The server refreshes the sn
 
 The CTB strip is intentionally compact: avatar icons show upcoming Face turns in scheduler order. It occupies the long side of the viewport: top edge in landscape, left edge in portrait. A direct mention should appear as a shuffle in the mirrored snapshot once the heartbeat state records the pending obligation or queued turn.
 
-The main viewport is a direct cockpit: summary, controls, participant list, selected-Face detail, and recent mesh events. The screen should be readable first and clever never.
+The main viewport is a direct cockpit: summary, controls, participant list, selected-Face detail, and recent mesh events. The screen should be readable first and clever never. A tiny square HUD sits opposite the CTB rail, using compressed two-column health-bar debug readouts for mesh status, heartbeat age, cadence, heat, ready pressure, pending mentions, selected turn, and load.
 
 For a one-shot render without serving:
 
