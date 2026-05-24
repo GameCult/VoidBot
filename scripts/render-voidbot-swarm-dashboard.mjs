@@ -550,17 +550,17 @@ function renderHtml(snapshot) {
       padding: 12px;
       overflow: hidden;
       grid-template-columns: minmax(280px, 0.88fr) minmax(360px, 1.4fr) minmax(280px, 0.92fr);
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto var(--status-size) minmax(0, 1fr);
       grid-template-areas:
         "header header controls"
+        "queue detail status"
         "queue detail events";
     }
 
     .status-panel {
       width: var(--status-size);
       height: var(--status-size);
-      position: absolute;
-      z-index: 5;
+      grid-area: status;
       align-self: center;
       justify-self: center;
       display: grid;
@@ -736,8 +736,7 @@ function renderHtml(snapshot) {
         align-items: center;
         border-bottom: 1px solid var(--line);
       }
-      .workspace { grid-row: 2; grid-column: 1; padding-bottom: calc(var(--status-size) + 20px); }
-      .status-panel { left: 50%; bottom: 8px; transform: translateX(-50%); }
+      .workspace { grid-row: 2; grid-column: 1; }
       .turn-card { width: 76px; height: 96px; }
     }
 
@@ -754,16 +753,16 @@ function renderHtml(snapshot) {
       .workspace {
         grid-row: 1;
         grid-column: 2;
-        padding-right: calc(var(--status-size) + 18px);
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 0.88fr);
+        grid-template-rows: auto auto var(--status-size) minmax(0, 1fr) minmax(0, 0.88fr);
         grid-template-areas:
           "header"
           "controls"
+          "status"
           "detail"
           "queue";
       }
-      .status-panel { right: 8px; top: 50%; transform: translateY(-50%); }
+      .status-panel { justify-self: end; }
       .events-pane { display: none; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -821,8 +820,8 @@ function renderHtml(snapshot) {
             renderQueue(participants),
             renderDetails(selected),
             renderEvents(snapshot),
+            renderStatusPanel(snapshot, selected),
           "</section>",
-          renderStatusPanel(snapshot, selected),
         "</div>",
       ].join("");
       attachControls();
