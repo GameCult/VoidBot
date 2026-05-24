@@ -77,6 +77,21 @@ interface FaceHeartbeatState {
   participants: FaceHeartbeatParticipant[];
   history: Array<Record<string, unknown>>;
   pendingMentions: RepoFacePendingMention[];
+  controls: FaceHeartbeatControls;
+}
+
+interface FaceHeartbeatControls {
+  cadenceMultiplier: number;
+  manualTurnRequests: ManualTurnRequest[];
+  updatedAt?: string;
+}
+
+interface ManualTurnRequest {
+  id: string;
+  identityId: string;
+  requestedAt: string;
+  status: "pending" | "applied" | "consumed" | "rejected";
+  note?: string;
 }
 
 interface ActiveTurnScan {
@@ -224,6 +239,7 @@ async function main(): Promise<void> {
   const faceRegistry = await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath);
   const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
+  state.controls = normalizeHeartbeatControls(state.controls);
   const runtimeSnapshots = await loadRepoFaceRuntimeSnapshots(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
   advanceInitiativeClockFromWallClock(state, now);
@@ -244,7 +260,9 @@ async function main(): Promise<void> {
   }
 
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
-  state.globalHeat = config.repoFaceHeartbeats.globalHeat;
+  const cadenceMultiplier = clamp(state.controls.cadenceMultiplier, 0.1, 12);
+  const effectiveGlobalHeat = config.repoFaceHeartbeats.globalHeat * cadenceMultiplier;
+  state.globalHeat = effectiveGlobalHeat;
   const completedThisTick = new Set<string>();
   state.participants = reconcileParticipants(
     state.participants,
@@ -254,7 +272,7 @@ async function main(): Promise<void> {
     config.repoFaceHeartbeats.heatOverrides,
     state.initiativeClock,
     config.repoFaceHeartbeats.baseRecoveryMinutes,
-    config.repoFaceHeartbeats.globalHeat,
+    effectiveGlobalHeat,
     runtimeSnapshots.pressureByIdentity,
   ).map((participant) =>
     applyActiveTurnFreeze(
@@ -266,6 +284,7 @@ async function main(): Promise<void> {
   );
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
+  const manualOverrideIdentities = applyManualTurnRequests(state, now);
   const idleCooling = await readIdleCoolingSnapshot({
     config,
     identities: registry.identities,
@@ -279,6 +298,7 @@ async function main(): Promise<void> {
     completedThisTick,
     runtimeSnapshots.restStates,
     idleCooling,
+    manualOverrideIdentities,
   );
   const queuedIdentityIds: string[] = [];
 
@@ -291,6 +311,7 @@ async function main(): Promise<void> {
       participant.lastTurnAt = state.initiativeClock;
       participant.queuedCount += 1;
       participant.nextTurnAt = Math.max(state.initiativeClock, participant.nextTurnAt) + recoveryMinutes;
+      consumeManualTurnRequests(state, participant.identityId, "consumed", "dry run selected");
       queuedIdentityIds.push(participant.identityId);
       state.history.push({
         type: "dry_run_selected",
@@ -335,6 +356,7 @@ async function main(): Promise<void> {
           participant.lastTurnAt = state.initiativeClock;
           participant.queuedCount += 1;
           participant.currentLoad = 1;
+          consumeManualTurnRequests(state, participant.identityId, "consumed", `queued ${turn.activeJobId}`);
           if (pendingMentions.length > 0) {
             const consumedIds = new Set(pendingMentions.map((entry) => entry.id));
             state.pendingMentions = state.pendingMentions.filter((entry) => !consumedIds.has(entry.id));
@@ -1560,11 +1582,13 @@ function selectReadyParticipants(
   completedThisTick: Set<string>,
   restStates: Map<string, RepoFaceRestSnapshot>,
   idleCooling: IdleCoolingSnapshot,
+  manualOverrideIdentities: Set<string>,
 ): FaceHeartbeatParticipant[] {
   const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
   const eligible = state.participants
     .filter((participant) => {
       const pendingMentionCount = pendingMentionCounts.get(participant.identityId) ?? 0;
+      const manualOverrideCount = manualOverrideIdentities.has(participant.identityId) ? 1 : 0;
       const restState = restStates.get(participant.identityId);
       return (
         participant.status === "active" &&
@@ -1573,6 +1597,7 @@ function selectReadyParticipants(
         !(
           participant.participantKind === "repo_face" &&
           pendingMentionCount === 0 &&
+          manualOverrideCount === 0 &&
           restState?.isNapping === true &&
           idleCooling.napModeActive !== true
         )
@@ -1586,6 +1611,12 @@ function selectReadyParticipants(
   const ready = eligible
     .filter((participant) => participant.nextTurnAt <= state.initiativeClock)
     .sort((left, right) => {
+      const manualDelta =
+        Number(manualOverrideIdentities.has(right.identityId)) -
+        Number(manualOverrideIdentities.has(left.identityId));
+      if (manualDelta !== 0) {
+        return manualDelta;
+      }
       const pendingDelta =
         (pendingMentionCounts.get(right.identityId) ?? 0) -
         (pendingMentionCounts.get(left.identityId) ?? 0);
@@ -1610,7 +1641,12 @@ function selectReadyParticipants(
   }
 
   const mentioned = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) > 0);
-  const unprompted = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) === 0);
+  const manual = ready.filter((participant) => manualOverrideIdentities.has(participant.identityId));
+  const prompted = uniqueParticipants([...manual, ...mentioned]);
+  const unprompted = ready.filter((participant) =>
+    (pendingMentionCounts.get(participant.identityId) ?? 0) === 0 &&
+    !manualOverrideIdentities.has(participant.identityId)
+  );
   const napRuns = idleCooling.napModeActive === true
     ? unprompted.filter((participant) => restStates.get(participant.identityId)?.isNapping === true)
     : [];
@@ -1618,11 +1654,24 @@ function selectReadyParticipants(
   const coolingAllowsUnpromptedTurn =
     !idleCooling.nextUnpromptedTurnAllowedAt ||
     Date.parse(idleCooling.nextUnpromptedTurnAllowedAt) <= Date.now();
-  const cooled = coolingAllowsUnpromptedTurn && mentioned.length < maxJobs
+  const cooled = coolingAllowsUnpromptedTurn && prompted.length < maxJobs
     ? (napRuns[0] ? napRuns : awakeRuns).slice(0, 1)
     : [];
 
-  return [...mentioned, ...cooled].slice(0, maxJobs);
+  return [...prompted, ...cooled].slice(0, maxJobs);
+}
+
+function uniqueParticipants(participants: FaceHeartbeatParticipant[]): FaceHeartbeatParticipant[] {
+  const seen = new Set<string>();
+  const unique: FaceHeartbeatParticipant[] = [];
+  for (const participant of participants) {
+    if (seen.has(participant.identityId)) {
+      continue;
+    }
+    seen.add(participant.identityId);
+    unique.push(participant);
+  }
+  return unique;
 }
 
 function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Date): void {
@@ -1674,6 +1723,75 @@ function applyPendingMentionPriority(state: FaceHeartbeatState): void {
     ) {
       participant.nextTurnAt = Math.min(participant.nextTurnAt, state.initiativeClock);
     }
+  }
+}
+
+function applyManualTurnRequests(state: FaceHeartbeatState, now: Date): Set<string> {
+  const manualOverrideIdentities = new Set<string>();
+  const participantsByIdentity = new Map(state.participants.map((participant) => [participant.identityId, participant]));
+  let changed = false;
+
+  for (const request of state.controls.manualTurnRequests) {
+    if (request.status !== "pending" && request.status !== "applied") {
+      continue;
+    }
+
+    const participant = participantsByIdentity.get(request.identityId);
+    if (!participant || participant.status !== "active") {
+      request.status = "rejected";
+      request.note = "No active participant with that identity.";
+      changed = true;
+      continue;
+    }
+
+    if (participant.currentLoad >= 1 || participant.activeJobId) {
+      request.status = "applied";
+      request.note = "Participant is already running; request will clear after the turn closes.";
+      manualOverrideIdentities.add(request.identityId);
+      changed = true;
+      continue;
+    }
+
+    participant.nextTurnAt = Math.min(participant.nextTurnAt, state.initiativeClock);
+    manualOverrideIdentities.add(request.identityId);
+    if (request.status !== "applied") {
+      request.status = "applied";
+      request.note = "Pulled to the front of the CTB queue.";
+      state.history.push({
+        type: "manual_turn_override_applied",
+        identityId: request.identityId,
+        requestId: request.id,
+        appliedAt: now.toISOString(),
+        initiativeClock: state.initiativeClock,
+      });
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    state.controls.updatedAt = now.toISOString();
+  }
+  state.controls.manualTurnRequests = state.controls.manualTurnRequests.slice(-20);
+  return manualOverrideIdentities;
+}
+
+function consumeManualTurnRequests(
+  state: FaceHeartbeatState,
+  identityId: string,
+  status: ManualTurnRequest["status"],
+  note: string,
+): void {
+  const now = new Date().toISOString();
+  let changed = false;
+  for (const request of state.controls.manualTurnRequests) {
+    if ((request.status === "pending" || request.status === "applied") && request.identityId === identityId) {
+      request.status = status;
+      request.note = note;
+      changed = true;
+    }
+  }
+  if (changed) {
+    state.controls.updatedAt = now;
   }
 }
 
@@ -4750,6 +4868,7 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
         pendingMentions: Array.isArray(parsed.pendingMentions)
           ? parsed.pendingMentions.filter(isRepoFacePendingMention)
           : [],
+        controls: normalizeHeartbeatControls((parsed as { controls?: unknown }).controls),
       };
     }
     if (Array.isArray(parsed.participants)) {
@@ -4767,6 +4886,7 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
     participants: [],
     history: [],
     pendingMentions: [],
+    controls: defaultHeartbeatControls(),
   };
 }
 
@@ -4826,6 +4946,7 @@ function migrateLegacyHeartbeatState(
     pendingMentions: Array.isArray(parsed.pendingMentions)
       ? parsed.pendingMentions.filter(isRepoFacePendingMention)
       : [],
+    controls: defaultHeartbeatControls(),
     history: [
       ...(Array.isArray(parsed.history) ? parsed.history : []),
       {
@@ -4835,6 +4956,50 @@ function migrateLegacyHeartbeatState(
         participantCount: participants.length,
       },
     ].slice(-80),
+  };
+}
+
+function defaultHeartbeatControls(): FaceHeartbeatControls {
+  return {
+    cadenceMultiplier: 1,
+    manualTurnRequests: [],
+  };
+}
+
+function normalizeHeartbeatControls(value: unknown): FaceHeartbeatControls {
+  if (!value || typeof value !== "object") {
+    return defaultHeartbeatControls();
+  }
+
+  const record = value as Record<string, unknown>;
+  const cadenceMultiplier = Number(record.cadenceMultiplier);
+  const manualTurnRequests = Array.isArray(record.manualTurnRequests)
+    ? record.manualTurnRequests.flatMap((entry): ManualTurnRequest[] => {
+      if (!entry || typeof entry !== "object") {
+        return [];
+      }
+      const request = entry as Record<string, unknown>;
+      const identityId = typeof request.identityId === "string" ? request.identityId.trim() : "";
+      if (!identityId) {
+        return [];
+      }
+      const status = request.status === "applied" || request.status === "consumed" || request.status === "rejected"
+        ? request.status
+        : "pending";
+      return [{
+        id: typeof request.id === "string" && request.id.trim() ? request.id : `manual-${Date.now()}-${identityId}`,
+        identityId,
+        requestedAt: typeof request.requestedAt === "string" ? request.requestedAt : new Date().toISOString(),
+        status,
+        note: typeof request.note === "string" ? request.note : undefined,
+      }];
+    })
+    : [];
+
+  return {
+    cadenceMultiplier: Number.isFinite(cadenceMultiplier) ? clamp(cadenceMultiplier, 0.1, 12) : 1,
+    manualTurnRequests: manualTurnRequests.slice(-20),
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
   };
 }
 

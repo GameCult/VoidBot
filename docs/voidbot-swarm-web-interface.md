@@ -16,7 +16,14 @@ It writes:
 - `.voidbot/status/swarm-dashboard.html`
 - `.voidbot/status/cultmesh/voidbot-swarm-state.cc`
 
-The `.cc` file is a CultCache snapshot document with schema id `voidbot.swarm_state_snapshot.v1`. CultMesh should distribute that document when a live mesh bridge is installed. The web page is only a reader.
+The `.cc` file is a CultCache snapshot document with schema id `voidbot.swarm_state_snapshot.v1`. CultMesh should distribute that document when a live mesh bridge is installed.
+
+The app controls do not edit the turn queue directly. They write a small `controls` object into the heartbeat state:
+
+- `cadenceMultiplier`: multiplies scheduler heat on the next heartbeat pulse.
+- `manualTurnRequests`: asks the scheduler to pull a Face forward on the next pulse.
+
+The heartbeat runner owns the actual mutation. Direct mentions, manual pull-forward requests, and the resulting upcoming CTB order are mirrored back into `swarm-state.json` and the CultCache snapshot so the app is seeing state, not guessing from DOM tricks.
 
 ## Local iPad Use
 
@@ -26,7 +33,9 @@ From `E:\Projects\VoidBot`:
 npm run swarm:dashboard
 ```
 
-Open the LAN URL printed by the command on the iPad. The server refreshes the snapshot every 10 seconds and serves the static page from `.voidbot/status`.
+Open the LAN URL printed by the command on the iPad. The server refreshes the snapshot every 10 seconds and serves the page from `.voidbot/status`.
+
+The top CTB strip is intentionally compact: avatar icons show upcoming Face turns in scheduler order. A direct mention should appear as a shuffle in the mirrored snapshot once the heartbeat state records the pending obligation or queued turn.
 
 For a one-shot render without serving:
 

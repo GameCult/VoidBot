@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
@@ -88,6 +89,7 @@ async function buildSnapshot() {
   const heartbeat = await readJsonFile(heartbeatStatePath);
   const orchestrator = await readJsonFile(orchestratorPath);
   const pause = await readJsonFile(pausePath);
+  const avatarByIdentity = await readIdentityAvatars(env.REPO_DISCORD_IDENTITIES_PATH);
   const heartbeatMtime = await getMtime(heartbeatStatePath);
   const orchestratorMtime = await getMtime(orchestratorPath);
   const paused = pause.ok ? pause.value?.paused !== false : false;
@@ -96,7 +98,7 @@ async function buildSnapshot() {
   const pendingMentions = Array.isArray(heartbeat.value?.pendingMentions) ? heartbeat.value.pendingMentions : [];
   const initiativeClock = numberOrNull(heartbeat.value?.initiativeClock);
   const participantSnapshots = participants.map((participant) =>
-    projectParticipant(participant, pendingMentions, initiativeClock),
+    projectParticipant(participant, pendingMentions, initiativeClock, avatarByIdentity),
   );
   const activeTurns = participantSnapshots.filter((participant) => participant.activeJobId);
   const readyNow = participantSnapshots.filter((participant) =>
@@ -112,6 +114,9 @@ async function buildSnapshot() {
   const recentEvents = Array.isArray(heartbeat.value?.history)
     ? heartbeat.value.history.slice(-24).reverse().map(projectHistoryEvent)
     : [];
+  const controls = projectControls(heartbeat.value?.controls);
+  const upcomingTurns = buildUpcomingTurns(participantSnapshots);
+  const lastShuffle = findLastShuffleEvent(recentEvents);
 
   return {
     schemaVersion: snapshotSchemaId,
@@ -152,8 +157,12 @@ async function buildSnapshot() {
       initiativeClock,
       baseRecoveryMinutes: numberOrNull(heartbeat.value?.baseRecoveryMinutes),
       globalHeat: numberOrNull(heartbeat.value?.globalHeat),
+      cadenceMultiplier: controls.cadenceMultiplier,
       lastTickAt: stringOrNull(heartbeat.value?.lastTickAt),
+      lastShuffle,
     },
+    controls,
+    upcomingTurns,
     participants: participantSnapshots,
     activeTurns,
     pendingMentions: pendingMentions.map(projectPendingMention),
@@ -165,7 +174,76 @@ async function buildSnapshot() {
   };
 }
 
-function projectParticipant(participant, pendingMentions, initiativeClock) {
+function projectControls(value) {
+  const cadenceMultiplier = numberOrNull(value?.cadenceMultiplier) ?? 1;
+  const manualTurnRequests = Array.isArray(value?.manualTurnRequests)
+    ? value.manualTurnRequests.slice(-12).reverse().map((request) => ({
+      id: stringOrNull(request?.id),
+      identityId: stringOrNull(request?.identityId),
+      requestedAt: stringOrNull(request?.requestedAt),
+      status: stringOrNull(request?.status) ?? "pending",
+      note: stringOrNull(request?.note),
+    }))
+    : [];
+  return {
+    cadenceMultiplier,
+    updatedAt: stringOrNull(value?.updatedAt),
+    manualTurnRequests,
+  };
+}
+
+function buildUpcomingTurns(participants) {
+  const ordered = [...participants]
+    .filter((participant) => participant.status === "active")
+    .sort((left, right) => {
+      const activeDelta = Number(Boolean(right.activeJobId)) - Number(Boolean(left.activeJobId));
+      if (activeDelta) return activeDelta;
+      return (left.nextTurnInMinutes ?? 999999) - (right.nextTurnInMinutes ?? 999999);
+    })
+    .slice(0, 16);
+  const maxMinutes = Math.max(1, ...ordered.map((participant) => Math.max(0, participant.nextTurnInMinutes ?? 0)));
+  return ordered.map((participant, index) => ({
+    identityId: participant.identityId,
+    displayName: participant.displayName,
+    repoName: participant.repoName,
+    avatarUrl: participant.avatarUrl,
+    participantKind: participant.participantKind,
+    activeJobId: participant.activeJobId,
+    pendingMentionCount: participant.pendingMentionCount,
+    shuffleReason: participant.pendingMentionCount > 0 ? "mention" : participant.activeJobId ? "active" : null,
+    nextTurnInMinutes: participant.nextTurnInMinutes,
+    effectiveSpeed: participant.effectiveSpeed,
+    heat: participant.heat,
+    lane: index % 3,
+    timelinePosition: participant.activeJobId ? 0 : Math.min(100, Math.max(0, ((Math.max(0, participant.nextTurnInMinutes ?? 0)) / maxMinutes) * 100)),
+  }));
+}
+
+function findLastShuffleEvent(events) {
+  const directMention = events.find((event) =>
+    event.type === "queued" &&
+    typeof event.pendingMentionCount === "number" &&
+    event.pendingMentionCount > 0
+  );
+  if (directMention) {
+    return {
+      kind: "direct_mention",
+      identityId: directMention.identityId,
+      observedAt: directMention.observedAt,
+    };
+  }
+  const manual = events.find((event) => event.type === "manual_turn_override_applied");
+  if (manual) {
+    return {
+      kind: "manual_override",
+      identityId: manual.identityId,
+      observedAt: manual.observedAt,
+    };
+  }
+  return null;
+}
+
+function projectParticipant(participant, pendingMentions, initiativeClock, avatarByIdentity) {
   const identityId = String(participant.identityId ?? "unknown");
   const nextTurnAt = numberOrNull(participant.nextTurnAt);
   const lastTurnAt = numberOrNull(participant.lastTurnAt);
@@ -183,6 +261,7 @@ function projectParticipant(participant, pendingMentions, initiativeClock) {
     identityId,
     displayName: String(participant.displayName ?? identityId),
     repoName: String(participant.repoName ?? "unknown"),
+    avatarUrl: avatarByIdentity.get(identityId.toLowerCase()) ?? null,
     participantKind: String(participant.participantKind ?? "repo_face"),
     turnKind: String(participant.turnKind ?? "repo_face_rumination"),
     status: String(participant.status ?? "unknown"),
@@ -222,13 +301,33 @@ function projectHistoryEvent(event) {
   return {
     type: String(event?.type ?? "event"),
     identityId: stringOrNull(event?.identityId),
-    observedAt: stringOrNull(event?.observedAt ?? event?.queuedAt),
+    observedAt: stringOrNull(event?.observedAt ?? event?.queuedAt ?? event?.appliedAt),
     activeJobId: stringOrNull(event?.activeJobId),
     statusPath: stringOrNull(event?.statusPath),
     reason: stringOrNull(event?.reason),
+    pendingMentionCount: numberOrNull(event?.pendingMentionCount),
     nextTurnAt: numberOrNull(event?.nextTurnAt),
     recoveryMinutes: numberOrNull(event?.recoveryMinutes),
   };
+}
+
+async function readIdentityAvatars(registryPathValue) {
+  const avatars = new Map();
+  const registryPath = resolveConfigPath(registryPathValue, resolve(repoRoot, ".voidbot", "private", "repo-discord-identities.json"));
+  const registry = await readJsonFile(registryPath);
+  const identities = Array.isArray(registry.value?.identities)
+    ? registry.value.identities
+    : Array.isArray(registry.value)
+      ? registry.value
+      : [];
+  for (const identity of identities) {
+    const id = typeof identity?.id === "string" ? identity.id.toLowerCase() : "";
+    const avatarUrl = typeof identity?.avatarUrl === "string" ? identity.avatarUrl : "";
+    if (id && avatarUrl) {
+      avatars.set(id, avatarUrl);
+    }
+  }
+  return avatars;
 }
 
 function projectPendingMention(mention) {
@@ -495,6 +594,156 @@ function renderHtml(snapshot) {
       gap: 10px;
     }
 
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .control-block {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    input[type="range"] {
+      width: min(360px, 100%);
+      accent-color: var(--cyan);
+    }
+
+    select, button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      color: var(--text);
+      font: 700 0.94rem/1 var(--font);
+    }
+
+    select {
+      min-width: 180px;
+      padding: 0 10px;
+    }
+
+    button {
+      cursor: pointer;
+      padding: 0 14px;
+    }
+
+    button:hover {
+      border-color: var(--cyan);
+    }
+
+    .timeline {
+      position: relative;
+      min-height: 132px;
+      padding: 8px 4px 2px;
+      overflow-x: auto;
+    }
+
+    .timeline-track {
+      position: relative;
+      min-width: 720px;
+      height: 104px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      border-top: 2px solid var(--line);
+      background:
+        linear-gradient(90deg, rgba(85, 184, 198, 0.24), transparent 18%),
+        repeating-linear-gradient(90deg, transparent 0 11.5%, rgba(255,255,255,0.04) 11.5% 12%);
+      border-radius: 8px;
+    }
+
+    .timeline-now {
+      position: absolute;
+      top: -11px;
+      left: 0;
+      width: 2px;
+      height: 112px;
+      background: var(--cyan);
+      box-shadow: 0 0 16px rgba(85, 184, 198, 0.45);
+    }
+
+    .turn-card {
+      position: relative;
+      flex: 0 0 auto;
+      width: 62px;
+      height: 86px;
+      padding: 5px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #24282d;
+      box-shadow: 0 12px 26px rgba(0,0,0,0.2);
+      display: grid;
+      justify-items: center;
+      align-content: start;
+      gap: 3px;
+    }
+
+    .turn-card.active-turn {
+      border-color: var(--cyan);
+      background: #26343a;
+    }
+
+    .turn-card strong {
+      max-width: 100%;
+      font-size: 0.68rem;
+      line-height: 1.05;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .turn-card span {
+      max-width: 100%;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: 2px solid rgba(255,255,255,0.14);
+      background: #111;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font-weight: 900;
+      color: var(--text);
+    }
+
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .turn-card .turn-time {
+      font-size: 0.62rem;
+    }
+
+    .turn-card .turn-reason {
+      color: var(--amber);
+      font-size: 0.58rem;
+      text-transform: uppercase;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -555,6 +804,7 @@ function renderHtml(snapshot) {
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .participants { grid-template-columns: 1fr; }
       .tables { grid-template-columns: 1fr; }
+      .controls { grid-template-columns: 1fr; }
       .facts { grid-template-columns: 1fr 1fr; }
     }
   </style>
@@ -598,11 +848,12 @@ function renderHtml(snapshot) {
       });
       const organs = snapshot.orchestrator?.organs || [];
       const events = snapshot.recentEvents || [];
+      const controls = snapshot.controls || {};
       app.innerHTML = [
         "<header>",
           "<div class=\\"topline\\">" + badge(summary.state) + "<span>Generated " + esc(relative(snapshot.generatedAt)) + "</span><span class=\\"mono\\">" + esc(snapshot.cultMesh?.schemaId) + "</span></div>",
           "<h1>VoidBot Swarm State</h1>",
-          "<p class=\\"muted\\">Read-only CTB scheduler state, rendered from the local status files and mirrored as a CultCache snapshot for CultMesh.</p>",
+          "<p class=\\"muted\\">CTB scheduler state, rendered from the local status files and mirrored as a CultCache snapshot for CultMesh. Controls write only explicit scheduler commands.</p>",
         "</header>",
         "<section class=\\"summary\\">",
           metric("Participants", number(summary.participantCount)),
@@ -612,7 +863,16 @@ function renderHtml(snapshot) {
           metric("Next", summary.nextDisplayName ? summary.nextDisplayName : "missing"),
           metric("Next turn", minutes(summary.nextTurnInMinutes)),
           metric("Global heat", number(summary.globalHeat)),
+          metric("Cadence", "x" + number(summary.cadenceMultiplier)),
+          metric("Shuffle", summary.lastShuffle ? summary.lastShuffle.kind.replace(/_/g, " ") : "none"),
           metric("CultMesh", snapshot.cultMesh?.writeStatus || "missing"),
+        "</section>",
+        "<section><h2>Controls</h2><div class=\\"controls\\">",
+          "<div class=\\"control-block\\"><div class=\\"muted\\">Heartbeat cadence multiplier</div><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.1\\" max=\\"12\\" step=\\"0.1\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong><button id=\\"cadence-apply\\">Apply</button></div></div>",
+          "<div class=\\"control-block\\"><div class=\\"muted\\">Manual next turn</div><div class=\\"control-row\\"><select id=\\"force-identity\\">" + participants.map((agent) => "<option value=\\"" + esc(agent.identityId) + "\\">" + esc(agent.displayName) + " / " + esc(agent.repoName) + "</option>").join("") + "</select><button id=\\"force-turn\\">Pull Forward</button></div><div class=\\"repo\\">Latest request: " + esc((controls.manualTurnRequests || [])[0]?.identityId || "none") + " " + esc((controls.manualTurnRequests || [])[0]?.status || "") + "</div></div>",
+        "</div></section>",
+        "<section><h2>CTB Timeline</h2>",
+          renderTimeline(snapshot.upcomingTurns || []),
         "</section>",
         "<section>",
           "<h2>Agents</h2>",
@@ -634,8 +894,24 @@ function renderHtml(snapshot) {
           row("Pause flag", snapshot.sources?.pausePath, snapshot.sources?.pauseReadable ? (summary.paused ? "paused" : "ok") : "missing"),
           row("CultMesh store", snapshot.cultMesh?.storePath, snapshot.cultMesh?.writeStatus),
         "</tbody></table></section>",
-        "<div class=\\"footer\\">This page polls <code>swarm-state.json</code> every 10 seconds when served over HTTP. It does not mutate VoidBot, Discord, CultCache, or the scheduler.</div>",
+        "<div class=\\"footer\\">This page polls <code>swarm-state.json</code> every 10 seconds when served over HTTP. Controls write scheduler commands; heartbeat pulses own the actual turn mutation.</div>",
       ].join("");
+      attachControls();
+    }
+
+    function renderTimeline(turns) {
+      const cards = turns.map((turn) => {
+        const klass = turn.activeJobId ? "turn-card active-turn" : "turn-card";
+        return "<article class=\\"" + klass + "\\" title=\\"" + esc(turn.displayName + " / " + turn.repoName + " / " + minutes(turn.nextTurnInMinutes)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span class=\\"turn-time\\">" + esc(minutes(turn.nextTurnInMinutes)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</article>";
+      }).join("");
+      return "<div class=\\"timeline\\"><div class=\\"timeline-track\\"><div class=\\"timeline-now\\"></div>" + cards + "</div></div>";
+    }
+
+    function avatarHtml(turn) {
+      const initials = text(turn.displayName).split(/\\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+      return turn.avatarUrl
+        ? "<div class=\\"avatar\\"><img src=\\"" + esc(turn.avatarUrl) + "\\" alt=\\"" + esc(turn.displayName) + "\\"></div>"
+        : "<div class=\\"avatar\\">" + esc(initials || "?") + "</div>";
     }
 
     function agentCard(agent) {
@@ -663,6 +939,41 @@ function renderHtml(snapshot) {
 
     function row(label, value, state) {
       return "<tr><th>" + esc(label) + "</th><td class=\\"mono\\">" + esc(value) + "</td><td>" + badge(state || "unknown") + "</td></tr>";
+    }
+
+    function attachControls() {
+      const cadenceInput = document.getElementById("cadence-input");
+      const cadenceValue = document.getElementById("cadence-value");
+      const cadenceApply = document.getElementById("cadence-apply");
+      const forceSelect = document.getElementById("force-identity");
+      const forceButton = document.getElementById("force-turn");
+      if (cadenceInput && cadenceValue) {
+        cadenceInput.addEventListener("input", () => cadenceValue.textContent = "x" + Number(cadenceInput.value).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+      }
+      if (cadenceApply && cadenceInput) {
+        cadenceApply.addEventListener("click", async () => {
+          await postJson("/api/controls", { cadenceMultiplier: Number(cadenceInput.value) });
+          await refresh();
+        });
+      }
+      if (forceButton && forceSelect) {
+        forceButton.addEventListener("click", async () => {
+          await postJson("/api/turns/force", { identityId: forceSelect.value });
+          await refresh();
+        });
+      }
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Control request failed.");
+      }
     }
 
     async function refresh() {
@@ -743,6 +1054,14 @@ async function serveDashboard({ host, port, rootDir, refreshSeconds }) {
   const server = createServer(async (request, response) => {
     try {
       const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+      if (request.method === "POST" && requestUrl.pathname === "/api/controls") {
+        await handleControlUpdate(request, response);
+        return;
+      }
+      if (request.method === "POST" && requestUrl.pathname === "/api/turns/force") {
+        await handleForceTurn(request, response);
+        return;
+      }
       const pathname = requestUrl.pathname === "/" ? "/swarm-dashboard.html" : decodeURIComponent(requestUrl.pathname);
       const target = resolve(rootDir, `.${pathname}`);
       if (!target.startsWith(rootDir)) {
@@ -772,6 +1091,95 @@ async function serveDashboard({ host, port, rootDir, refreshSeconds }) {
   for (const url of localUrls(port, host)) {
     console.log(url);
   }
+}
+
+async function handleControlUpdate(request, response) {
+  if (args.public) {
+    writeJsonResponse(response, 403, { ok: false, error: "Controls are disabled in public mode." });
+    return;
+  }
+  const body = await readRequestJson(request);
+  const multiplier = Number(body.cadenceMultiplier);
+  if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 12) {
+    writeJsonResponse(response, 400, { ok: false, error: "cadenceMultiplier must be between 0.1 and 12." });
+    return;
+  }
+  const state = await readMutableHeartbeatState();
+  state.controls = normalizeDashboardControls(state.controls);
+  state.controls.cadenceMultiplier = Math.round(multiplier * 100) / 100;
+  state.controls.updatedAt = new Date().toISOString();
+  await writeMutableHeartbeatState(state);
+  await render();
+  writeJsonResponse(response, 200, { ok: true, controls: state.controls });
+}
+
+async function handleForceTurn(request, response) {
+  if (args.public) {
+    writeJsonResponse(response, 403, { ok: false, error: "Controls are disabled in public mode." });
+    return;
+  }
+  const body = await readRequestJson(request);
+  const identityId = typeof body.identityId === "string" ? body.identityId.trim() : "";
+  if (!identityId) {
+    writeJsonResponse(response, 400, { ok: false, error: "identityId is required." });
+    return;
+  }
+  const state = await readMutableHeartbeatState();
+  state.controls = normalizeDashboardControls(state.controls);
+  state.controls.manualTurnRequests.push({
+    id: randomUUID(),
+    identityId,
+    requestedAt: new Date().toISOString(),
+    status: "pending",
+    note: "Requested from swarm dashboard.",
+  });
+  state.controls.manualTurnRequests = state.controls.manualTurnRequests.slice(-20);
+  state.controls.updatedAt = new Date().toISOString();
+  await writeMutableHeartbeatState(state);
+  await render();
+  writeJsonResponse(response, 200, { ok: true, controls: state.controls });
+}
+
+async function readMutableHeartbeatState() {
+  const parsed = await readJsonFile(heartbeatStatePath);
+  if (!parsed.ok || !parsed.value || typeof parsed.value !== "object") {
+    throw new Error(`Cannot read heartbeat state at ${heartbeatStatePath}`);
+  }
+  return parsed.value;
+}
+
+async function writeMutableHeartbeatState(state) {
+  await mkdir(dirname(heartbeatStatePath), { recursive: true });
+  await writeFile(heartbeatStatePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+function normalizeDashboardControls(value) {
+  const controls = value && typeof value === "object" ? value : {};
+  return {
+    cadenceMultiplier: Math.min(12, Math.max(0.1, Number(controls.cadenceMultiplier) || 1)),
+    manualTurnRequests: Array.isArray(controls.manualTurnRequests) ? controls.manualTurnRequests : [],
+    updatedAt: typeof controls.updatedAt === "string" ? controls.updatedAt : undefined,
+  };
+}
+
+async function readRequestJson(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(chunk);
+    if (Buffer.concat(chunks).length > 64 * 1024) {
+      throw new Error("Request body is too large.");
+    }
+  }
+  const raw = Buffer.concat(chunks).toString("utf8");
+  return raw ? JSON.parse(raw) : {};
+}
+
+function writeJsonResponse(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  response.end(`${JSON.stringify(payload)}\n`);
 }
 
 function contentType(path) {
