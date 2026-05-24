@@ -3,6 +3,7 @@ import "dotenv/config";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
@@ -520,6 +521,7 @@ async function queueRepoFaceTurn(input: {
     humanPronounGuidance,
   );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
     recentMessages,
@@ -542,6 +544,7 @@ async function queueRepoFaceTurn(input: {
     pendingMentions: input.pendingMentions,
     jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
+    globalAgentDoctrine,
   });
   const contextBundle = contextBuilder.build({
     prompt,
@@ -1586,12 +1589,14 @@ function buildHeartbeatPrompt(input: {
   pendingMentions: RepoFacePendingMention[];
   jurisdictionDive: JurisdictionDiveDirective;
   githubActionsEnabled: boolean;
+  globalAgentDoctrine: string;
 }): string {
   return loadPromptTemplate("repo-face-turn.prompt.md", {
     displayName: input.identity.displayName,
     identityId: input.identity.id,
     repoName: input.identity.repoName,
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
+    globalAgentDoctrine: input.globalAgentDoctrine,
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
@@ -1694,6 +1699,7 @@ async function assembleRepoFaceTurnPrompt(input: {
         humanPronounGuidance,
       );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
     : renderRepoFaceConversationTranscript({
@@ -1722,6 +1728,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     pendingMentions: [],
     jurisdictionDive: buildJurisdictionDiveDirective(identity, participant),
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
+    globalAgentDoctrine,
   });
 
   if (input.outPath) {
@@ -1738,6 +1745,39 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
+}
+
+async function loadGlobalAgentDoctrine(): Promise<string> {
+  const candidates = [
+    process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME, "AGENTS.md") : undefined,
+    process.env.USERPROFILE ? resolve(process.env.USERPROFILE, ".codex", "AGENTS.md") : undefined,
+    resolve(homedir(), ".codex", "AGENTS.md"),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const uniqueCandidates = [...new Set(candidates)];
+  const errors: string[] = [];
+
+  for (const candidate of uniqueCandidates) {
+    try {
+      const content = await readFile(candidate, "utf8");
+      if (content.trim().length > 0) {
+        return content.trim();
+      }
+      errors.push(`${candidate}: empty file`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${candidate}: ${message}`);
+    }
+  }
+
+  return [
+    "# Global Agent Instructions Unavailable",
+    "",
+    "The Face prompt attempted to load the global Codex AGENTS.md file, but no readable file was found.",
+    "This is not a replacement doctrine. Treat it as an inspection failure and avoid claiming global guidance was available for this turn.",
+    "",
+    "Attempted paths:",
+    ...errors.map((error) => `- ${error}`),
+  ].join("\n");
 }
 
 async function renderRepoFaceMemorySurfaceForTurn(
