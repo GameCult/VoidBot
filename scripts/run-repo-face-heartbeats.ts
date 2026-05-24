@@ -23,6 +23,7 @@ import {
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
+  type VoidScheduledRuntime,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
 import {
@@ -240,8 +241,19 @@ async function main(): Promise<void> {
   const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
   state.controls = normalizeHeartbeatControls(state.controls);
-  const runtimeSnapshots = await loadRepoFaceRuntimeSnapshots(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
+  const idleCooling = await readIdleCoolingSnapshot({
+    config,
+    identities: registry.identities,
+    state,
+    now,
+  });
+  const runtimeSnapshots = await loadRepoFaceRuntimeSnapshots(
+    registry.identities,
+    config.storageRoot,
+    state,
+    { dryRun, idleCooling },
+  );
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
     ? { active: new Map<string, string>(), staleRecovered: [] }
@@ -285,13 +297,6 @@ async function main(): Promise<void> {
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
   const manualOverrideIdentities = applyManualTurnRequests(state, now);
-  const idleCooling = await readIdleCoolingSnapshot({
-    config,
-    identities: registry.identities,
-    state,
-    now,
-  });
-
   const selected = selectReadyParticipants(
     state,
     config.repoFaceHeartbeats.maxJobsPerTick,
@@ -636,7 +641,7 @@ async function loadRepoFaceRuntimeSnapshots(
   identities: RepoDiscordIdentity[],
   storageRoot: string,
   heartbeatState: FaceHeartbeatState,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; idleCooling?: IdleCoolingSnapshot } = {},
 ): Promise<{
   restStates: Map<string, RepoFaceRestSnapshot>;
   pressureByIdentity: Map<string, RepoFaceRuntimePressureSnapshot>;
@@ -661,7 +666,12 @@ async function loadRepoFaceRuntimeSnapshots(
         identity.id,
         now,
       );
-      if (!options.dryRun && !sleepCyclesEqual(typedState.scheduledRuntime.sleepCycle, projected.sleepCycle)) {
+      const sleepCycle = projectSleepCycleForOperatorAbsence(
+        projected.sleepCycle,
+        options.idleCooling,
+        now,
+      );
+      if (!options.dryRun && !sleepCyclesEqual(typedState.scheduledRuntime.sleepCycle, sleepCycle)) {
         await applyVoidSelfStateOperation(
           {
             canonicalPath: statePath,
@@ -673,13 +683,13 @@ async function loadRepoFaceRuntimeSnapshots(
           },
           {
             operation: "update_sleep_cycle",
-            sleepCycle: projected.sleepCycle,
+            sleepCycle,
           },
         );
       }
       const speakingPressure = buildRepoFaceSpeakingPressure(
         typedState,
-        projected.sleepCycle,
+        sleepCycle,
         now,
       );
       pressureByIdentity.set(identity.id, {
@@ -709,7 +719,11 @@ async function loadRepoFaceRuntimeSnapshots(
             identity,
             statePath,
             typedState,
-            projectedRest: projected,
+            projectedRest: {
+              isNapping: sleepCycle.isNapping === true,
+              napEndsAt: sleepCycle.currentNapEndsAt,
+              nextNapStartsAt: sleepCycle.nextNapStartsAt,
+            },
           });
       if (maintenance.started || maintenance.failureReason) {
         heartbeatState.history.push({
@@ -723,9 +737,9 @@ async function loadRepoFaceRuntimeSnapshots(
         });
       }
       restStates.set(identity.id, {
-        isNapping: projected.isNapping,
-        napEndsAt: projected.napEndsAt,
-        nextNapStartsAt: projected.nextNapStartsAt,
+        isNapping: sleepCycle.isNapping === true,
+        napEndsAt: sleepCycle.currentNapEndsAt,
+        nextNapStartsAt: sleepCycle.nextNapStartsAt,
       });
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
@@ -736,6 +750,40 @@ async function loadRepoFaceRuntimeSnapshots(
   }
 
   return { restStates, pressureByIdentity };
+}
+
+function projectSleepCycleForOperatorAbsence(
+  sleepCycle: VoidScheduledRuntime["sleepCycle"],
+  idleCooling: IdleCoolingSnapshot | undefined,
+  now: Date,
+): VoidScheduledRuntime["sleepCycle"] {
+  if (idleCooling?.napModeActive !== true) {
+    return sleepCycle;
+  }
+
+  const nowMs = now.getTime();
+  const minimumNapMinutes = Math.max(60, Math.min(180, idleCooling.recoveryMinutes || 120));
+  const currentNapEndsMs = Date.parse(sleepCycle.currentNapEndsAt ?? "");
+  const desiredNapEndsMs = nowMs + minimumNapMinutes * 60_000;
+  const napEndsMs = Number.isFinite(currentNapEndsMs)
+    ? Math.max(currentNapEndsMs, desiredNapEndsMs)
+    : desiredNapEndsMs;
+  const activeDreamThemes = Array.from(new Set([
+    ...sleepCycle.activeDreamThemes,
+    "operator-absence-dreaming",
+    "memory-distillation",
+  ]));
+
+  return {
+    ...sleepCycle,
+    isNapping: true,
+    currentNapStartedAt: sleepCycle.isNapping && sleepCycle.currentNapStartedAt
+      ? sleepCycle.currentNapStartedAt
+      : now.toISOString(),
+    currentNapEndsAt: new Date(napEndsMs).toISOString(),
+    nextNapStartsAt: new Date(napEndsMs + 180 * 60_000).toISOString(),
+    activeDreamThemes,
+  };
 }
 
 function buildRepoFaceSpeakingPressure(
