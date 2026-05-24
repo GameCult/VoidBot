@@ -1,5 +1,6 @@
 {
-  "paused": true,
-  "reason": "Paused by operator after unintelligible Face speech; inspect recent Face turns before resuming.",
-  "pausedAt": "2026-05-24T04:10:49.7761305Z"
+  "paused": false,
+  "reason": "Operator requested a controlled live trial after semantic curiosity graph projector fix.",
+  "pausedAt": null,
+  "resumedAt": "2026-05-24T08:35:53.9885614Z"
 }
