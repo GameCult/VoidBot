@@ -758,7 +758,24 @@ function projectSleepCycleForOperatorAbsence(
   now: Date,
 ): VoidScheduledRuntime["sleepCycle"] {
   if (idleCooling?.napModeActive !== true) {
-    return sleepCycle;
+    const activeDreamThemes = sleepCycle.activeDreamThemes.filter((theme) => theme !== "operator-absence-dreaming");
+    if (sleepCycle.isNapping !== true || !sleepCycle.activeDreamThemes.includes("operator-absence-dreaming")) {
+      return activeDreamThemes.length === sleepCycle.activeDreamThemes.length
+        ? sleepCycle
+        : {
+            ...sleepCycle,
+            activeDreamThemes,
+          };
+    }
+
+    return {
+      ...sleepCycle,
+      isNapping: false,
+      currentNapStartedAt: undefined,
+      currentNapEndsAt: undefined,
+      nextNapStartsAt: new Date(now.getTime() + 180 * 60_000).toISOString(),
+      activeDreamThemes,
+    };
   }
 
   const nowMs = now.getTime();

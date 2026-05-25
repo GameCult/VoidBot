@@ -108,11 +108,13 @@ async function buildSnapshot() {
       error: participant.faceStatePath ? "State file was not readable." : "No Face state path registered.",
       tree: [],
     };
+    participant.restState = participant.faceState.restState ?? null;
   }
   const activeTurns = participantSnapshots.filter((participant) => participant.activeJobId);
   const readyNow = participantSnapshots.filter((participant) =>
     participant.status === "active" &&
     !participant.activeJobId &&
+    participant.restState?.isNapping !== true &&
     typeof participant.nextTurnInMinutes === "number" &&
     participant.nextTurnInMinutes <= 0,
   );
@@ -218,8 +220,15 @@ function buildUpcomingTurns(participants) {
     avatarUrl: participant.avatarUrl,
     participantKind: participant.participantKind,
     activeJobId: participant.activeJobId,
+    restState: participant.restState,
     pendingMentionCount: participant.pendingMentionCount,
-    shuffleReason: participant.pendingMentionCount > 0 ? "mention" : participant.activeJobId ? "active" : null,
+    shuffleReason: participant.pendingMentionCount > 0
+      ? "mention"
+      : participant.activeJobId
+        ? "active"
+        : participant.restState?.isNapping === true
+          ? "nap"
+          : null,
     nextTurnInMinutes: participant.nextTurnInMinutes,
     effectiveSpeed: participant.effectiveSpeed,
     heat: participant.heat,
@@ -411,6 +420,7 @@ async function readFaceStates(identityMetadata) {
         path: identity.faceStatePath,
         summary: truncate(rendered?.summary ?? "", 1200),
         counts: countFaceState(typedState),
+        restState: projectRestState(typedState),
         tree: buildFaceStateTree(typedState),
       });
     } catch (error) {
@@ -423,6 +433,21 @@ async function readFaceStates(identityMetadata) {
     }
   }
   return states;
+}
+
+function projectRestState(typedState) {
+  const sleepCycle = typedState?.scheduledRuntime?.sleepCycle;
+  if (!sleepCycle || typeof sleepCycle !== "object") {
+    return null;
+  }
+  return {
+    isNapping: sleepCycle.isNapping === true,
+    napEndsAt: stringOrNull(sleepCycle.currentNapEndsAt),
+    nextNapStartsAt: stringOrNull(sleepCycle.nextNapStartsAt),
+    activeDreamThemes: Array.isArray(sleepCycle.activeDreamThemes)
+      ? sleepCycle.activeDreamThemes.slice(0, 8).map(String)
+      : [],
+  };
 }
 
 function countFaceState(typedState) {
@@ -1242,7 +1267,11 @@ function renderHtml(snapshot) {
     const text = (value) => value === null || value === undefined || value === "" ? "missing" : String(value);
     const esc = (value) => text(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const number = (value) => typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "missing";
-    const minutes = (value) => typeof value === "number" ? (value <= 0 ? "ready" : value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + "m") : "missing";
+    const minutes = (value, restState = null) => restState?.isNapping === true
+      ? "napping"
+      : typeof value === "number"
+        ? (value <= 0 ? "ready" : value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + "m")
+        : "missing";
     const relative = (timestamp) => {
       if (!timestamp) return "missing";
       const time = Date.parse(timestamp);
@@ -1303,7 +1332,7 @@ function renderHtml(snapshot) {
     function renderCtb(turns) {
       return "<nav class=\\"ctb-rail\\" aria-label=\\"Upcoming CTB turns\\">" + turns.map((turn) => {
         const klass = ["turn-card", turn.identityId === selectedIdentity ? "selected" : "", turn.activeJobId ? "active-turn" : "", turn.pendingMentionCount > 0 ? "mention-turn" : ""].filter(Boolean).join(" ");
-        return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(turn.identityId) + "\\" title=\\"" + esc(turn.displayName + " / " + minutes(turn.nextTurnInMinutes)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span>" + esc(minutes(turn.nextTurnInMinutes)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</button>";
+        return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(turn.identityId) + "\\" title=\\"" + esc(turn.displayName + " / " + minutes(turn.nextTurnInMinutes, turn.restState)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span>" + esc(minutes(turn.nextTurnInMinutes, turn.restState)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</button>";
       }).join("") + "</nav>";
     }
 
@@ -1312,7 +1341,7 @@ function renderHtml(snapshot) {
       const counts = agent.faceState?.counts || {};
       const memoryCount = (counts.shortTerm || 0) + (counts.memories || 0);
       return "<section class=\\"pane inspector-pane\\">" + renderControls(snapshot, participants) + "<div class=\\"inspector-hero\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Face</p><h1>" + esc(agent.displayName) + "</h1><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div class=\\"agent-stats\\">" +
-        statBar("Turn", minutes(agent.nextTurnInMinutes), turnPercent(agent.nextTurnInMinutes), "cool") +
+        statBar("Turn", minutes(agent.nextTurnInMinutes, agent.restState), turnPercent(agent.nextTurnInMinutes), agent.restState?.isNapping === true ? "warm" : "cool") +
         statBar("Memory", number(memoryCount), Math.min(100, memoryCount * 7), "cool") +
         statBar("Pressure", number(counts.pressures || 0), Math.min(100, (counts.pressures || 0) * 14), (counts.pressures || 0) > 4 ? "hot" : "") +
         statBar("Heat", number(agent.heat), Math.min(100, (agent.heat || 0) * 34), (agent.heat || 0) > 1.5 ? "hot" : "") +
