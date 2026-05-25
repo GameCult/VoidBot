@@ -123,6 +123,10 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.3-codex-spark"),
   REPO_FACE_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.3-codex-spark,gpt-5.4-mini"),
+  REPO_FACE_IMAGINATION_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_FACE_IMAGINATION_CODEX_MODELS: z.string().default("gpt-5.4"),
+  REPO_FACE_MIND_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_FACE_MIND_CODEX_MODELS: z.string().default("gpt-5.4"),
   REPO_FACE_TURN_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
   REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT: z
     .enum(["low", "medium", "high", "xhigh"])
@@ -188,6 +192,10 @@ export interface AppConfig {
     heatOverrides: Record<string, number>;
     codexModel?: string;
     codexModels: string[];
+    imaginationCodexModel?: string;
+    imaginationCodexModels: string[];
+    mindCodexModel?: string;
+    mindCodexModels: string[];
     turnCodexModel: string;
     codexModelReasoningEffort?: "low" | "medium" | "high" | "xhigh";
     stateProjectorEnabled: boolean;
@@ -422,6 +430,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       codexModels: parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS).length > 0
         ? parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS)
         : [parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL],
+      imaginationCodexModel: parsed.REPO_FACE_IMAGINATION_CODEX_MODEL,
+      imaginationCodexModels: parseList(parsed.REPO_FACE_IMAGINATION_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_FACE_IMAGINATION_CODEX_MODELS)
+        : [parsed.REPO_FACE_IMAGINATION_CODEX_MODEL],
+      mindCodexModel: parsed.REPO_FACE_MIND_CODEX_MODEL,
+      mindCodexModels: parseList(parsed.REPO_FACE_MIND_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_FACE_MIND_CODEX_MODELS)
+        : [parsed.REPO_FACE_MIND_CODEX_MODEL],
       turnCodexModel: parsed.REPO_FACE_TURN_CODEX_MODEL,
       codexModelReasoningEffort: parsed.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT,
       stateProjectorEnabled: parsed.REPO_FACE_STATE_PROJECTOR_ENABLED,

@@ -903,9 +903,23 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
     return { started: false, reason: "maintenance_already_completed_for_sources", statusPath: paths.statusPath };
   }
 
+  const reason = input.projectedRest.isNapping
+    ? "repo_face_napping_with_short_term_memory"
+    : "repo_face_stale_short_term_memory";
+
   try {
     await mkdir(paths.statusDir, { recursive: true });
     await mkdir(paths.logDir, { recursive: true });
+    await writeFile(paths.statusPath, `${JSON.stringify({
+      status: "starting",
+      startedAt: new Date().toISOString(),
+      stateFile: input.statePath,
+      reason,
+      shortTermCount: shortTerm.length,
+      newestShortTermUpdatedAt: newestTimestampMs(shortTerm) > 0
+        ? new Date(newestTimestampMs(shortTerm)).toISOString()
+        : undefined,
+    }, null, 2)}\n`, "utf8");
     const child = spawn(
       "powershell.exe",
       [
@@ -934,11 +948,18 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
     child.unref();
     return {
       started: true,
-      reason: input.projectedRest.isNapping ? "repo_face_napping_with_short_term_memory" : "repo_face_stale_short_term_memory",
+      reason,
       statusPath: paths.statusPath,
       pid: child.pid,
     };
   } catch (error) {
+    await writeFile(paths.statusPath, `${JSON.stringify({
+      status: "failed_to_start",
+      startedAt: new Date().toISOString(),
+      stateFile: input.statePath,
+      reason,
+      error: error instanceof Error ? error.message : String(error),
+    }, null, 2)}\n`, "utf8").catch(() => undefined);
     return {
       started: false,
       reason: "spawn_failed",
@@ -1996,6 +2017,10 @@ function buildHeartbeatPrompt(input: {
     globalAgentDoctrine: input.globalAgentDoctrine,
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
+    humanSteeringDirective: renderRepoFaceHumanSteeringDirective(input.identity, {
+      recentMessages: input.recentMessages,
+      channelSnapshots: input.channelSnapshots,
+    }),
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     humanPronounDirective: renderRepoFaceHumanPronounFacts(input.humanPronounGuidance ?? [])
@@ -2268,6 +2293,9 @@ function renderRepoFaceStatePacket(
     ? renderRepoFaceHumanClarityPressureFacts(identity, roomContext)
     : undefined;
   const clarityPressureActive = Boolean(humanClarityFacts);
+  const humanSteeringFacts = roomContext
+    ? renderRepoFaceHumanSteeringFacts(identity, roomContext)
+    : undefined;
 
   const selfTexture = [
     ...privateNotes.map(projectPrivateNoteForMemorySurface),
@@ -2478,6 +2506,10 @@ function renderRepoFaceStatePacket(
 
   if (humanClarityFacts) {
     lines.push(humanClarityFacts);
+  }
+
+  if (humanSteeringFacts) {
+    lines.push(humanSteeringFacts);
   }
 
   if (lines.length === 0) {
@@ -3214,6 +3246,75 @@ function renderRepoFaceHumanClarityPressureFacts(
   ].filter(Boolean).join("\n");
 }
 
+function renderRepoFaceHumanSteeringFacts(
+  identity: RepoDiscordIdentity,
+  input: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string | undefined {
+  const currentRoomMessages = input.recentMessages
+    .filter((message) => collapseWhitespace(message.content).length > 0)
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+  const latestHuman = [...currentRoomMessages]
+    .reverse()
+    .find((message) => !message.isBot);
+  if (!latestHuman) {
+    return undefined;
+  }
+
+  const latestHumanIndex = currentRoomMessages.findIndex((message) => message.id === latestHuman.id);
+  const laterAgentMessages = latestHumanIndex >= 0
+    ? currentRoomMessages.slice(latestHumanIndex + 1).filter((message) => message.isBot)
+    : [];
+  const latestHumanText = collapseWhitespace(latestHuman.content, 420);
+  const normalizedHumanText = normalizeForRepetition(latestHuman.content);
+  const faceMentioned =
+    normalizedHumanText.includes(normalizeSocialLabel(identity.displayName)) ||
+    normalizedHumanText.includes(normalizeSocialLabel(identity.repoName)) ||
+    normalizedHumanText.includes(normalizeSocialLabel(identity.id));
+  const isQuestionOrDirection = /[?]$/.test(latestHumanText)
+    || /\b(should|need|needs|must|important|work|doing|why|what|where|when|how|rather|instead|stop|start|fix|look|check)\b/i.test(latestHumanText);
+
+  if (!isQuestionOrDirection && laterAgentMessages.length < 4) {
+    return undefined;
+  }
+
+  return [
+    "Latest human steering in the current room:",
+    `- ${latestHuman.authorName ?? latestHuman.authorId} most recently grounded the room with: "${latestHumanText}"`,
+    faceMentioned
+      ? `- This appears to name ${identity.displayName} or ${identity.repoName}; treat it as a live pull on this character unless later human context clearly supersedes it.`
+      : `- This may not belong to ${identity.displayName}'s territory. If it points at another steward or repo, do not keep expanding the old topic as if the whole room still belongs to you.`,
+    !faceMentioned
+      ? `- Because the latest human steering does not name ${identity.displayName}, default to restraint. Do not ask the named steward for a new proof, artifact, or task unless the human invited ${identity.displayName} into that work; a private note, clean handoff, or one social boundary is usually the coherent move.`
+      : "",
+    laterAgentMessages.length > 0
+      ? `- ${laterAgentMessages.length} agent message(s) followed without a newer human steering message. Read them as peer reactions after the human ground, not as stronger authority, consensus, or proof that the old topic is still healthy.`
+      : "",
+    "- If you speak after an agent-only tail, either answer the human steering plainly, make a concrete social move to a specific person, bring fresh evidence, or stay private. Do not add another polished variation merely because peers kept talking.",
+  ].filter(Boolean).join("\n");
+}
+
+function renderRepoFaceHumanSteeringDirective(
+  identity: RepoDiscordIdentity,
+  input: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string {
+  const facts = renderRepoFaceHumanSteeringFacts(identity, input);
+  if (!facts) {
+    return "";
+  }
+
+  return [
+    "Current human steering reminder:",
+    facts,
+    "This reminder is repeated after projected state intentionally. If it conflicts with your inner pressure, treat that conflict as part of the turn instead of letting the inner pressure silently win.",
+  ].join("\n");
+}
+
 function isHumanClarityPressureMessage(content: string): boolean {
   const normalized = normalizeForRepetition(content);
   return [
@@ -3893,9 +3994,10 @@ async function projectRepoFaceMemorySurface(input: {
   const output = await runCodexTextProjection({
     prompt,
     config: input.config,
-    command: "repo-face-state-projector",
-    jobId: `state-projector:${input.identity.id}:${Date.now()}`,
+    command: "repo-face-imagination",
+    jobId: `imagination:${input.identity.id}:${Date.now()}`,
     timeoutMs: 180_000,
+    organ: "imagination",
   });
   const projected = output.trim();
   if (projected.length < 80) {
@@ -4095,8 +4197,16 @@ function runCodexTextProjection(input: {
   command: string;
   jobId: string;
   timeoutMs: number;
+  organ?: "imagination" | "legacy";
 }): Promise<string> {
+  const organModels = input.organ === "imagination"
+    ? [
+        ...input.config.repoFaceHeartbeats.imaginationCodexModels,
+        input.config.repoFaceHeartbeats.imaginationCodexModel,
+      ]
+    : [];
   const models = [
+    ...organModels,
     ...input.config.repoFaceHeartbeats.codexModels,
     input.config.repoFaceHeartbeats.codexModel,
     input.config.codexModel,

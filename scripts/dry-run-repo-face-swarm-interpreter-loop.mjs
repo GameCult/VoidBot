@@ -24,7 +24,7 @@ const repoFaceRetrievalToolAllowlist = [
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
-  const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.3-codex-spark";
+  const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_FACE_MIND_CODEX_MODEL ?? "gpt-5.4";
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const mcpMode = options.mcp === "mock" ? "mock" : "real-readonly";
   const outPath = resolve(repoRoot, options.out ?? defaultOut);

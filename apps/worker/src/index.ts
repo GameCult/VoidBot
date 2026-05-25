@@ -878,9 +878,9 @@ function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpret
   }
 
   return {
-    ...(config.repoFaceHeartbeats.codexModel ? { model: config.repoFaceHeartbeats.codexModel } : {}),
-    ...(config.repoFaceHeartbeats.codexModels.length > 0
-      ? { models: config.repoFaceHeartbeats.codexModels.join(",") }
+    ...(config.repoFaceHeartbeats.mindCodexModel ? { model: config.repoFaceHeartbeats.mindCodexModel } : {}),
+    ...(config.repoFaceHeartbeats.mindCodexModels.length > 0
+      ? { models: config.repoFaceHeartbeats.mindCodexModels.join(",") }
       : {}),
     ...(config.repoFaceHeartbeats.codexModelReasoningEffort
       ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }

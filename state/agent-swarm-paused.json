@@ -1,6 +1,5 @@
 {
-  "paused": false,
-  "reason": "Resumed by operator request.",
-  "pausedAt": "2026-05-24T09:14:06.6535422Z",
-  "resumedAt": "2026-05-24T10:19:00Z"
+  "paused": true,
+  "reason": "Paused for incoherent Face-to-Face conversation audit; inspect context projection, interpreter routing, and repeated sleep-memory maintenance before resuming.",
+  "updatedAt": "2026-05-25T05:40:00Z"
 }

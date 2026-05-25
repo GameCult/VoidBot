@@ -264,9 +264,11 @@ function modelCandidatesFromOptions(options) {
   const explicit = options.model ?? options.models;
   const raw =
     explicit ??
+    process.env.REPO_FACE_MIND_CODEX_MODELS ??
+    process.env.REPO_FACE_MIND_CODEX_MODEL ??
     process.env.REPO_FACE_HEARTBEAT_CODEX_MODELS ??
     process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ??
-    "gpt-5.3-codex-spark,gpt-5.4-mini";
+    "gpt-5.4";
   return raw
     .split(",")
     .map((entry) => entry.trim())
