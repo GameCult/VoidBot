@@ -35,7 +35,7 @@ export interface OwnerCodexProviderOptions {
   executable: string;
   executableArgs: string[];
   model: string;
-  reasoningEffort: "low" | "medium" | "high" | "xhigh";
+  reasoningEffort: "none" | "low" | "medium" | "high" | "xhigh";
   timeoutMs: number;
   workingDirectory: string;
   historyLookup?: HistoryLookupTool;

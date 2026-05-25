@@ -25,7 +25,8 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
   const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_FACE_MIND_CODEX_MODEL ?? "gpt-5.4";
-  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
+  const faceReasoningEffort = options["face-reasoning-effort"] ?? options["reasoning-effort"] ?? process.env.REPO_FACE_TURN_CODEX_REASONING_EFFORT ?? "low";
+  const interpreterReasoningEffort = options["interpreter-reasoning-effort"] ?? process.env.REPO_FACE_MIND_CODEX_REASONING_EFFORT ?? "none";
   const mcpMode = options.mcp === "mock" ? "mock" : "real-readonly";
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
   const selectedIdentities = options.identity
@@ -52,7 +53,7 @@ async function main() {
     process.stderr.write(`[dry-run] face turn ${identity}\n`);
     const childRun = await runCodex(facePrompt, {
       model: faceModel,
-      reasoningEffort,
+      reasoningEffort: faceReasoningEffort,
       scenarioId: `${identity}_swarm_dry_run_child`,
       logPath: childLogPath,
       mcpMode,
@@ -71,7 +72,7 @@ async function main() {
     });
     const interpreterRun = await runCodex(interpreterPrompt, {
       model: interpreterModel,
-      reasoningEffort,
+      reasoningEffort: interpreterReasoningEffort,
       scenarioId: `${identity}_swarm_dry_run_interpreter`,
       mcpMode: "none",
     });
@@ -97,7 +98,7 @@ async function main() {
       await rm(retryLogPath, { force: true }).catch(() => undefined);
       const retryChildRun = await runCodex(appendDryRunSafety(retryPrompt, mcpMode), {
         model: faceModel,
-        reasoningEffort,
+        reasoningEffort: faceReasoningEffort,
         scenarioId: `${identity}_swarm_dry_run_retry_child`,
         logPath: retryLogPath,
         mcpMode,
@@ -116,7 +117,7 @@ async function main() {
       });
       const retryInterpreterRun = await runCodex(retryInterpreterPrompt, {
         model: interpreterModel,
-        reasoningEffort,
+        reasoningEffort: interpreterReasoningEffort,
         scenarioId: `${identity}_swarm_dry_run_retry_interpreter`,
         mcpMode: "none",
       });
@@ -199,7 +200,8 @@ async function main() {
     generatedAt: new Date().toISOString(),
     faceModel,
     interpreterModel,
-    reasoningEffort,
+    faceReasoningEffort,
+    interpreterReasoningEffort,
     mcpMode,
     passed: runs.every((run) => run.assessment.failures.length === 0),
     summary: runs.map((run) => ({

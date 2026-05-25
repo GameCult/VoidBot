@@ -4232,7 +4232,9 @@ function runCodexTextProjectionWithModels(input: {
     const startedAt = new Date().toISOString();
     const startedMs = Date.now();
     const model = input.models[0] ?? input.config.codexModel;
-    const reasoningEffort = input.config.repoFaceHeartbeats.codexModelReasoningEffort ?? "low";
+    const reasoningEffort = input.organ === "imagination"
+      ? input.config.repoFaceHeartbeats.imaginationCodexModelReasoningEffort
+      : input.config.repoFaceHeartbeats.codexModelReasoningEffort ?? "none";
     const args = [
       ...input.config.codexExecArgs,
       "exec",

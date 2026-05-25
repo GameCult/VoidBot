@@ -871,8 +871,8 @@ function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpret
   if (role === "face") {
     return {
       model: config.repoFaceHeartbeats.turnCodexModel,
-      ...(config.repoFaceHeartbeats.codexModelReasoningEffort
-        ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
+      ...(config.repoFaceHeartbeats.turnCodexModelReasoningEffort
+        ? { reasoningEffort: config.repoFaceHeartbeats.turnCodexModelReasoningEffort }
         : {}),
     };
   }
@@ -882,8 +882,8 @@ function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpret
     ...(config.repoFaceHeartbeats.mindCodexModels.length > 0
       ? { models: config.repoFaceHeartbeats.mindCodexModels.join(",") }
       : {}),
-    ...(config.repoFaceHeartbeats.codexModelReasoningEffort
-      ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
+    ...(config.repoFaceHeartbeats.mindCodexModelReasoningEffort
+      ? { reasoningEffort: config.repoFaceHeartbeats.mindCodexModelReasoningEffort }
       : {}),
   };
 }

@@ -19,7 +19,8 @@ async function main() {
   const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
   const interpreterModelCandidates = modelCandidatesFromOptions(options);
   const interpreterModel = interpreterModelCandidates.join(",");
-  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
+  const faceReasoningEffort = options["face-reasoning-effort"] ?? options["reasoning-effort"] ?? process.env.REPO_FACE_TURN_CODEX_REASONING_EFFORT ?? "low";
+  const interpreterReasoningEffort = options["interpreter-reasoning-effort"] ?? process.env.REPO_FACE_MIND_CODEX_REASONING_EFFORT ?? "none";
   const facePromptPath = resolve(repoRoot, options["face-prompt"] ?? defaultFacePrompt);
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
   const facePrompt = await readFile(facePromptPath, "utf8");
@@ -28,7 +29,7 @@ async function main() {
 
   const childRun = await runCodexWithModelFallback(facePrompt, {
     models: [faceModel],
-    reasoningEffort,
+    reasoningEffort: faceReasoningEffort,
     scenarioId: "nibu_interpreter_loop_child",
     logPath: childLogPath,
     useMockMcp: true,
@@ -44,7 +45,7 @@ async function main() {
   });
   const interpreterRun = await runCodexWithModelFallback(interpreterPrompt, {
     models: interpreterModelCandidates,
-    reasoningEffort,
+    reasoningEffort: interpreterReasoningEffort,
     scenarioId: "nibu_interpreter_loop_parent",
     logPath: undefined,
     useMockMcp: false,
@@ -59,7 +60,8 @@ async function main() {
     generatedAt: new Date().toISOString(),
     faceModel,
     interpreterModel,
-    reasoningEffort,
+    faceReasoningEffort,
+    interpreterReasoningEffort,
     facePromptPath,
     passed: failures.length === 0,
     failures,
@@ -87,7 +89,8 @@ async function main() {
     outPath,
     faceModel,
     interpreterModel,
-    reasoningEffort,
+    faceReasoningEffort,
+    interpreterReasoningEffort,
     passed: report.passed,
     failures,
     childTools,

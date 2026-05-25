@@ -535,8 +535,8 @@ async function appendModelOutputLog(input: {
   await appendFile(logPath, `${JSON.stringify(record)}\n`, "utf8");
 }
 
-function getReasoningEffortOption(value: unknown): "low" | "medium" | "high" | "xhigh" | undefined {
-  if (value === "low" || value === "medium" || value === "high" || value === "xhigh") {
+function getReasoningEffortOption(value: unknown): "none" | "low" | "medium" | "high" | "xhigh" | undefined {
+  if (value === "none" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
     return value;
   }
   return undefined;
