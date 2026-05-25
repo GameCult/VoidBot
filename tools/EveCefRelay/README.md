@@ -6,13 +6,13 @@ surface for the VoidBot swarm dashboard.
 The relay owns browser pixels. `EveCanvas` owns display and touch capture.
 
 ```powershell
-npm run swarm:eve-cef-relay -- --width 2160 --height 1620 --scale 2 --port 8791
+npm run swarm:eve-cef-relay -- --width 1620 --height 2160 --scale 2 --port 8792
 ```
 
 The iPad app connects to:
 
 ```text
-ws://192.168.1.66:8791/stream
+ws://192.168.1.66:8792/stream
 ```
 
 Current transport is binary WebSocket frames containing JPEG-encoded CEF
