@@ -1,5 +1,5 @@
 {
-  "paused": true,
-  "reason": "Paused for incoherent Face-to-Face conversation audit; inspect context projection, interpreter routing, and repeated sleep-memory maintenance before resuming.",
-  "updatedAt": "2026-05-25T05:40:00Z"
+  "paused": false,
+  "reason": "Unpaused after stack restart restored ready bot/worker runtime and operations check passed live-service gates; keep watching Face prompts, interpreter routing, and memory maintenance output.",
+  "updatedAt": "2026-05-25T17:29:11Z"
 }
