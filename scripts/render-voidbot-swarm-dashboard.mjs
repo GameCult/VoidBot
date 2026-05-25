@@ -666,6 +666,7 @@ function renderHtml(snapshot) {
 
     * { box-sizing: border-box; }
     html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    html { height: -webkit-fill-available; }
     body {
       background:
         radial-gradient(circle at 72% 12%, rgba(255, 174, 88, 0.14), transparent 24%),
@@ -699,21 +700,38 @@ function renderHtml(snapshot) {
     .shell {
       position: fixed;
       inset: 0;
-      display: grid;
       width: 100vw;
-      height: 100dvh;
+      height: var(--app-height, 100vh);
+      min-height: -webkit-fill-available;
       background: rgba(3, 7, 13, 0.72);
+      overflow: hidden;
+    }
+
+    .hud-canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
     }
 
     .ctb-rail {
+      position: absolute;
+      z-index: 3;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--rail);
       display: flex;
       gap: 8px;
-      padding: 10px;
+      padding: 10px 274px 10px 10px;
       border-color: var(--line);
       background: rgba(3, 7, 13, 0.86);
       backdrop-filter: blur(18px);
       overflow: auto;
       min-width: 0;
+      -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
       scrollbar-color: rgba(142, 223, 176, 0.58) rgba(3, 7, 13, 0.32);
     }
@@ -762,27 +780,22 @@ function renderHtml(snapshot) {
     .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
     .workspace {
-      min-width: 0;
-      min-height: 0;
-      display: grid;
-      gap: 12px;
-      padding: 12px;
+      position: absolute;
+      z-index: 1;
+      top: var(--rail);
+      left: 0;
+      right: 0;
+      bottom: 0;
       overflow: hidden;
-      grid-template-columns: minmax(230px, 0.82fr) minmax(360px, 1.15fr) minmax(420px, 1.38fr);
-      grid-template-rows: minmax(0, 1fr);
-      grid-template-areas:
-        "inspector tree memory";
     }
 
     .status-panel {
-      position: sticky;
+      position: absolute;
+      top: 14px;
       right: 10px;
-      z-index: 2;
-      flex: 0 0 250px;
+      z-index: 4;
       width: 250px;
       height: 96px;
-      margin-left: auto;
-      align-self: center;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       gap: 5px;
@@ -866,6 +879,7 @@ function renderHtml(snapshot) {
     .hud-fill.warn { background: linear-gradient(90deg, var(--amber), var(--coral)); }
 
     .pane {
+      position: absolute;
       min-width: 0;
       min-height: 0;
       display: grid;
@@ -878,10 +892,28 @@ function renderHtml(snapshot) {
       overflow: hidden;
     }
     .pane-scroll { overflow: auto; }
-    .inspector-pane { grid-area: inspector; grid-template-rows: auto auto auto minmax(0, 1fr); }
-    .tree-pane { grid-area: tree; grid-template-rows: auto minmax(0, 1fr); }
+    .inspector-pane {
+      left: 12px;
+      top: 12px;
+      bottom: 12px;
+      width: calc(24% - 15px);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+    }
+    .tree-pane {
+      left: calc(24% + 6px);
+      top: 12px;
+      bottom: 12px;
+      width: calc(34% - 18px);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
     .tree-pane .mono { overflow-wrap: anywhere; }
-    .memory-pane { grid-area: memory; grid-template-rows: auto minmax(0, 1fr); }
+    .memory-pane {
+      left: calc(58% + 6px);
+      top: 12px;
+      right: 12px;
+      bottom: 12px;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
 
     .kicker { color: var(--green); font-size: 0.74rem; text-transform: uppercase; }
     h1 { font-size: clamp(1.55rem, 3.4vw, 3rem); line-height: 0.98; }
@@ -923,6 +955,7 @@ function renderHtml(snapshot) {
     .inspector-hero h1, .inspector-hero p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .inspector-lore {
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
       color: var(--muted);
       font-size: 0.83rem;
     }
@@ -966,6 +999,7 @@ function renderHtml(snapshot) {
     .channel-list, .state-tree, .detail-body {
       min-height: 0;
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
       display: grid;
       align-content: start;
       gap: 8px;
@@ -987,7 +1021,7 @@ function renderHtml(snapshot) {
       border: 1px solid rgba(142, 223, 176, 0.12);
       border-radius: 8px;
       background: rgba(142, 223, 176, 0.045);
-      overflow: clip;
+      overflow: hidden;
     }
     details.state-node[open] { border-color: rgba(105, 226, 239, 0.22); }
     details.state-node > summary {
@@ -1049,6 +1083,7 @@ function renderHtml(snapshot) {
       min-height: 0;
       margin: 0;
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       color: rgba(239, 252, 248, 0.88);
@@ -1073,53 +1108,73 @@ function renderHtml(snapshot) {
     .badge.repo-face { background: var(--violet); }
 
     @media (orientation: landscape) {
-      .shell { grid-template-rows: var(--rail) minmax(0, 1fr); }
       .ctb-rail {
-        grid-row: 1;
-        grid-column: 1;
         flex-direction: row;
         align-items: center;
         border-bottom: 1px solid var(--line);
       }
-      .workspace { grid-row: 2; grid-column: 1; }
       .turn-card { width: 76px; height: 96px; }
     }
 
     @media (orientation: portrait) {
       :root { --rail: 94px; }
-      .shell { grid-template-columns: var(--rail) minmax(0, 1fr); }
       .ctb-rail {
-        grid-row: 1;
-        grid-column: 1;
+        top: 0;
+        left: 0;
+        right: auto;
+        bottom: 0;
+        width: var(--rail);
+        height: auto;
+        padding: 10px;
         flex-direction: column;
         align-items: center;
         border-right: 1px solid var(--line);
       }
       .workspace {
-        grid-row: 1;
-        grid-column: 2;
-      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-areas:
-          "inspector memory"
-          "tree memory";
+        top: 0;
+        left: var(--rail);
       }
-      .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .inspector-pane {
+        left: 10px;
+        top: 10px;
+        bottom: auto;
+        width: calc(45% - 16px);
+        height: calc(43% - 15px);
+      }
+      .tree-pane {
+        left: 10px;
+        top: calc(43% + 5px);
+        bottom: 10px;
+        width: calc(45% - 16px);
+      }
+      .memory-pane {
+        left: calc(45% + 4px);
+        top: 10px;
+        right: 10px;
+        bottom: 10px;
+      }
       .turn-card { width: 72px; height: 96px; }
-      .status-panel { flex-basis: 230px; width: 230px; height: 84px; }
+      .status-panel {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        bottom: auto;
+        left: auto;
+        width: 230px;
+        height: 88px;
+      }
     }
 
     @media (max-width: 760px) {
-      .workspace { padding: 10px; gap: 10px; }
       .pane { padding: 12px; }
       .inspector-lore { display: none; }
-      .status-panel { flex-basis: 210px; width: 210px; }
+      .status-panel { width: 210px; }
     }
 
     @media (max-width: 980px) and (orientation: landscape) {
-      .workspace {
-        grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 1.1fr) minmax(340px, 1.28fr);
-      }
+      .inspector-pane { width: 25%; }
+      .tree-pane { left: calc(25% + 18px); width: calc(34% - 18px); }
+      .memory-pane { left: calc(59% + 12px); }
       .inspector-lore { display: none; }
     }
   </style>
@@ -1154,6 +1209,7 @@ function renderHtml(snapshot) {
     const badge = (value, label = value) => "<span class=\\"badge " + tone(value) + "\\">" + esc(String(label).replace(/_/g, " ")) + "</span>";
 
     function render(snapshot) {
+      setAppHeight();
       const participants = sortedParticipants(snapshot);
       if (!selectedIdentity || !participants.some((agent) => agent.identityId === selectedIdentity)) {
         selectedIdentity = (snapshot.upcomingTurns || [])[0]?.identityId || participants[0]?.identityId || null;
@@ -1164,7 +1220,9 @@ function renderHtml(snapshot) {
       if (selectedLeaf) selectedStatePath = selectedLeaf.path;
       app.innerHTML = [
         "<div class=\\"shell\\">",
-          renderCtb(snapshot.upcomingTurns || [], snapshot, selected),
+          "<canvas id=\\"hud-canvas\\" class=\\"hud-canvas\\"></canvas>",
+          renderCtb(snapshot.upcomingTurns || []),
+          renderStatusPanel(snapshot, selected),
           "<section class=\\"workspace\\" aria-label=\\"VoidBot swarm control\\">",
             renderInspector(snapshot, participants, selected),
             renderStateTree(selected),
@@ -1175,6 +1233,11 @@ function renderHtml(snapshot) {
       attachControls();
       attachSelection();
       attachStateSelection();
+      requestAnimationFrame(drawHudCanvas);
+    }
+
+    function setAppHeight() {
+      document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
     }
 
     function sortedParticipants(snapshot) {
@@ -1187,11 +1250,11 @@ function renderHtml(snapshot) {
       });
     }
 
-    function renderCtb(turns, snapshot, selected) {
+    function renderCtb(turns) {
       return "<nav class=\\"ctb-rail\\" aria-label=\\"Upcoming CTB turns\\">" + turns.map((turn) => {
         const klass = ["turn-card", turn.identityId === selectedIdentity ? "selected" : "", turn.activeJobId ? "active-turn" : "", turn.pendingMentionCount > 0 ? "mention-turn" : ""].filter(Boolean).join(" ");
         return "<button class=\\"" + klass + "\\" type=\\"button\\" data-select=\\"" + esc(turn.identityId) + "\\" title=\\"" + esc(turn.displayName + " / " + minutes(turn.nextTurnInMinutes)) + "\\">" + avatarHtml(turn) + "<strong>" + esc(turn.displayName) + "</strong><span>" + esc(minutes(turn.nextTurnInMinutes)) + "</span>" + (turn.shuffleReason ? "<span class=\\"turn-reason\\">" + esc(turn.shuffleReason) + "</span>" : "") + "</button>";
-      }).join("") + renderStatusPanel(snapshot, selected) + "</nav>";
+      }).join("") + "</nav>";
     }
 
     function renderInspector(snapshot, participants, agent) {
@@ -1383,6 +1446,86 @@ function renderHtml(snapshot) {
         : "<span class=\\"avatar\\">" + esc(initials(agent.displayName)) + "</span>";
     }
 
+    function drawHudCanvas() {
+      const canvas = document.getElementById("hud-canvas");
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const width = Math.max(1, Math.floor(rect.width * ratio));
+      const height = Math.max(1, Math.floor(rect.height * ratio));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      const bg = ctx.createLinearGradient(0, 0, rect.width, rect.height);
+      bg.addColorStop(0, "#03070d");
+      bg.addColorStop(0.55, "#07110f");
+      bg.addColorStop(1, "#091712");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      ctx.globalAlpha = 0.26;
+      ctx.strokeStyle = "rgba(105,226,239,0.16)";
+      ctx.lineWidth = 1;
+      for (let x = 0; x < rect.width; x += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, rect.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < rect.height; y += 24) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(rect.width, y + 0.5);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      document.querySelectorAll(".pane, .status-panel").forEach((panel) => {
+        const r = panel.getBoundingClientRect();
+        drawPanelChrome(ctx, r.left, r.top, r.width, r.height);
+      });
+    }
+
+    function drawPanelChrome(ctx, x, y, width, height) {
+      const radius = 8;
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.45)";
+      ctx.shadowBlur = 22;
+      ctx.shadowOffsetY = 10;
+      roundedRect(ctx, x, y, width, height, radius);
+      ctx.fillStyle = "rgba(6,15,19,0.34)";
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(105,226,239,0.2)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,174,88,0.16)";
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y + 1.5);
+      ctx.lineTo(x + Math.min(width - 10, 84), y + 1.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function roundedRect(ctx, x, y, width, height, radius) {
+      const r = Math.min(radius, width / 2, height / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + width - r, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+      ctx.lineTo(x + width, y + height - r);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      ctx.lineTo(x + r, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+
     function attachSelection() {
       document.querySelectorAll("[data-select]").forEach((element) => {
         element.addEventListener("click", () => {
@@ -1452,8 +1595,11 @@ function renderHtml(snapshot) {
 
     render(initialSnapshot);
     setInterval(refresh, 10000);
-    window.addEventListener("orientationchange", () => setTimeout(refresh, 120));
-    window.addEventListener("resize", () => window.requestAnimationFrame(() => refresh()));
+    window.addEventListener("orientationchange", () => setTimeout(refresh, 180));
+    window.addEventListener("resize", () => window.requestAnimationFrame(() => {
+      setAppHeight();
+      drawHudCanvas();
+    }));
     refresh();
   </script>
 </body>
