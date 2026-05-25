@@ -272,7 +272,7 @@ async function main(): Promise<void> {
   }
 
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
-  const cadenceMultiplier = clamp(state.controls.cadenceMultiplier, 0.1, 12);
+  const cadenceMultiplier = clamp(state.controls.cadenceMultiplier, 0.01, 12);
   const effectiveGlobalHeat = config.repoFaceHeartbeats.globalHeat * cadenceMultiplier;
   state.globalHeat = effectiveGlobalHeat;
   const completedThisTick = new Set<string>();
@@ -1502,7 +1502,7 @@ function reconcileParticipants(
     const groups = initiativeGroupsFor(spec);
     const heat = heatFor(spec, groups, globalHeat, heatOverrides);
     const urgency = urgencyFor(pressureByIdentity.get(spec.id));
-    const effectiveSpeed = clamp(speed * heat * urgency, 0.1, 12);
+    const effectiveSpeed = clamp(speed * heat * urgency, 0.01, 12);
     const defaultNextTurnAt = Number.isFinite(current?.nextTurnAt)
       ? current.nextTurnAt
       : initiativeClock + ((baseRecoveryMinutes / count) * index);
@@ -1596,7 +1596,7 @@ function pullNextTurnTowardUrgency(
     return nextTurnAt;
   }
 
-  const maxWait = Math.max(0.75, baseRecoveryMinutes / Math.max(effectiveSpeed, 0.1));
+  const maxWait = Math.max(0.75, baseRecoveryMinutes / Math.max(effectiveSpeed, 0.01));
   return Math.min(nextTurnAt, round3(initiativeClock + maxWait));
 }
 
@@ -5006,7 +5006,7 @@ function projectCharacterDescription(description: string | undefined): string | 
 
 function recoveryFor(participant: FaceHeartbeatParticipant): number {
   const loadPenalty = 1 + participant.currentLoad * 0.75;
-  return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.1);
+  return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.01);
 }
 
 async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
@@ -5157,7 +5157,7 @@ function normalizeHeartbeatControls(value: unknown): FaceHeartbeatControls {
     : [];
 
   return {
-    cadenceMultiplier: Number.isFinite(cadenceMultiplier) ? clamp(cadenceMultiplier, 0.1, 12) : 1,
+    cadenceMultiplier: Number.isFinite(cadenceMultiplier) ? clamp(cadenceMultiplier, 0.01, 12) : 1,
     manualTurnRequests: manualTurnRequests.slice(-20),
     updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
   };

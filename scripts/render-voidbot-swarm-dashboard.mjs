@@ -1325,7 +1325,7 @@ function renderHtml(snapshot) {
       const controls = snapshot.controls || {};
       const latest = (controls.manualTurnRequests || [])[0];
       return "<div class=\\"control-grid\\"><p class=\\"kicker\\">Controls</p>" +
-        "<div><div class=\\"muted\\">Heartbeat cadence</div><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.1\\" max=\\"12\\" step=\\"0.1\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div><button id=\\"cadence-apply\\" type=\\"button\\">Apply</button></div>" +
+        "<div><div class=\\"muted\\">Heartbeat cadence</div><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.01\\" max=\\"12\\" step=\\"0.01\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div><button id=\\"cadence-apply\\" type=\\"button\\">Apply</button></div>" +
         "<div><div class=\\"muted\\">Manual next turn</div><div class=\\"force-row\\"><select id=\\"force-identity\\">" + participants.map((agent) => "<option value=\\"" + esc(agent.identityId) + "\\">" + esc(agent.displayName) + " / " + esc(agent.repoName) + "</option>").join("") + "</select><button id=\\"force-turn\\" type=\\"button\\">Pull</button></div></div>" +
         "<div class=\\"mono muted\\">Latest request: " + esc(latest?.identityId || "none") + " " + esc(latest?.status || "") + "</div>" +
       "</div>";
@@ -1603,7 +1603,7 @@ function renderHtml(snapshot) {
       const forceButton = document.getElementById("force-turn");
       if (forceSelect && selectedIdentity) forceSelect.value = selectedIdentity;
       if (cadenceInput && cadenceValue) {
-        cadenceInput.addEventListener("input", () => cadenceValue.textContent = "x" + Number(cadenceInput.value).toLocaleString(undefined, { maximumFractionDigits: 1 }));
+        cadenceInput.addEventListener("input", () => cadenceValue.textContent = "x" + Number(cadenceInput.value).toLocaleString(undefined, { maximumFractionDigits: 2 }));
       }
       if (cadenceApply && cadenceInput) {
         cadenceApply.addEventListener("click", async () => {
@@ -1771,8 +1771,8 @@ async function handleControlUpdate(request, response) {
   }
   const body = await readRequestJson(request);
   const multiplier = Number(body.cadenceMultiplier);
-  if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 12) {
-    writeJsonResponse(response, 400, { ok: false, error: "cadenceMultiplier must be between 0.1 and 12." });
+  if (!Number.isFinite(multiplier) || multiplier < 0.01 || multiplier > 12) {
+    writeJsonResponse(response, 400, { ok: false, error: "cadenceMultiplier must be between 0.01 and 12." });
     return;
   }
   const state = await readMutableHeartbeatState();
@@ -1827,7 +1827,7 @@ async function writeMutableHeartbeatState(state) {
 function normalizeDashboardControls(value) {
   const controls = value && typeof value === "object" ? value : {};
   return {
-    cadenceMultiplier: Math.min(12, Math.max(0.1, Number(controls.cadenceMultiplier) || 1)),
+    cadenceMultiplier: Math.min(12, Math.max(0.01, Number(controls.cadenceMultiplier) || 1)),
     manualTurnRequests: Array.isArray(controls.manualTurnRequests) ? controls.manualTurnRequests : [],
     updatedAt: typeof controls.updatedAt === "string" ? controls.updatedAt : undefined,
   };
