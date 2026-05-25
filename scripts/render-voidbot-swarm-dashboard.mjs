@@ -1137,21 +1137,47 @@ function renderHtml(snapshot) {
       .inspector-pane {
         left: 10px;
         top: 10px;
+        right: 10px;
         bottom: auto;
-        width: calc(45% - 16px);
-        height: calc(43% - 15px);
+        width: auto;
+        height: 34%;
+        padding-right: calc(clamp(190px, 22vw, 230px) + 24px);
+        grid-template-columns: minmax(230px, 0.9fr) minmax(180px, 0.76fr) minmax(230px, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+        align-items: stretch;
       }
       .tree-pane {
         left: 10px;
-        top: calc(43% + 5px);
+        top: calc(34% + 20px);
         bottom: 10px;
-        width: calc(45% - 16px);
+        width: calc(44% - 16px);
       }
       .memory-pane {
-        left: calc(45% + 4px);
-        top: 10px;
+        left: calc(44% + 4px);
+        top: calc(34% + 20px);
         right: 10px;
         bottom: 10px;
+      }
+      .control-grid {
+        min-height: 0;
+      }
+      .inspector-hero {
+        align-self: start;
+      }
+      .agent-stats {
+        min-height: 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 7px;
+      }
+      .agent-stat {
+        padding: 7px;
+      }
+      .agent-bar {
+        height: 7px;
+      }
+      .inspector-lore {
+        display: none;
       }
       .turn-card { width: 72px; height: 96px; }
       .status-panel {
@@ -1160,15 +1186,39 @@ function renderHtml(snapshot) {
         right: 8px;
         bottom: auto;
         left: auto;
-        width: 230px;
+        width: clamp(190px, 22vw, 230px);
         height: 88px;
       }
     }
 
     @media (max-width: 760px) {
       .pane { padding: 12px; }
-      .inspector-lore { display: none; }
       .status-panel { width: 210px; }
+    }
+
+    @media (max-width: 850px) and (orientation: portrait) {
+      .inspector-pane {
+        height: 38%;
+        padding-right: 12px;
+        grid-template-columns: minmax(210px, 1fr) minmax(170px, 0.8fr);
+      }
+      .agent-stats {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .tree-pane {
+        top: calc(38% + 20px);
+      }
+      .memory-pane {
+        top: calc(38% + 20px);
+      }
+      .status-panel {
+        top: auto;
+        right: 12px;
+        bottom: 12px;
+        width: 180px;
+        height: 84px;
+      }
     }
 
     @media (max-width: 980px) and (orientation: landscape) {
