@@ -58,6 +58,11 @@ export const searchSourcesInputSchema = {
   language: z.string().min(1).optional(),
 };
 
+export const searchWebInputSchema = {
+  query: z.string().min(1).max(240),
+  limit: z.number().int().min(1).max(8).optional(),
+};
+
 export const sourceContextInputSchema = {
   sourceId: z.string().min(1),
   chunkIndex: z.number().int().min(0).optional(),
@@ -121,6 +126,11 @@ export interface SearchSourcesArgs {
   repoName?: string;
   pathPrefix?: string;
   language?: string;
+}
+
+export interface SearchWebArgs {
+  query: string;
+  limit?: number;
 }
 
 export interface SourceContextArgs {

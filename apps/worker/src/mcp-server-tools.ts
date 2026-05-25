@@ -32,6 +32,7 @@ import {
   type RuntimeInfoArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
+  type SearchWebArgs,
   type SourceContextArgs,
   formatArchivedMessage,
   formatHistoryResults,
@@ -46,6 +47,7 @@ import {
   runtimeInfoInputSchema,
   searchHistoryInputSchema,
   searchSourcesInputSchema,
+  searchWebInputSchema,
   sourceContextInputSchema,
 } from "./mcp-server-shared";
 
@@ -54,6 +56,13 @@ const READ_ONLY_ANNOTATIONS = {
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
+} as const;
+
+const OPEN_WORLD_READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
 } as const;
 
 function isMcpToolAllowed(name: string): boolean {
@@ -187,6 +196,41 @@ export function registerVoidbotTools(
         structuredContent: {
           repoCount: repos.length,
           repos,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "search_web",
+    {
+      title: "Search The Web",
+      description:
+        "Search the public internet for fresh outside references, examples, cultural material, technical terms, and unfamiliar concepts. Use this as the Face's local Eyes when repo/archive memory feels too narrow. Treat results as leads, not durable truth.",
+      inputSchema: searchWebInputSchema,
+      annotations: OPEN_WORLD_READ_ONLY_ANNOTATIONS,
+    },
+    async (input: SearchWebArgs): Promise<CallToolResult> => {
+      const results = await searchWeb(input.query, input.limit ?? 5);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              results.length > 0
+                ? renderJsonBlock({
+                    query: input.query,
+                    resultCount: results.length,
+                    results,
+                  })
+                : `No public web results were found for "${input.query}".`,
+          },
+        ],
+        structuredContent: {
+          query: input.query,
+          resultCount: results.length,
+          results,
         },
       };
     },
@@ -795,6 +839,216 @@ export function registerVoidbotTools(
       };
     },
   );
+}
+
+async function searchWeb(
+  query: string,
+  limit: number,
+): Promise<Array<{ title: string; url: string; snippet?: string }>> {
+  const requestedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
+  try {
+    const mojeekResults = parseMojeekResults(await fetchMojeekHtml(query), requestedLimit);
+    if (mojeekResults.length > 0) {
+      return mojeekResults;
+    }
+  } catch {
+    // Fall through to other public search surfaces.
+  }
+
+  try {
+    const duckDuckGoResults = parseDuckDuckGoResults(await fetchDuckDuckGoHtml(query), requestedLimit);
+    if (duckDuckGoResults.length > 0) {
+      return duckDuckGoResults;
+    }
+  } catch {
+    // Fall through to Bing before reporting failure.
+  }
+
+  const bingUrl = new URL("https://www.bing.com/search");
+  bingUrl.searchParams.set("q", query);
+
+  const bingResponse = await fetch(bingUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; VoidBot Face Eyes/0.1; +https://github.com/GameCult/VoidBot)",
+      Accept: "text/html,application/xhtml+xml",
+    },
+  });
+
+  if (!bingResponse.ok) {
+    throw new Error(`Web search failed: ${bingResponse.status} ${bingResponse.statusText}`);
+  }
+
+  return parseBingResults(await bingResponse.text(), requestedLimit);
+}
+
+async function fetchMojeekHtml(query: string): Promise<string> {
+  const url = new URL("https://www.mojeek.com/search");
+  url.searchParams.set("q", query);
+
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; VoidBot Face Eyes/0.1; +https://github.com/GameCult/VoidBot)",
+      Accept: "text/html,application/xhtml+xml",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Web search failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.text();
+}
+
+function parseMojeekResults(
+  html: string,
+  limit: number,
+): Array<{ title: string; url: string; snippet?: string }> {
+  const results: Array<{ title: string; url: string; snippet?: string }> = [];
+  const resultPattern = /<!--rs--><li[^>]*>[\s\S]*?<h2>\s*<a[^>]+class="title"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>[\s\S]*?<p class="s">([\s\S]*?)<\/p>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = resultPattern.exec(html)) && results.length < limit) {
+    const rawUrl = decodeHtml(match[1] ?? "");
+    const title = normalizeWhitespace(stripHtml(match[2] ?? ""));
+    const snippet = normalizeWhitespace(stripHtml(match[3] ?? ""));
+    if (title && rawUrl) {
+      results.push({
+        title,
+        url: rawUrl,
+        ...(snippet ? { snippet } : {}),
+      });
+    }
+  }
+
+  return results;
+}
+
+function parseBingResults(
+  html: string,
+  limit: number,
+): Array<{ title: string; url: string; snippet?: string }> {
+  const results: Array<{ title: string; url: string; snippet?: string }> = [];
+  const resultPattern = /<li class="b_algo"[\s\S]*?<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>([\s\S]*?)(?=<li class="b_algo"|<li class="b_ans"|<div id="b_pag"|<\/ol>)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = resultPattern.exec(html)) && results.length < limit) {
+    const rawUrl = decodeHtml(match[1] ?? "");
+    const title = normalizeWhitespace(stripHtml(match[2] ?? ""));
+    const body = match[3] ?? "";
+    const snippetMatch = body.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    const snippet = snippetMatch ? normalizeWhitespace(stripHtml(snippetMatch[1] ?? "")) : undefined;
+    const resolvedUrl = normalizeBingResultUrl(rawUrl);
+    if (!title || !resolvedUrl) {
+      continue;
+    }
+    results.push({
+      title,
+      url: resolvedUrl,
+      ...(snippet ? { snippet } : {}),
+    });
+  }
+
+  return results;
+}
+
+function normalizeBingResultUrl(rawUrl: string): string | undefined {
+  try {
+    const decodedRawUrl = decodeHtml(rawUrl);
+    const parsed = new URL(decodedRawUrl);
+    const encodedTarget = parsed.searchParams.get("u")
+      ?? decodedRawUrl.match(/[?&]u=([^&]+)/)?.[1];
+    if (!encodedTarget) {
+      return parsed.toString();
+    }
+    const normalized = decodeURIComponent(encodedTarget).startsWith("a1")
+      ? decodeURIComponent(encodedTarget).slice(2)
+      : decodeURIComponent(encodedTarget);
+    return decodeBase64Url(normalized);
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeBase64Url(value: string): string {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
+async function fetchDuckDuckGoHtml(query: string): Promise<string> {
+  const url = new URL("https://html.duckduckgo.com/html/");
+  url.searchParams.set("q", query);
+
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; VoidBot Face Eyes/0.1; +https://github.com/GameCult/VoidBot)",
+      Accept: "text/html,application/xhtml+xml",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Web search failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.text();
+}
+
+function parseDuckDuckGoResults(
+  html: string,
+  limit: number,
+): Array<{ title: string; url: string; snippet?: string }> {
+  const results: Array<{ title: string; url: string; snippet?: string }> = [];
+  const resultPattern = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = resultPattern.exec(html)) && results.length < limit) {
+    const rawUrl = decodeHtml(match[1] ?? "");
+    const title = normalizeWhitespace(stripHtml(match[2] ?? ""));
+    const snippet = normalizeWhitespace(stripHtml(match[3] ?? ""));
+    const resolvedUrl = normalizeDuckDuckGoResultUrl(rawUrl);
+    if (title && resolvedUrl) {
+      results.push({
+        title,
+        url: resolvedUrl,
+        ...(snippet ? { snippet } : {}),
+      });
+    }
+  }
+
+  return results;
+}
+
+function normalizeDuckDuckGoResultUrl(rawUrl: string): string | undefined {
+  try {
+    const parsed = rawUrl.startsWith("//") ? new URL(`https:${rawUrl}`) : new URL(rawUrl);
+    const redirected = parsed.searchParams.get("uddg");
+    const resolved = redirected ? decodeURIComponent(redirected) : parsed.toString();
+    if (resolved.includes("duckduckgo.com/y.js?")) {
+      return undefined;
+    }
+    return resolved;
+  } catch {
+    return undefined;
+  }
+}
+
+function stripHtml(value: string): string {
+  return decodeHtml(value.replace(/<[^>]*>/g, " "));
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
 }
 
 async function resolveRepoIdentityForTool(

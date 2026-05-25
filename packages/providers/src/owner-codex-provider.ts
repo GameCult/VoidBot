@@ -551,6 +551,7 @@ function restrictMcpServersToRepoFaceExploration(
     "list_indexed_repos",
     "search_sources",
     "get_source_context",
+    "search_web",
   ].join(",");
 
   return servers.map((server) => ({
