@@ -23,6 +23,7 @@
     "state:render-dashboard": "powershell -ExecutionPolicy Bypass -File scripts/render-voidbot-operations-dashboard.ps1",
     "swarm:dashboard": "node scripts/render-voidbot-swarm-dashboard.mjs --serve --host 0.0.0.0",
     "swarm:render-dashboard": "node scripts/render-voidbot-swarm-dashboard.mjs",
+    "swarm:eve-cef-relay": "npm run swarm:render-dashboard && dotnet run --project tools/EveCefRelay/EveCefRelay.csproj --",
     "state:sync-offsite": "powershell -ExecutionPolicy Bypass -File scripts/sync-voidbot-backup-offsite.ps1",
     "state:install-startup-task": "powershell -ExecutionPolicy Bypass -File scripts/install-stack-startup-task.ps1",
     "state:install-offsite-task": "powershell -ExecutionPolicy Bypass -File scripts/install-offsite-backup-task.ps1",
