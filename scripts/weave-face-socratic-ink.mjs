@@ -25,7 +25,11 @@ async function main() {
   const scenarioPath = resolve(repoRoot, options.scenario ?? defaultScenarioPath);
   const scenario = JSON.parse(await readFile(scenarioPath, "utf8"));
   const maxPhases = numberOption(options["max-phases"], scenario.phases.length);
-  const maxDepth = numberOption(options["max-depth"], scenario.ctb?.maxFaceTurnsPerPhase ?? 3);
+  const maxDepth = numberOption(options["max-depth"], scenario.ctb?.maxFaceTurnsPerPhase ?? scenario.ctb?.branchingLimit ?? 12);
+  const generatedTurnBudget = numberOption(
+    options["generated-turn-budget"],
+    scenario.ctb?.generatedTurnBudgetPerPhase ?? scenario.ctb?.branchingLimit ?? maxDepth,
+  );
   const choiceCount = numberOption(options["choice-count"], scenario.ctb?.choiceCount ?? 3);
   const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
   const mindModel = options["mind-model"] ?? process.env.REPO_FACE_MIND_CODEX_MODEL ?? "gpt-5.4";
@@ -34,8 +38,10 @@ async function main() {
   const mindReasoningEffort = options["mind-reasoning-effort"] ?? process.env.REPO_FACE_MIND_CODEX_REASONING_EFFORT ?? "none";
   const voidReasoningEffort = options["void-reasoning-effort"] ?? "low";
   const foldMode = options["void-fold-mode"] ?? "generated";
+  const turnInterpreterMode = options["turn-interpreter-mode"] ?? "model";
   const outPath = resolve(repoRoot, options.out ?? scenario.outputInkPath);
   const receiptPath = resolve(repoRoot, options.receipts ?? scenario.receiptPath);
+  const progressPath = resolve(repoRoot, options.progress ?? ".voidbot/artifacts/socratic-ink/progress.json");
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const basePromptCache = new Map();
   const voiceCardCache = new Map();
@@ -46,6 +52,7 @@ async function main() {
     options: {
       maxPhases,
       maxDepth,
+      generatedTurnBudget,
       choiceCount,
       faceModel,
       mindModel,
@@ -54,6 +61,7 @@ async function main() {
       mindReasoningEffort,
       voidReasoningEffort,
       foldMode,
+      turnInterpreterMode,
     },
     faceTurns: [],
     voidFolds: [],
@@ -103,19 +111,19 @@ async function main() {
     const phase = scenario.phases[phaseIndex];
     const nextPhaseKnot = phaseIndex + 1 < phaseCount ? `phase_${phaseIndex + 2}` : "closing";
     const phaseCtb = cloneCtb(actors, phaseIndex * choiceCount);
-    writeSpeakerKnot(
+    const phaseOpening = normalizeUtterances(phase.voidOpening);
+    writeSpeakerSequence(
       ink,
       `phase_${phaseIndex + 1}`,
       scenario.voidRole?.displayName ?? "Void",
       scenario.voidRole?.avatarPath,
-      phase.voidOpening,
+      phaseOpening,
+      nodeName(phaseIndex, []),
       [
         `ghostlight.phase_id: ${phase.phaseId}`,
         `ghostlight.topic: ${phase.topic}`,
       ],
     );
-    ink.push(`-> ${nodeName(phaseIndex, [])}`);
-    ink.push("");
 
     await buildBranchNode({
       scenario,
@@ -124,13 +132,18 @@ async function main() {
       nextPhaseKnot,
       depth: 0,
       maxDepth,
+      generatedTurnBudget,
       choiceCount,
       ctb: phaseCtb,
+      phaseState: {
+        generatedFaceTurns: 0,
+        emittedFaceKnots: 0,
+      },
       transcript: [
         ...introduction.map((text) => ({ speaker: "Void", text })),
-        { speaker: "Void", text: phase.voidOpening },
+        ...phaseOpening.map((text) => ({ speaker: "Void", text })),
       ],
-      voidLine: phase.voidOpening,
+      voidLine: phaseOpening.at(-1) ?? "",
       basePromptCache,
       voiceCardCache,
       globalAgentDoctrine,
@@ -141,14 +154,14 @@ async function main() {
       mindReasoningEffort,
       voidReasoningEffort,
       foldMode,
+      turnInterpreterMode,
+      progressPath,
       ink,
       receipts,
     });
   }
 
-  writeSpeakerKnot(ink, "closing", scenario.voidRole?.displayName ?? "Void", scenario.voidRole?.avatarPath, scenario.closing);
-  ink.push("-> END");
-  ink.push("");
+  writeSpeakerSequence(ink, "closing", scenario.voidRole?.displayName ?? "Void", scenario.voidRole?.avatarPath, normalizeUtterances(scenario.closing), "END");
 
   await mkdir(dirname(outPath), { recursive: true });
   await mkdir(dirname(receiptPath), { recursive: true });
@@ -170,17 +183,55 @@ async function buildBranchNode(input) {
   input.ink.push(`=== ${knot} ===`);
   input.ink.push(`// ghostlight.branch_depth: ${input.depth}`);
   input.ink.push(`// ghostlight.ctb_next: ${nextActors(input.ctb, input.choiceCount).map((actor) => actor.identityId).join(",")}`);
+  input.ink.push(`// ghostlight.generated_face_turns: ${input.phaseState.generatedFaceTurns}/${input.generatedTurnBudget}`);
+  input.ink.push(`// ghostlight.emitted_face_knots: ${input.phaseState.emittedFaceKnots}/${input.generatedTurnBudget}`);
   input.ink.push("");
 
-  const candidates = nextActors(input.ctb, input.choiceCount);
-  if (input.voidFoldText) {
-    const voidChoice = sanitizeChoiceLabel(input.voidFoldChoice ?? "Void: Bring the thread back to the lesson.");
-    input.ink.push(`+ [${voidChoice}]`);
-    input.ink.push(`  -> ${foldName(input.phaseIndex, path)}`);
-    input.ink.push("");
+  const remainingEmits = input.generatedTurnBudget - input.phaseState.emittedFaceKnots;
+  if (input.depth >= input.maxDepth || remainingEmits <= 0) {
+    await writeForcedFold(input, path);
+    return;
   }
-  for (const actor of candidates) {
+
+  const reusableOptions = (input.reusableOptions ?? [])
+    .filter((option) => !path.includes(option.identityId))
+    .slice(0, Math.min(input.choiceCount, remainingEmits));
+  const candidates = [...reusableOptions];
+  const reservedIds = new Set(candidates.map((option) => option.identityId));
+  for (const actor of nextActors(input.ctb, input.choiceCount * 2)) {
+    if (
+      candidates.length >= input.choiceCount ||
+      candidates.length >= remainingEmits ||
+      input.phaseState.generatedFaceTurns >= input.generatedTurnBudget
+    ) {
+      break;
+    }
+    if (reservedIds.has(actor.identityId)) {
+      continue;
+    }
     const turn = await generateFaceTurn({ ...input, actor });
+    input.phaseState.generatedFaceTurns += 1;
+    const option = {
+      ...turn,
+      identityId: actor.identityId,
+      actor,
+      generatedAtDepth: input.depth,
+    };
+    candidates.push(option);
+    reservedIds.add(actor.identityId);
+  }
+
+  if (candidates.length === 0) {
+    await writeForcedFold(input, path);
+    return;
+  }
+
+  input.phaseState.emittedFaceKnots += candidates.length;
+
+  const branches = [];
+  for (const option of candidates) {
+    const actor = option.actor;
+    const turn = option;
     const choiceKnot = afterChoiceName(input.phaseIndex, path, actor.identityId);
     input.ink.push(`+ [${formatChoiceLabel(turn.displayName, turn.choiceLabel)}]`);
     input.ink.push(`  -> ${choiceKnot}`);
@@ -192,6 +243,30 @@ async function buildBranchNode(input) {
       { speaker: turn.displayName, text: turn.speech },
     ];
     const branchPath = [...path, actor.identityId];
+    const nextReusableOptions = candidates
+      .filter((candidate) => candidate.identityId !== actor.identityId)
+      .map((candidate) => ({ ...candidate }));
+    branches.push({
+      actor,
+      turn,
+      choiceKnot,
+      branchCtb,
+      branchTranscript,
+      branchPath,
+      nextReusableOptions,
+    });
+  }
+
+  for (const branch of branches) {
+    const {
+      actor,
+      turn,
+      choiceKnot,
+      branchCtb,
+      branchTranscript,
+      branchPath,
+      nextReusableOptions,
+    } = branch;
     writeSpeakerKnot(
       input.ink,
       choiceKnot,
@@ -200,7 +275,7 @@ async function buildBranchNode(input) {
       turn.speech,
       [
         `ghostlight.selected_face: ${actor.identityId}`,
-        `ghostlight.unspent_faces: ${candidates.filter((candidate) => candidate.identityId !== actor.identityId).map((candidate) => candidate.identityId).join(",")}`,
+        `ghostlight.unspent_faces: ${nextReusableOptions.map((candidate) => candidate.identityId).join(",")}`,
       ],
     );
     input.ink.push(`~ face_turns += 1`);
@@ -208,25 +283,15 @@ async function buildBranchNode(input) {
       const continueKnot = nodeName(input.phaseIndex, branchPath);
       input.ink.push(`-> ${continueKnot}`);
       input.ink.push("");
-      const fold = await generateVoidFold({
-        ...input,
-        transcript: branchTranscript,
-        actor,
-      });
       await buildBranchNode({
         ...input,
         depth: input.depth + 1,
         ctb: branchCtb,
         transcript: branchTranscript,
-        voidLine: fold.text,
+        voidLine: turn.speech,
         transcriptPath: branchPath,
-        voidFoldText: fold.text,
-        voidFoldChoice: `Void: ${summarizeChoice(fold.text)}`,
+        reusableOptions: nextReusableOptions,
       });
-      writeSpeakerKnot(input.ink, foldName(input.phaseIndex, branchPath), input.scenario.voidRole?.displayName ?? "Void", input.scenario.voidRole?.avatarPath, fold.text);
-      input.ink.push(`~ void_folds += 1`);
-      input.ink.push(`-> ${input.nextPhaseKnot}`);
-      input.ink.push("");
     } else {
       const fold = await generateVoidFold({
         ...input,
@@ -235,12 +300,36 @@ async function buildBranchNode(input) {
       });
       input.ink.push(`-> ${foldName(input.phaseIndex, branchPath)}`);
       input.ink.push("");
-      writeSpeakerKnot(input.ink, foldName(input.phaseIndex, branchPath), input.scenario.voidRole?.displayName ?? "Void", input.scenario.voidRole?.avatarPath, fold.text);
-      input.ink.push(`~ void_folds += 1`);
-      input.ink.push(`-> ${input.nextPhaseKnot}`);
-      input.ink.push("");
+      writeSpeakerSequence(
+        input.ink,
+        foldName(input.phaseIndex, branchPath),
+        input.scenario.voidRole?.displayName ?? "Void",
+        input.scenario.voidRole?.avatarPath,
+        fold.panels ?? [fold.text],
+        input.nextPhaseKnot,
+        [],
+        [`~ void_folds += 1`],
+      );
     }
   }
+}
+
+async function writeForcedFold(input, path) {
+  const fold = await generateVoidFold(input);
+  const foldStart = foldName(input.phaseIndex, path);
+  input.ink.push(`+ [Void: Bring the thread back to the lesson]`);
+  input.ink.push(`  -> ${foldStart}`);
+  input.ink.push("");
+  writeSpeakerSequence(
+    input.ink,
+    foldStart,
+    input.scenario.voidRole?.displayName ?? "Void",
+    input.scenario.voidRole?.avatarPath,
+    fold.panels ?? [fold.text],
+    input.nextPhaseKnot,
+    [],
+    [`~ void_folds += 1`],
+  );
 }
 
 async function generateFaceTurn(input) {
@@ -251,6 +340,7 @@ async function generateFaceTurn(input) {
     title: input.scenario.title,
     phaseTopic: input.phase.topic,
     phaseSetup: input.phase.laySetup ?? "Void has introduced only the immediate question. Keep the response accessible.",
+    commonCounterarguments: renderList(input.phase.commonCounterarguments ?? input.scenario.commonCounterarguments ?? []),
     voidLine: input.voidLine,
     transcript,
     actorRole: input.actor.role ?? "",
@@ -272,14 +362,23 @@ async function generateFaceTurn(input) {
     transcript,
     draftResponse: faceText,
   });
-  const mindRun = await runCodex(mindPrompt, {
-    model: input.mindModel,
-    reasoningEffort: input.mindReasoningEffort,
-    mcpMode: "none",
-    timeoutMs: 240_000,
-  });
-  const mindText = extractFinalText(parseJsonEvents(mindRun.stdout), mindRun.stdout);
-  const parsedMind = parseArticleInterpreterOutput(mindText);
+  let mindRun;
+  let mindText;
+  let parsedMind;
+  if (input.turnInterpreterMode === "local") {
+    parsedMind = localArticleInterpretation(parsedFace, faceText, input.actor);
+    mindRun = { code: 0, durationMs: 0, stderr: "" };
+    mindText = JSON.stringify(parsedMind);
+  } else {
+    mindRun = await runCodex(mindPrompt, {
+      model: input.mindModel,
+      reasoningEffort: input.mindReasoningEffort,
+      mcpMode: "none",
+      timeoutMs: 240_000,
+    });
+    mindText = extractFinalText(parseJsonEvents(mindRun.stdout), mindRun.stdout);
+    parsedMind = parseArticleInterpreterOutput(mindText);
+  }
   const speech = cleanSpeakerPrefix(parsedMind.speech || parsedFace.speech || faceText, input.actor.displayName ?? input.actor.identityId);
   const choiceLabel = parsedMind.choiceLabel || parsedFace.choiceLabel || `${input.actor.displayName ?? input.actor.identityId}: ${speech}`;
   const receipt = {
@@ -296,6 +395,8 @@ async function generateFaceTurn(input) {
       stderrTail: faceRun.stderr.slice(-2000),
     },
     mind: {
+      mode: input.turnInterpreterMode,
+      prompt: input.turnInterpreterMode === "local" ? undefined : mindPrompt,
       exitCode: mindRun.code,
       durationMs: mindRun.durationMs,
       text: mindText,
@@ -306,6 +407,7 @@ async function generateFaceTurn(input) {
     choiceLabel,
   };
   input.receipts.faceTurns.push(receipt);
+  await writeProgress(input);
   return {
     displayName: input.actor.displayName ?? input.actor.identityId,
     speech,
@@ -315,9 +417,13 @@ async function generateFaceTurn(input) {
 
 async function generateVoidFold(input) {
   if (input.foldMode === "template") {
-    const text = `Hold that answer. The next question is simpler and sharper: ${input.phase.foldTarget}`;
-    input.receipts.voidFolds.push({ phaseId: input.phase.phaseId, depth: input.depth, mode: "template", text });
-    return { text };
+    const panels = input.phase.foldPanels?.length
+      ? normalizeUtterances(input.phase.foldPanels)
+      : [`Hold that answer.`, `The next question is simpler and sharper: ${input.phase.foldTarget}`];
+    const text = panels.join(" ");
+  input.receipts.voidFolds.push({ phaseId: input.phase.phaseId, depth: input.depth, mode: "template", text, panels });
+    await writeProgress(input);
+    return { text, panels };
   }
   const prompt = renderTemplate("socratic-ink-void-fold.prompt.md", {
     globalAgentDoctrine: input.globalAgentDoctrine,
@@ -334,6 +440,7 @@ async function generateVoidFold(input) {
     timeoutMs: 180_000,
   });
   const text = cleanSpeakerPrefix(extractFinalText(parseJsonEvents(run.stdout), run.stdout), "Void");
+  const panels = splitVoidPanels(text);
   input.receipts.voidFolds.push({
     phaseId: input.phase.phaseId,
     depth: input.depth,
@@ -342,9 +449,11 @@ async function generateVoidFold(input) {
     exitCode: run.code,
     durationMs: run.durationMs,
     text,
+    panels,
     stderrTail: run.stderr.slice(-2000),
   });
-  return { text };
+  await writeProgress(input);
+  return { text, panels };
 }
 
 async function getBaseFacePrompt(identityId, cache) {
@@ -395,7 +504,25 @@ async function getActorVoiceCard(actor, basePromptCache, voiceCardCache, input) 
     voiceCard,
     stderrTail: run.stderr.slice(-2000),
   });
+  await writeProgress(input);
   return voiceCard;
+}
+
+async function writeProgress(input) {
+  if (!input.progressPath) {
+    return;
+  }
+  await mkdir(dirname(input.progressPath), { recursive: true });
+  await writeFile(input.progressPath, `${JSON.stringify({
+    scenarioId: input.scenario.scenarioId,
+    generatedAt: new Date().toISOString(),
+    phaseId: input.phase?.phaseId,
+    generatedFaceTurns: input.phaseState?.generatedFaceTurns,
+    emittedFaceKnots: input.phaseState?.emittedFaceKnots,
+    faceTurns: input.receipts.faceTurns.length,
+    voidFolds: input.receipts.voidFolds.length,
+    voiceCards: input.receipts.voiceCards?.length ?? 0,
+  }, null, 2)}\n`, "utf8");
 }
 
 function nextActors(ctb, count) {
@@ -455,6 +582,54 @@ function writeSpeakerKnot(ink, knot, speaker, avatarPath, speech, comments = [])
     ink.push(`# avatar: ${avatarPath}`);
   }
   ink.push(cleanSpeakerPrefix(speech, speaker));
+}
+
+function writeSpeakerSequence(ink, baseKnot, speaker, avatarPath, utterances, finalTarget, comments = [], beforeFinalDivert = []) {
+  const panels = normalizeUtterances(utterances);
+  for (let index = 0; index < panels.length; index += 1) {
+    const knot = index === 0 ? baseKnot : `${baseKnot}_${index + 1}`;
+    const next = index + 1 < panels.length ? `${baseKnot}_${index + 2}` : finalTarget;
+    writeSpeakerKnot(ink, knot, speaker, avatarPath, panels[index], index === 0 ? comments : []);
+    if (index + 1 === panels.length) {
+      for (const line of beforeFinalDivert) {
+        ink.push(line);
+      }
+    }
+    ink.push(next === "END" ? "-> END" : `-> ${next}`);
+    ink.push("");
+  }
+}
+
+function normalizeUtterances(value) {
+  const raw = Array.isArray(value) ? value : [value];
+  const cleaned = raw.map((entry) => cleanSpeech(entry)).filter(Boolean);
+  return cleaned.length ? cleaned : [""];
+}
+
+function splitVoidPanels(value) {
+  const text = cleanSpeakerPrefix(value, "Void");
+  const sentences = text.match(/[^.!?]+[.!?]+(?:["']|\)|\])?/g) ?? [text];
+  const panels = [];
+  let current = "";
+  for (const sentence of sentences.map((entry) => entry.trim()).filter(Boolean)) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (candidate.length > 320 && current) {
+      panels.push(current);
+      current = sentence;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) {
+    panels.push(current);
+  }
+  return panels.length ? panels : [text];
+}
+
+function renderList(items) {
+  const list = Array.isArray(items) ? items : [items];
+  const cleaned = list.map((item) => cleanSpeech(item)).filter(Boolean);
+  return cleaned.length ? cleaned.map((item) => `- ${item}`).join("\n") : "- No specific counterargument assigned; choose the most natural reader objection for this moment.";
 }
 
 function formatChoiceLabel(displayName, value) {
@@ -548,6 +723,17 @@ function parseArticleInterpreterOutput(text) {
       privateNote: section(text, "private_note") || section(text, "PRIVATE NOTE") || "",
     };
   }
+}
+
+function localArticleInterpretation(parsedFace, faceText, actor) {
+  const displayName = actor.displayName ?? actor.identityId;
+  const speech = cleanSpeakerPrefix(parsedFace.speech || faceText, displayName);
+  const choiceLabel = formatChoiceLabel(displayName, parsedFace.choiceLabel || speech);
+  return {
+    choiceLabel,
+    speech,
+    privateNote: parsedFace.privateNote || "Local article interpreter preserved the strict Face response shape.",
+  };
 }
 
 function section(text, label) {

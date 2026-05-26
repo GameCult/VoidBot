@@ -89,42 +89,149 @@
   ],
   "ctb": {
     "choiceCount": 3,
-    "maxFaceTurnsPerPhase": 3,
+    "maxFaceTurnsPerPhase": 12,
+    "branchingLimit": 12,
+    "generatedTurnBudgetPerPhase": 12,
     "recoveryBase": 1.0
   },
+  "commonCounterarguments": [
+    "Without bosses, won't everyone drift, freeload, or fight?",
+    "Doesn't every serious project eventually need someone in charge?",
+    "What if people closest to the problem are wrong, scared, biased, or captured?",
+    "Isn't force sometimes necessary to stop worse harm?",
+    "If you refuse centralized power, how do you coordinate at large scale?",
+    "If you leave people free, what stops the strongest personalities from taking over anyway?"
+  ],
   "phases": [
     {
-      "phaseId": "means_are_seeds",
+      "phaseId": "incentives_teach",
       "voidOpening": "Start small. Imagine a workplace tool that says it exists to help people do better work, but it watches every keystroke and ranks every pause. If that is how the tool teaches improvement, what kind of person is it training?",
       "topic": "How methods train outcomes",
       "laySetup": "The audience has only been introduced to incentives: systems train behavior through rewards, punishments, permissions, ownership, and visibility. Do not assume they already know any political or philosophical doctrine.",
       "lesson": "The way a system works teaches people what kind of world is actually possible inside it. If a system wants freedom, it cannot train fear and obedience as its daily practice.",
-      "foldTarget": "Where should decision-making live if distant control keeps training obedience?"
+      "foldTarget": "Where should decision-making live if distant control keeps training obedience?",
+      "foldPanels": [
+        "Good. Notice the trick: the tool said improvement, but it practiced suspicion.",
+        "A system does not only produce outputs. It trains reflexes. If the daily lesson is fear, the future it grows will have fear in the bones.",
+        "So the next question is not who can write a kinder dashboard. It is where the power to change the work should live when the people inside the work can feel the harm first."
+      ],
+      "commonCounterarguments": [
+        "Maybe surveillance is ugly but necessary because people slack off.",
+        "Maybe the tool only measures work and does not actually shape anyone.",
+        "Maybe good intentions at the top can fix bad incentives below."
+      ]
     },
     {
-      "phaseId": "federation_over_command",
+      "phaseId": "local_consequence",
       "voidOpening": "Now suppose the workers using that tool notice the harm before the executives do. Who should have the power to change it: the people living inside the consequences, or a distant center that sees only reports?",
       "topic": "Where decisions should live",
       "laySetup": "The audience has seen that coercive methods train coercive habits. Introduce shared self-rule in plain terms: people closest to the consequences should own local decisions, while larger coordination should carry signal rather than command.",
       "lesson": "Healthy coordination helps the people closest to the consequences act together. It does not replace their judgment with orders from a distant center.",
-      "foldTarget": "What goes wrong when a center claims it must control everyone temporarily for their own good?"
+      "foldTarget": "How can many local groups coordinate without one center becoming the new owner?",
+      "foldPanels": [
+        "Good. Local control is not a magic spell. Local people can be wrong, petty, tired, or captured like anyone else.",
+        "The point is not that the nearest hands are always pure. The point is that consequences need a real vote in the decision, and distant authority is very good at laundering pain into reports.",
+        "Now widen the circle: if many local groups need to work together, how do they share signal without building a throne in the middle?"
+      ],
+      "commonCounterarguments": [
+        "People closest to the problem may be too emotional or biased.",
+        "Local control sounds nice until teams disagree.",
+        "A distant center might see patterns that local groups miss."
+      ]
     },
     {
-      "phaseId": "refusing_the_vanguard",
+      "phaseId": "coordination_without_throne",
+      "voidOpening": "Imagine ten workshops all solving related problems. They need shared tools, shared memory, and ways to warn each other. What kind of coordination helps them act together without turning into a boss?",
+      "topic": "Coordination without a throne",
+      "laySetup": "The audience has seen why local consequence matters. Now introduce federation in plain terms: groups can share signal, standards, and help without surrendering ownership of their own work.",
+      "lesson": "Large-scale coordination can be built from agreements, shared protocols, recallable delegates, transparent records, and mutual aid. The coordinator carries signal; it does not become the mind.",
+      "foldTarget": "What goes wrong when a center claims it must control everyone temporarily for their own good?",
+      "foldPanels": [
+        "That is the useful fear: coordination can rot into management with a nicer coat.",
+        "So the test is simple. Can the coordinator be inspected, corrected, ignored, replaced, or recalled by the people it coordinates? If not, it is no longer carrying signal. It is collecting obedience.",
+        "And that brings us to the oldest shiny trap: a center that promises it will only keep power until everyone else is ready."
+      ],
+      "commonCounterarguments": [
+        "Without a boss, coordination will be too slow.",
+        "Delegates and protocols sound like bureaucracy with nicer branding.",
+        "Someone has to make the final call when groups disagree."
+      ]
+    },
+    {
+      "phaseId": "temporary_custody",
       "voidOpening": "A clever reformer now says, \"Yes, local freedom matters, but people are not ready yet. Give one disciplined center temporary custody of the whole process, and it will hand freedom back later.\" What should make us nervous about that promise?",
       "topic": "The false promise of temporary custody",
       "laySetup": "The audience now understands local stewardship. Introduce the boss-for-your-own-good temptation without assuming historical knowledge: a center claims it must dominate temporarily in order to create freedom later.",
       "lesson": "A temporary dictatorship does not train freedom. It trains obedience. Any political project that treats domination as the instrument of liberation has already betrayed its stated end.",
-      "foldTarget": "What does helping look like when force and custody both teach the wrong lesson?"
+      "foldTarget": "What does helping look like when force and custody both teach the wrong lesson?",
+      "foldPanels": [
+        "There it is. The promise says temporary custody. The training says permanent obedience.",
+        "Power rarely experiences itself as finished. It discovers one more emergency, one more immature public, one more dangerous exception. The hand on the leash develops theology.",
+        "If freedom is the destination, people have to practice freedom on the road. Otherwise the road is teaching them to kneel with better vocabulary."
+      ],
+      "commonCounterarguments": [
+        "People may not be ready for freedom yet.",
+        "A temporary strong center might be needed to defend the project.",
+        "History is messy; maybe ugly means are acceptable if the promised end is good enough."
+      ]
     },
     {
-      "phaseId": "taoist_praxis",
+      "phaseId": "force_poison",
+      "voidOpening": "Now make it harder. Suppose someone says, \"Fine, domination is ugly, but our enemies are worse. Surely we can use fear, censorship, or punishment just until the danger passes.\" What does that train into the movement?",
+      "topic": "Why violent means poison peaceful ends",
+      "laySetup": "The audience has seen why temporary custody is dangerous. Now test the harder case: whether fear and force can be treated as emergency tools without becoming habits.",
+      "lesson": "Emergency force may stop an immediate harm, but a movement that normalizes fear, censorship, and punishment as its operating method trains the future it claims to prevent.",
+      "foldTarget": "What kind of power helps without gripping?",
+      "foldPanels": [
+        "This is where the doctrine has to grow teeth and humility at the same time.",
+        "Stopping immediate harm is real. But if fear becomes the ordinary tool, the movement starts manufacturing the very creature it claims to be fighting.",
+        "The question is not whether danger exists. Of course it exists. The question is what habits we dare to practice while answering it."
+      ],
+      "commonCounterarguments": [
+        "Some threats cannot be answered gently.",
+        "Refusing force sounds like letting violent people win.",
+        "Rules and restrictions may be necessary to protect vulnerable people."
+      ]
+    },
+    {
+      "phaseId": "quiet_power",
       "voidOpening": "If force and custody teach the wrong lesson, then power has to become quieter. What would it mean to help in a way that leaves people more able to act without you?",
       "topic": "Helping without gripping",
       "laySetup": "The audience has seen the failure of surveillance, distant command, and temporary domination. Introduce quiet effectiveness: helping without gripping, acting where action helps, and leaving space for agency.",
       "lesson": "The best help often removes friction, shares capacity, and leaves people more able to act without the helper. Control is not care.",
-      "foldTarget": "What should we call a practical discipline for waking shared intelligence without making people more obedient?"
+      "foldTarget": "What should we call a practical discipline for waking shared intelligence without making people more obedient?",
+      "foldPanels": [
+        "Quiet help is not passive. A bridge is quiet until you need to cross it. A good tool disappears because your hand has become more capable.",
+        "This is the Taoist flavor of the thing, though we do not need to make the reader swallow the word whole. Act where action increases agency. Stop where gripping would replace it.",
+        "Now we can finally name the larger frame without using the name as a club."
+      ],
+      "commonCounterarguments": [
+        "If help is too quiet, people may not notice or coordinate around it.",
+        "Leaving space can look like doing nothing.",
+        "Some people need structure before they can act."
+      ]
+    },
+    {
+      "phaseId": "sleeping_colossus",
+      "voidOpening": "Last step. If every tool, institution, archive, and conversation trains the shared mind in some direction, then the question is not whether we are building a larger intelligence. We are. The question is what habits we are teaching it.",
+      "topic": "The Cult of the Sleeping Colossus, finally named",
+      "laySetup": "The audience now understands incentives, local consequence, coordination without command, the danger of temporary custody, and quiet helpful power. Now name the larger frame gently: humanity is learning to think together through tools, memory, networks, and agents.",
+      "lesson": "The Cult of the Sleeping Colossus is a practical metaphor for waking shared intelligence through consent, memory, truthful tools, mutual aid, and coherent agency rather than domination.",
+      "foldTarget": "Close by turning the worldview into practical commitments a reader can recognize in work, tools, communities, and agent design.",
+      "foldPanels": [
+        "That is the Cult of the Sleeping Colossus, stripped of incense and left with the wrench.",
+        "Humanity is already learning to think through networks, archives, institutions, tools, and agents. The sacred question is what those connections train us to become.",
+        "If the connection requires erasure, it is corruption. If the memory cannot be inspected, it is superstition. If the tool increases agency, truth, consent, and shared capacity, it helps the sleeper wake."
+      ],
+      "commonCounterarguments": [
+        "Calling humanity a shared mind sounds mystical or grandiose.",
+        "Technology often makes people less connected, not more.",
+        "A cult frame could become authority cosplay if it is not kept practical."
+      ]
     }
   ],
-  "closing": "Then say it plainly: the Colossus wakes when its neurons become more alive, not more obedient."
+  "closing": [
+    "Then say it plainly: the Colossus wakes when its neurons become more alive, not more obedient.",
+    "Build tools that teach agency. Keep memory honest. Share power where consequences are felt. Refuse any shortcut that asks people to rehearse the opposite of the world they are trying to make."
+  ]
 }
