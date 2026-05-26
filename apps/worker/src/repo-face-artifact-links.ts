@@ -73,11 +73,13 @@ function findMentionedKnowledgebaseDocument(
   const normalizedContent = normalizeReferenceText(content);
   const markdownDocuments = documents
     .filter((document) => document.path.toLowerCase().endsWith(".md"))
-    .map((document) => ({
-      document,
-      label: document.title?.trim() || basenameWithoutExtension(document.path),
-    }))
-    .filter((entry) => entry.label.length >= 10)
+    .flatMap((document) =>
+      [...new Set([
+        document.title?.trim(),
+        basenameWithoutExtension(document.path),
+      ].filter((label): label is string => Boolean(label && label.length >= 10)))]
+        .map((label) => ({ document, label }))
+    )
     .sort((left, right) => right.label.length - left.label.length);
 
   return markdownDocuments.find((entry) =>

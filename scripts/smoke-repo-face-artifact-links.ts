@@ -27,7 +27,7 @@ const documents: ArchivedSourceDocumentRecord[] = [
     id: `AetheriaLore:${continuityPath}`,
     repoName: "AetheriaLore",
     path: continuityPath,
-    title: "Continuity Admissibility Finding",
+    title: continuityPath,
     content: "",
     normalizedContent: "",
     indexedAt: "2026-05-26T00:00:00.000Z",
