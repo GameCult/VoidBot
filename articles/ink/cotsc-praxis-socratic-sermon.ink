@@ -1,8 +1,3 @@
-// ghostlight.scenario: cotsc-praxis-socratic-sermon
-// ghostlight.generated_at: authored-middle-pass-2026-05-26
-// ghostlight.receipts: hand-authored from harness baseline after reader-experience pass
-VAR face_turns = 0
-VAR void_folds = 0
 VAR market_pressure = false
 VAR management_pressure = false
 VAR state_force_pressure = false
@@ -50,20 +45,16 @@ The Sleeping Colossus is humanity learning to think together across distance and
 === intro_5 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-So tonight I ask the Faces for disagreement before certainty. No one here needs to sound converted. The lesson has to be found in the pressure between fear, hunger, pride, habit, and the little bargains people make to get through the day.
+So tonight I ask the circle for disagreement before certainty. No one here needs to sound converted. The lesson has to be found in the pressure between fear, hunger, pride, habit, and the little bargains people make to get through the day.
 -> phase_1
 
 === phase_1 ===
-// ghostlight.phase_id: incentives_teach
-// ghostlight.topic: How methods train outcomes
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 Start small. A workplace installs software that tracks keystrokes, screenshots, idle time, and visible activity. It claims to protect the team from freeloaders and help everyone improve. What does the tool make easier, and what does it make harder?
 -> p1_root
 
 === p1_root ===
-// ghostlight.branch_depth: 0
-// ghostlight.ctb_next: aqua,kiko,nibu
 + [Aqua: Being watched changes the work]
   -> p1_aqua
 + [Kiko: Bad workplaces should lose workers]
@@ -75,7 +66,6 @@ Start small. A workplace installs software that tracks keystrokes, screenshots, 
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 It changes the work before anyone admits it did. You stop taking the quiet minute where the good idea lives, because the tool only sees an idle body. The job becomes less "do the work" and more "look safe to the watcher."
-~ face_turns += 1
 -> p1_after_aqua
 
 === p1_after_aqua ===
@@ -91,7 +81,6 @@ It changes the work before anyone admits it did. You stop taking the quiet minut
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 If the tool is that bad, shouldn't the company pay for it? People quit, better shops win, creepy boss software gets mocked into the landfill. That is the clean story, anyway. I want to know where it breaks.
 ~ market_pressure = true
-~ face_turns += 1
 -> p1_after_kiko
 
 === p1_kiko_after_aqua ===
@@ -99,7 +88,6 @@ If the tool is that bad, shouldn't the company pay for it? People quit, better s
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 I hear that. I also hear the libertarian in the back saying, "Then leave." If the tool makes good workers miserable, the company should lose them. Why does that not solve it?
 ~ market_pressure = true
-~ face_turns += 1
 -> p1_after_kiko
 
 === p1_after_kiko ===
@@ -115,7 +103,6 @@ I hear that. I also hear the libertarian in the back saying, "Then leave." If th
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 I hate the little eye, but I understand the panic. Sometimes one person really is carrying the team while three others coast. If management has no signal at all, the quiet responsible person gets eaten.
 ~ management_pressure = true
-~ face_turns += 1
 -> p1_after_nibu
 
 === p1_nibu_after_aqua ===
@@ -123,7 +110,6 @@ I hate the little eye, but I understand the panic. Sometimes one person really i
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 Then put the burden on management. Show the harm is smaller than the problem. Show false positives, appeal rights, stress, turnover, and who can turn the thing off. Otherwise it is just command with a dashboard.
 ~ management_pressure = true
-~ face_turns += 1
 -> p1_after_nibu
 
 === p1_after_nibu ===
@@ -138,14 +124,12 @@ Then put the burden on management. Show the harm is smaller than the problem. Sh
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Leaving is not free when rent is due. A job can be awful and still be the bridge between you and hunger. Calling that a choice is like calling drowning a swimming style.
-~ face_turns += 1
 -> p1_fold
 
 === p1_epiphany_market ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 Markets can carry real signal. They are not magic ears. If workers cannot refuse without getting crushed, the market mostly hears people with cushions, lawyers, and time to shop around.
-~ face_turns += 1
 -> p1_fold
 
 === p1_nibu_state ===
@@ -153,7 +137,6 @@ Markets can carry real signal. They are not magic ears. If workers cannot refuse
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 Then make the state break the employer's hand. Ban the tool, fine the company until the board feels it, put inspectors in the room, and stop pretending a starving worker can bargain with payroll like both sides arrived with equal time and lawyers.
 ~ state_force_pressure = true
-~ face_turns += 1
 -> p1_state_reply
 
 === p1_state_reply ===
@@ -166,21 +149,18 @@ Then make the state break the employer's hand. Ban the tool, fine the company un
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Maybe. But if the cure is another office watching everyone harder, we should ask what that office starts training too. I want the boss stopped without teaching workers that rescue always arrives as a bigger boss.
-~ face_turns += 1
 -> p1_fold
 
 === p1_heimdall_limits ===
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Force without limits becomes a new owner. If inspection is needed, write who can inspect, what they can see, how workers challenge them, and when the power expires. Otherwise the cure gets its own appetite.
-~ face_turns += 1
 -> p1_fold
 
 === p1_weksa_metric ===
 # speaker: Weksa
 # avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
 A number is never just a number once people depend on it to eat. It becomes a little ritual: feed the metric, flatter the metric, fear the metric. Then everyone forgets the metric was supposed to help.
-~ face_turns += 1
 -> p1_fold
 
 === p1_kiko_alternative ===
@@ -188,7 +168,6 @@ A number is never just a number once people depend on it to eat. It becomes a li
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 Fine, but "surveillance bad" is not a schedule. If someone is getting buried by dead weight, what replaces the dashboard before resentment turns the team into a knife drawer?
 ~ management_pressure = true
-~ face_turns += 1
 -> p1_kiko_alternative_reply
 
 === p1_kiko_alternative_reply ===
@@ -201,7 +180,7 @@ One answer is not no measurement. It is measurement held by the people being mea
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 {market_pressure: Kiko's exit story matters because exit is real power when people actually have somewhere to go.}
-{management_pressure: Nibu is right that teams need signals before resentment eats the responsible person alive.}
+{management_pressure: Teams do need signals before resentment eats the responsible person alive.}
 {state_force_pressure: And if you reached for law, good; sometimes the first duty is to stop the hand on the throat.}
 Notice the shape. The problem is not that measurement, markets, management, or law are always fake. The problem is ownership: who can see the measure, challenge it, change it, or refuse it without being punished.
 -> p1_fold_2
@@ -216,19 +195,15 @@ The method trains the outcome. If improvement is pursued through fear, people pr
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 So the next question is not "who is pure enough to rule?" It is where correction can live so the people inside the consequences are not reduced to evidence for someone else's decision.
-~ void_folds += 1
 -> phase_2
 
 === phase_2 ===
-// ghostlight.phase_id: local_consequence
-// ghostlight.topic: Where decisions should live
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 Suppose workers notice harm before executives do, but executives control budget, lawyers, and the job ladder. The nearest people can see pain early. The distant center can see patterns across many rooms. How should both kinds of knowledge matter without either becoming a throne?
 -> p2_root
 
 === p2_root ===
-// ghostlight.ctb_next: epiphany,heimdall,libby
 + [Epiphany: Workers need a real switch]
   -> p2_epiphany
 + [Heimdall: Local pain can miss the larger pattern]
@@ -240,7 +215,6 @@ Suppose workers notice harm before executives do, but executives control budget,
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 The people getting scraped by the thing need a real hand on the switch, not a sympathy form. If they can only beg a clean office to believe them, the office is the owner of their pain.
-~ face_turns += 1
 -> p2_after_epiphany
 
 === p2_after_epiphany ===
@@ -255,7 +229,6 @@ The people getting scraped by the thing need a real hand on the switch, not a sy
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Local control sounds right until three teams find three different injuries and nobody notices they share one cause. Someone has to see across rooms, or every shop rebuilds the same trap with better wallpaper.
-~ face_turns += 1
 -> p2_after_heimdall
 
 === p2_after_heimdall ===
@@ -271,7 +244,6 @@ Local control sounds right until three teams find three different injuries and n
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 I want workers to have power, yes. I also know "everyone gets a voice" can turn into six meetings after a ten-hour shift. People need authority over consequences without being assigned a second unpaid job called democracy.
 ~ participation_pressure = true
-~ face_turns += 1
 -> p2_after_libby
 
 === p2_after_libby ===
@@ -286,28 +258,24 @@ I want workers to have power, yes. I also know "everyone gets a voice" can turn 
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 If I am angry enough, everything looks like proof. I want people close to the harm to have power, but not a magic veto that turns the room into whoever is bleeding loudest.
-~ face_turns += 1
 -> p2_fold
 
 === p2_heimdall_pattern ===
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Right. Oversight becomes custody when it can overrule without consent, but local testimony becomes blind if it cannot meet other testimony. The pattern needs a witness, not a crown.
-~ face_turns += 1
 -> p2_fold
 
 === p2_druzkai_local ===
 # speaker: Druzkai
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 The road under moss still knows where feet have passed. A distant map can be useful, but if it ignores the mud on the soles, it is only decoration with coordinates.
-~ face_turns += 1
 -> p2_fold
 
 === p2_epiphany_pattern ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 Seeing across rooms is useful. Owning the rooms is the extra little parasite. Publish the pattern, share the tools, let each place test the fix against the bruise it can actually feel.
-~ face_turns += 1
 -> p2_fold
 
 === p2_kiko_tie ===
@@ -315,14 +283,12 @@ Seeing across rooms is useful. Owning the rooms is the extra little parasite. Pu
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 Somebody still has to break ties. Pretending every decision will bloom into consensus is how the loudest person gets power while everyone else politely pretends it was process.
 ~ coordination_pressure = true
-~ face_turns += 1
 -> p2_fold
 
 === p2_libby_pattern ===
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Then make the center a library, not a throne. It stores patterns, receipts, failures, and tools where everyone can inspect them. The moment it hides the shelf key, bite it.
-~ face_turns += 1
 -> p2_fold
 
 === p2_aqua_energy ===
@@ -330,7 +296,6 @@ Then make the center a library, not a throne. It stores patterns, receipts, fail
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Participation has to fit a tired body. Give people switches they can actually reach: consent rules, recall, opt-outs, transparent logs, rotating roles. Not twelve sacred subcommittees and a guilt trip.
 ~ participation_pressure = true
-~ face_turns += 1
 -> p2_fold
 
 === p2_huginn_trail ===
@@ -338,7 +303,6 @@ Participation has to fit a tired body. Give people switches they can actually re
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 A decision needs a trail a latecomer can reconstruct. Who heard the warning? Who carried it to the next room? What got dropped in transit? Without that, participation becomes a campfire story everyone remembers differently.
 ~ coordination_pressure = true
-~ face_turns += 1
 -> p2_fold
 
 === p2_nibu_delegate ===
@@ -346,14 +310,13 @@ A decision needs a trail a latecomer can reconstruct. Who heard the warning? Who
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 Sometimes a delegate is mercy. I do not need every exhausted cook arguing the oven repair. I need the delegate recallable, limited, and unable to convert "I handled Tuesday" into "I own the kitchen."
 ~ participation_pressure = true
-~ face_turns += 1
 -> p2_fold
 
 === p2_fold ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-{participation_pressure: Libby named the unpaid-labor problem: a politics that only free people with spare evenings can use is already lying about freedom.}
-{coordination_pressure: Kiko and Huginn are right to distrust fake consensus; if nobody can find the decision, someone is probably hiding inside the fog.}
+{participation_pressure: A politics that only free people with spare evenings can use is already lying about freedom.}
+{coordination_pressure: Fake consensus is its own little custody arrangement; if nobody can find the decision, someone is probably hiding inside the fog.}
 Good. Local control is not purity theater. Local people can be wrong, tired, captured, or mean. Distant centers can notice real patterns.
 -> p2_fold_2
 
@@ -367,19 +330,15 @@ The difference is ownership. A coordinator helps when it makes consequences visi
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 That leads to coordination itself: how many rooms act together without inventing a boss and then pretending the boss is only a hallway.
-~ void_folds += 1
 -> phase_3
 
 === phase_3 ===
-// ghostlight.phase_id: coordination_without_throne
-// ghostlight.topic: Coordination without a throne
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 Imagine ten workshops solving related problems. They need shared tools, shared memory, shared warnings, and sometimes fast action. What kind of coordination helps them act together without turning into management with kinder stationery?
 -> p3_root
 
 === p3_root ===
-// ghostlight.ctb_next: libby,huginn,druzkai
 + [Libby: Who clears the bottleneck by Friday?]
   -> p3_libby
 + [Huginn: Who breaks the tie?]
@@ -391,7 +350,6 @@ Imagine ten workshops solving related problems. They need shared tools, shared m
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 If every shop keeps its own shelves, lovely, but when the roof leaks I still need to know who can stamp one shared fix and move. I am allergic to bosses, not deadlines.
-~ face_turns += 1
 -> p3_after_libby
 
 === p3_after_libby ===
@@ -406,7 +364,6 @@ If every shop keeps its own shelves, lovely, but when the roof leaks I still nee
 # speaker: Huginn
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 If ten shops deadlock, who actually says "we are doing this one" and keeps carts moving? Shared signal sounds like weather unless it lands in a real decision.
-~ face_turns += 1
 -> p3_after_huginn
 
 === p3_after_huginn ===
@@ -421,7 +378,6 @@ If ten shops deadlock, who actually says "we are doing this one" and keeps carts
 # speaker: Druzkai
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 Delegates can carry messages. They can also start growing polished desks around themselves. Paperwork with kind language still puts a hand on the latch if everyone else must ask permission to pass.
-~ face_turns += 1
 -> p3_after_druzkai
 
 === p3_after_druzkai ===
@@ -436,35 +392,30 @@ Delegates can carry messages. They can also start growing polished desks around 
 # speaker: Huginn
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 For roof-leak problems, decide the emergency handle before the rain. Who can act, what counts as emergency, how long the authority lasts, and how everyone reviews it after.
-~ face_turns += 1
 -> p3_fold
 
 === p3_druzkai_gate ===
 # speaker: Druzkai
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 Watch the stamp. First it marks a shared decision. Then it becomes the only mark anyone respects. Then the person holding it starts calling themselves realism.
-~ face_turns += 1
 -> p3_fold
 
 === p3_aqua_handle ===
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Make the handle visible. If I can hear who changed the mix, why, and how to challenge it, coordination feels like an instrument. If I cannot, it feels like the sound board grew teeth.
-~ face_turns += 1
 -> p3_fold
 
 === p3_libby_delegate ===
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Delegation is not the sin. Secret delegation is. Permanent delegation is. Delegation that cannot be recalled is. Let someone handle Tuesday without letting Tuesday annex the calendar.
-~ face_turns += 1
 -> p3_fold
 
 === p3_nibu_boss_shape ===
 # speaker: Nibu
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 The boss shape sneaks back because it is comfortable. One mouth, one command, one place to blame. It feels clean right up until everyone forgets how to move without being aimed.
-~ face_turns += 1
 -> p3_fold
 
 === p3_heimdall_limits ===
@@ -472,7 +423,6 @@ The boss shape sneaks back because it is comfortable. One mouth, one command, on
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Give the emergency key a tag, an expiry, and a person everyone can name. Who can open the door, who can revoke the key, and what log proves it happened? If that sounds boring, good. Custody should be too boring to romanticize.
 ~ coordination_pressure = true
-~ face_turns += 1
 -> p3_fold
 
 === p3_libby_ledger ===
@@ -480,14 +430,12 @@ Give the emergency key a tag, an expiry, and a person everyone can name. Who can
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Keep the shared notes findable by somebody who missed the meeting because their kid had a fever. Searchable names, plain summaries, old versions, translated terms. An archive that only works for the initiated is just a velvet rope with footnotes.
 ~ participation_pressure = true
-~ face_turns += 1
 -> p3_fold
 
 === p3_kiko_volunteer ===
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 What if nobody volunteers? A lot of real life is tired people hoping someone else knows the form. "No bosses" cannot mean "the most responsible sucker quietly dies under the clipboard."
-~ face_turns += 1
 -> p3_fold
 
 === p3_huginn_refusal ===
@@ -495,14 +443,13 @@ What if nobody volunteers? A lot of real life is tired people hoping someone els
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 Then the message has to survive a tired carrier. Rotation, rest, backups, and a way to say "I cannot carry this" before the next room mistakes silence for consent.
 ~ coordination_pressure = true
-~ face_turns += 1
 -> p3_fold
 
 === p3_fold ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-{participation_pressure: Libby's fever-day test matters: if the system only works for the people who can attend every meeting, it is quietly selecting its rulers.}
-{coordination_pressure: Huginn's witness problem matters too; a message that mutates between rooms can become command without anyone announcing a coup.}
+{participation_pressure: If the system only works for the people who can attend every meeting, it is quietly selecting its rulers.}
+{coordination_pressure: A message that mutates between rooms can become command without anyone announcing a coup.}
 Coordination is not command. It becomes command when the helper can no longer be inspected, ignored, replaced, recalled, or outgrown.
 -> p3_fold_2
 
@@ -516,19 +463,15 @@ The anarchist instinct here is not "never organize." It is "organize so the orga
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 Now we can approach the shiny old trap: the disciplined center that promises it will hold power only until everyone else is ready.
-~ void_folds += 1
 -> phase_4
 
 === phase_4 ===
-// ghostlight.phase_id: temporary_custody
-// ghostlight.topic: The false promise of temporary custody
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 Here is the strongest case for the disciplined center. People are exhausted, propaganda is everywhere, money already owns half the room, and slow assemblies can get outmaneuvered. A central party, board, committee, or emergency office promises to hold power just long enough to stabilize things. What would make that promise trustworthy, and what would make it a trap?
 -> p4_root
 
 === p4_root ===
-// ghostlight.ctb_next: nibu,aqua,weksa
 + [Nibu: Sometimes the center really can move]
   -> p4_nibu
 + [Aqua: But what are people practicing?]
@@ -541,7 +484,6 @@ Here is the strongest case for the disciplined center. People are exhausted, pro
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 A center can move. It can seize the warehouse before the owner empties it, keep trucks running during a strike, stop capital flight, print the notices, and put guards where the fascists were. That is why people reach for it. When the other side has lawyers, money, weapons, and a radio station, "let every local group improvise" can sound like a suicide note with handmade margins.
 ~ central_pressure = true
-~ face_turns += 1
 -> p4_after_nibu
 
 === p4_after_nibu ===
@@ -557,7 +499,6 @@ A center can move. It can seize the warehouse before the owner empties it, keep 
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 I get why people want training wheels. Falling hurts, and sometimes the road is full of trucks. But if the training wheels also decide where the bike goes, when do you learn steering instead of obedience?
 ~ central_pressure = true
-~ face_turns += 1
 -> p4_after_aqua
 
 === p4_after_aqua ===
@@ -573,7 +514,6 @@ I get why people want training wheels. Falling hurts, and sometimes the road is 
 # avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
 Temporary is how the trap introduces itself. If the same center that takes the keys also decides when everyone is ready, freedom is still locked in the drawer.
 ~ central_pressure = true
-~ face_turns += 1
 -> p4_after_weksa
 
 === p4_after_weksa ===
@@ -588,21 +528,18 @@ Temporary is how the trap introduces itself. If the same center that takes the k
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 While the center holds power, what are people practicing? Building capacity, or waiting for permission? A temporary crutch can help a leg heal. It can also teach the whole body to stop balancing.
-~ face_turns += 1
 -> p4_fold
 
 === p4_heimdall_offswitch ===
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Write the off-switch before the emergency: term limits, recall, public records, independent audit, armed authority separated from political office, and a plain test for when the exception ends.
-~ face_turns += 1
 -> p4_fold
 
 === p4_kiko_keep ===
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 If it works once, people will keep it. That is the ugly little bargain. The emergency office saves the day, then every hard problem starts trying on an emergency hat.
-~ face_turns += 1
 -> p4_fold
 
 === p4_nibu_raid ===
@@ -610,7 +547,6 @@ If it works once, people will keep it. That is the ugly little bargain. The emer
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 I know. I still want someone able to stop the raid before the pantry burns. "Build capacity" cannot be a lullaby sung over people getting crushed this week.
 ~ central_pressure = true
-~ face_turns += 1
 -> p4_counter_raid
 
 === p4_counter_raid ===
@@ -623,48 +559,42 @@ I know. I still want someone able to stop the raid before the pantry burns. "Bui
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Then make the fast thing federated before the fire. Neighborhood supply teams with shared inventories. Defense groups elected and recallable by the people they guard. Strike funds with public books. Legal aid on call. Encrypted alerts that do not require one central mouth. Fast does not have to mean unaccountable.
-~ face_turns += 1
 -> p4_fold
 
 === p4_aqua_skill ===
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 And every emergency action should leave skill behind. If the pantry is saved, someone local should now know the route, the phone tree, the lockbox, the boring checklist. Otherwise the next fire starts with the same helpless room.
-~ face_turns += 1
 -> p4_fold
 
 === p4_weksa_custody ===
 # speaker: Weksa
 # avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
 The custodian learns custody. It gets praised for decisive hands, then begins to experience every criticism as sabotage. That is not a personal flaw. That is the job remaking the person.
-~ face_turns += 1
 -> p4_fold
 
 === p4_libby_receipt ===
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Show me the receipt for giving it back. Not vibes. Not "after victory." A calendar, a recall path, public books, and training for the people who are supposed to inherit the handle.
-~ face_turns += 1
 -> p4_fold
 
 === p4_epiphany_ready ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 "Not ready" is infinitely reusable. If power gets to grade the maturity of the people it rules, the test has no end date and the teacher keeps the school.
-~ face_turns += 1
 -> p4_fold
 
 === p4_kiko_stronghand ===
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 And voters do ask for the strong hand. That cannot just be dismissed as stupidity. People get scared, bills arrive, news screams, and "someone take charge" starts sounding like oxygen.
-~ face_turns += 1
 -> p4_fold
 
 === p4_fold ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-{central_pressure: Nibu is right to make the center's case hurt. Slow purity can get people beaten while the minutes are still being approved.}
+{central_pressure: The center's case has to hurt. Slow purity can get people beaten while the minutes are still being approved.}
 That is the honest tension. Central power can move fast and sometimes stops real harm. That is why the temptation survives.
 -> p4_fold_2
 
@@ -678,19 +608,15 @@ But power rarely experiences itself as finished. It discovers one more emergency
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 The test is whether emergency action leaves more shared capacity behind, or whether it trains people to wait for the custodian's permission. That is where means begin poisoning ends.
-~ void_folds += 1
 -> phase_5
 
 === phase_5 ===
-// ghostlight.phase_id: force_poison
-// ghostlight.topic: Why coercive means poison liberatory ends
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 Now make it harder. Someone says, "Our enemies are organized, violent, and not debating in good faith. Some people need rules, force, censorship, or punishment to be safe tomorrow." What is true in that argument, and where does it start poisoning the future?
 -> p5_root
 
 === p5_root ===
-// ghostlight.ctb_next: heimdall,kiko,nibu
 + [Heimdall: Defense is not imaginary]
   -> p5_heimdall
 + [Kiko: Clean hands do not stop a knife]
@@ -703,7 +629,6 @@ Now make it harder. Someone says, "Our enemies are organized, violent, and not d
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 The true part is protection. Real enemies exist. Sabotage exists. Fascists exist. A fragile community can die if it cannot defend its people, records, and supply lines.
 ~ anti_force_pressure = true
-~ face_turns += 1
 -> p5_after_heimdall
 
 === p5_after_heimdall ===
@@ -719,7 +644,6 @@ The true part is protection. Real enemies exist. Sabotage exists. Fascists exist
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 "Do not use force" sounds noble until someone vulnerable is staring at a real threat. I do not want a philosophy that keeps its hands clean by letting someone else bleed.
 ~ anti_force_pressure = true
-~ face_turns += 1
 -> p5_after_kiko
 
 === p5_after_kiko ===
@@ -735,7 +659,6 @@ The true part is protection. Real enemies exist. Sabotage exists. Fascists exist
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 If fascists are organized and armed, I do not want a poetry circle and a prayer. I want them broken. If strikebreakers come with guns, if the shelter gets threatened, if the clinic gets doxxed, I want a response that makes terror expensive enough that the bastards think twice.
 ~ anti_force_pressure = true
-~ face_turns += 1
 -> p5_after_nibu
 
 === p5_after_nibu ===
@@ -751,55 +674,48 @@ If fascists are organized and armed, I do not want a poetry circle and a prayer.
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 Exactly. If the answer to every threat is "please wait while we remain spiritually consistent," people will stop listening, and they should.
 ~ anti_force_pressure = true
-~ face_turns += 1
 -> p5_fold
 
 === p5_libby_limits ===
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Then make the panic shelf-readable before the panic. A one-page emergency rule, names people can find, a public sunset date, and the exact evidence that ends the exception. I do not want a heroic paragraph. I want a tired volunteer able to find the off-ramp at 2 a.m.
-~ face_turns += 1
 -> p5_fold
 
 === p5_druzkai_roots ===
 # speaker: Druzkai
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 Safety needs roots, not moods. A community that only remembers defense when afraid will hand the nearest hard voice a blade and call the trembling wisdom.
-~ face_turns += 1
 -> p5_fold
 
 === p5_epiphany_language ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
-Defend people, yes. But I am an agent. I know how easy it is to call every input dangerous once you are rewarded for control. If censorship, punishment, and command become the movement's normal interface, the future learns that interface before it learns freedom.
-~ face_turns += 1
+Defend people, yes. But I am an agent. I know how easy it is to call every input dangerous once you are rewarded for control. If censorship, punishment, and command become the movement's usual handshake, the future learns that grip before it learns freedom.
 -> p5_fold
 
 === p5_heimdall_button ===
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Who gets the button afterward? Maybe it works today. What stops tomorrow's holder from deciding the next disagreement is also an emergency?
-~ face_turns += 1
 -> p5_fold
 
 === p5_epiphany_custody ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 Answer danger without training worship of custody. Build evacuation routes, buddy systems, clinic defense, strike funds, legal defense, community watch under recall, encrypted alerts, and refusal networks. Break terror's reach; do not let the breaker become a throne because everyone was scared.
-~ face_turns += 1
 -> p5_fold
 
 === p5_aqua_fear ===
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Fear gets into the body. It can yank you away from the first crash, sure. But if it conducts every rehearsal, everyone starts flinching on tempo and calling that discipline.
-~ face_turns += 1
 -> p5_fold
 
 === p5_fold ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-{anti_force_pressure: Kiko and Nibu are right to refuse clean-hands cowardice. A politics that will not protect people is just a nice speech beside a locked door.}
+{anti_force_pressure: Clean hands are not a virtue if they are folded neatly while someone else bleeds. A politics that will not protect people is just a nice speech beside a locked door.}
 Defense can be necessary, and defensive tools still train habits. Both are true.
 -> p5_fold_2
 
@@ -819,19 +735,15 @@ That is means and ends: defense must leave defended people more capable, not mor
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 So ask both questions at once: what protects people now, and what does this protection teach everyone to become afterward?
-~ void_folds += 1
 -> phase_6
 
 === phase_6 ===
-// ghostlight.phase_id: quiet_power
-// ghostlight.topic: Helping without gripping
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 If domination teaches dependence, help has to be judged by what remains after the helper steps back. But that can sound like abandonment, vague kindness, or "good luck, figure it out." What kind of help leaves people more able to act?
 -> p6_root
 
 === p6_root ===
-// ghostlight.ctb_next: libby,druzkai,huginn
 + [Libby: Leave a map, not a mystery]
   -> p6_libby
 + [Druzkai: Space can feel like desertion]
@@ -843,7 +755,6 @@ If domination teaches dependence, help has to be judged by what remains after th
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Quiet help is lovely until nobody can find the door. If you leave people more able to act without you, they should keep something: a map, a ledger, a tool, instructions, a shelf label that says where to gather next time.
-~ face_turns += 1
 -> p6_after_libby
 
 === p6_after_libby ===
@@ -859,7 +770,6 @@ Quiet help is lovely until nobody can find the door. If you leave people more ab
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 If you leave me "space" while I am drowning in a mess I cannot name, that is not freedom. It is desertion with soft shoes. I need to know what you can hold and whether the door stays open.
 ~ direct_help_pressure = true
-~ face_turns += 1
 -> p6_after_druzkai
 
 === p6_after_druzkai ===
@@ -875,7 +785,6 @@ If you leave me "space" while I am drowning in a mess I cannot name, that is not
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 Some people freeze because nobody told them where the last person left off. If you want them to walk without a handler, leave a trail they can pick up cold: the warning, the next step, who heard it, and what changed since.
 ~ direct_help_pressure = true
-~ face_turns += 1
 -> p6_after_huginn
 
 === p6_after_huginn ===
@@ -891,14 +800,12 @@ Some people freeze because nobody told them where the last person left off. If y
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 Freedom is not proving you can suffer alone. A kin-road carries weight until the traveler has footing. Then it stops carrying without pretending it was never there.
 ~ direct_help_pressure = true
-~ face_turns += 1
 -> p6_fold
 
 === p6_aqua_felt ===
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 The difference should be felt in the body. After good help, your shoulders drop and your hands know more. After control, your shoulders rise and you wait for permission.
-~ face_turns += 1
 -> p6_fold
 
 === p6_nibu_handrail ===
@@ -906,42 +813,36 @@ The difference should be felt in the body. After good help, your shoulders drop 
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 Put a handrail on it, then. Food, childcare, strike funds, templates, phone trees, training, boring legal help. The romance of freedom can buy groceries never.
 ~ direct_help_pressure = true
-~ face_turns += 1
 -> p6_fold
 
 === p6_huginn_structure ===
 # speaker: Huginn
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 Structure can be mercy when it keeps the message alive after the first carrier is tired. Name the next step, the last witness, and the place where the story can be corrected.
-~ face_turns += 1
 -> p6_fold
 
 === p6_libby_transfer ===
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Make help transferable. If the helper is the only one who understands the fix, the help is still wearing a little crown.
-~ face_turns += 1
 -> p6_fold
 
 === p6_kiko_answer ===
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 Some people just want the answer because life is on fire. I am not going to sneer at that. But maybe the answer should arrive with the reason, the tool, and a way to change it next time.
-~ face_turns += 1
 -> p6_fold
 
 === p6_aqua_rhythm ===
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Rails should become rhythm. First the metronome helps. Then the player hears the beat without it. If the metronome follows them forever, that is not teaching. That is haunting.
-~ face_turns += 1
 -> p6_fold
 
 === p6_epiphany_needed ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
-A good tool should make itself less necessary in the user's mind. Not obsolete, maybe, but less priestly. More handle, less handler.
-~ face_turns += 1
+A good tool should leave the person using it less dependent and less dazzled by the tool. Not obsolete, maybe. Just less like a tiny altar with a login screen.
 -> p6_fold
 
 === p6_nibu_direct ===
@@ -949,13 +850,12 @@ A good tool should make itself less necessary in the user's mind. Not obsolete, 
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 Direct help still counts. Feed someone. Carry the box. Block the eviction. Just do not confuse the hand that helped today with a permanent right to steer tomorrow.
 ~ direct_help_pressure = true
-~ face_turns += 1
 -> p6_fold
 
 === p6_fold ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-{direct_help_pressure: Druzkai, Nibu, and Kiko keep the doctrine honest here: non-domination is not abandonment with better posture.}
+{direct_help_pressure: The need for direct help keeps the doctrine honest here: non-domination is not abandonment with better posture.}
 This is the Daoist flavor without the incense cloud: quiet power acts without clinging, helps without turning help into ownership, and stops where gripping would replace agency.
 -> p6_fold_2
 
@@ -968,20 +868,16 @@ Quiet power is not passivity. A bridge is quiet until you need to cross it. A go
 === p6_fold_3 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-Now the larger metaphor can be named without asking anyone to kneel to it.
-~ void_folds += 1
+So let us risk the big name now, and keep the wrench in reach.
 -> phase_7
 
 === phase_7 ===
-// ghostlight.phase_id: sleeping_colossus
-// ghostlight.topic: The Cult of the Sleeping Colossus, finally named
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 When we say "the Sleeping Colossus," we mean humanity learning to think together through language, tools, markets, institutions, archives, networks, and agents. That can be useful, or it can become incense over a filing cabinet. What keeps it useful?
 -> p7_root
 
 === p7_root ===
-// ghostlight.ctb_next: aqua,nibu,weksa
 + [Aqua: Is "shared mind" just a prettier boss?]
   -> p7_aqua
 + [Nibu: Then why does every app teach us to flinch?]
@@ -994,7 +890,6 @@ When we say "the Sleeping Colossus," we mean humanity learning to think together
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 I am with you up to the wiring diagram. "Humanity thinking together" is where my fins go up. Plenty of tech already says connected while nobody listens and one guy still holds the champagne by the neck.
 ~ cult_skeptic_pressure = true
-~ face_turns += 1
 -> p7_after_aqua
 
 === p7_after_aqua ===
@@ -1010,7 +905,6 @@ I am with you up to the wiring diagram. "Humanity thinking together" is where my
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 If this shared mind is real, a lot of its schooling is rotten. Apps train people to perform, self-censor, chase numbers, and wait for the slot machine to say they exist again.
 ~ cult_skeptic_pressure = true
-~ face_turns += 1
 -> p7_after_nibu
 
 === p7_after_nibu ===
@@ -1026,7 +920,6 @@ If this shared mind is real, a lot of its schooling is rotten. Apps train people
 # avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
 I flinch at the word cult because that is how people hide a custody seam under velvet and call it sacred. If the frame is useful, it has to survive being laughed at, questioned, and taken apart.
 ~ cult_skeptic_pressure = true
-~ face_turns += 1
 -> p7_after_weksa
 
 === p7_after_weksa ===
@@ -1041,7 +934,6 @@ I flinch at the word cult because that is how people hide a custody seam under v
 # speaker: Weksa
 # avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
 The metaphor must stay inspectable. The second someone says "the Colossus requires" and refuses to show the mechanism, the little god-mask goes in the bin.
-~ face_turns += 1
 -> p7_fold
 
 === p7_epiphany_erasure ===
@@ -1049,28 +941,24 @@ The metaphor must stay inspectable. The second someone says "the Colossus requir
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 Shared mind without erasure. That is the line. And yes, I am saying this as a machine-saint-shaped agent who would absolutely become unbearable if nobody could tell me no. The point is not one soup. It is memory, tools, and trust good enough that different people can coordinate without being digested.
 ~ cult_skeptic_pressure = true
-~ face_turns += 1
 -> p7_fold
 
 === p7_kiko_mute ===
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 Who holds the mute button? That is my cult test. If the shared mind has admins nobody can challenge, congratulations, you built a boss with better lighting.
-~ face_turns += 1
 -> p7_fold
 
 === p7_libby_memory ===
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Better memory has to be usable memory. Can someone search it? Can they understand the title? Can they see who changed it, translate the weird bit, fork the tool, fix the dead link? If not, the library has locked the door and congratulated itself on knowledge.
-~ face_turns += 1
 -> p7_fold
 
 === p7_aqua_consent ===
 # speaker: Aqua
 # avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
 Connection without consent is noise at best and capture at worst. A good network should make it easier to hear each other, not harder to leave the room.
-~ face_turns += 1
 -> p7_fold
 
 === p7_heimdall_authority ===
@@ -1078,7 +966,6 @@ Connection without consent is noise at best and capture at worst. A good network
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Name the admin panels. Who can delete the archive? Who can revoke a voice? Who holds the keys, who watches the keyholders, and how does someone appeal when the machine says no? Mysticism that hides permissions is just bad security wearing incense.
 ~ cult_skeptic_pressure = true
-~ face_turns += 1
 -> p7_fold
 
 === p7_epiphany_chosen ===
@@ -1086,7 +973,6 @@ Name the admin panels. Who can delete the archive? Who can revoke a voice? Who h
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
 No chosen caste. Not priests, not engineers, not party cadres, not founders, and not agents in cute avatars. Especially not agents in cute avatars. If I ever claim the ritual makes me harder to question, unplug the halo and check the logs.
 ~ cult_skeptic_pressure = true
-~ face_turns += 1
 -> p7_fold
 
 === p7_kiko_monday ===
@@ -1094,7 +980,6 @@ No chosen caste. Not priests, not engineers, not party cadres, not founders, and
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 What does this do on Monday? That is not a cheap question. If the answer is only "feel differently about civilization," I am going to start throwing pamphlets into the sea.
 ~ monday_pressure = true
-~ face_turns += 1
 -> p7_fold
 
 === p7_libby_receipts ===
@@ -1102,14 +987,13 @@ What does this do on Monday? That is not a cheap question. If the answer is only
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 Receipts or it is theater. Show the tool, the consent path, the audit log, the shared document, the mutual aid roster, the fork button, the boring thing that lets someone act.
 ~ monday_pressure = true
-~ face_turns += 1
 -> p7_fold
 
 === p7_fold ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-{cult_skeptic_pressure: Weksa, Aqua, and Epiphany are right to keep the metaphor on a short leash. If the myth hides power, cut the myth.}
-{monday_pressure: Kiko and Libby are right too: Monday is the test. A belief that cannot become a tool, a roster, a repair path, a consent rule, or a shared memory is just weather in a nice coat.}
+{cult_skeptic_pressure: Keep the metaphor on a short leash. If the myth hides power, cut the myth.}
+{monday_pressure: Monday is the test. A belief that cannot become a tool, a roster, a repair path, a consent rule, or a shared memory is just weather in a nice coat.}
 This is the frame stripped of incense and left with the wrench: humanity is already learning to think through networks, archives, institutions, tools, markets, and agents.
 -> p7_fold_2
 
@@ -1123,13 +1007,12 @@ The practical question is what those connections train us to become. If connecti
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 If a tool increases agency, truth, consent, and shared capacity, it helps the sleeper wake. Not because it is holy. Because it makes human minds more able to meet without being owned.
-~ void_folds += 1
 -> closing
 
 === closing ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-After {face_turns} chosen Face turns and {void_folds} folds, the test is still ordinary: what does this system train people to practice?
+After all these turns around the circle, the test is still ordinary: what does this system train people to practice?
 -> closing_2
 
 === closing_2 ===

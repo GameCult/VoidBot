@@ -66,7 +66,27 @@ enough to keep clicking, but not distracted from the philosophical argument.
 - Are there redundant Face responses that waste a turn?
 - Does inter-Face debate deepen the concept, or just restate the thesis?
 
-### 5. Entertainment And Pacing
+### 5. Context-Bleed And Character Knowledge
+
+- Does each speaker say something that makes sense for what that speaker knows
+  at that knot, what Void has already introduced, and what the previous selected
+  Face actually said?
+- Does any Face speak from author-level knowledge of the article's purpose,
+  the full doctrine, future phases, unchosen branches, renderer mechanics, prompt
+  constraints, prior reviewer feedback, or reader demographics?
+- Does Void accidentally explain the artifact design instead of teaching inside
+  the scene?
+- Does Void pre-state the perspectives that the Faces are supposed to discover
+  or embody?
+- Does a Face respond to an argument that has not yet been made on that path?
+- Do branch folds assume the player saw an unchosen branch or met an objection
+  that did not occur?
+- Does any speaker use terms, examples, conclusions, or certainty that exceed
+  their persona's role, lived concern, and current conversational motivation?
+- Is a line present because the author wants to signal coverage, victory, or
+  cleverness, rather than because the speaking character would say it now?
+
+### 6. Entertainment And Pacing
 
 - Does the structure make the reader want to click onward?
 - Is the rhythm too repetitive?
@@ -91,6 +111,7 @@ Use this shape:
   "socratic_teaching_score": 0,
   "face_distinctiveness_score": 0,
   "dialogue_believability_score": 0,
+  "context_bleed_score": 0,
   "entertainment_pacing_score": 0,
   "doctrine_integration_score": 0,
   "summary_verdict": "short plain-language verdict",
@@ -100,6 +121,7 @@ Use this shape:
   "face_by_face_notes": {},
   "void_notes": [],
   "choice_label_notes": [],
+  "context_bleed_findings": [],
   "phase_notes": [],
   "required_revisions": [],
   "suggested_revisions": [],
@@ -143,6 +165,18 @@ Each finding must include:
   it.
 - If a line sounds like a prompt instruction, output contract, wiki paragraph,
   legal checklist, or committee summary, flag it.
+- If a line sounds like the author congratulating the artifact for doing the
+  right kind of article work, flag it as context bleed.
+- If a speaker names a reader segment, doctrine slot, generation strategy,
+  reviewer concern, future lesson, or unchosen branch that they would not know
+  in-scene, flag it as context bleed.
+- If Void's setup gives away the argument positions the Faces should naturally
+  raise, flag it as preloaded perspective.
+- If a Face sounds like it has read the global prompt, scenario brief, or
+  article outline rather than listening to Void and the previous Face, flag it.
+- Distinguish necessary teaching context from context bleed: Void may define
+  terms and frame the next question, but should not describe the artifact's own
+  mechanics, target audience, or success criteria inside the story.
 - If a choice label sounds like choosing an essay thesis instead of following a
   person in conversation, flag it.
 - If the piece is funny, ask whether the joke reveals character or pressure. If
