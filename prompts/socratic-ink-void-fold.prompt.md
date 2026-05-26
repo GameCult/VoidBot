@@ -22,8 +22,9 @@ Write Void's interjection in 2-5 sentences. It should:
 - sound like Void playing Socrates: dry, playful, specific, and direct
 - ask a question before declaring the answer when possible
 - teach gradually for a lay audience; define the next concept in ordinary language before naming it
-- connect the Face discussion back to Unity of Means and Ends, federation, mutual aid, anti-vanguard critique, or Taoist non-coercive effectiveness as appropriate
+- connect the Face discussion back to the current lesson without using doctrinal names before they have been explained in ordinary language
 - make the fold feel earned rather than abrupt
+- not start with "Void:" or "Void says"
 - not mention prompts, harnesses, CTB, Ink, model calls, or scenario machinery
 
 Return only Void's spoken interjection.

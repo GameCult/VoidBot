@@ -38,6 +38,7 @@ async function main() {
   const receiptPath = resolve(repoRoot, options.receipts ?? scenario.receiptPath);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const basePromptCache = new Map();
+  const voiceCardCache = new Map();
   const receipts = {
     schemaVersion: "voidbot.socratic_ink_receipts.v0",
     scenarioPath,
@@ -73,30 +74,46 @@ async function main() {
   ink.push(`VAR face_turns = 0`);
   ink.push(`VAR void_folds = 0`);
   ink.push("");
+  ink.push(`// if.render: speaker-panel`);
+  if (scenario.scene?.id) {
+    ink.push(`// if.scene_id: ${scenario.scene.id}`);
+  }
+  if (scenario.scene?.background) {
+    ink.push(`// if.background: ${scenario.scene.background}`);
+  }
+  ink.push("");
   ink.push(`# ${scenario.title}`);
   if (scenario.subtitle) {
     ink.push(`# ${scenario.subtitle}`);
   }
   ink.push("");
   const introduction = Array.isArray(scenario.introduction) ? scenario.introduction : [];
-  for (const paragraph of introduction) {
-    ink.push(`Void says, ${quoteInk(paragraph)}`);
+  ink.push(`-> ${introduction.length ? "intro_1" : "phase_1"}`);
+  ink.push("");
+  for (let index = 0; index < introduction.length; index += 1) {
+    const knot = `intro_${index + 1}`;
+    const next = index + 1 < introduction.length ? `intro_${index + 2}` : "phase_1";
+    writeSpeakerKnot(ink, knot, scenario.voidRole?.displayName ?? "Void", scenario.voidRole?.avatarPath, introduction[index]);
+    ink.push(`-> ${next}`);
     ink.push("");
   }
-  ink.push("-> phase_1");
-  ink.push("");
 
   const phaseCount = Math.min(maxPhases, scenario.phases.length);
   for (let phaseIndex = 0; phaseIndex < phaseCount; phaseIndex += 1) {
     const phase = scenario.phases[phaseIndex];
     const nextPhaseKnot = phaseIndex + 1 < phaseCount ? `phase_${phaseIndex + 2}` : "closing";
     const phaseCtb = cloneCtb(actors, phaseIndex * choiceCount);
-    ink.push(`=== phase_${phaseIndex + 1} ===`);
-    ink.push(`// ghostlight.phase_id: ${phase.phaseId}`);
-    ink.push(`// ghostlight.topic: ${phase.topic}`);
-    ink.push("");
-    ink.push(`Void says, ${quoteInk(phase.voidOpening)}`);
-    ink.push("");
+    writeSpeakerKnot(
+      ink,
+      `phase_${phaseIndex + 1}`,
+      scenario.voidRole?.displayName ?? "Void",
+      scenario.voidRole?.avatarPath,
+      phase.voidOpening,
+      [
+        `ghostlight.phase_id: ${phase.phaseId}`,
+        `ghostlight.topic: ${phase.topic}`,
+      ],
+    );
     ink.push(`-> ${nodeName(phaseIndex, [])}`);
     ink.push("");
 
@@ -115,6 +132,7 @@ async function main() {
       ],
       voidLine: phase.voidOpening,
       basePromptCache,
+      voiceCardCache,
       globalAgentDoctrine,
       faceModel,
       mindModel,
@@ -128,8 +146,7 @@ async function main() {
     });
   }
 
-  ink.push("=== closing ===");
-  ink.push(`Void says, ${quoteInk(scenario.closing)}`);
+  writeSpeakerKnot(ink, "closing", scenario.voidRole?.displayName ?? "Void", scenario.voidRole?.avatarPath, scenario.closing);
   ink.push("-> END");
   ink.push("");
 
@@ -156,12 +173,16 @@ async function buildBranchNode(input) {
   input.ink.push("");
 
   const candidates = nextActors(input.ctb, input.choiceCount);
+  if (input.voidFoldText) {
+    const voidChoice = sanitizeChoiceLabel(input.voidFoldChoice ?? "Void: Bring the thread back to the lesson.");
+    input.ink.push(`+ [${voidChoice}]`);
+    input.ink.push(`  -> ${foldName(input.phaseIndex, path)}`);
+    input.ink.push("");
+  }
   for (const actor of candidates) {
     const turn = await generateFaceTurn({ ...input, actor });
     const choiceKnot = afterChoiceName(input.phaseIndex, path, actor.identityId);
-    input.ink.push(`+ [${sanitizeChoiceLabel(turn.choiceLabel)}]`);
-    input.ink.push(`  ~ face_turns += 1`);
-    input.ink.push(`  ${turn.displayName} says, ${quoteInk(turn.speech)}`);
+    input.ink.push(`+ [${formatChoiceLabel(turn.displayName, turn.choiceLabel)}]`);
     input.ink.push(`  -> ${choiceKnot}`);
     input.ink.push("");
 
@@ -171,24 +192,27 @@ async function buildBranchNode(input) {
       { speaker: turn.displayName, text: turn.speech },
     ];
     const branchPath = [...path, actor.identityId];
-    const fold = await generateVoidFold({
-      ...input,
-      transcript: branchTranscript,
-      actor,
-    });
-    input.ink.push(`=== ${choiceKnot} ===`);
-    input.ink.push(`// ghostlight.selected_face: ${actor.identityId}`);
-    input.ink.push(`// ghostlight.unspent_faces: ${candidates.filter((candidate) => candidate.identityId !== actor.identityId).map((candidate) => candidate.identityId).join(",")}`);
-    input.ink.push("");
+    writeSpeakerKnot(
+      input.ink,
+      choiceKnot,
+      turn.displayName,
+      actor.avatarPath,
+      turn.speech,
+      [
+        `ghostlight.selected_face: ${actor.identityId}`,
+        `ghostlight.unspent_faces: ${candidates.filter((candidate) => candidate.identityId !== actor.identityId).map((candidate) => candidate.identityId).join(",")}`,
+      ],
+    );
+    input.ink.push(`~ face_turns += 1`);
     if (input.depth + 1 < input.maxDepth) {
       const continueKnot = nodeName(input.phaseIndex, branchPath);
-      input.ink.push(`+ [Let the Faces keep worrying the question.]`);
-      input.ink.push(`  -> ${continueKnot}`);
-      input.ink.push(`+ [Void folds this branch back to the lesson.]`);
-      input.ink.push(`  ~ void_folds += 1`);
-      input.ink.push(`  Void says, ${quoteInk(fold.text)}`);
-      input.ink.push(`  -> ${input.nextPhaseKnot}`);
+      input.ink.push(`-> ${continueKnot}`);
       input.ink.push("");
+      const fold = await generateVoidFold({
+        ...input,
+        transcript: branchTranscript,
+        actor,
+      });
       await buildBranchNode({
         ...input,
         depth: input.depth + 1,
@@ -196,10 +220,23 @@ async function buildBranchNode(input) {
         transcript: branchTranscript,
         voidLine: fold.text,
         transcriptPath: branchPath,
+        voidFoldText: fold.text,
+        voidFoldChoice: `Void: ${summarizeChoice(fold.text)}`,
       });
-    } else {
+      writeSpeakerKnot(input.ink, foldName(input.phaseIndex, branchPath), input.scenario.voidRole?.displayName ?? "Void", input.scenario.voidRole?.avatarPath, fold.text);
       input.ink.push(`~ void_folds += 1`);
-      input.ink.push(`Void says, ${quoteInk(fold.text)}`);
+      input.ink.push(`-> ${input.nextPhaseKnot}`);
+      input.ink.push("");
+    } else {
+      const fold = await generateVoidFold({
+        ...input,
+        transcript: branchTranscript,
+        actor,
+      });
+      input.ink.push(`-> ${foldName(input.phaseIndex, branchPath)}`);
+      input.ink.push("");
+      writeSpeakerKnot(input.ink, foldName(input.phaseIndex, branchPath), input.scenario.voidRole?.displayName ?? "Void", input.scenario.voidRole?.avatarPath, fold.text);
+      input.ink.push(`~ void_folds += 1`);
       input.ink.push(`-> ${input.nextPhaseKnot}`);
       input.ink.push("");
     }
@@ -207,10 +244,10 @@ async function buildBranchNode(input) {
 }
 
 async function generateFaceTurn(input) {
-  const baseFacePrompt = await getBaseFacePrompt(input.actor.identityId, input.basePromptCache);
+  const actorVoiceCard = await getActorVoiceCard(input.actor, input.basePromptCache, input.voiceCardCache, input);
   const transcript = renderTranscript(input.transcript);
   const prompt = renderTemplate("socratic-ink-face-turn.prompt.md", {
-    baseFacePrompt,
+    actorVoiceCard,
     title: input.scenario.title,
     phaseTopic: input.phase.topic,
     phaseSetup: input.phase.laySetup ?? "Void has introduced only the immediate question. Keep the response accessible.",
@@ -227,11 +264,13 @@ async function generateFaceTurn(input) {
   });
   const faceText = extractFinalText(parseJsonEvents(faceRun.stdout), faceRun.stdout);
   const parsedFace = parseFaceResponse(faceText, input.actor);
-  const mindPrompt = renderTemplate("repo-face-turn-interpreter.prompt.md", {
-    attempt: "1",
-    facePrompt: prompt,
-    faceOutput: faceText,
-    globalAgentDoctrine: input.globalAgentDoctrine,
+  const mindPrompt = renderTemplate("socratic-ink-turn-interpreter.prompt.md", {
+    displayName: input.actor.displayName ?? input.actor.identityId,
+    actorRole: input.actor.role ?? "",
+    phaseSetup: input.phase.laySetup ?? "",
+    voidLine: input.voidLine,
+    transcript,
+    draftResponse: faceText,
   });
   const mindRun = await runCodex(mindPrompt, {
     model: input.mindModel,
@@ -240,10 +279,9 @@ async function generateFaceTurn(input) {
     timeoutMs: 240_000,
   });
   const mindText = extractFinalText(parseJsonEvents(mindRun.stdout), mindRun.stdout);
-  const parsedMind = parseInterpreterOutput(mindText);
-  const say = parsedMind.blocks.find((block) => block.kind === "SAY")?.fields.content;
-  const speech = cleanSpeech(say || parsedFace.speech || faceText);
-  const choiceLabel = parsedFace.choiceLabel || `${input.actor.displayName ?? input.actor.identityId}: ${speech}`;
+  const parsedMind = parseArticleInterpreterOutput(mindText);
+  const speech = cleanSpeakerPrefix(parsedMind.speech || parsedFace.speech || faceText, input.actor.displayName ?? input.actor.identityId);
+  const choiceLabel = parsedMind.choiceLabel || parsedFace.choiceLabel || `${input.actor.displayName ?? input.actor.identityId}: ${speech}`;
   const receipt = {
     phaseId: input.phase.phaseId,
     depth: input.depth,
@@ -277,7 +315,7 @@ async function generateFaceTurn(input) {
 
 async function generateVoidFold(input) {
   if (input.foldMode === "template") {
-    const text = `Good. Hold that answer against the next question: ${input.phase.foldTarget}`;
+    const text = `Hold that answer. The next question is simpler and sharper: ${input.phase.foldTarget}`;
     input.receipts.voidFolds.push({ phaseId: input.phase.phaseId, depth: input.depth, mode: "template", text });
     return { text };
   }
@@ -295,7 +333,7 @@ async function generateVoidFold(input) {
     mcpMode: "none",
     timeoutMs: 180_000,
   });
-  const text = cleanSpeech(extractFinalText(parseJsonEvents(run.stdout), run.stdout));
+  const text = cleanSpeakerPrefix(extractFinalText(parseJsonEvents(run.stdout), run.stdout), "Void");
   input.receipts.voidFolds.push({
     phaseId: input.phase.phaseId,
     depth: input.depth,
@@ -326,6 +364,38 @@ async function getBaseFacePrompt(identityId, cache) {
   const prompt = await readFile(outPath, "utf8");
   cache.set(identityId, prompt);
   return prompt;
+}
+
+async function getActorVoiceCard(actor, basePromptCache, voiceCardCache, input) {
+  if (voiceCardCache.has(actor.identityId)) {
+    return voiceCardCache.get(actor.identityId);
+  }
+  const baseFacePrompt = await getBaseFacePrompt(actor.identityId, basePromptCache);
+  const prompt = renderTemplate("socratic-ink-face-projector.prompt.md", {
+    baseFacePrompt,
+    actorRole: actor.role ?? "",
+  });
+  const run = await runCodex(prompt, {
+    model: input.mindModel,
+    reasoningEffort: input.mindReasoningEffort,
+    mcpMode: "none",
+    timeoutMs: 180_000,
+  });
+  const text = extractFinalText(parseJsonEvents(run.stdout), run.stdout);
+  const voiceCard = section(text, "VOICE CARD") || text.trim();
+  voiceCardCache.set(actor.identityId, voiceCard);
+  input.receipts.voiceCards ??= [];
+  input.receipts.voiceCards.push({
+    identityId: actor.identityId,
+    displayName: actor.displayName ?? actor.identityId,
+    prompt,
+    exitCode: run.code,
+    durationMs: run.durationMs,
+    text,
+    voiceCard,
+    stderrTail: run.stderr.slice(-2000),
+  });
+  return voiceCard;
 }
 
 function nextActors(ctb, count) {
@@ -367,8 +437,41 @@ function afterChoiceName(phaseIndex, path, identityId) {
   return `${nodeName(phaseIndex, path)}__after_${safeId(identityId)}`;
 }
 
+function foldName(phaseIndex, path) {
+  return `${nodeName(phaseIndex, path)}__void_fold`;
+}
+
 function safeId(value) {
   return String(value).toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "x";
+}
+
+function writeSpeakerKnot(ink, knot, speaker, avatarPath, speech, comments = []) {
+  ink.push(`=== ${knot} ===`);
+  for (const comment of comments) {
+    ink.push(`// ${comment}`);
+  }
+  ink.push(`# speaker: ${speaker}`);
+  if (avatarPath) {
+    ink.push(`# avatar: ${avatarPath}`);
+  }
+  ink.push(cleanSpeakerPrefix(speech, speaker));
+}
+
+function formatChoiceLabel(displayName, value) {
+  const label = sanitizeChoiceLabel(value);
+  const withoutName = label.replace(new RegExp(`^${escapeRegExp(displayName)}\\s*:\\s*`, "i"), "");
+  return sanitizeChoiceLabel(`${displayName}: ${withoutName}`);
+}
+
+function summarizeChoice(value) {
+  const sentences = cleanSpeech(value)
+    .replace(/^["']|["']$/g, "")
+    .split(/[.?!]/)[0]
+    .trim();
+  if (/^(good|right|yes|exactly|hold that answer)\b/i.test(sentences)) {
+    return "Bring this back to the lesson";
+  }
+  return sentences.slice(0, 96) || "Bring this back to the lesson";
 }
 
 function sanitizeChoiceLabel(value) {
@@ -389,6 +492,17 @@ function cleanSpeech(value) {
     .replace(/\r?\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanSpeakerPrefix(value, speaker) {
+  const cleaned = cleanSpeech(value)
+    .replace(/^["']|["']$/g, "")
+    .trim();
+  return cleaned.replace(new RegExp(`^(?:${escapeRegExp(speaker)}|Void)\\s*(?:says\\s*)?:\\s*`, "i"), "").trim();
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeAscii(value) {
@@ -412,10 +526,28 @@ function parseFaceResponse(text, actor) {
   const speech = section(text, "SPOKEN RESPONSE") || "";
   const privateNote = section(text, "PRIVATE NOTE") || "";
   return {
-    choiceLabel: cleanSpeech(choiceLabel).replace(new RegExp(`^${actor.displayName ?? actor.identityId}:\\s*`, "i"), ""),
+    choiceLabel: cleanSpeech(choiceLabel),
     speech: cleanSpeech(speech),
     privateNote: cleanSpeech(privateNote),
   };
+}
+
+function parseArticleInterpreterOutput(text) {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      choiceLabel: cleanSpeech(parsed.choice_label ?? parsed.choiceLabel ?? ""),
+      speech: cleanSpeech(parsed.speech ?? ""),
+      privateNote: cleanSpeech(parsed.private_note ?? parsed.privateNote ?? ""),
+    };
+  } catch {
+    return {
+      choiceLabel: section(text, "choice_label") || section(text, "CHOICE LABEL") || "",
+      speech: section(text, "speech") || section(text, "SPOKEN RESPONSE") || cleanSpeech(text),
+      privateNote: section(text, "private_note") || section(text, "PRIVATE NOTE") || "",
+    };
+  }
 }
 
 function section(text, label) {
