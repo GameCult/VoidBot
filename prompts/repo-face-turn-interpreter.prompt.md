@@ -84,6 +84,8 @@ reason:
   One or two concrete reasons.
 END
 
+Do not return only the public sentence. Even if the Face already wrote a perfect one-line reply, you must wrap it in the INTERPRETATION block and, when routing public speech, a SAY block. Plain speech without a SAY block is a broken mouth crossing.
+
 If decision is route, append a normalized output section after END. This normalized output is what the worker will parse for side effects.
 
 Normalized output rules:

@@ -676,6 +676,16 @@ function parseRepoFaceParentInterpretation(
   attempt: 1 | 2,
 ): RepoFaceParentInterpretation {
   const block = parseInterpretationBlock(interpretationText);
+  if (Object.keys(block).length === 0) {
+    const speechFallback = repoFaceInterpreterPlainSpeechFallback(interpretationText);
+    if (speechFallback) {
+      return {
+        decision: "route",
+        reasons: ["parent interpreter returned compact plain speech; wrapped it as SAY current_room"],
+        routedOutput: speechFallback,
+      };
+    }
+  }
   const decision = block.decision?.trim().toLowerCase();
   const parsedDecision =
     decision === "route" || decision === "retry" || decision === "drop"
@@ -694,6 +704,35 @@ function parseRepoFaceParentInterpretation(
     reasons: reasons.length > 0 ? reasons : ["parent interpreter did not provide a parseable reason"],
     routedOutput: extractRoutedRepoFaceOutput(interpretationText),
   };
+}
+
+function repoFaceInterpreterPlainSpeechFallback(interpretationText: string): string | undefined {
+  const content = interpretationText.trim();
+  if (!content || content.length > 500) {
+    return undefined;
+  }
+  if (content.includes("\n\n") || parseRepoFaceActionBlocks(content).length > 0) {
+    return undefined;
+  }
+  if (/^(private thought|what should stick|work\/proposal|article draft|state note|interpretation)\s*:/i.test(content)) {
+    return undefined;
+  }
+  if (/\b(nothing public|would say nothing|stay private|hold silence|no public action|not worth routing)\b/i.test(content)) {
+    return undefined;
+  }
+  if (/\S(?:\.\.\.|â€¦)$/.test(content)) {
+    return undefined;
+  }
+
+  return [
+    "SAY",
+    "identity: current_face_id",
+    "channel: current_room",
+    "reply_to:",
+    "content:",
+    `  ${content}`,
+    "END",
+  ].join("\n");
 }
 
 function collectForbiddenRepoFaceChildTools(artifacts: ProviderArtifact[]): string[] {
