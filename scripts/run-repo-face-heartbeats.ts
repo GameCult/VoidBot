@@ -2060,6 +2060,7 @@ function buildHeartbeatPrompt(input: {
     researchCapabilitiesDirective: renderResearchCapabilitiesDirective(input.identity),
     socialEmbodimentDirective: renderSocialEmbodimentDirective(input.identity),
     jurisdictionRespectDirective: renderJurisdictionRespectDirective(input.identity),
+    praxisWorldviewDirective: renderPraxisWorldviewDirective(input.identity),
     comedyImprovDirective: renderComedyImprovDirective(input.identity),
     repetitionSamplingDirective: renderRepetitionSamplingDirective([
       input.recentMessages,
@@ -4578,6 +4579,12 @@ function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string 
 
 function renderJurisdictionRespectDirective(identity: RepoDiscordIdentity): string {
   return loadPromptTemplate("repo-face-jurisdiction-respect.prompt.md", {
+    displayName: identity.displayName,
+  });
+}
+
+function renderPraxisWorldviewDirective(identity: RepoDiscordIdentity): string {
+  return loadPromptTemplate("repo-face-praxis-worldview.prompt.md", {
     displayName: identity.displayName,
   });
 }
