@@ -6,6 +6,10 @@ VoidBot is a Discord-native assistant for GameCult.
 
 It can answer from archived Discord history, indexed GameCult repos, and Aetheria lore, then hand deeper work off to Codex when Discord stops being a sane place to do it. The current build already supports real Discord replies, semantic retrieval, source and lore indexing, and Codex handoff flows.
 
+Future GameCult subsite flavor:
+
+> Meta-commentary as a weather system: little minds standing in the rain going "is this praxis or am I just damp?"
+
 ## What VoidBot Can Do
 
 - answer owner questions through a Discord-safe `codex exec` lane
