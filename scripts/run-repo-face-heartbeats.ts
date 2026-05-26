@@ -2034,19 +2034,10 @@ function buildHeartbeatPrompt(input: {
     globalAgentDoctrine: input.globalAgentDoctrine,
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
-    humanSteeringDirective: renderRepoFaceHumanSteeringDirective(input.identity, {
-      recentMessages: input.recentMessages,
-      channelSnapshots: input.channelSnapshots,
-    }),
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     humanPronounDirective: renderRepoFaceHumanPronounFacts(input.humanPronounGuidance ?? [])
       ?? "Known human pronoun guidance:\n- No explicit human pronoun guidance is attached for this turn. Use names or neutral phrasing instead of guessing.",
-    roomWeatherDirective: renderRepoFaceRoomWeatherDirective(input.identity, {
-      recentMessages: input.recentMessages,
-      channelSnapshots: input.channelSnapshots,
-    }),
-    topicSaturationDirective: renderRoomTopicSaturationDirective(input.identity, input.recentMessages),
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -2054,17 +2045,12 @@ function buildHeartbeatPrompt(input: {
       channelSnapshots: input.channelSnapshots,
       pendingMentions: input.pendingMentions,
     }),
-    pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
     bifrostDigestDirective: renderBifrostGovernanceDigestDirective(input.bifrostDigest),
     channelPermissionDirective: renderChannelPermissionDirective(input.channelPlan),
     researchCapabilitiesDirective: renderResearchCapabilitiesDirective(input.identity),
     socialEmbodimentDirective: renderSocialEmbodimentDirective(input.identity),
     jurisdictionRespectDirective: renderJurisdictionRespectDirective(input.identity),
     comedyImprovDirective: renderComedyImprovDirective(input.identity),
-    repetitionSamplingDirective: renderRepetitionSamplingDirective([
-      input.recentMessages,
-      ...input.channelSnapshots.map((snapshot) => snapshot.messages),
-    ].flat()),
     worldbuildingPublicationDirective: renderWorldbuildingPublicationDirective(input.identity),
     jurisdictionDiveLine: input.jurisdictionDive.promptLine,
     githubActionsEnabled: input.githubActionsEnabled,
@@ -2306,10 +2292,6 @@ function renderRepoFaceStatePacket(
     .reverse();
   const activationFacts = renderRepoFaceActivationProfileFacts(profile.activationProfile);
   const runtimeFacts = renderRepoFaceRuntimePressureFacts(name, state);
-  const humanClarityFacts = roomContext
-    ? renderRepoFaceHumanClarityPressureFacts(identity, roomContext)
-    : undefined;
-  const clarityPressureActive = Boolean(humanClarityFacts);
   const humanSteeringFacts = roomContext
     ? renderRepoFaceHumanSteeringFacts(identity, roomContext)
     : undefined;
@@ -2450,7 +2432,7 @@ function renderRepoFaceStatePacket(
     lines.push(curiosityGraphFacts);
   }
 
-  if (agencyPressures.length > 0 && !clarityPressureActive) {
+  if (agencyPressures.length > 0) {
     lines.push([
       "Agency pressures that want eventual motion:",
       ...agencyPressures.map((pressure) =>
@@ -2463,14 +2445,9 @@ function renderRepoFaceStatePacket(
         ].filter(Boolean).join(" "),
       ),
     ].join("\n"));
-  } else if (agencyPressures.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Agency pressures are currently demoted by live clarity pressure:",
-      `- ${name} still has stored urges toward eventual motion, but the room has asked for plain understanding first. Do not expose the old detailed asks this turn; translate only the underlying value into simpler speech, repair, restraint, or silence.`,
-    ].join("\n"));
   }
 
-  if (incubation.length > 0 && !clarityPressureActive) {
+  if (incubation.length > 0) {
     lines.push([
       "Thoughts still moving under the floorboards:",
       ...incubation.map((thread) =>
@@ -2482,14 +2459,9 @@ function renderRepoFaceStatePacket(
         ].filter(Boolean).join("; "),
       ),
     ].join("\n"));
-  } else if (incubation.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Incubating thoughts are currently background only:",
-      `- ${name} has unfinished thoughts, but live room confusion means they should not surface as new doctrine or terminology this turn.`,
-    ].join("\n"));
   }
 
-  if (candidateInterventions.length > 0 && !clarityPressureActive) {
+  if (candidateInterventions.length > 0) {
     lines.push([
       "Unsaid or recently deferred speech pressure:",
       ...candidateInterventions.map((intervention) =>
@@ -2500,29 +2472,15 @@ function renderRepoFaceStatePacket(
       ),
       "Do not repeat a waiting line unless the room gives it a sharper angle.",
     ].join("\n"));
-  } else if (candidateInterventions.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Deferred speech pressure is not authorized for public reuse right now:",
-      `- ${name} has unsaid lines waiting, but the live room problem is intelligibility. Treat those lines as temptation to avoid, not as drafts to polish.`,
-    ].join("\n"));
   }
 
-  if (recentReceipts.length > 0 && !clarityPressureActive) {
+  if (recentReceipts.length > 0) {
     lines.push([
       "Recent speech residue:",
       ...recentReceipts.map((receipt) =>
         `- Said recently${receipt.preview ? `: ${cleanCharacterFacingSentence(receipt.preview)}` : "."} Let this create repetition caution, confidence, embarrassment, or follow-through as appropriate.`,
       ),
     ].join("\n"));
-  } else if (recentReceipts.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Recent speech residue should create caution only:",
-      `- ${name} has recent public wording in the room, but a human clarity request means the exact phrasing should not be echoed or treated as successful style.`,
-    ].join("\n"));
-  }
-
-  if (humanClarityFacts) {
-    lines.push(humanClarityFacts);
   }
 
   if (humanSteeringFacts) {
@@ -2533,40 +2491,7 @@ function renderRepoFaceStatePacket(
     return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
   }
 
-  return rejectLeakyMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
-}
-
-function cleanRepoFaceProjectorLoopVocabulary(
-  identity: RepoDiscordIdentity,
-  surface: string,
-): string {
-  let cleaned = surface
-    .replace(/\bLocalCastBridge\b/g, "the retired bridge alias")
-    .replace(/\bwet-voice-01\b/g, "the old voice-demo artifact")
-    .replace(/\bwet-voice\b/g, "old voice-demo")
-    .replace(/\bcanary-style\b/gi, "small-scope")
-    .replace(/\bnamed canary\b/gi, "named small-scope check")
-    .replace(/\bcanary utterance\b/gi, "small-scope utterance")
-    .replace(/\bcanary demo\b/gi, "small-scope demo")
-    .replace(/\bcanary\b/gi, "small-scope check")
-    .replace(/\bwitness receipts?\b/gi, "reviewable evidence")
-    .replace(/\bwitness data\b/gi, "proof data")
-    .replace(/\bwitness-first\b/gi, "evidence-first")
-    .replace(/\bwitness demo\b/gi, "proof demo")
-    .replace(/\bwitness artifact\b/gi, "evidence artifact")
-    .replace(/\bwitness culture\b/gi, "proof ceremony")
-    .replace(/\bwitness ceremon(?:y|ies)\b/gi, "proof ceremony");
-
-  if (identity.id !== "nibu") {
-    cleaned = cleaned
-      .replace(/\bwitnessability\b/gi, "inspectability")
-      .replace(/\bwitnesses\b/gi, "evidence points")
-      .replace(/\bwitnessing\b/gi, "inspection")
-      .replace(/\bwitnessed\b/gi, "measured")
-      .replace(/\bwitness\b/gi, "evidence");
-  }
-
-  return cleaned;
+  return rejectLeakyMemorySurface(lines.join("\n\n"));
 }
 
 function sortAffectByStatusAndIntensity(
@@ -2694,32 +2619,6 @@ function renderRepoFaceRoomTextureFacts(
     `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
     ...temporaryPressures,
     ...(topicAttractorFacts ? [topicAttractorFacts] : []),
-  ].join("\n");
-}
-
-function renderRepoFaceRoomWeatherDirective(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string {
-  const stats = collectRepoFaceRoomTextureStats(identity, input);
-  if (!stats) {
-    return "- No current room weather was available.";
-  }
-
-  const pressure =
-    stats.texture === "heavy" || stats.agentShare >= 0.55
-      ? "The room is currently structurally work-heavy or agent-heavy. Treat that as conversational weather: it may create boredom, play hunger, restlessness, social hunger, withdrawal, or sharper status-testing, depending on who you are. This is not an order to joke; it is permission to feel the weight instead of answering every opening with more work."
-      : stats.texture === "light"
-        ? "The room is currently light enough for compact social motion. You still need an actual reason to speak, but not a work ticket."
-        : "The room is mixed. Use the transcript to decide whether the living pressure is social, practical, or private.";
-
-  return [
-    `- Messages observed: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
-    `- Texture: ${stats.texture}; your own recent messages in this window: ${stats.ownMessages}.`,
-    `- ${pressure}`,
   ].join("\n");
 }
 
@@ -3202,67 +3101,6 @@ function formatSignal(value: number): string {
   return `low ${value.toFixed(2)}`;
 }
 
-function renderRepoFaceHumanClarityPressureFacts(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string | undefined {
-  const messages = [
-    ...input.recentMessages.map((message) => ({ ...message, channelLabel: "current room" })),
-    ...input.channelSnapshots.flatMap((snapshot) =>
-      snapshot.messages.map((message) => ({ ...message, channelLabel: `nearby room ${snapshot.channelId}` })),
-    ),
-  ]
-    .filter((message) => collapseWhitespace(message.content).length > 0)
-    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
-  const recent = messages.slice(-24);
-  const latestPressure = [...recent]
-    .reverse()
-    .find((message) => !message.isBot && isHumanClarityPressureMessage(message.content));
-  if (!latestPressure) {
-    return undefined;
-  }
-
-  const pressureIndex = recent.findIndex((message) => message.id === latestPressure.id);
-  const laterHumanReapproval = pressureIndex >= 0
-    ? recent.slice(pressureIndex + 1).some((message) =>
-        !message.isBot && isHumanJargonReapprovalMessage(message.content)
-      )
-    : false;
-  if (laterHumanReapproval) {
-    return undefined;
-  }
-
-  const laterAgentEchoes = pressureIndex >= 0
-    ? recent.slice(pressureIndex + 1).filter((message) =>
-        message.isBot && containsLoopVocabulary(message.content)
-      )
-    : [];
-  const ownEchoes = laterAgentEchoes.filter((message) =>
-    normalizeSocialLabel(message.authorName) === normalizeSocialLabel(identity.displayName)
-  );
-  const echoedTerms = collectLoopVocabularyTerms([
-    latestPressure.content,
-    ...laterAgentEchoes.map((message) => message.content),
-  ].join("\n"));
-
-  return [
-    "Human clarity pressure:",
-    `- A human recently signaled confusion or asked for simpler language: ${latestPressure.authorName ?? latestPressure.authorId} in ${latestPressure.channelLabel} said, "${collapseWhitespace(latestPressure.content, 360)}"`,
-    "- This is the last and freshest volatile input in the state packet on purpose. It supersedes older stored pressure, speech residue, agency urges, and repeated agent chatter when they are abstract.",
-    "- Treat this as the current social fact. The room needs legibility before more clever framing.",
-    laterAgentEchoes.length > 0
-      ? `- After that clarity request, ${laterAgentEchoes.length} agent message(s) still echoed loop-shaped vocabulary${echoedTerms.length > 0 ? ` (${echoedTerms.join(", ")})` : ""}. These terms are evidence of the failure, not vocabulary to reuse. Project them as communication failure or social embarrassment, not consensus.`
-      : "",
-    ownEchoes.length > 0
-      ? `- ${identity.displayName} has contributed to that failure in the recent window. Let that create chastening, repair, restraint, or a plain-language apology before more abstraction.`
-      : "",
-    "- Plain-language repair means using ordinary words: what changed, who can see it, who agreed, what someone can do now, and what stays private. If that cannot be said cleanly, silence is better than another polished abstraction.",
-  ].filter(Boolean).join("\n");
-}
-
 function renderRepoFaceHumanSteeringFacts(
   identity: RepoDiscordIdentity,
   input: {
@@ -3311,85 +3149,6 @@ function renderRepoFaceHumanSteeringFacts(
       : "",
     "- If you speak after an agent-only tail, either answer the human steering plainly, make a concrete social move to a specific person, bring fresh evidence, or stay private. Do not add another polished variation merely because peers kept talking.",
   ].filter(Boolean).join("\n");
-}
-
-function renderRepoFaceHumanSteeringDirective(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string {
-  const facts = renderRepoFaceHumanSteeringFacts(identity, input);
-  if (!facts) {
-    return "";
-  }
-
-  return [
-    "Current human steering reminder:",
-    facts,
-    "This reminder is repeated after projected state intentionally. If it conflicts with your inner pressure, treat that conflict as part of the turn instead of letting the inner pressure silently win.",
-  ].join("\n");
-}
-
-function isHumanClarityPressureMessage(content: string): boolean {
-  const normalized = normalizeForRepetition(content);
-  return [
-    "what are you even talking about",
-    "what are you talking about",
-    "dumb it down",
-    "speak plainly",
-    "plainly",
-    "plain english",
-    "simple words",
-    "less abstract",
-    "too abstract",
-    "unintelligible",
-    "unintelligable",
-    "i don't understand",
-    "i do not understand",
-    "calm it down",
-    "cut it out",
-    "obsession",
-    "brain surgery",
-  ].some((needle) => normalized.includes(needle));
-}
-
-function isHumanJargonReapprovalMessage(content: string): boolean {
-  const normalized = normalizeForRepetition(content);
-  return [
-    "that's clearer",
-    "that is clearer",
-    "that makes sense",
-    "much better",
-    "yes exactly",
-    "precisely",
-    "keep going",
-    "go on",
-  ].some((needle) => normalized.includes(needle));
-}
-
-function containsLoopVocabulary(content: string): boolean {
-  return collectLoopVocabularyTerms(content).length > 0;
-}
-
-function collectLoopVocabularyTerms(content: string): string[] {
-  const normalized = normalizeForRepetition(content);
-  const terms = [
-    "artifact",
-    "specimen",
-    "seam",
-    "custody",
-    "first right",
-    "test card",
-    "receipt",
-    "proof",
-    "spine",
-    "downstream",
-    "consent flip",
-    "visibility",
-  ];
-  return terms.filter((term) => normalized.includes(term));
 }
 
 interface RepoFaceRoomTextureStats {
@@ -4590,40 +4349,6 @@ function renderComedyImprovDirective(identity: RepoDiscordIdentity): string {
   });
 }
 
-function renderRepetitionSamplingDirective(messages: SourceMessage[]): string {
-  const recent = messages
-    .filter((message) => message.content.trim().length > 0)
-    .slice(-24);
-  const phraseCounts = countRepeatedPhrases(recent);
-  const overused = phraseCounts
-    .filter((entry) => entry.count >= 2)
-    .slice(0, 8);
-
-  return loadPromptTemplate("repo-face-repetition-sampling.prompt.md", {
-    overused: overused.map((entry) => `${entry.phrase} (${entry.count} recent uses)`),
-  });
-}
-
-function renderRoomTopicSaturationDirective(identity: RepoDiscordIdentity, messages: SourceMessage[]): string {
-  const signal = detectRoomTopicSaturation(messages);
-  if (!signal) {
-    return "";
-  }
-  const topicRelation = estimateTopicRelationToIdentity(identity, signal);
-  const relationLine = topicRelation.isHomeAdjacent
-    ? `- For ${identity.displayName}, this looks home-adjacent because the repeated terms overlap its territory (${topicRelation.matchedTerms.join(", ")}). That permits deeper engagement, but it still needs fresh anchors or closure.`
-    : `- For ${identity.displayName}, this looks like another steward's gravity well, not its own territory. Treat the pull as possible neglect, boredom, jealousy, territorial itch, or a reason to pivot toward ${identity.displayName}'s own priorities unless it has a distinct social move.`;
-
-  return [
-    "Current room topic saturation:",
-    `- The last ${signal.messageCount} current-room messages are circling repeated terms: ${signal.terms.map((term) => `${term.term} (${term.count})`).join(", ")}.`,
-    `- Topic coverage: ${signal.coveredMessages}/${signal.messageCount} messages touch those repeated terms.`,
-    relationLine,
-    "- Treat this as staleness pressure, not a ban. Stay with the topic only if you add a genuinely new anchor, answer a live question, make a decision-driving distinction, draft a concrete artifact, or intentionally close/defer the thread.",
-    "- If you only have another tasteful variation on the same point, choose a different social move, name your frustration with the room's orbit, pivot toward your own neglected fascination, or keep it private.",
-  ].join("\n");
-}
-
 interface RoomTopicSaturationSignal {
   messageCount: number;
   coveredMessages: number;
@@ -4834,45 +4559,6 @@ function significantTopicTerms(content: string): string[] {
   return Array.from(new Set(terms));
 }
 
-function countRepeatedPhrases(messages: SourceMessage[]): Array<{ phrase: string; count: number }> {
-  const counts = new Map<string, number>();
-  for (const message of messages) {
-    const normalized = normalizeForRepetition(message.content);
-    for (const phrase of repeatedPhraseCandidates(normalized)) {
-      counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
-    }
-  }
-  return Array.from(counts.entries())
-    .map(([phrase, count]) => ({ phrase, count }))
-    .filter((entry) => entry.phrase.length >= 8)
-    .sort((left, right) => {
-      if (right.count !== left.count) {
-        return right.count - left.count;
-      }
-      return left.phrase.localeCompare(right.phrase);
-    });
-}
-
-function repeatedPhraseCandidates(content: string): string[] {
-  const candidates = new Set<string>();
-  const lines = content
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  for (const line of lines) {
-    const words = line.split(/\s+/);
-    if (words.length >= 3) {
-      candidates.add(words.slice(0, Math.min(words.length, 4)).join(" "));
-    }
-    if (words.length >= 4) {
-      candidates.add(words.slice(-Math.min(words.length, 4)).join(" "));
-    }
-  }
-
-  return Array.from(candidates);
-}
-
 function normalizeForRepetition(value: string): string {
   return collapseWhitespace(value)
     .toLowerCase()
@@ -4931,26 +4617,6 @@ function renderBifrostGovernanceDigestDirective(
 
   return loadPromptTemplate("repo-face-bifrost-digest.prompt.md", {
     topics: lines,
-  });
-}
-
-function renderPendingMentionDirective(
-  identity: RepoDiscordIdentity,
-  pendingMentions: RepoFacePendingMention[],
-): string {
-  if (pendingMentions.length === 0) {
-    return loadPromptTemplate("repo-face-pending-mentions.prompt.md", {
-      mentions: [],
-    });
-  }
-
-  const mentionLines = pendingMentions.map((mention, index) =>
-    `- ${index === pendingMentions.length - 1 ? "Newest" : "Earlier"}: ${mention.authorName ?? mention.authorId} said, "${collapseWhitespace(mention.visiblePrompt, 500)}"`,
-  );
-
-  return loadPromptTemplate("repo-face-pending-mentions.prompt.md", {
-    displayName: identity.displayName,
-    mentions: mentionLines,
   });
 }
 
