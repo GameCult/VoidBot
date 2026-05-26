@@ -16,8 +16,8 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 ## Current Shape
 
-- Discord bot and worker are live.
-- The unattended repo Face / CTB swarm is live again as of 2026-05-21 after the teardown/restart pass. `GameCult Local Orchestrator` is enabled and owns the single hidden pulse for repo Face CTB turns, Void mood drift, Void moderation rumination, and the watchdog. Bifrost dispatch is present but disabled by default behind `BIFROST_DISPATCH_ENABLED=false`.
+- Discord bot and worker may be live, but the unattended repo Face / CTB swarm brake is active as of 2026-05-26.
+- The swarm was paused because live Face turns leaked owner-reply/Interpreter scaffolding into public Discord: Mind was being wrapped by the owner Discord reply prompt, then a worker fallback treated plain malformed Mind prose as public `SAY`. The fixed worker stack was restarted on 2026-05-26, typecheck/build pass, `agents:interpreter-loop-smoke` passes, and `agents:heartbeat-model-smoke -- --model gpt-5.4 --reasoning-effort none` passes. Keep `state/agent-swarm-paused.json` active until the operator explicitly asks to thaw; before thawing, run one controlled current-room turn and inspect model-output logs for `INTERPRETATION` plus explicit DSL actions only. Bifrost dispatch remains disabled by default behind `BIFROST_DISPATCH_ENABLED=false`.
 - The teardown authority remains `notes/agent-swarm-teardown-plan-2026-05-21.md`, but it is now a restart checklist and smell ledger rather than a stop sign. Keep using it when a Face/Bifrost/CTB boundary smells like prompt/parser/transport Jenga.
 - The repo-controlled pause flag is `state/agent-swarm-paused.json`. While it is missing or has `"paused": false`, swarm runners may operate. While it has `"paused": true` or is malformed, the Face heartbeat runner skips and the orchestrator skips agent-swarm organs. This is the brake. Do not route around it.
 - Postgres owns jobs, audit events, interaction memory, and rate-limit state.

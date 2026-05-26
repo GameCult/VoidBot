@@ -1,5 +1,5 @@
 {
-  "paused": false,
-  "reason": "Unpaused after stack restart restored ready bot/worker runtime and operations check passed live-service gates; keep watching Face prompts, interpreter routing, and memory maintenance output.",
-  "updatedAt": "2026-05-25T17:29:11Z"
+  "paused": true,
+  "reason": "Paused after live Face turns leaked owner-Codex/bridge artifact text into public Discord despite Face stdout choosing private silence. Fix side-effect extraction/routing before thawing.",
+  "updatedAt": "2026-05-26T11:29:00Z"
 }

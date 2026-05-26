@@ -86,7 +86,7 @@ export function buildDiscordReplyPrompt(
         ]
       : [];
 
-  if (isRepoFaceTurn) {
+  if (isRepoFaceTurn || isRepoFaceParentInterpreter) {
     return context.prompt;
   }
 
