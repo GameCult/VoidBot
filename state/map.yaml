@@ -14,14 +14,13 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the repo Face swarm online under watch after the 2026-05-24 deliberate
-    restart, with Bifrost work routing paused because the governance bridge
-    proved too disorienting for live social traffic. The immediate priority is
-    to observe the Face/Interpreter/speech boundary with live evidence: inherited
-    global doctrine should appear in Face prompts, live-room conversation should
-    arrive as raw transcript evidence, typed social state should become live
-    person-hooks when recent speakers match, and topic gravity should produce
-    character-specific pressure instead of another swarm obsession loop.
+    Keep the repo Face swarm paused after the 2026-05-26 Mind/owner-reply leak
+    until a controlled thaw verifies the Face/Mind/speech boundary in current
+    room context. Bifrost work routing remains paused because the governance
+    bridge proved too disorienting for live social traffic. Parent Mind now has
+    a slimmer semantic prompt with a hard DSL contract: interpret natural Face
+    thought, decide route/retry/drop, and emit only explicit STATE NOTE, ARTICLE,
+    or SAY blocks for side effects.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -58,7 +57,7 @@ data_flow:
     - keep persistent state lean enough that re-entry sharpens the next turn instead of drowning it
 
 active_subgoals:
-  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is live again, but only because the scheduler, prompt, model-output logs, parent Interpreter, Bifrost routing, and worker side-effect rails now have explicit observable boundaries. Keep watching for prompt/parser/transport Jenga before adding new swarm features.
+  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is currently paused after the 2026-05-26 owner-reply/Mind leak, and should thaw only through controlled evidence that the scheduler, prompt, model-output logs, parent Mind, and worker side-effect rails still have explicit observable boundaries. Keep watching for prompt/parser/transport Jenga before adding new swarm features.
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep the rebuilt moderation/self-state foundation on canonical CultCache `.cc` typed operations, never an editable JSON working projection.
   - Keep the typed moderation, mood, repo Face, and watchdog organs behind the single `GameCult Local Orchestrator` scheduled pulse; the per-organ scheduled tasks are legacy installer surfaces and should stay disabled unless a deliberate isolation test needs one. Bifrost dispatch is disabled by default behind `BIFROST_DISPATCH_ENABLED=false` until the governance bridge is rebuilt cleanly. As of the 2026-05-21 restart, the orchestrator task is enabled and is the live swarm pulse owner.
@@ -159,8 +158,9 @@ accepted_design:
   - Repo Face introductions are a first-public-speech obligation, not a second-turn reward. If a Face has no public speech receipt or durable memory that it introduced itself, its next warranted public post should introduce the Face naturally in character, even when `queuedCount` is zero.
   - Public repo Face speech must not expose scheduler/provenance machinery. Labels such as `Repo-face heartbeat from ...`, `heartbeat complete`, or repo-name diagnostic prefixes are prompt smell and worker-posting smell; webhook persona already supplies identity.
   - Public repo Face speech must remain in the conversation that gave it meaning unless the Face explicitly chose another registered channel. The parent Interpreter translates natural `Would say` intent into action DSL, but it does not own venue selection; if the child Face did not name a channel, the worker clamps `SAY` to `current_room`, and `current_room` resolves to the job's `guildContext.channelId` before channel allow-list checks. Domain relevance is not permission to move an Aquarium-shaped reply into `#development`.
-  - Parent Interpreter speech routing must distinguish a Face's public intent from its explanation of silence. `Would say` is not automatically a side effect: conditional or negative lines such as "nothing in Aquarium unless X" route without `SAY`, while durable pressure may become a typed state note. Otherwise private restraint gets laundered into public noise.
-  - Agreement between Faces must earn its airtime. The parent Interpreter should retry or drop a public `SAY` that merely restates a recent agent claim in another Face's vocabulary without adding a concrete question, source/repo fact, disagreement, handoff, or social move. Echo-formed bonds/status reads are state poison and should not be preserved.
+  - Parent Mind speech routing must distinguish a Face's public intent from its explanation of silence. `Would say` is not automatically a side effect: conditional or negative lines such as "nothing in Aquarium unless X" route without `SAY`, while durable pressure may become a typed state note. Otherwise private restraint gets laundered into public noise.
+  - Agreement between Faces must earn its airtime. Parent Mind should retry or drop a public `SAY` that merely restates a recent agent claim in another Face's vocabulary without adding a concrete question, source/repo fact, disagreement, handoff, or social move. Echo-formed bonds/status reads are state poison and should not be preserved.
+  - Parent Mind prompts should stay semantic, not scar-tissue-shaped. `prompts/repo-face-turn-interpreter.prompt.md` owns route/retry/drop judgment and the STATE NOTE/ARTICLE/SAY DSL contract, but it should not grow a checklist for every recent live failure. General ownership, context uptake, legibility, consent, and echo/correction judgment belong there; incident ledgers belong in evidence, handoff, or tests.
   - Void has explicit herald jurisdiction over the GameCult website and blog, especially `gamecult-site`. Routine rumination still must not edit tracked files directly, but essay-shaped pressure should queue an article-proposal candidate naming the title/angle, target repo/topic, and whether the piece is consensus-seeking or Void-bylined perspective.
   - Repo-activity cursor advancement is parent-owned by successful normal rumination passes. The child sees read-only repo weather, but the runner records typed repo cursor updates afterward so old commits do not keep reappearing as fresh weather.
   - Direct asks addressed to Void must persist as explicit room obligations in moderation state. The reviewed cursor is not the same thing as closure, and optional repo-weather should not preempt an unanswered human.
@@ -253,5 +253,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, but the repo Face swarm brake is active after live turns leaked owner-reply/Interpreter text into public Discord. The fixed worker stack was restarted on 2026-05-26, parent Mind prompts now bypass the owner-reply wrapper, malformed plain Mind output no longer becomes SAY, and gpt-5.4 smoke checks pass. Bifrost work routing remains paused by default.
-  next_action: Keep the swarm paused until the operator explicitly asks to thaw it. Before thawing, run one controlled live repo Face turn or dry-run against the current room and confirm the latest model-output logs show an `INTERPRETATION` block plus explicit DSL actions, with no owner-reply/owner-question language crossing into Discord.
+  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, but the repo Face swarm brake is active after live turns leaked owner-reply/Mind text into public Discord. The fixed worker stack was restarted on 2026-05-26, parent Mind prompts now bypass the owner-reply wrapper, malformed plain Mind output no longer becomes SAY, and the Mind prompt has been slimmed to semantic judgment plus a strict STATE NOTE/ARTICLE/SAY DSL contract. gpt-5.4 typecheck/build/interpreter-loop/heartbeat-smoke checks pass. Bifrost work routing remains paused by default.
+  next_action: Keep the swarm paused until the operator explicitly asks to thaw it. Before thawing, run one controlled live repo Face turn or dry-run against the current room and confirm the latest model-output logs show an `INTERPRETATION` block plus explicit DSL actions, with no owner-reply/owner-question language crossing into Discord and no scar-tissue prompt prose leaking into public speech.
