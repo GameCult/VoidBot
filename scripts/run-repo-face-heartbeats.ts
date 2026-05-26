@@ -376,6 +376,13 @@ async function main(): Promise<void> {
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
   const manualOverrideIdentities = applyManualTurnRequests(state, now);
+  reinitializeCtbSpacingOnWake({
+    state,
+    restStates: runtimeSnapshots.restStates,
+    idleCooling,
+    maxJobs: config.repoFaceHeartbeats.maxJobsPerTick,
+    manualOverrideIdentities,
+  });
   const selected = selectReadyParticipants(
     state,
     config.repoFaceHeartbeats.maxJobsPerTick,
@@ -2048,6 +2055,113 @@ function applyManualTurnRequests(state: FaceHeartbeatState, now: Date): Set<stri
   return manualOverrideIdentities;
 }
 
+function reinitializeCtbSpacingOnWake(input: {
+  state: FaceHeartbeatState;
+  restStates: Map<string, RepoFaceRestSnapshot>;
+  idleCooling: IdleCoolingSnapshot;
+  maxJobs: number;
+  manualOverrideIdentities: Set<string>;
+}): void {
+  const active = input.state.participants.filter((participant) =>
+    participant.status === "active" &&
+    participant.currentLoad < 1 &&
+    !participant.activeJobId
+  );
+  if (active.length <= input.maxJobs) {
+    return;
+  }
+
+  const pendingMentionCounts = countPendingMentionsByIdentity(input.state.pendingMentions);
+  const ready = active.filter((participant) => participant.nextTurnAt <= input.state.initiativeClock);
+  const readyRatio = ready.length / Math.max(active.length, 1);
+  const nappingCount = active.filter((participant) => input.restStates.get(participant.identityId)?.isNapping === true).length;
+  const previousHistory = input.state.history.slice(-20);
+  const heatBacklogAllowed =
+    input.state.globalHeat > 1.5 ||
+    active.some((participant) => participant.heat > 1.5 || participant.effectiveSpeed > 6);
+  const lastPauseIndex = findLastHistoryIndex(previousHistory, (entry) =>
+    entry.type === "skipped" && entry.reason === "agent_swarm_paused"
+  );
+  const lastCollectiveNapIndex = findLastHistoryIndex(previousHistory, (entry) =>
+    entry.type === "repo_face_memory_maintenance_tick" &&
+    isRecord(entry.idleCooling) &&
+    entry.idleCooling.napModeActive === true
+  );
+  const lastSpacingIndex = findLastHistoryIndex(previousHistory, (entry) =>
+    entry.type === "ctb_spacing_reinitialized"
+  );
+  const recentlyPaused = lastPauseIndex >= 0 && lastPauseIndex > lastSpacingIndex;
+  const recentlyCollectiveNapping = lastCollectiveNapIndex >= 0 && lastCollectiveNapIndex > lastSpacingIndex;
+  const allReadyCollapse = !heatBacklogAllowed && ready.length > input.maxJobs && readyRatio >= 0.75;
+  const coldStartCollapse = ready.length > input.maxJobs && active.every((participant) => participant.queuedCount === 0);
+  const wakingFromCollectiveSleep = recentlyCollectiveNapping && input.idleCooling.napModeActive !== true;
+  const wakingFromPause = recentlyPaused;
+
+  if (!allReadyCollapse && !coldStartCollapse && !wakingFromPause && !wakingFromCollectiveSleep) {
+    return;
+  }
+
+  const protectedIdentities = new Set<string>();
+  for (const participant of active) {
+    if (
+      (pendingMentionCounts.get(participant.identityId) ?? 0) > 0 ||
+      input.manualOverrideIdentities.has(participant.identityId)
+    ) {
+      protectedIdentities.add(participant.identityId);
+    }
+  }
+
+  const unprotected = active
+    .filter((participant) => !protectedIdentities.has(participant.identityId))
+    .sort((left, right) => {
+      const dueDelta = left.nextTurnAt - right.nextTurnAt;
+      if (dueDelta !== 0) {
+        return dueDelta;
+      }
+      if (right.effectiveSpeed !== left.effectiveSpeed) {
+        return right.effectiveSpeed - left.effectiveSpeed;
+      }
+      return left.identityId.localeCompare(right.identityId);
+    });
+  if (unprotected.length === 0) {
+    return;
+  }
+
+  const immediateSlots = Math.max(0, input.maxJobs - protectedIdentities.size);
+  const spacingMinutes = round3(input.state.baseRecoveryMinutes / Math.max(active.length, 1));
+  let rescheduledCount = 0;
+
+  unprotected.forEach((participant, index) => {
+    const delayedSlot = Math.max(0, index - immediateSlots + 1);
+    const targetTurnAt = round3(input.state.initiativeClock + spacingMinutes * delayedSlot);
+    if (participant.nextTurnAt !== targetTurnAt) {
+      participant.nextTurnAt = targetTurnAt;
+      rescheduledCount += 1;
+    }
+  });
+
+  if (rescheduledCount > 0) {
+    input.state.history.push({
+      type: "ctb_spacing_reinitialized",
+      reason: wakingFromPause
+        ? "wake_from_swarm_pause"
+        : wakingFromCollectiveSleep
+          ? "wake_from_collective_sleep"
+          : coldStartCollapse
+            ? "cold_start_ready_collapse"
+            : "ready_collapse",
+      rescheduledCount,
+      readyCountBefore: ready.length,
+      activeCount: active.length,
+      nappingCount,
+      protectedCount: protectedIdentities.size,
+      immediateSlots,
+      spacingMinutes,
+      initiativeClock: input.state.initiativeClock,
+    });
+  }
+}
+
 function consumeManualTurnRequests(
   state: FaceHeartbeatState,
   identityId: string,
@@ -2085,6 +2199,18 @@ function countPendingMentionsByIdentity(
     counts.set(mention.identityId, (counts.get(mention.identityId) ?? 0) + 1);
   }
   return counts;
+}
+
+function findLastHistoryIndex(
+  history: Array<Record<string, unknown>>,
+  predicate: (entry: Record<string, unknown>) => boolean,
+): number {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    if (predicate(history[index])) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 async function readIdleCoolingSnapshot(input: {
@@ -5145,6 +5271,10 @@ function round3(value: number): number {
 
 function stripLeadingBom(input: string): string {
   return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readArgValue(name: string): string | undefined {
