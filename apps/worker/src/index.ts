@@ -1114,7 +1114,7 @@ interface RepoIdentityPostIntent {
 
 interface RepoIdentityStateNoteIntent {
   identity?: string;
-  kind: "memory" | "need" | "bond" | "status" | "mood" | "bias" | "agency";
+  kind: "memory" | "need" | "bond" | "status" | "mood" | "bias" | "agency" | "doctrine";
   target?: string;
   summary: string;
   claim?: string;
@@ -1571,6 +1571,29 @@ async function applyRepoIdentityStateNoteIntent(
             tension: intent.tension ?? "The Face wants this acted on but has not resolved the path.",
             actionImplication: intent.action ?? "Use future turns to sharpen this into speech, Bifrost work, or a proposal.",
             intensity,
+            anchorRefs,
+            evidenceRefs: [],
+            sourceMemoryIds: [],
+            createdAt: now,
+            updatedAt: now,
+            tags: baseTags,
+          },
+        };
+      case "doctrine":
+        return {
+          operation: "upsert_doctrine_stance",
+          stance: {
+            stanceId: stableStateId("doctrine", identity.id, intent.target ?? intent.summary),
+            doctrine: sanitizeStateToken(intent.stance ?? intent.status ?? intent.target ?? "cotsc-praxis"),
+            status: intensity >= 0.76 ? "crystallized" : "active",
+            target,
+            summary: intent.summary,
+            claim: intent.claim ?? intent.question ?? intent.summary,
+            question: intent.question,
+            tension: intent.tension ?? "The doctrine should remain a lived relation, not a slogan.",
+            actionImplication: intent.action ?? "Let this stance bend future attention toward concrete connection, clarity, consent, and coherent machinery.",
+            intensity,
+            valence: clampSigned(intent.valence ?? 0),
             anchorRefs,
             evidenceRefs: [],
             sourceMemoryIds: [],
@@ -2373,8 +2396,11 @@ function parseDslList(value: string | undefined): string[] {
 }
 
 function normalizeStateNoteKind(value: string | undefined): RepoIdentityStateNoteIntent["kind"] | undefined {
-  const normalized = value?.trim().toLowerCase();
-  return ["memory", "need", "bond", "status", "mood", "bias", "agency"].includes(normalized ?? "")
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, "_");
+  if (normalized === "praxis") {
+    return "doctrine";
+  }
+  return ["memory", "need", "bond", "status", "mood", "bias", "agency", "doctrine"].includes(normalized ?? "")
     ? normalized as RepoIdentityStateNoteIntent["kind"]
     : undefined;
 }

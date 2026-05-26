@@ -256,6 +256,7 @@ function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
   state.faceAffect.needs = state.faceAffect.needs.filter(isNotRetiredEntry);
   state.faceAffect.socialBonds = state.faceAffect.socialBonds.filter(isNotRetiredEntry);
   state.faceAffect.statusReads = state.faceAffect.statusReads.filter(isNotRetiredEntry);
+  state.faceAffect.doctrineStances = state.faceAffect.doctrineStances.filter(isNotRetiredEntry);
 }
 
 function isNotRetiredEntry(entry: { status?: string; retiredAt?: string }): boolean {
@@ -442,6 +443,16 @@ function applyTypedOperation(
         .sort((left, right) => right.value - left.value)
         .slice(0, 16);
       state.faceAffect.updatedAt = operation.updatedAt;
+      return;
+    case "upsert_doctrine_stance":
+      upsertBy(state.faceAffect.doctrineStances, operation.stance, (entry) => entry.stanceId);
+      state.faceAffect.doctrineStances = state.faceAffect.doctrineStances
+        .sort((left, right) => right.intensity - left.intensity)
+        .slice(0, 24);
+      state.faceAffect.updatedAt = operation.stance.updatedAt;
+      return;
+    case "retire_doctrine_stance":
+      retireDoctrineStance(state.faceAffect, operation);
       return;
     case "update_sleep_cycle":
       state.scheduledRuntime.sleepCycle = operation.sleepCycle;
@@ -693,6 +704,20 @@ function retireStatusRead(
     read.retiredAt = operation.retiredAt;
     read.updatedAt = operation.retiredAt;
     read.tags = Array.from(new Set([...read.tags, `retired:${operation.reason}`]));
+  }
+  faceAffect.updatedAt = operation.retiredAt;
+}
+
+function retireDoctrineStance(
+  faceAffect: VoidFaceAffect,
+  operation: Extract<VoidSelfStateOperation, { operation: "retire_doctrine_stance" }>,
+): void {
+  const stance = faceAffect.doctrineStances.find((entry) => entry.stanceId === operation.stanceId);
+  if (stance) {
+    stance.status = "retired";
+    stance.retiredAt = operation.retiredAt;
+    stance.updatedAt = operation.retiredAt;
+    stance.tags = Array.from(new Set([...stance.tags, `retired:${operation.reason}`]));
   }
   faceAffect.updatedAt = operation.retiredAt;
 }

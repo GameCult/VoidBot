@@ -66,7 +66,7 @@ try {
     throw new Error(`read_repo_face_state did not expose typedState.faceAffect for ${identity}.`);
   }
 
-  for (const field of ["needs", "socialBonds", "statusReads", "moodDimensions", "socialBiases"]) {
+  for (const field of ["needs", "socialBonds", "statusReads", "moodDimensions", "socialBiases", "doctrineStances"]) {
     if (!Array.isArray(faceAffect[field])) {
       throw new Error(`typedState.faceAffect.${field} is not an array for ${identity}.`);
     }
@@ -87,6 +87,7 @@ try {
       statusReads: faceAffect.statusReads.length,
       moodDimensions: faceAffect.moodDimensions.length,
       socialBiases: faceAffect.socialBiases.length,
+      doctrineStances: faceAffect.doctrineStances.length,
     },
   }, null, 2)}\n`);
 } finally {

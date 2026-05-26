@@ -142,6 +142,7 @@ export function createEmptyVoidSelfState(
       statusReads: [],
       moodDimensions: [],
       socialBiases: [],
+      doctrineStances: [],
       updatedAt: createdAt,
     }),
   };
@@ -315,8 +316,12 @@ function renderFaceAffectSummary(
     .slice()
     .sort((left, right) => right.value - left.value)
     .slice(0, 8);
+  const doctrineStances = affect.doctrineStances
+    .filter((stance) => stance.status !== "retired" && !stance.retiredAt)
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 6);
 
-  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0 && biases.length === 0) {
+  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0 && biases.length === 0 && doctrineStances.length === 0) {
     return `- What ${identityName} feels and wants: no explicit affect state yet.`;
   }
 
@@ -354,6 +359,15 @@ function renderFaceAffectSummary(
       `- Social bias/${bias.name} (${bias.value.toFixed(2)}): ${bias.summary}`,
       `  How it bends interpretation: ${bias.behavioralPull}`,
     ].join("\n")),
+    ...doctrineStances.map((stance) => {
+      const target = stance.target.label ?? stance.target.id;
+      return [
+        `- Doctrine/${stance.doctrine} around ${target} (${stance.status}, ${stance.intensity.toFixed(2)}): ${stance.summary}`,
+        `  ${identityName}'s claim or question: ${stance.claim ?? stance.question ?? "(unspoken)"}`,
+        `  What keeps it from becoming slogan mush: ${stance.tension}`,
+        `  How it should change future contact: ${stance.actionImplication}`,
+      ].join("\n");
+    }),
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");
@@ -432,6 +446,18 @@ export function buildVoidSelfStateProjection(
           value: bias.value,
           summary: bias.summary,
           behavioralPull: bias.behavioralPull,
+        })),
+      doctrineStances: typedState.faceAffect.doctrineStances
+        .filter((stance) => stance.status !== "retired" && !stance.retiredAt)
+        .slice(0, 12)
+        .map((stance) => ({
+          id: stance.stanceId,
+          doctrine: stance.doctrine,
+          status: stance.status,
+          target: stance.target,
+          summary: stance.summary,
+          intensity: stance.intensity,
+          valence: stance.valence,
         })),
     },
   };

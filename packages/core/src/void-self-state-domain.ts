@@ -360,6 +360,44 @@ const faceSocialBiasSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+const faceDoctrineStanceSchema = z.object({
+  stanceId: nonEmptyStringSchema,
+  doctrine: nonEmptyStringSchema,
+  status: z.enum(["active", "cooling", "crystallized", "resolved", "retired"]),
+  target: thoughtTargetSchema,
+  summary: boundedTextSchema,
+  claim: z.string().trim().min(1).max(2000).optional(),
+  question: z.string().trim().min(1).max(2000).optional(),
+  tension: z.string().trim().min(1).max(2000),
+  actionImplication: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  valence: z.number().min(-1).max(1).default(0),
+  anchorRefs: z.array(anchorRefSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  sourceMemoryIds: z.array(nonEmptyStringSchema).default([]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict().superRefine((stance, context) => {
+  if (!stance.claim && !stance.question) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Doctrine stance must preserve at least one claim or question.",
+      path: ["claim"],
+    });
+  }
+
+  const admitsMissingAnchor = stance.tags.includes("anchor:missing") || stance.tags.includes("evidence:missing");
+  if (stance.anchorRefs.length === 0 && stance.evidenceRefs.length === 0 && stance.sourceMemoryIds.length === 0 && !admitsMissingAnchor) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Doctrine stance must include anchor refs, source memory ids, or explicitly tag anchor:missing.",
+      path: ["anchorRefs"],
+    });
+  }
+});
+
 const selfProfileValueSchema = z.object({
   id: nonEmptyStringSchema,
   label: nonEmptyStringSchema,
@@ -452,6 +490,7 @@ export const voidFaceAffectSchema = z.object({
   statusReads: z.array(faceStatusReadSchema).default([]),
   moodDimensions: z.array(faceMoodDimensionSchema).default([]),
   socialBiases: z.array(faceSocialBiasSchema).default([]),
+  doctrineStances: z.array(faceDoctrineStanceSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
 
@@ -647,6 +686,16 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     operation: z.literal("update_social_biases"),
     biases: z.array(faceSocialBiasSchema).min(1),
     updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("upsert_doctrine_stance"),
+    stance: faceDoctrineStanceSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_doctrine_stance"),
+    stanceId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
   }).strict(),
   z.object({
     operation: z.literal("update_sleep_cycle"),

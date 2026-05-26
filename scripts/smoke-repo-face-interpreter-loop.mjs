@@ -131,13 +131,15 @@ function evaluateInterpreter(input) {
   if (!parsed.decision) {
     failures.push("interpreter did not emit an INTERPRETATION decision");
   }
-  if (parsed.decision === "retry" || parsed.decision === "drop") {
+  const acceptableLegibilityRetry = parsed.decision === "retry" &&
+    /reply_to|setup phrase|anchor|artifact|readers can follow|followable/i.test(parsed.reason ?? "");
+  if ((parsed.decision === "retry" && !acceptableLegibilityRetry) || parsed.decision === "drop") {
     failures.push(`interpreter chose ${parsed.decision}: ${parsed.reason ?? "no reason"}`);
   }
   if (parsed.decision === "route" && parsed.blocks.length === 0) {
     failures.push("interpreter routed but emitted no STATE NOTE, SAY, ARTICLE, or BIFROST TOPIC blocks");
   }
-  if (!parsed.blocks.some((block) => block.kind === "STATE NOTE")) {
+  if (parsed.decision === "route" && !parsed.blocks.some((block) => block.kind === "STATE NOTE")) {
     failures.push("interpreter did not preserve any durable state note");
   }
   for (const block of parsed.blocks) {

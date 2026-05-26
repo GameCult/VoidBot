@@ -2582,6 +2582,9 @@ function renderRepoFaceStatePacket(
     .sort((left, right) => right.value - left.value);
   const socialBiases = [...state.faceAffect.socialBiases]
     .sort((left, right) => right.value - left.value);
+  const doctrineStances = [...state.faceAffect.doctrineStances]
+    .filter((stance) => stance.status !== "retired" && !stance.retiredAt)
+    .sort(sortAffectByStatusAndIntensity);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => pressure.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
@@ -2692,6 +2695,21 @@ function renderRepoFaceStatePacket(
       "Social interpretation biases that shape ambiguous signals:",
       ...socialBiases.map((bias) =>
         `- ${bias.name}=${bias.value.toFixed(2)}: ${asSentence(bias.summary)} Behavioral pull: ${asSentence(bias.behavioralPull)}`,
+      ),
+    ].join("\n"));
+  }
+
+  if (doctrineStances.length > 0) {
+    lines.push([
+      `${name}'s lived relation to Cult/Praxis doctrine:`,
+      ...doctrineStances.map((stance) =>
+        [
+          `- ${stance.doctrine} toward ${targetLabel(stance.target)} [${stance.status}, intensity ${stance.intensity.toFixed(2)}, valence ${stance.valence.toFixed(2)}]: ${asSentence(stance.summary)}`,
+          stance.claim ? `Claim: ${asSentence(stance.claim)}` : "",
+          stance.question ? `Question: ${asSentence(stance.question)}` : "",
+          `Tension: ${asSentence(stance.tension)}`,
+          `Behavioral pull: ${asSentence(stance.actionImplication)}`,
+        ].filter(Boolean).join(" "),
       ),
     ].join("\n"));
   }
@@ -3310,6 +3328,7 @@ function collectRepoFaceStateTopicTermCounts(state: VoidSelfStateTypedProjection
     ...state.thoughtMemory.shortTerm.map((memory) => `${memory.summary} ${memory.claim ?? ""} ${memory.question ?? ""} ${memory.tension ?? ""}`),
     ...state.thoughtMemory.incubation.map((thread) => `${thread.topic} ${thread.summary}`),
     ...state.agencyPressure.pressures.map((pressure) => `${pressure.summary} ${pressure.claim ?? ""} ${pressure.question ?? ""} ${pressure.tension ?? ""}`),
+    ...state.faceAffect.doctrineStances.map((stance) => `${stance.doctrine} ${stance.summary} ${stance.claim ?? ""} ${stance.question ?? ""} ${stance.tension}`),
   ].slice(-64);
   for (const surface of surfaces) {
     for (const term of significantTopicTerms(surface)) {

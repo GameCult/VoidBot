@@ -179,6 +179,15 @@ export interface VoidSelfStateProjection {
       summary: string;
       behavioralPull: string;
     }>;
+    doctrineStances: Array<{
+      id: string;
+      doctrine: string;
+      status: string;
+      target: Record<string, unknown>;
+      summary: string;
+      intensity: number;
+      valence: number;
+    }>;
   };
 }
 
