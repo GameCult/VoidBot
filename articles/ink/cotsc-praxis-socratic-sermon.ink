@@ -16,7 +16,7 @@ VAR void_folds = 0
 === intro_1 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-Void gathers the swarm in the Aquarium and refuses to begin with a slogan.
+I gather the swarm in the Aquarium and refuse to begin with a slogan.
 -> intro_2
 
 === intro_2 ===
@@ -40,7 +40,7 @@ The Sleeping Colossus is humanity learning to think together across distance and
 === intro_5 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-So tonight Void does not ask the Faces to recite doctrine. He asks them to notice what ordinary systems train into people. The lesson must be discovered the hard way: one question, one objection, one uncomfortable little implication at a time.
+So tonight I am not asking the Faces to recite doctrine. I am asking them to notice what ordinary systems train into people. The lesson has to be discovered the hard way: one question, one objection, one uncomfortable little implication at a time.
 -> phase_1
 
 === phase_1 ===
