@@ -56,6 +56,7 @@ import {
   resolveArticleRepoRoot,
   validateRenderedArticleMarkdown,
 } from "./repo-face-article.js";
+import { resolveRepoIdentityPostArtifactLinks } from "./repo-face-artifact-links.js";
 
 const config = loadConfig();
 const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
@@ -1168,8 +1169,13 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
       `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
     );
   }
+  const sourceDocuments = await sourceArchiveRepository.listByRepo(identity.repoName).catch(() => []);
+  const content = resolveRepoIdentityPostArtifactLinks({
+    repoName: identity.repoName,
+    content: intent.content.trim(),
+    documents: sourceDocuments,
+  });
   if (isOwnerDmChannelAlias(channelId)) {
-    const content = intent.content.trim();
     const dmChannelId = await openOwnerDmChannel();
     const postedMessages = await postDiscordBotMessageChunks(
       dmChannelId,
@@ -1202,7 +1208,6 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  const content = intent.content.trim();
   if (content.length > 1900) {
     throw new Error(
       `Repo identity ${identity.id} SAY content is too long for one Discord message (${content.length} characters).`,

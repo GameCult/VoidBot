@@ -59,6 +59,7 @@
     "moderation:agency-pressure:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-agency-pressure-fixture.ps1",
     "moderation:affect-state:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-affect-state-fixture.ps1",
     "agents:repo-face-affect-mcp-fixture": "node scripts/smoke-repo-face-affect-mcp-fixture.mjs",
+    "agents:repo-face-artifact-links:fixture": "tsx scripts/smoke-repo-face-artifact-links.ts",
     "moderation:rumination:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-fixture.ps1",
     "moderation:rumination:speech-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-speech-fixture.ps1",
     "moderation:rumination:speech-pressure-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-speech-pressure-fixture.ps1",
