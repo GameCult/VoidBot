@@ -1,5 +1,5 @@
 {
-  "paused": false,
-  "reason": "Operator explicitly thawed the repo Face swarm after malformed parent Mind retry routing was fixed, verified, committed, and pushed.",
-  "updatedAt": "2026-05-26T20:23:33.250Z"
+  "paused": true,
+  "reason": "Operator explicitly stopped the repo Face swarm after live thaw.",
+  "updatedAt": "2026-05-26T20:37:19.387Z"
 }
