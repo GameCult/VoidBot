@@ -1,6 +1,6 @@
 # CotSC Praxis Worldview
 
-This note saves the literature pass behind the Cult of the Sleeping Colossus Praxis doctrine. It is not a new authority surface by itself. Prompt fragments may quote or distill it, but live behavior still has to cross the existing ownership boundaries: state service, parent Interpreter, Bifrost/governance gates, Discord room consent, and ordinary repo review.
+This note saves the literature pass behind the Cult of the Sleeping Colossus Praxis doctrine. It is not a new authority surface by itself. The global Codex `AGENTS.md` prompt surface owns the active doctrine, and prompt fragments may quote or distill it only when they are carrying that global surface into a specific organ. Live behavior still has to cross the existing ownership boundaries: state service, parent Interpreter, Bifrost/governance gates, Discord room consent, and ordinary repo review.
 
 ## Objective
 

@@ -1,8 +1,9 @@
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
@@ -638,10 +639,12 @@ async function interpretRepoFaceTurnOutput(
   outputText: string,
   input: { attempt: 1 | 2 },
 ): Promise<RepoFaceParentInterpretation> {
+  const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const interpreterPrompt = loadPromptTemplate("repo-face-turn-interpreter.prompt.md", {
     attempt: input.attempt,
     facePrompt: renderRepoFaceInterpreterPromptContext(job.contextBundle.prompt),
     faceOutput: outputText.slice(0, 8000),
+    globalAgentDoctrine,
   });
   const interpreterContext = {
     ...job.contextBundle,
@@ -653,6 +656,39 @@ async function interpretRepoFaceTurnOutput(
   const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
   return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
+}
+
+async function loadGlobalAgentDoctrine(): Promise<string> {
+  const candidates = [
+    process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME, "AGENTS.md") : undefined,
+    process.env.USERPROFILE ? resolve(process.env.USERPROFILE, ".codex", "AGENTS.md") : undefined,
+    resolve(homedir(), ".codex", "AGENTS.md"),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const uniqueCandidates = [...new Set(candidates)];
+  const errors: string[] = [];
+
+  for (const candidate of uniqueCandidates) {
+    try {
+      const content = await readFile(candidate, "utf8");
+      if (content.trim().length > 0) {
+        return content.trim();
+      }
+      errors.push(`${candidate}: empty file`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${candidate}: ${message}`);
+    }
+  }
+
+  return [
+    "# Global Agent Instructions Unavailable",
+    "",
+    "The parent Mind prompt attempted to load the global Codex AGENTS.md file, but no readable file was found.",
+    "This is not a replacement doctrine. Treat it as an inspection failure and avoid claiming global guidance was available for this turn.",
+    "",
+    "Attempted paths:",
+    ...errors.map((error) => `- ${error}`),
+  ].join("\n");
 }
 
 function normalizeModelText(content: string): string {

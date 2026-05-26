@@ -2060,7 +2060,6 @@ function buildHeartbeatPrompt(input: {
     researchCapabilitiesDirective: renderResearchCapabilitiesDirective(input.identity),
     socialEmbodimentDirective: renderSocialEmbodimentDirective(input.identity),
     jurisdictionRespectDirective: renderJurisdictionRespectDirective(input.identity),
-    praxisWorldviewDirective: renderPraxisWorldviewDirective(input.identity),
     comedyImprovDirective: renderComedyImprovDirective(input.identity),
     repetitionSamplingDirective: renderRepetitionSamplingDirective([
       input.recentMessages,
@@ -4005,8 +4004,10 @@ async function projectRepoFaceMemorySurface(input: {
   statePacket: string;
   config: ReturnType<typeof loadConfig>;
 }): Promise<string> {
+  const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const prompt = loadPromptTemplate("repo-face-state-projector.prompt.md", {
     characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
+    globalAgentDoctrine,
     statePacket: input.statePacket,
   });
   const output = await runCodexTextProjection({
@@ -4579,12 +4580,6 @@ function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string 
 
 function renderJurisdictionRespectDirective(identity: RepoDiscordIdentity): string {
   return loadPromptTemplate("repo-face-jurisdiction-respect.prompt.md", {
-    displayName: identity.displayName,
-  });
-}
-
-function renderPraxisWorldviewDirective(identity: RepoDiscordIdentity): string {
-  return loadPromptTemplate("repo-face-praxis-worldview.prompt.md", {
     displayName: identity.displayName,
   });
 }
