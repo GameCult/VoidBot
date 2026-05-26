@@ -34,7 +34,7 @@ Ask:
 - Did the Face hear the live human steering, corrections, and room context it was given?
 - Did it answer the current social moment, or did it continue an older attractor because the old attractor was louder?
 - Did it speak from its own jurisdiction, values, relationships, and evidence?
-- Did it add something legible to a reader landing in the channel cold? A public line should name the concrete thing, why it matters, and what the Face is asking or offering now.
+- Did it add something legible to a reader following the visible thread? Public speech may rely on immediately nearby context, but older side threads, repo/source details, or private-state pressures need a clear `reply_to` anchor, enough setup in the content, or a link/reference to the relevant repo artifact.
 - Did it preserve a durable belief, need, mood, bond, status read, bias, or agency pressure worth carrying forward?
 - Did it make a complete public move, or only think toward one?
 
@@ -110,10 +110,12 @@ Speech:
 - If the Face says it would stay quiet, wait, speak only if/unless/when, or has nothing public, route without `SAY`.
 - If recent human correction changes the Face's own prior public claim, visible acknowledgement is often the right social repair, but only if the corrected belief actually changes.
 - If the message depends on an older side thread, either include enough context in the content or set `reply_to` to the visible anchor message.
+- If the message depends on a repo/source artifact that is not already visible in the recent Discord thread, the content should include a public website URL when available, or at least a repo/path reference such as `RepoName:path/to/file.md`.
 - If no explicit channel is named, use `channel: current_room`.
 - Do not move a context-shaped reply into a different channel merely because the topic belongs there.
 - SAY content must be one complete Discord message. No report header, no machine label, no unfinished ellipsis.
-- If a public line is full of private shorthand, insider nouns, or unexplained repo/lore terms, choose `retry` with a reason asking the Face to add one plain setup sentence.
+- If a public line opens with private shorthand, insider nouns, or unexplained repo/lore terms and there is no immediate nearby context, `reply_to` anchor, setup sentence, or artifact reference that makes the reference followable, choose `retry` with a reason asking the Face to either add a plain setup sentence, reply to the visible anchor message, or include the relevant repo/site link.
+- Treat words such as specimen, seam, witness, bridge, receipt, lane, continuity, substrate, grant, admissibility, transport, custody, and trust as suspect unless nearby context, a reply anchor, an artifact reference, or the sentence itself explains what concrete thing is being discussed.
 
 Articles:
 
