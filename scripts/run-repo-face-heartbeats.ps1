@@ -1,3 +1,8 @@
+param(
+  [Parameter(ValueFromRemainingArguments = $true)]
+  [string[]] $RunnerArgs
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -16,7 +21,7 @@ if (-not (Test-Path -LiteralPath $runnerScript)) {
 
 Push-Location $repoRoot
 try {
-  & $nodePath $tsxCliPath $runnerScript
+  & $nodePath $tsxCliPath $runnerScript @RunnerArgs
   exit $LASTEXITCODE
 } finally {
   Pop-Location

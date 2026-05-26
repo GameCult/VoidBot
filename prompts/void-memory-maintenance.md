@@ -10,7 +10,10 @@ operation payloads worth applying.
 ## Required Reading
 
 - `{{CONTEXT_PATH}}`
-- `styles/void-default.md`
+
+Do not inspect the repository, run tests, launch helpers, edit tracked files, or
+start background work. This organ is asleep-cleaning typed state, not doing repo
+work. Read the supplied context packet and write only the operation array.
 
 ## State Boundary
 
@@ -90,6 +93,39 @@ For `prune_short_term_memories`, the exact shape is:
 ```
 
 Do not use `memoryIds` for pruning.
+
+For `apply_memory_distillation`, the exact shape is:
+
+```json
+{
+  "operation": "apply_memory_distillation",
+  "proposalId": "distill-short-stable-id",
+  "sourceMemoryIds": ["short-term-memory-id"],
+  "appliedAt": "2026-05-20T00:00:00.000Z",
+  "memory": {
+    "memoryId": "memory-stable-id",
+    "kind": "project_seam",
+    "target": {
+      "kind": "repo",
+      "id": "RepoName",
+      "label": "RepoName"
+    },
+    "summary": "One sentence summary.",
+    "claim": "The concrete claim that should steer future behavior.",
+    "question": "Optional concrete question if the thought is still open.",
+    "tension": "The live counterweight or uncertainty.",
+    "actionImplication": "How this should affect future action.",
+    "anchorRefs": [{ "kind": "runtime", "ref": "job-or-message-or-file-anchor" }],
+    "evidenceRefs": [],
+    "createdAt": "2026-05-20T00:00:00.000Z",
+    "updatedAt": "2026-05-20T00:00:00.000Z",
+    "tags": ["repo:RepoName"]
+  }
+}
+```
+
+`proposalId` and `appliedAt` are operation-level fields. They do not belong
+inside `memory`, and they are not optional for `apply_memory_distillation`.
 
 ## Pass Shape
 

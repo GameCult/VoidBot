@@ -146,6 +146,22 @@ interface RepoFaceRuntimePressureSnapshot {
   noveltyPressure: number;
 }
 
+interface RepoFaceMemoryMaintenanceEvent {
+  type:
+    | "repo_face_memory_maintenance_started"
+    | "repo_face_memory_maintenance_completed"
+    | "repo_face_memory_maintenance_failed"
+    | "repo_face_memory_maintenance_failed_to_start";
+  identityId: string;
+  observedAt: string;
+  reason?: string;
+  statusPath?: string;
+  pid?: number;
+  exitCode?: number | null;
+  durationSeconds?: number;
+  failureReason?: string;
+}
+
 interface BifrostGovernanceDigest {
   generatedAt: string;
   topics: BifrostGovernanceTopic[];
@@ -182,6 +198,7 @@ interface ChannelSnapshot {
 async function main(): Promise<void> {
   const config = loadConfig();
   const dryRun = process.argv.includes("--dry-run");
+  const maintenanceOnly = process.argv.includes("--maintenance-only");
   const assemblePromptIdentity = readArgValue("--assemble-prompt");
   if (assemblePromptIdentity) {
     const result = await assembleRepoFaceTurnPrompt({
@@ -192,6 +209,68 @@ async function main(): Promise<void> {
       conversationSurfacePath: readArgValue("--conversation-surface"),
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
+
+  if (maintenanceOnly) {
+    if (!config.repoFaceHeartbeats.enabled && !process.argv.includes("--force")) {
+      process.stdout.write(`${JSON.stringify({
+        ok: true,
+        skipped: true,
+        reason: "repo_face_heartbeats_disabled",
+      })}\n`);
+      return;
+    }
+    const faceRegistry = await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath);
+    const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
+    const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
+    state.controls = normalizeHeartbeatControls(state.controls);
+    const now = new Date();
+    const idleCooling = await readIdleCoolingSnapshot({
+      config,
+      identities: registry.identities,
+      state,
+      now,
+    });
+    const runtimeSnapshots = await loadRepoFaceRuntimeSnapshots(
+      registry.identities,
+      config.storageRoot,
+      state,
+      {
+        dryRun,
+        idleCooling,
+        startMemoryMaintenance: true,
+        maxMaintenanceRuns: readIntArgValue("--max-maintenance-runs", 1),
+        waitForMaintenanceCompletion: true,
+      },
+    );
+    state.lastTickAt = now.toISOString();
+    state.history.push({
+      type: "repo_face_memory_maintenance_tick",
+      observedAt: state.lastTickAt,
+      dryRun,
+      idleCooling,
+      maintenanceEventCount: runtimeSnapshots.maintenanceEvents.length,
+    });
+    state.history = state.history.slice(-80);
+    if (!dryRun) {
+      await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+    }
+    const ok = runtimeSnapshots.maintenanceEvents.every((event) =>
+      event.type !== "repo_face_memory_maintenance_failed_to_start" &&
+      event.type !== "repo_face_memory_maintenance_failed"
+    );
+    process.stdout.write(`${JSON.stringify({
+      ok,
+      dryRun,
+      maintenanceOnly: true,
+      maintenanceEventCount: runtimeSnapshots.maintenanceEvents.length,
+      maintenanceEvents: runtimeSnapshots.maintenanceEvents,
+      statePath: config.repoFaceHeartbeats.statePath,
+    })}\n`);
+    if (!ok) {
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -252,7 +331,7 @@ async function main(): Promise<void> {
     registry.identities,
     config.storageRoot,
     state,
-    { dryRun, idleCooling },
+    { dryRun, idleCooling, startMemoryMaintenance: false },
   );
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
@@ -641,13 +720,23 @@ async function loadRepoFaceRuntimeSnapshots(
   identities: RepoDiscordIdentity[],
   storageRoot: string,
   heartbeatState: FaceHeartbeatState,
-  options: { dryRun?: boolean; idleCooling?: IdleCoolingSnapshot } = {},
+  options: {
+    dryRun?: boolean;
+    idleCooling?: IdleCoolingSnapshot;
+    startMemoryMaintenance?: boolean;
+    maxMaintenanceRuns?: number;
+    waitForMaintenanceCompletion?: boolean;
+  } = {},
 ): Promise<{
   restStates: Map<string, RepoFaceRestSnapshot>;
   pressureByIdentity: Map<string, RepoFaceRuntimePressureSnapshot>;
+  maintenanceEvents: RepoFaceMemoryMaintenanceEvent[];
 }> {
   const restStates = new Map<string, RepoFaceRestSnapshot>();
   const pressureByIdentity = new Map<string, RepoFaceRuntimePressureSnapshot>();
+  const maintenanceEvents: RepoFaceMemoryMaintenanceEvent[] = [];
+  let maintenanceRunCount = 0;
+  const maxMaintenanceRuns = Math.max(0, options.maxMaintenanceRuns ?? Number.POSITIVE_INFINITY);
   const now = new Date();
 
   for (const identity of identities) {
@@ -713,7 +802,7 @@ async function loadRepoFaceRuntimeSnapshots(
           },
         );
       }
-      const maintenance = options.dryRun
+      const maintenance = options.dryRun || options.startMemoryMaintenance !== true || maintenanceRunCount >= maxMaintenanceRuns
         ? { started: false, reason: "dry_run", statusPath: undefined }
         : await maybeStartRepoFaceMemoryMaintenance({
             identity,
@@ -724,17 +813,31 @@ async function loadRepoFaceRuntimeSnapshots(
               napEndsAt: sleepCycle.currentNapEndsAt,
               nextNapStartsAt: sleepCycle.nextNapStartsAt,
             },
+            waitForCompletion: options.waitForMaintenanceCompletion === true,
           });
       if (maintenance.started || maintenance.failureReason) {
-        heartbeatState.history.push({
-          type: maintenance.started ? "repo_face_memory_maintenance_started" : "repo_face_memory_maintenance_failed_to_start",
+        maintenanceRunCount += 1;
+      }
+      if (maintenance.started || maintenance.failureReason || maintenance.completed) {
+        const event: RepoFaceMemoryMaintenanceEvent = {
+          type: maintenance.completed
+            ? "repo_face_memory_maintenance_completed"
+            : maintenance.started
+              ? "repo_face_memory_maintenance_started"
+              : maintenance.exitCode === undefined
+                ? "repo_face_memory_maintenance_failed_to_start"
+                : "repo_face_memory_maintenance_failed",
           identityId: identity.id,
           observedAt: now.toISOString(),
           reason: maintenance.reason,
           statusPath: maintenance.statusPath,
           pid: maintenance.pid,
+          exitCode: maintenance.exitCode,
+          durationSeconds: maintenance.durationSeconds,
           failureReason: maintenance.failureReason,
-        });
+        };
+        heartbeatState.history.push(event);
+        maintenanceEvents.push(event);
       }
       restStates.set(identity.id, {
         isNapping: sleepCycle.isNapping === true,
@@ -749,7 +852,7 @@ async function loadRepoFaceRuntimeSnapshots(
     }
   }
 
-  return { restStates, pressureByIdentity };
+  return { restStates, pressureByIdentity, maintenanceEvents };
 }
 
 function projectSleepCycleForOperatorAbsence(
@@ -886,11 +989,15 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
   statePath: string;
   typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>;
   projectedRest: RepoFaceRestSnapshot;
+  waitForCompletion?: boolean;
 }): Promise<{
   started: boolean;
+  completed?: boolean;
   reason?: string;
   statusPath?: string;
   pid?: number;
+  exitCode?: number | null;
+  durationSeconds?: number;
   failureReason?: string;
 }> {
   const shortTerm = input.typedState.thoughtMemory.shortTerm ?? [];
@@ -937,6 +1044,78 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
         ? new Date(newestTimestampMs(shortTerm)).toISOString()
         : undefined,
     }, null, 2)}\n`, "utf8");
+    if (input.waitForCompletion === true) {
+      const startedAtMs = Date.now();
+      const stamp = new Date(startedAtMs).toISOString().replace(/[:.]/g, "-");
+      const stdoutPath = resolve(paths.logDir, `repo-face-memory-maintenance-${input.identity.id}-${stamp}.stdout.log`);
+      const stderrPath = resolve(paths.logDir, `repo-face-memory-maintenance-${input.identity.id}-${stamp}.stderr.log`);
+      const maxRuntimeMinutes = Number.parseInt(process.env.VOID_MEMORY_MAINTENANCE_MAX_RUNTIME_MINUTES ?? "15", 10);
+      const result = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          resolve(process.cwd(), "scripts", "run-void-memory-maintenance.ps1"),
+          "-StateFilePath",
+          input.statePath,
+          "-ForceDistillation",
+        ],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          timeout: Math.max(5, maxRuntimeMinutes + 2) * 60_000,
+          windowsHide: true,
+          env: {
+            ...process.env,
+            VOID_MEMORY_MAINTENANCE_STATUS_DIR: paths.statusDir,
+            VOID_MEMORY_MAINTENANCE_LOG_DIR: paths.logDir,
+          },
+        },
+      );
+      await writeFile(stdoutPath, result.stdout ?? "", "utf8");
+      await writeFile(stderrPath, result.stderr ?? "", "utf8");
+      const durationSeconds = round3((Date.now() - startedAtMs) / 1000);
+      if (result.error || result.status !== 0) {
+        const currentStatus = await readJsonFile(paths.statusPath);
+        if (currentStatus?.status === "starting" || currentStatus?.status === "running" || currentStatus?.status === "running_skip_model") {
+          await writeFile(paths.statusPath, `${JSON.stringify({
+            status: "failed",
+            startedAt: currentStatus.startedAt ?? new Date(startedAtMs).toISOString(),
+            finishedAt: new Date().toISOString(),
+            durationSeconds,
+            stateFile: input.statePath,
+            reason,
+            exitCode: result.status,
+            signal: result.signal,
+            error: result.error instanceof Error ? result.error.message : undefined,
+            stdoutPath,
+            stderrPath,
+          }, null, 2)}\n`, "utf8").catch(() => undefined);
+        }
+        return {
+          started: false,
+          reason,
+          statusPath: paths.statusPath,
+          exitCode: result.status,
+          durationSeconds,
+          failureReason: result.error instanceof Error
+            ? result.error.message
+            : `memory maintenance exited with ${result.status ?? result.signal ?? "unknown status"}`,
+        };
+      }
+      return {
+        started: true,
+        completed: true,
+        reason,
+        statusPath: paths.statusPath,
+        exitCode: result.status,
+        durationSeconds,
+      };
+    }
+
     const child = spawn(
       "powershell.exe",
       [
@@ -1015,7 +1194,15 @@ function isRecentRunningStatus(status: Record<string, unknown> | undefined, maxA
     return false;
   }
   const startedAtMs = typeof status.startedAt === "string" ? Date.parse(status.startedAt) : NaN;
-  return Number.isFinite(startedAtMs) && Date.now() - startedAtMs < maxAgeMinutes * 60_000;
+  if (!Number.isFinite(startedAtMs)) {
+    return false;
+  }
+  if (status.status === "starting") {
+    const hasProcessEvidence = typeof status.pid === "number" || typeof status.lockPath === "string";
+    const startingGraceMs = hasProcessEvidence ? maxAgeMinutes * 60_000 : 60_000;
+    return Date.now() - startedAtMs < startingGraceMs;
+  }
+  return Date.now() - startedAtMs < maxAgeMinutes * 60_000;
 }
 
 function isStatusCompletedAfter(status: Record<string, unknown> | undefined, sourceTimestampMs: number): boolean {
@@ -4968,6 +5155,15 @@ function readArgValue(name: string): string | undefined {
 
   const value = process.argv[index + 1];
   return value && !value.startsWith("--") ? value : undefined;
+}
+
+function readIntArgValue(name: string, fallback: number): number {
+  const raw = readArgValue(name);
+  if (!raw) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 void main().catch((error) => {

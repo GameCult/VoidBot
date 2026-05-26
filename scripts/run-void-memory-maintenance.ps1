@@ -503,6 +503,13 @@ $codexExecArgs = if (-not [string]::IsNullOrWhiteSpace($env:CODEX_EXEC_ARGS)) {
 } else {
   @()
 }
+$codexSandbox = if (-not [string]::IsNullOrWhiteSpace($env:VOID_MEMORY_MAINTENANCE_CODEX_SANDBOX)) {
+  $env:VOID_MEMORY_MAINTENANCE_CODEX_SANDBOX
+} elseif ($envValues.ContainsKey("VOID_MEMORY_MAINTENANCE_CODEX_SANDBOX") -and -not [string]::IsNullOrWhiteSpace($envValues["VOID_MEMORY_MAINTENANCE_CODEX_SANDBOX"])) {
+  $envValues["VOID_MEMORY_MAINTENANCE_CODEX_SANDBOX"]
+} else {
+  "workspace-write"
+}
 $codexTimeoutSeconds = if (-not [string]::IsNullOrWhiteSpace($env:VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS)) {
   [int]$env:VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS
 } elseif ($envValues.ContainsKey("VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS") -and -not [string]::IsNullOrWhiteSpace($envValues["VOID_MEMORY_MAINTENANCE_CODEX_TIMEOUT_SECONDS"])) {
@@ -591,14 +598,14 @@ if ($SkipModel) {
     "-m", $codexModel,
     "-c", 'approval_policy="never"',
     "-c", ("model_reasoning_effort={0}" -f (ConvertTo-Json $codexReasoningEffort -Compress)),
-    "--dangerously-bypass-approvals-and-sandbox",
+    "-s", $codexSandbox,
     "--skip-git-repo-check",
     "--json",
     "-o", $lastMessagePath,
     "-"
   )
 
-  $execution = Invoke-CodexExec -Executable $codexExecutable -Arguments $codexArgs -WorkingDirectory $repoRoot -InputText $prompt -TimeoutSeconds $codexTimeoutSeconds
+  $execution = Invoke-CodexExec -Executable $codexExecutable -Arguments $codexArgs -WorkingDirectory $statusDir -InputText $prompt -TimeoutSeconds $codexTimeoutSeconds
   $exitCode = $execution.ExitCode
   $combinedText = (($execution.StdOut, $execution.StdErr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
 }

@@ -303,6 +303,25 @@ try {
       Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-repo-face-heartbeats.ps1"))
     },
     [pscustomobject]@{
+      Id = "repo-face-memory-maintenance"
+      Label = "Repo Face memory maintenance"
+      IntervalMinutes = Get-ConfigInt -Config $config -Name "REPO_FACE_MEMORY_MAINTENANCE_INTERVAL_MINUTES" -Default 1 -Minimum 1
+      TimeoutMinutes = Get-ConfigInt -Config $config -Name "REPO_FACE_MEMORY_MAINTENANCE_TIMEOUT_MINUTES" -Default 20 -Minimum 5
+      Cwd = $repoRoot
+      Executable = $powershell
+      Arguments = @(
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        (Join-Path $PSScriptRoot "run-repo-face-heartbeats.ps1"),
+        "--maintenance-only",
+        "--max-maintenance-runs",
+        (Get-ConfigInt -Config $config -Name "REPO_FACE_MEMORY_MAINTENANCE_MAX_RUNS" -Default 1 -Minimum 1)
+      )
+    },
+    [pscustomobject]@{
       Id = "void-mood-drift"
       Label = "Void mood drift"
       IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MOOD_INTERVAL_MINUTES" -Default 5 -Minimum 5

@@ -141,7 +141,8 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 - `scripts/install-moderation-rumination-task.ps1`
   - legacy installer for isolating the moderation/participation loop. The live scheduled pulse is now `GameCult Local Orchestrator`; keep this per-organ task disabled unless testing the organ in isolation.
 - `scripts/run-gamecult-orchestrator.ps1`
-  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Face CTB heartbeats, Void mood drift, Void moderation rumination, and the operations watchdog from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts.
+  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Face CTB heartbeats, repo Face memory maintenance, Void mood drift, Void moderation rumination, and the operations watchdog from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts.
+  - The `repo-face-memory-maintenance` organ is intentionally outside the swarm pause set. `state/agent-swarm-paused.json` stops public swarm turns and Bifrost dispatch, but it does not stop repo Face memory distillation.
 - `scripts/install-gamecult-orchestrator-task.ps1`
   - installs scheduled task `GameCult Local Orchestrator` through the hidden PowerShell launcher and can disable the old per-organ tasks: `Bifrost Agent Dispatch`, `VoidBot Repo Face Heartbeats`, `Void Mood Drift`, `Void Moderator Rumination`, and `VoidBot Operations Watchdog`.
 - Scheduled organ `Void Mood Drift`
@@ -154,6 +155,11 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - scheduled rumination skips during naps when there are no new room messages and no open cases, so sleep can distill the short-term surface without awake rumination immediately adding fresh residue.
 - `scripts/simulate-void-mood.mjs`
   - typed mood maintenance script that updates scheduled-runtime sleep cycle and speaking pressure in `.voidbot/private/void-self-state.cc`. It owns the sleep transition and invokes typed memory maintenance once per nap unless that nap already completed a maintenance pass. Speaking pressure now derives from queued candidates, incubation, and active typed agency pressure. The old personality-vector drift, memory organ, incubation, dream residue, cleanup, and legacy mirror behavior are offline pending typed replacements.
+- `scripts/run-repo-face-heartbeats.ts --maintenance-only`
+  - repo Face Life path. It loads the registered Face states, projects sleep/rest state, starts repo-local memory maintenance for napping or stale short-term residue, and exits without queuing public CTB turns. The orchestrator calls this through `scripts/run-repo-face-heartbeats.ps1 --maintenance-only --max-maintenance-runs <n>`.
+  - Maintenance starts are synchronous and observable: stale launcher-only `starting` records without process evidence stop blocking retries after a short grace period, stdout/stderr are captured under the target repo's `.voidbot/logs`, and success/failure is recorded in the shared heartbeat history. Detached launch is no longer treated as proof that distillation happened.
+- `scripts/run-void-memory-maintenance.ps1`
+  - repo Face and Void typed memory-maintenance runner. It now runs the Codex child from the status directory with `workspace-write` sandbox by default, because the child only needs to read the provided context and write the operation output file. The prompt explicitly forbids repo inspection, tests, helper launches, tracked-file edits, and background work.
 - Repo Discord identities
   - `REPO_DISCORD_IDENTITIES_PATH` points at a private JSON registry of repo id, repo name, display name, optional avatar URL, optional role id, and allowed channel ids. The role is the Discord mention target; the webhook persona is the speech transport.
   - That registry may also carry `channelPermissions`: per-topic channel entries with a speech threshold and speed multiplier. These are not another transport; they are the permission/salience map for where a Face may speak. Aquarium is the low-threshold musing lane, while domain channels such as narrative, gamedesign, music, soundtrack, development, programming, visual-effects, machine-learning, and unity3d are available to matching Faces.
