@@ -1,5 +1,5 @@
 {
-  "paused": true,
-  "reason": "Re-paused after live Bifrost Face post leaked owner-question wording into public Discord during thaw validation.",
-  "updatedAt": "2026-05-26T19:45:00.000Z"
+  "paused": false,
+  "reason": "Operator explicitly thawed the repo Face swarm after malformed parent Mind retry routing was fixed, verified, committed, and pushed.",
+  "updatedAt": "2026-05-26T20:23:33.250Z"
 }
