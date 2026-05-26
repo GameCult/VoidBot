@@ -64,6 +64,11 @@ function inspect(records) {
   const speechSmells = records.filter((record) =>
     /repo-face heartbeat|heartbeat from|bright bridge note|tiny fish sorting note|librarian note|maintenance pass/i.test(String(record.finalMessage ?? "")),
   );
+  const malformedRepoFaceInterpreter = records.filter((record) =>
+    record.command === "repo-face-rumination" &&
+    record.promptMarker === "repo-face-turn-interpreter" &&
+    !/\bINTERPRETATION\b[\s\S]*?\bdecision:\s*(route|retry|drop)\b/i.test(String(record.finalMessage ?? "")),
+  );
   const quotaSignals = records.filter((record) =>
     /quota|rate limit|rate-limit|usage limit|capacity|too many requests|(?:http|status|code|error)\s*429|429\s*(?:too many requests|rate)|insufficient_quota|model.*unavailable|model.*access|limit exceeded/i.test(
       `${record.stderrTail ?? ""}\n${record.stdoutTail ?? ""}\n${record.handoffReason ?? ""}`,
@@ -74,6 +79,7 @@ function inspect(records) {
   pushWarning(warnings, noFinalMessage.length, "model runs with no final message", noFinalMessage);
   pushWarning(warnings, forbiddenToolRecords.length, "Face/model runs using forbidden substrate tools", forbiddenToolRecords);
   pushWarning(warnings, speechSmells.length, "robotic/provenance speech smells", speechSmells);
+  pushWarning(warnings, malformedRepoFaceInterpreter.length, "repo Face parent interpreter outputs missing INTERPRETATION decision", malformedRepoFaceInterpreter);
   pushWarning(warnings, quotaSignals.length, "quota/rate/capacity fallback signals", quotaSignals);
 
   return {
@@ -84,6 +90,7 @@ function inspect(records) {
     noFinalMessage: summarizeRecords(noFinalMessage),
     forbiddenToolRecords: summarizeRecords(forbiddenToolRecords),
     speechSmells: summarizeRecords(speechSmells),
+    malformedRepoFaceInterpreter: summarizeRecords(malformedRepoFaceInterpreter),
     quotaSignals: summarizeRecords(quotaSignals),
     warnings,
     recent: summarizeRecords(records.slice(-12)),

@@ -544,6 +544,7 @@ async function executeRepoFaceJobWithInterpreter(
   const firstInterpretation = firstForbiddenTools.length > 0
     ? {
         decision: "retry" as const,
+        parseable: true,
         reasons: [
           `Face used forbidden substrate/tool-discovery tool(s): ${firstForbiddenTools.join(", ")}`,
           "Face turns may use retrieval tools only; state and substrate inventory belong to the parent/interpreter.",
@@ -561,6 +562,48 @@ async function executeRepoFaceJobWithInterpreter(
 
   if (firstInterpretation.decision === "drop") {
     return dropRepoFaceActionBlocks(firstResponse, firstInterpretation);
+  }
+
+  if (!firstInterpretation.parseable) {
+    await auditLog.record({
+      type: "repo_face.parent_interpreter_retry",
+      actorId: job.requester.id,
+      jobId: job.id,
+      provider: job.provider,
+      details: {
+        decision: firstInterpretation.decision,
+        reasons: firstInterpretation.reasons,
+        owner: "parent_interpreter",
+      },
+    });
+    console.warn(
+      `Repo Face parent interpreter retrying its own malformed output for job ${job.id}: ${firstInterpretation.reasons.join("; ")}`,
+    );
+    const secondInterpretation = await interpretRepoFaceTurnOutput(provider, job, firstText, {
+      attempt: 2,
+    });
+    if (secondInterpretation.decision === "route" && secondInterpretation.parseable) {
+      return routeRepoFaceInterpretedOutput(firstResponse, secondInterpretation, {
+        job,
+        faceOutputText: firstText,
+      });
+    }
+
+    await auditLog.record({
+      type: "repo_face.parent_interpreter_drop",
+      actorId: job.requester.id,
+      jobId: job.id,
+      provider: job.provider,
+      details: {
+        decision: secondInterpretation.decision,
+        reasons: secondInterpretation.reasons,
+        owner: "parent_interpreter",
+      },
+    });
+    console.warn(
+      `Repo Face parent interpreter dropped job ${job.id} after malformed interpreter retry: ${secondInterpretation.reasons.join("; ")}`,
+    );
+    return dropRepoFaceActionBlocks(firstResponse, secondInterpretation);
   }
 
   await auditLog.record({
@@ -597,6 +640,7 @@ async function executeRepoFaceJobWithInterpreter(
   const retryInterpretation = retryForbiddenTools.length > 0
     ? {
         decision: "drop" as const,
+        parseable: true,
         reasons: [
           `Face used forbidden substrate/tool-discovery tool(s) on retry: ${retryForbiddenTools.join(", ")}`,
           "Dropping action blocks rather than routing a turn that crossed the child/tool boundary.",
@@ -630,6 +674,7 @@ async function executeRepoFaceJobWithInterpreter(
 
 interface RepoFaceParentInterpretation {
   decision: "route" | "retry" | "drop";
+  parseable: boolean;
   reasons: string[];
   routedOutput?: string;
 }
@@ -714,8 +759,9 @@ function parseRepoFaceParentInterpretation(
 ): RepoFaceParentInterpretation {
   const block = parseInterpretationBlock(interpretationText);
   const decision = block.decision?.trim().toLowerCase();
+  const parseable = decision === "route" || decision === "retry" || decision === "drop";
   const parsedDecision =
-    decision === "route" || decision === "retry" || decision === "drop"
+    parseable
       ? decision
       : attempt === 1
         ? "retry"
@@ -728,7 +774,12 @@ function parseRepoFaceParentInterpretation(
 
   return {
     decision: parsedDecision,
-    reasons: reasons.length > 0 ? reasons : ["parent interpreter did not provide a parseable reason"],
+    parseable,
+    reasons: reasons.length > 0
+      ? reasons
+      : [parseable
+        ? "parent interpreter did not provide a parseable reason"
+        : "parent interpreter did not provide a parseable INTERPRETATION decision"],
     routedOutput: extractRoutedRepoFaceOutput(interpretationText),
   };
 }
@@ -886,8 +937,10 @@ function dropRepoFaceActionBlocks(
   interpretation: RepoFaceParentInterpretation,
 ): ProviderResponse {
   const text = fitDiscordMessage(response.outputText ?? response.summary);
-  const privateSummary = stripRepoIdentityPostIntents(text) ||
-    `Parent interpreter dropped repo Face action blocks: ${interpretation.reasons.join("; ")}`;
+  const stripped = stripRepoIdentityPostIntents(text);
+  const privateSummary = stripped !== text && stripped.trim().length > 0
+    ? stripped
+    : `Parent interpreter dropped repo Face output: ${interpretation.reasons.join("; ")}`;
   return {
     ...response,
     outputText: privateSummary,

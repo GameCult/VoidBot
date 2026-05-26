@@ -14,13 +14,17 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the repo Face swarm paused after the 2026-05-26 Mind/owner-reply leak
+    Keep the repo Face swarm paused after the 2026-05-26 Mind/owner-reply leaks
     until a controlled thaw verifies the Face/Mind/speech boundary in current
-    room context. Bifrost work routing remains paused because the governance
-    bridge proved too disorienting for live social traffic. Parent Mind now has
-    a slimmer semantic prompt with a hard DSL contract: interpret natural Face
-    thought, decide route/retry/drop, and emit only explicit STATE NOTE, ARTICLE,
-    or SAY blocks for side effects.
+    room context. The second thaw attempt proved malformed parent Mind output
+    was being treated as a Face retry, allowing owner-question boilerplate to
+    become public Bifrost/Nibu SAY. The worker now treats malformed Mind output
+    as Mind-owned retry/drop and the model-output inspector flags interpreter
+    records missing INTERPRETATION decisions. Bifrost work routing remains
+    paused because the governance bridge proved too disorienting for live social
+    traffic. Parent Mind has a slimmer semantic prompt with a hard DSL contract:
+    interpret natural Face thought, decide route/retry/drop, and emit only
+    explicit STATE NOTE, ARTICLE, or SAY blocks for side effects.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -57,7 +61,7 @@ data_flow:
     - keep persistent state lean enough that re-entry sharpens the next turn instead of drowning it
 
 active_subgoals:
-  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is currently paused after the 2026-05-26 owner-reply/Mind leak, and should thaw only through controlled evidence that the scheduler, prompt, model-output logs, parent Mind, and worker side-effect rails still have explicit observable boundaries. Keep watching for prompt/parser/transport Jenga before adding new swarm features.
+  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is currently paused after the 2026-05-26 owner-reply/Mind leaks, including the second thaw failure where malformed parent Mind output was converted into public owner-question SAY. It should thaw only through controlled evidence that the scheduler, prompt, model-output logs, parent Mind retry/drop ownership, and worker side-effect rails still have explicit observable boundaries. Keep watching for prompt/parser/transport Jenga before adding new swarm features.
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep the rebuilt moderation/self-state foundation on canonical CultCache `.cc` typed operations, never an editable JSON working projection.
   - Keep the typed moderation, mood, repo Face, and watchdog organs behind the single `GameCult Local Orchestrator` scheduled pulse; the per-organ scheduled tasks are legacy installer surfaces and should stay disabled unless a deliberate isolation test needs one. Bifrost dispatch is disabled by default behind `BIFROST_DISPATCH_ENABLED=false` until the governance bridge is rebuilt cleanly. As of the 2026-05-21 restart, the orchestrator task is enabled and is the live swarm pulse owner.
