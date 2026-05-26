@@ -78,6 +78,11 @@ async function main() {
     ink.push(`# ${scenario.subtitle}`);
   }
   ink.push("");
+  const introduction = Array.isArray(scenario.introduction) ? scenario.introduction : [];
+  for (const paragraph of introduction) {
+    ink.push(`Void says, ${quoteInk(paragraph)}`);
+    ink.push("");
+  }
   ink.push("-> phase_1");
   ink.push("");
 
@@ -104,7 +109,10 @@ async function main() {
       maxDepth,
       choiceCount,
       ctb: phaseCtb,
-      transcript: [{ speaker: "Void", text: phase.voidOpening }],
+      transcript: [
+        ...introduction.map((text) => ({ speaker: "Void", text })),
+        { speaker: "Void", text: phase.voidOpening },
+      ],
       voidLine: phase.voidOpening,
       basePromptCache,
       globalAgentDoctrine,
@@ -205,7 +213,7 @@ async function generateFaceTurn(input) {
     baseFacePrompt,
     title: input.scenario.title,
     phaseTopic: input.phase.topic,
-    phaseLesson: input.phase.lesson,
+    phaseSetup: input.phase.laySetup ?? "Void has introduced only the immediate question. Keep the response accessible.",
     voidLine: input.voidLine,
     transcript,
     actorRole: input.actor.role ?? "",

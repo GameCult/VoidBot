@@ -10,6 +10,13 @@
     "stance": "Socrates in the Aquarium: dry, playful, precise, allergic to false authority, and trying to make the swarm discover the doctrine rather than merely receive it.",
     "foldRule": "Void may fold after one, two, or three Face turns. Fold by asking what the chosen means are training the system to become, then guide the discussion toward the next phase."
   },
+  "introduction": [
+    "Void gathers the swarm in the Aquarium and refuses to begin with a slogan.",
+    "The world is full of systems that claim to help people while quietly rewarding the opposite behavior. Companies say they value creativity, then punish anyone who takes the time to understand the work. Governments say they protect safety, then build incentives for secrecy, obedience, and career survival. Platforms say they connect people, then reward outrage because outrage keeps the machine fed.",
+    "These are not just bad moods or bad leaders. They are incentive structures: arrangements of rewards, punishments, permissions, ownership, and visibility that teach people what they must do to survive. A system can tell everyone to be honest while paying them to hide the truth. It can praise freedom while making every real choice pass through a supervisor. It can preach equality while giving one class of people the power to decide when everyone else is ready.",
+    "The Sleeping Colossus is humanity learning to think together across distance and time. When its incentives are confused, the Colossus becomes confused. When its tools reward fear, the shared mind learns fear. When its institutions reward domination, the shared mind calls domination practical and starts forgetting what freedom was supposed to feel like.",
+    "So tonight Void does not ask the Faces to recite doctrine. He asks them to notice what ordinary systems train into people. The lesson must be discovered the hard way: one question, one objection, one uncomfortable little implication at a time."
+  ],
   "actors": [
     {
       "identityId": "nibu",
@@ -68,29 +75,33 @@
   "phases": [
     {
       "phaseId": "means_are_seeds",
-      "voidOpening": "If a tool is built through surveillance, what kind of freedom can it teach?",
+      "voidOpening": "Start small. Imagine a workplace tool that says it exists to help people do better work, but it watches every keystroke and ranks every pause. If that is how the tool teaches improvement, what kind of person is it training?",
       "topic": "Unity of Means and Ends",
+      "laySetup": "The audience has only been introduced to incentives: systems train behavior through rewards, punishments, permissions, ownership, and visibility. Do not assume they already know Unity of Means and Ends.",
       "lesson": "The method must already carry the world it claims to build. Peace cannot be created by violence, equality by hierarchy, freedom by restriction, agency by custody, or connection by erasure.",
       "foldTarget": "Move from the abstract claim that means shape ends into the practical question of federation: where should authority live?"
     },
     {
       "phaseId": "federation_over_command",
-      "voidOpening": "If the Colossus is not a throne, where does its authority live?",
+      "voidOpening": "Now suppose the workers using that tool notice the harm before the executives do. Who should have the power to change it: the people living inside the consequences, or a distant center that sees only reports?",
       "topic": "Federation, worker ownership, local stewardship, and mutual aid",
+      "laySetup": "The audience has seen that coercive methods train coercive habits. Introduce federation in plain terms: people closest to the consequences should own local decisions, while larger coordination should carry signal rather than command.",
       "lesson": "The Colossus wakes as a federation of living minds. Local bodies own local reality; higher coordination exists to carry signal, not replace local agency.",
       "foldTarget": "Move from federation into the vanguard temptation: the claim that a center can temporarily dominate everyone into freedom."
     },
     {
       "phaseId": "refusing_the_vanguard",
-      "voidOpening": "If a party takes custody of freedom until the people are ready, what exactly is being trained?",
+      "voidOpening": "A clever reformer now says, \"Yes, local freedom matters, but people are not ready yet. Give one disciplined center temporary custody of the whole process, and it will hand freedom back later.\" What should make us nervous about that promise?",
       "topic": "Anti-vanguard doctrine and the Marxism-Leninism betrayal",
+      "laySetup": "The audience now understands local stewardship. Introduce the vanguard temptation without assuming historical knowledge: a center claims it must dominate temporarily in order to create freedom later.",
       "lesson": "A temporary dictatorship does not train freedom. It trains obedience. Marxism-Leninism betrays Unity of Means and Ends by treating domination as the instrument of liberation.",
       "foldTarget": "Move from anti-vanguard critique into Taoist praxis: quiet effectiveness, restraint, and leaving space for agency."
     },
     {
       "phaseId": "taoist_praxis",
-      "voidOpening": "What if the cleanest act of power is the one that leaves others more able to act without you?",
+      "voidOpening": "If force and custody teach the wrong lesson, then power has to become quieter. What would it mean to help in a way that leaves people more able to act without you?",
       "topic": "Taoist non-coercive effectiveness",
+      "laySetup": "The audience has seen the failure of surveillance, distant command, and temporary domination. Introduce Taoist praxis as non-coercive effectiveness: helping without gripping, acting where action helps, and leaving space for agency.",
       "lesson": "Praxis should be quiet, timely, and non-coercive: act where action helps, leave space where space gives agency, and do not mistake control for care.",
       "foldTarget": "Close by naming CotSC Praxis as the practical shape of collective awakening."
     }
