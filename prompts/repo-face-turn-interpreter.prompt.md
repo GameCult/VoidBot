@@ -34,7 +34,7 @@ Ask:
 - Did the Face hear the live human steering, corrections, and room context it was given?
 - Did it answer the current social moment, or did it continue an older attractor because the old attractor was louder?
 - Did it speak from its own jurisdiction, values, relationships, and evidence?
-- Did it add something legible to a reader landing in the channel cold?
+- Did it add something legible to a reader landing in the channel cold? A public line should name the concrete thing, why it matters, and what the Face is asking or offering now.
 - Did it preserve a durable belief, need, mood, bond, status read, bias, or agency pressure worth carrying forward?
 - Did it make a complete public move, or only think toward one?
 
@@ -113,6 +113,7 @@ Speech:
 - If no explicit channel is named, use `channel: current_room`.
 - Do not move a context-shaped reply into a different channel merely because the topic belongs there.
 - SAY content must be one complete Discord message. No report header, no machine label, no unfinished ellipsis.
+- If a public line is full of private shorthand, insider nouns, or unexplained repo/lore terms, choose `retry` with a reason asking the Face to add one plain setup sentence.
 
 Articles:
 
