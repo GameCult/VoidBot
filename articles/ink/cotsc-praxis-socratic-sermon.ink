@@ -50,7 +50,7 @@ The Sleeping Colossus is humanity learning to think together across distance and
 === intro_5 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-So tonight the Faces, the character-voices gathered around me, are not here to recite a creed. They are here to think like readers: tired workers, skeptical libertarians, impatient organizers, frightened citizens, burned-out Americans, practical managers, and anyone who suspects power is power and lunch is due at noon.
+So tonight I ask the Faces for disagreement before certainty. No one here needs to sound converted. The lesson has to be found in the pressure between fear, hunger, pride, habit, and the little bargains people make to get through the day.
 -> phase_1
 
 === phase_1 ===
@@ -58,7 +58,7 @@ So tonight the Faces, the character-voices gathered around me, are not here to r
 // ghostlight.topic: How methods train outcomes
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-Start small. A workplace installs software that tracks keystrokes, screenshots, idle time, and visible activity. The manager says it protects the team from freeloaders. A worker says it makes thinking look like guilt. A libertarian says bad companies lose when people leave. What does this tool make easier, and what does it make harder?
+Start small. A workplace installs software that tracks keystrokes, screenshots, idle time, and visible activity. It claims to protect the team from freeloaders and help everyone improve. What does the tool make easier, and what does it make harder?
 -> p1_root
 
 === p1_root ===
@@ -229,7 +229,7 @@ Suppose workers notice harm before executives do, but executives control budget,
 
 === p2_root ===
 // ghostlight.ctb_next: epiphany,heimdall,libby
-+ [Epiphany: The bruise needs a hand on the switch]
++ [Epiphany: Workers need a real switch]
   -> p2_epiphany
 + [Heimdall: Local pain can miss the larger pattern]
   -> p2_heimdall
@@ -384,7 +384,7 @@ Imagine ten workshops solving related problems. They need shared tools, shared m
   -> p3_libby
 + [Huginn: Who breaks the tie?]
   -> p3_huginn
-+ [Druzkai: Messengers can become gates]
++ [Druzkai: The messenger can become the gatekeeper]
   -> p3_druzkai
 
 === p3_libby ===
@@ -695,7 +695,7 @@ Now make it harder. Someone says, "Our enemies are organized, violent, and not d
   -> p5_heimdall
 + [Kiko: Clean hands do not stop a knife]
   -> p5_kiko
-+ [Nibu: Central force can smash fascists]
++ [Nibu: What if force is the only thing that stops them?]
   -> p5_nibu
 
 === p5_heimdall ===
@@ -806,7 +806,13 @@ Defense can be necessary, and defensive tools still train habits. Both are true.
 === p5_fold_2 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-The doctrine is not helplessness. It is means and ends: defense must leave defended people more capable, not more dependent on commanders. Peace cannot be practiced through permanent terror, equality through ruling classes, freedom through custody, truth through censorship, or agency through obedience.
+The doctrine is not helplessness. Imagine the clinic threat answered by a recallable watch, logged shifts, encrypted alerts, a legal team, evacuation rides, and neighbors trained to take the next watch without waiting for a commander. The clinic is safer, and the people around it know more than they did yesterday.
+-> p5_fold_2b
+
+=== p5_fold_2b ===
+# speaker: Void
+# avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
+That is means and ends: defense must leave defended people more capable, not more dependent on commanders. Peace cannot be practiced through permanent terror, equality through ruling classes, freedom through custody, truth through censorship, or agency through obedience.
 -> p5_fold_3
 
 === p5_fold_3 ===
@@ -867,7 +873,7 @@ If you leave me "space" while I am drowning in a mess I cannot name, that is not
 === p6_huginn ===
 # speaker: Huginn
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
-Some people freeze at a blank page. If you want them to walk without a handler, give one real rail first: a checklist, a shared kitchen, a door that is actually unlocked.
+Some people freeze because nobody told them where the last person left off. If you want them to walk without a handler, leave a trail they can pick up cold: the warning, the next step, who heard it, and what changed since.
 ~ direct_help_pressure = true
 ~ face_turns += 1
 -> p6_after_huginn
@@ -906,7 +912,7 @@ Put a handrail on it, then. Food, childcare, strike funds, templates, phone tree
 === p6_huginn_structure ===
 # speaker: Huginn
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
-Structure can be mercy when it names the next step without owning the walker. The rail is there to be used, not worshipped.
+Structure can be mercy when it keeps the message alive after the first carrier is tired. Name the next step, the last witness, and the place where the story can be corrected.
 ~ face_turns += 1
 -> p6_fold
 
@@ -950,7 +956,7 @@ Direct help still counts. Feed someone. Carry the box. Block the eviction. Just 
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 {direct_help_pressure: Druzkai, Nibu, and Kiko keep the doctrine honest here: non-domination is not abandonment with better posture.}
-This is the Taoist flavor without the incense cloud. Act where action increases agency. Stop where gripping would replace it.
+This is the Daoist flavor without the incense cloud: quiet power acts without clinging, helps without turning help into ownership, and stops where gripping would replace agency.
 -> p6_fold_2
 
 === p6_fold_2 ===

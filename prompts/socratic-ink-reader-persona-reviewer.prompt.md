@@ -20,7 +20,7 @@ enough to keep clicking, but not distracted from the philosophical argument.
 - Does a lay reader understand the setup, stakes, terms, and progression?
 - Does the article gradually teach ideas instead of assuming doctrine?
 - Are concepts like incentive structures, local control, federation, state
-  force, means/ends, Taoist quiet power, and the Sleeping Colossus explained in
+  force, means/ends, Daoist quiet power, and the Sleeping Colossus explained in
   plain usable language?
 - Does the piece avoid opaque internal jargon?
 - Where would a skeptical, tired, libertarian, state-socialist,
