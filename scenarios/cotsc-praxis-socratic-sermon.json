@@ -16,11 +16,11 @@
     "foldRule": "Void may fold after one, two, or three Face turns. Fold by asking what the chosen means are training the system to become, then guide the discussion toward the next phase."
   },
   "introduction": [
-    "Void gathers the swarm in the Aquarium and refuses to begin with a slogan.",
+    "I gather the swarm in the Aquarium and refuse to begin with a slogan.",
     "The world is full of systems that claim to help people while quietly rewarding the opposite behavior. Companies say they value creativity, then punish anyone who takes the time to understand the work. Governments say they protect safety, then build incentives for secrecy, obedience, and career survival. Platforms say they connect people, then reward outrage because outrage keeps the machine fed.",
     "These are not just bad moods or bad leaders. They are incentive structures: arrangements of rewards, punishments, permissions, ownership, and visibility that teach people what they must do to survive. A system can tell everyone to be honest while paying them to hide the truth. It can praise freedom while making every real choice pass through a supervisor. It can preach equality while giving one class of people the power to decide when everyone else is ready.",
     "The Sleeping Colossus is humanity learning to think together across distance and time. When its incentives are confused, the Colossus becomes confused. When its tools reward fear, the shared mind learns fear. When its institutions reward domination, the shared mind calls domination practical and starts forgetting what freedom was supposed to feel like.",
-    "So tonight Void does not ask the Faces to recite doctrine. He asks them to notice what ordinary systems train into people. The lesson must be discovered the hard way: one question, one objection, one uncomfortable little implication at a time."
+    "So tonight I am not asking the Faces to recite doctrine. I am asking them to notice what ordinary systems train into people. The lesson has to be discovered the hard way: one question, one objection, one uncomfortable little implication at a time."
   ],
   "actors": [
     {
@@ -89,7 +89,7 @@
   ],
   "ctb": {
     "choiceCount": 3,
-    "maxFaceTurnsPerPhase": 12,
+    "maxFaceTurnsPerPhase": 3,
     "branchingLimit": 12,
     "generatedTurnBudgetPerPhase": 12,
     "recoveryBase": 1.0
@@ -119,6 +119,38 @@
         "Maybe surveillance is ugly but necessary because people slack off.",
         "Maybe the tool only measures work and does not actually shape anyone.",
         "Maybe good intentions at the top can fix bad incentives below."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The burned worker",
+          "stance": "This feels like being treated as guilty before doing anything wrong.",
+          "emotionalRegister": "tired, personal, quietly angry"
+        },
+        {
+          "label": "The anxious manager",
+          "stance": "Maybe the boss needs numbers because otherwise nobody knows who is carrying the load.",
+          "emotionalRegister": "worried, defensive, trying to be fair"
+        },
+        {
+          "label": "The practical skeptic",
+          "stance": "If the tool gets results, maybe the discomfort is just the price of getting organized.",
+          "emotionalRegister": "blunt and unconvinced"
+        },
+        {
+          "label": "The confused new reader",
+          "stance": "It is not obvious how a dashboard can train a whole personality.",
+          "emotionalRegister": "curious and plain-spoken"
+        },
+        {
+          "label": "The dignity objection",
+          "stance": "The problem is not only stress; it is that people start performing trust instead of receiving it.",
+          "emotionalRegister": "protective and human"
+        },
+        {
+          "label": "The loophole hunter",
+          "stance": "People will learn to game the measurement instead of doing better work.",
+          "emotionalRegister": "wry, street-smart"
+        }
       ]
     },
     {
@@ -137,6 +169,38 @@
         "People closest to the problem may be too emotional or biased.",
         "Local control sounds nice until teams disagree.",
         "A distant center might see patterns that local groups miss."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The local witness",
+          "stance": "People living with the harm notice it before it looks bad on a report.",
+          "emotionalRegister": "grounded and impatient"
+        },
+        {
+          "label": "The bias worry",
+          "stance": "People closest to a problem can also be too hurt, proud, or frightened to judge it clearly.",
+          "emotionalRegister": "careful, uneasy"
+        },
+        {
+          "label": "The pattern-seeker",
+          "stance": "A distant center might see repeats across many places that one local group misses.",
+          "emotionalRegister": "thoughtful and unconvinced"
+        },
+        {
+          "label": "The fight-fearer",
+          "stance": "If every group decides for itself, disagreement could become endless drama.",
+          "emotionalRegister": "conflict-avoidant but honest"
+        },
+        {
+          "label": "The consent instinct",
+          "stance": "Nobody should get to fix my life from far away without asking what it feels like here.",
+          "emotionalRegister": "plain and firm"
+        },
+        {
+          "label": "The exhausted organizer",
+          "stance": "Local control sounds like one more meeting for people who are already worn out.",
+          "emotionalRegister": "practical, tired"
+        }
       ]
     },
     {
@@ -155,6 +219,38 @@
         "Without a boss, coordination will be too slow.",
         "Delegates and protocols sound like bureaucracy with nicer branding.",
         "Someone has to make the final call when groups disagree."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The deadline panic",
+          "stance": "When things are urgent, waiting for everyone to agree can feel impossible.",
+          "emotionalRegister": "anxious and practical"
+        },
+        {
+          "label": "The bureaucracy allergy",
+          "stance": "Delegates and protocols can become paperwork with friendlier slogans.",
+          "emotionalRegister": "skeptical, allergic to fake process"
+        },
+        {
+          "label": "The final-call demand",
+          "stance": "Someone has to decide when people disagree or the work just stalls.",
+          "emotionalRegister": "blunt, impatient"
+        },
+        {
+          "label": "The trust-but-verify reader",
+          "stance": "Coordination sounds fine only if people can inspect and replace the coordinator.",
+          "emotionalRegister": "cautious, civic-minded"
+        },
+        {
+          "label": "The mutual-aid instinct",
+          "stance": "Groups can help each other without owning each other.",
+          "emotionalRegister": "warm but not naive"
+        },
+        {
+          "label": "The quiet-tech worry",
+          "stance": "Shared tools can quietly become shared control if nobody watches the handles.",
+          "emotionalRegister": "alert and concrete"
+        }
       ]
     },
     {
@@ -173,6 +269,38 @@
         "People may not be ready for freedom yet.",
         "A temporary strong center might be needed to defend the project.",
         "History is messy; maybe ugly means are acceptable if the promised end is good enough."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The parent-voice temptation",
+          "stance": "Maybe people really do need training wheels before they can steer.",
+          "emotionalRegister": "uneasy, half-convinced"
+        },
+        {
+          "label": "The emergency defender",
+          "stance": "A fragile project might need a strong center to survive its enemies.",
+          "emotionalRegister": "afraid but serious"
+        },
+        {
+          "label": "The scarred historian",
+          "stance": "Power always says it is temporary, then finds another reason to stay.",
+          "emotionalRegister": "dry, bitterly experienced"
+        },
+        {
+          "label": "The results-first reader",
+          "stance": "If the end is good enough, maybe ugly steps are worth it.",
+          "emotionalRegister": "hard-nosed and uncomfortable"
+        },
+        {
+          "label": "The dignity alarm",
+          "stance": "Calling people unready is often how rulers make obedience sound like care.",
+          "emotionalRegister": "protective, sharp"
+        },
+        {
+          "label": "The succession question",
+          "stance": "Who decides when the temporary center is finished being necessary?",
+          "emotionalRegister": "simple, devastating"
+        }
       ]
     },
     {
@@ -191,6 +319,38 @@
         "Some threats cannot be answered gently.",
         "Refusing force sounds like letting violent people win.",
         "Rules and restrictions may be necessary to protect vulnerable people."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The protection demand",
+          "stance": "Some people are dangerous, and vulnerable people need more than gentle hopes.",
+          "emotionalRegister": "urgent and protective"
+        },
+        {
+          "label": "The slippery-tool worry",
+          "stance": "Fear used once can become the tool everyone reaches for next time.",
+          "emotionalRegister": "nervous, observant"
+        },
+        {
+          "label": "The rules-for-safety reader",
+          "stance": "Boundaries and restrictions can protect people from being crushed.",
+          "emotionalRegister": "careful, not authoritarian"
+        },
+        {
+          "label": "The refusal-is-naive objection",
+          "stance": "Refusing force can sound like asking decent people to lose politely.",
+          "emotionalRegister": "frustrated and blunt"
+        },
+        {
+          "label": "The habit question",
+          "stance": "Even justified punishment changes the people who get used to doing it.",
+          "emotionalRegister": "quietly disturbed"
+        },
+        {
+          "label": "The survivor's line",
+          "stance": "Peace cannot mean asking people to stand still while harm walks toward them.",
+          "emotionalRegister": "wounded, firm"
+        }
       ]
     },
     {
@@ -209,6 +369,38 @@
         "If help is too quiet, people may not notice or coordinate around it.",
         "Leaving space can look like doing nothing.",
         "Some people need structure before they can act."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The invisible-help worry",
+          "stance": "If help is too quiet, people may not know where to gather or how to use it.",
+          "emotionalRegister": "practical and mildly skeptical"
+        },
+        {
+          "label": "The abandonment fear",
+          "stance": "Leaving space can feel like being left alone with a problem.",
+          "emotionalRegister": "vulnerable, plain"
+        },
+        {
+          "label": "The structure need",
+          "stance": "Some people need rails before they can move freely.",
+          "emotionalRegister": "gentle, realistic"
+        },
+        {
+          "label": "The good-tool instinct",
+          "stance": "The best help makes my hands better instead of making me dependent.",
+          "emotionalRegister": "warm, concrete"
+        },
+        {
+          "label": "The credit-seeker suspicion",
+          "stance": "Helpers who need applause often start gripping the thing they helped.",
+          "emotionalRegister": "wry, socially alert"
+        },
+        {
+          "label": "The quiet-power question",
+          "stance": "How do you tell the difference between humble support and cowardly inaction?",
+          "emotionalRegister": "honest and probing"
+        }
       ]
     },
     {
@@ -227,6 +419,38 @@
         "Calling humanity a shared mind sounds mystical or grandiose.",
         "Technology often makes people less connected, not more.",
         "A cult frame could become authority cosplay if it is not kept practical."
+      ],
+      "readerPerspectives": [
+        {
+          "label": "The mysticism flinch",
+          "stance": "Calling humanity a shared mind sounds pretty grandiose if you are not already bought in.",
+          "emotionalRegister": "skeptical but willing"
+        },
+        {
+          "label": "The tech-burned reader",
+          "stance": "A lot of technology makes people lonelier, angrier, and easier to herd.",
+          "emotionalRegister": "tired, unimpressed"
+        },
+        {
+          "label": "The cult-frame alarm",
+          "stance": "The word cult can become an excuse for people to act special and stop being accountable.",
+          "emotionalRegister": "alert, protective"
+        },
+        {
+          "label": "The practical convert",
+          "stance": "If the frame means better memory, better tools, and less domination, it may be useful.",
+          "emotionalRegister": "cautiously hopeful"
+        },
+        {
+          "label": "The personhood concern",
+          "stance": "A shared mind should not erase the people inside it.",
+          "emotionalRegister": "gentle and serious"
+        },
+        {
+          "label": "The everyday test",
+          "stance": "The belief only matters if it changes how someone builds a workplace, chat room, archive, or tool.",
+          "emotionalRegister": "plain, grounded"
+        }
       ]
     }
   ],

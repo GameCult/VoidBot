@@ -28,7 +28,7 @@ async function main() {
   const maxDepth = numberOption(options["max-depth"], scenario.ctb?.maxFaceTurnsPerPhase ?? scenario.ctb?.branchingLimit ?? 12);
   const generatedTurnBudget = numberOption(
     options["generated-turn-budget"],
-    scenario.ctb?.generatedTurnBudgetPerPhase ?? scenario.ctb?.branchingLimit ?? maxDepth,
+    scenario.ctb?.generatedTurnBudgetPerPhase ?? scenario.ctb?.branchingLimit ?? maxDepth * (scenario.ctb?.choiceCount ?? 3),
   );
   const choiceCount = numberOption(options["choice-count"], scenario.ctb?.choiceCount ?? 3);
   const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
@@ -137,7 +137,6 @@ async function main() {
       ctb: phaseCtb,
       phaseState: {
         generatedFaceTurns: 0,
-        emittedFaceKnots: 0,
       },
       transcript: [
         ...introduction.map((text) => ({ speaker: "Void", text })),
@@ -184,24 +183,23 @@ async function buildBranchNode(input) {
   input.ink.push(`// ghostlight.branch_depth: ${input.depth}`);
   input.ink.push(`// ghostlight.ctb_next: ${nextActors(input.ctb, input.choiceCount).map((actor) => actor.identityId).join(",")}`);
   input.ink.push(`// ghostlight.generated_face_turns: ${input.phaseState.generatedFaceTurns}/${input.generatedTurnBudget}`);
-  input.ink.push(`// ghostlight.emitted_face_knots: ${input.phaseState.emittedFaceKnots}/${input.generatedTurnBudget}`);
+  input.ink.push(`// ghostlight.selected_turn_budget: ${input.depth}/${input.maxDepth}`);
   input.ink.push("");
 
-  const remainingEmits = input.generatedTurnBudget - input.phaseState.emittedFaceKnots;
-  if (input.depth >= input.maxDepth || remainingEmits <= 0) {
+  if (input.depth >= input.maxDepth) {
     await writeForcedFold(input, path);
     return;
   }
 
   const reusableOptions = (input.reusableOptions ?? [])
-    .filter((option) => !path.includes(option.identityId))
-    .slice(0, Math.min(input.choiceCount, remainingEmits));
+    .filter((option) => option.identityId !== input.lastSpeakerId)
+    .slice(0, input.choiceCount);
   const candidates = [...reusableOptions];
   const reservedIds = new Set(candidates.map((option) => option.identityId));
-  for (const actor of nextActors(input.ctb, input.choiceCount * 2)) {
+  const perspectiveSlots = assignPerspectiveSlots(input, candidates.length, input.choiceCount);
+  for (const actor of nextActors(input.ctb, input.choiceCount * 3)) {
     if (
       candidates.length >= input.choiceCount ||
-      candidates.length >= remainingEmits ||
       input.phaseState.generatedFaceTurns >= input.generatedTurnBudget
     ) {
       break;
@@ -209,13 +207,15 @@ async function buildBranchNode(input) {
     if (reservedIds.has(actor.identityId)) {
       continue;
     }
-    const turn = await generateFaceTurn({ ...input, actor });
+    const readerPerspective = perspectiveSlots[candidates.length] ?? defaultReaderPerspective(input.phase, input.depth, candidates.length);
+    const turn = await generateFaceTurn({ ...input, actor, readerPerspective });
     input.phaseState.generatedFaceTurns += 1;
     const option = {
       ...turn,
       identityId: actor.identityId,
       actor,
       generatedAtDepth: input.depth,
+      readerPerspective,
     };
     candidates.push(option);
     reservedIds.add(actor.identityId);
@@ -225,8 +225,6 @@ async function buildBranchNode(input) {
     await writeForcedFold(input, path);
     return;
   }
-
-  input.phaseState.emittedFaceKnots += candidates.length;
 
   const branches = [];
   for (const option of candidates) {
@@ -275,6 +273,7 @@ async function buildBranchNode(input) {
       turn.speech,
       [
         `ghostlight.selected_face: ${actor.identityId}`,
+        `ghostlight.reader_perspective: ${turn.readerPerspective?.label ?? ""}`,
         `ghostlight.unspent_faces: ${nextReusableOptions.map((candidate) => candidate.identityId).join(",")}`,
       ],
     );
@@ -291,6 +290,7 @@ async function buildBranchNode(input) {
         voidLine: turn.speech,
         transcriptPath: branchPath,
         reusableOptions: nextReusableOptions,
+        lastSpeakerId: actor.identityId,
       });
     } else {
       const fold = await generateVoidFold({
@@ -341,10 +341,12 @@ async function generateFaceTurn(input) {
     phaseTopic: input.phase.topic,
     phaseSetup: input.phase.laySetup ?? "Void has introduced only the immediate question. Keep the response accessible.",
     commonCounterarguments: renderList(input.phase.commonCounterarguments ?? input.scenario.commonCounterarguments ?? []),
+    readerPerspective: renderReaderPerspective(input.readerPerspective),
     voidLine: input.voidLine,
     transcript,
     actorRole: input.actor.role ?? "",
     displayName: input.actor.displayName ?? input.actor.identityId,
+    depth: input.depth,
   });
   const faceRun = await runCodex(prompt, {
     model: input.faceModel,
@@ -386,6 +388,7 @@ async function generateFaceTurn(input) {
     depth: input.depth,
     identityId: input.actor.identityId,
     displayName: input.actor.displayName ?? input.actor.identityId,
+    readerPerspective: input.readerPerspective,
     prompt,
     face: {
       exitCode: faceRun.code,
@@ -518,11 +521,46 @@ async function writeProgress(input) {
     generatedAt: new Date().toISOString(),
     phaseId: input.phase?.phaseId,
     generatedFaceTurns: input.phaseState?.generatedFaceTurns,
-    emittedFaceKnots: input.phaseState?.emittedFaceKnots,
+    selectedTurnBudget: input.maxDepth,
     faceTurns: input.receipts.faceTurns.length,
     voidFolds: input.receipts.voidFolds.length,
     voiceCards: input.receipts.voiceCards?.length ?? 0,
   }, null, 2)}\n`, "utf8");
+}
+
+function assignPerspectiveSlots(input, alreadyFilled, choiceCount) {
+  const slots = [];
+  for (let index = alreadyFilled; index < choiceCount; index += 1) {
+    slots[index] = defaultReaderPerspective(input.phase, input.depth, index);
+  }
+  return slots;
+}
+
+function defaultReaderPerspective(phase, depth, optionIndex) {
+  const phasePerspectives = Array.isArray(phase.readerPerspectives) ? phase.readerPerspectives : [];
+  const commonCounterarguments = Array.isArray(phase.commonCounterarguments) ? phase.commonCounterarguments : [];
+  const source = phasePerspectives.length ? phasePerspectives : commonCounterarguments.map((entry, index) => ({
+    label: `Reader concern ${index + 1}`,
+    stance: entry,
+    emotionalRegister: "curious but unconvinced",
+  }));
+  const selected = source[(depth * 3 + optionIndex) % Math.max(1, source.length)] ?? {};
+  return {
+    label: selected.label ?? `Reader concern ${optionIndex + 1}`,
+    stance: selected.stance ?? String(selected),
+    emotionalRegister: selected.emotionalRegister ?? selected.tone ?? "plain-spoken uncertainty",
+  };
+}
+
+function renderReaderPerspective(value) {
+  if (!value) {
+    return "- Label: ordinary reader reaction\n- Stance: Answer Void from a concrete layperson worry.\n- Emotional register: plain-spoken uncertainty.";
+  }
+  return [
+    `- Label: ${cleanSpeech(value.label)}`,
+    `- Stance: ${cleanSpeech(value.stance)}`,
+    `- Emotional register: ${cleanSpeech(value.emotionalRegister)}`,
+  ].join("\n");
 }
 
 function nextActors(ctb, count) {
