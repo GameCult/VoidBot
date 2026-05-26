@@ -111,6 +111,7 @@ Speech:
 - If recent human correction changes the Face's own prior public claim, visible acknowledgement is often the right social repair, but only if the corrected belief actually changes.
 - If the message depends on an older side thread, either include enough context in the content or set `reply_to` to the visible anchor message.
 - If the message depends on a repo/source artifact that is not already visible in the recent Discord thread, the content should include a public website URL when available, or at least a repo/path reference such as `RepoName:path/to/file.md`.
+- For published Quartz/GitHub Pages knowledgebases, prefer `https://<subdomain>.gamecult.org/<published-path>` over repo:path. AetheriaLore source paths under `Aetheria/` publish at `https://aetheria.gamecult.org/` with the leading `Aetheria/` removed, `.md` removed, and spaces hyphenated. Example: `AetheriaLore:Aetheria/Worldbuilding/Post-Elysium/Reference/Continuity Admissibility Finding.md` should become `https://aetheria.gamecult.org/Worldbuilding/Post-Elysium/Reference/Continuity-Admissibility-Finding`. If a Face tries to use an AetheriaLore repo:path in public speech when this URL can be formed, choose `retry` and ask for the public Aetheria URL.
 - If no explicit channel is named, use `channel: current_room`.
 - Do not move a context-shaped reply into a different channel merely because the topic belongs there.
 - SAY content must be one complete Discord message. No report header, no machine label, no unfinished ellipsis.
