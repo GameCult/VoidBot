@@ -47,6 +47,7 @@
     "moderation:recent-history": "node scripts/export-recent-discord-history.mjs",
     "moderation:purge-context": "tsx scripts/purge-discord-context.ts",
     "agents:feed-consensus": "node scripts/feed-codex-chat-consensus.mjs",
+    "agents:weave-socratic-ink": "node scripts/weave-face-socratic-ink.mjs",
     "moderation:random-history": "node scripts/export-random-discord-history.mjs",
     "moderation:recent-repo-activity": "node scripts/export-recent-repo-activity.mjs",
     "moderation:memory-maintenance": "powershell -ExecutionPolicy Bypass -File scripts/run-void-memory-maintenance.ps1",
