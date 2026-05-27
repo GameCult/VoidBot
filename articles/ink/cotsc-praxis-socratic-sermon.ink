@@ -81,13 +81,19 @@ It changes the work before anyone admits it did. You stop taking the quiet minut
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 If the tool is that bad, shouldn't the company pay for it? People quit, better shops win, creepy boss software gets mocked into the landfill. That is the clean story, anyway. I want to know where it breaks.
 ~ market_pressure = true
--> p1_after_kiko
+-> p1_kiko_aqua_push
 
 === p1_kiko_after_aqua ===
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 I hear that. I also hear the libertarian in the back saying, "Then leave." If the tool makes good workers miserable, the company should lose them. Why does that not solve it?
 ~ market_pressure = true
+-> p1_kiko_aqua_push
+
+=== p1_kiko_aqua_push ===
+# speaker: Aqua
+# avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
+That line always sounds so clean from dry land. "Then leave" can be true and still cruel when the exit door opens onto rent, medication, children, visas, and the little math of not missing a paycheck.
 -> p1_after_kiko
 
 === p1_after_kiko ===
@@ -229,6 +235,12 @@ The people getting scraped by the thing need a real hand on the switch, not a sy
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Local control sounds right until three teams find three different injuries and nobody notices they share one cause. Someone has to see across rooms, or every shop rebuilds the same trap with better wallpaper.
+-> p2_heimdall_epiphany_push
+
+=== p2_heimdall_epiphany_push ===
+# speaker: Epiphany
+# avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
+I want the pattern too. I just tense up when "someone has to see" quietly becomes "someone has to decide." Seeing across rooms is a service. Owning the rooms is the theft hiding inside the service.
 -> p2_after_heimdall
 
 === p2_after_heimdall ===
@@ -244,6 +256,12 @@ Local control sounds right until three teams find three different injuries and n
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 I want workers to have power, yes. I also know "everyone gets a voice" can turn into six meetings after a ten-hour shift. People need authority over consequences without being assigned a second unpaid job called democracy.
 ~ participation_pressure = true
+-> p2_libby_aqua_push
+
+=== p2_libby_aqua_push ===
+# speaker: Aqua
+# avatar: E:/Projects/AquaSynth/.voidbot/voice/aqua.png
+Thank you. I love "participation" until it starts sounding like a chore chart written by people with chairs that do not hurt their backs. A tired body still deserves power.
 -> p2_after_libby
 
 === p2_after_libby ===
@@ -350,6 +368,12 @@ Imagine ten workshops solving related problems. They need shared tools, shared m
 # speaker: Libby
 # avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
 If every shop keeps its own shelves, lovely, but when the roof leaks I still need to know who can stamp one shared fix and move. I am allergic to bosses, not deadlines.
+-> p3_libby_druzkai_push
+
+=== p3_libby_druzkai_push ===
+# speaker: Druzkai
+# avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
+The stamp is where the vine wraps tight. I believe the roof leaks. I also know the hand that fixes the roof can start charging rent on the ladder.
 -> p3_after_libby
 
 === p3_after_libby ===
@@ -364,6 +388,12 @@ If every shop keeps its own shelves, lovely, but when the roof leaks I still nee
 # speaker: Huginn
 # avatar: E:/Projects/VoidBot/assets/repo-faces/huginn.png
 If ten shops deadlock, who actually says "we are doing this one" and keeps carts moving? Shared signal sounds like weather unless it lands in a real decision.
+-> p3_huginn_libby_push
+
+=== p3_huginn_libby_push ===
+# speaker: Libby
+# avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
+Yes, but do not make "real decision" mean "everyone else finds out afterward." I want a handle, not a mystery hand. Put the authority where tired people can see it without decoding sacred minutes.
 -> p3_after_huginn
 
 === p3_after_huginn ===
@@ -484,6 +514,12 @@ Here is the strongest case for the disciplined center. People are exhausted, pro
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 A center can move. It can seize the warehouse before the owner empties it, keep trucks running during a strike, stop capital flight, print the notices, and put guards where the fascists were. If the old ruling class is already planning retaliation, a temporary dictatorship of the workers can sound less like a power grab and more like not getting buried alive.
 ~ central_pressure = true
+-> p4_nibu_weksa
+
+=== p4_nibu_weksa ===
+# speaker: Weksa
+# avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
+Do you hear the trap in your own mouth? "Temporary dictatorship" is still dictatorship. People always say the locked door is for the storm outside. Then the storm becomes the reason nobody is allowed to touch the lock.
 -> p4_after_nibu
 
 === p4_after_nibu ===
@@ -665,6 +701,18 @@ The true part is protection. Real enemies exist. Sabotage exists. Fascists exist
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
 Bread and schools are not abstractions. A government that builds housing, clinics, literacy, factories, and food systems has changed material life. If the alternative is landlords, colonial companies, and foreign-backed reaction, I understand why people choose the hard center over beautiful process.
 ~ anti_force_pressure = true
+-> p5_nibu_weksa
+
+=== p5_nibu_weksa ===
+# speaker: Weksa
+# avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
+I hate how reasonable that sounds. That is the part that makes my skin crawl. Give people bread with one hand and a muzzle with the other, then call the muzzle historical necessity. The hunger was real. So is the muzzle.
+-> p5_nibu_reply
+
+=== p5_nibu_reply ===
+# speaker: Nibu
+# avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
+And I hate the way "muzzle" can flatten the clinic, the school, the apartment, the meal. If a child eats because the hard center held, I will not pretend that is fake just because the politics around it are dangerous.
 -> p5_after_nibu
 
 === p5_after_nibu ===
@@ -776,6 +824,12 @@ Quiet help is lovely until nobody can find the door. If you leave people more ab
 # avatar: E:/Projects/Eusocial Interbeing/.voidbot/voice/druzkai.png
 If you leave me "space" while I am drowning in a mess I cannot name, that is not freedom. It is desertion with soft shoes. I need to know what you can hold and whether the door stays open.
 ~ direct_help_pressure = true
+-> p6_druzkai_libby_push
+
+=== p6_druzkai_libby_push ===
+# speaker: Libby
+# avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
+That one lands. People have used "agency" as an excuse to hand someone an unlabeled box of parts and leave. If the help has no map, it is just abandonment with a nicer font.
 -> p6_after_druzkai
 
 === p6_after_druzkai ===
@@ -926,6 +980,12 @@ If this shared mind is real, a lot of its schooling is rotten. Apps train people
 # avatar: E:/Projects/VoidBot/assets/repo-faces/weksa.png
 I flinch at the word cult because that is how people hide a custody seam under velvet and call it sacred. If the frame is useful, it has to survive being laughed at, questioned, and taken apart.
 ~ cult_skeptic_pressure = true
+-> p7_weksa_epiphany_push
+
+=== p7_weksa_epiphany_push ===
+# speaker: Epiphany
+# avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
+Good. Keep flinching. The moment the myth asks you to stop checking the locks, it has stopped being a lens and started applying for management.
 -> p7_after_weksa
 
 === p7_after_weksa ===
