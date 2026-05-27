@@ -1353,7 +1353,12 @@ function renderHtml(snapshot) {
     function renderControls(snapshot, participants) {
       const controls = snapshot.controls || {};
       const latest = (controls.manualTurnRequests || [])[0];
+      const paused = snapshot.summary?.paused === true;
+      const pauseReason = snapshot.summary?.pauseReason
+        ? "<div class=\\"muted small\\">" + esc(snapshot.summary.pauseReason) + "</div>"
+        : "";
       return "<div class=\\"control-grid\\"><p class=\\"kicker\\">Controls</p>" +
+        "<div><div class=\\"muted\\">Swarm brake</div><div class=\\"control-row\\"><span>" + badge(paused ? "paused" : "running", paused ? "Paused" : "Unpaused") + "</span><button id=\\"swarm-pause-toggle\\" type=\\"button\\" data-paused=\\"" + esc(paused ? "true" : "false") + "\\">" + esc(paused ? "Unpause" : "Pause") + "</button></div>" + pauseReason + "</div>" +
         "<div><div class=\\"muted\\">Heartbeat cadence</div><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.01\\" max=\\"12\\" step=\\"0.01\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div><button id=\\"cadence-apply\\" type=\\"button\\">Apply</button></div>" +
         "<div><div class=\\"muted\\">Manual next turn</div><div class=\\"force-row\\"><select id=\\"force-identity\\">" + participants.map((agent) => "<option value=\\"" + esc(agent.identityId) + "\\">" + esc(agent.displayName) + " / " + esc(agent.repoName) + "</option>").join("") + "</select><button id=\\"force-turn\\" type=\\"button\\">Pull</button></div></div>" +
         "<div class=\\"mono muted\\">Latest request: " + esc(latest?.identityId || "none") + " " + esc(latest?.status || "") + "</div>" +
@@ -1630,7 +1635,18 @@ function renderHtml(snapshot) {
       const cadenceApply = document.getElementById("cadence-apply");
       const forceSelect = document.getElementById("force-identity");
       const forceButton = document.getElementById("force-turn");
+      const pauseButton = document.getElementById("swarm-pause-toggle");
       if (forceSelect && selectedIdentity) forceSelect.value = selectedIdentity;
+      if (pauseButton) {
+        pauseButton.addEventListener("click", async () => {
+          const currentlyPaused = pauseButton.getAttribute("data-paused") === "true";
+          await postJson("/api/swarm-pause", {
+            paused: !currentlyPaused,
+            reason: currentlyPaused ? "Unpaused from swarm dashboard." : "Paused from swarm dashboard.",
+          });
+          await refresh();
+        });
+      }
       if (cadenceInput && cadenceValue) {
         cadenceInput.addEventListener("input", () => cadenceValue.textContent = "x" + Number(cadenceInput.value).toLocaleString(undefined, { maximumFractionDigits: 2 }));
       }
@@ -1762,6 +1778,10 @@ async function serveDashboard({ host, port, rootDir, refreshSeconds }) {
         await handleForceTurn(request, response);
         return;
       }
+      if (request.method === "POST" && requestUrl.pathname === "/api/swarm-pause") {
+        await handleSwarmPause(request, response);
+        return;
+      }
       const pathname = requestUrl.pathname === "/" ? "/swarm-dashboard.html" : decodeURIComponent(requestUrl.pathname);
       const target = resolve(rootDir, `.${pathname}`);
       if (!target.startsWith(rootDir)) {
@@ -1838,6 +1858,31 @@ async function handleForceTurn(request, response) {
   await writeMutableHeartbeatState(state);
   await render();
   writeJsonResponse(response, 200, { ok: true, controls: state.controls });
+}
+
+async function handleSwarmPause(request, response) {
+  if (args.public) {
+    writeJsonResponse(response, 403, { ok: false, error: "Controls are disabled in public mode." });
+    return;
+  }
+  const body = await readRequestJson(request);
+  if (typeof body.paused !== "boolean") {
+    writeJsonResponse(response, 400, { ok: false, error: "paused must be true or false." });
+    return;
+  }
+  const payload = {
+    paused: body.paused,
+    reason: typeof body.reason === "string" && body.reason.trim()
+      ? body.reason.trim().slice(0, 280)
+      : body.paused
+        ? "Paused from swarm dashboard."
+        : "Unpaused from swarm dashboard.",
+    updatedAt: new Date().toISOString(),
+  };
+  await mkdir(dirname(pausePath), { recursive: true });
+  await writeFile(pausePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await render();
+  writeJsonResponse(response, 200, { ok: true, pause: payload });
 }
 
 async function readMutableHeartbeatState() {
