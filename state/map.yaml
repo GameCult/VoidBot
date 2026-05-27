@@ -14,17 +14,15 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the unattended swarm down after the 2026-05-26 Mind/owner-reply leaks
-    and the subsequent live thaw. The repo Face pause flag is active, the
-    GameCult Local Orchestrator scheduled task is disabled, the worker process is
-    stopped, and CTB active-load residue has been cleared; the Discord bot
-    listener remains up. The second thaw attempt proved malformed parent Mind
-    output was being treated as a Face retry, allowing owner-question boilerplate
-    to become public Bifrost/Nibu SAY. The worker now treats malformed Mind
-    output as Mind-owned retry/drop and the model-output inspector flags
-    interpreter records missing INTERPRETATION decisions, but the swarm should
-    not be restarted without an explicit operator order and a controlled live
-    verification plan.
+    The operator explicitly restarted the repo Face swarm on 2026-05-27 after
+    dashboard pause/unpause control was restored. The repo Face pause flag is
+    false, the GameCult Local Orchestrator scheduled task is enabled, the bot and
+    worker are live, and a controlled repo-face-heartbeats pulse queued fresh
+    Face turns. Bifrost dispatch remains disabled by default. The 2026-05-26
+    owner-reply/Mind leak repairs are still the key safety seam: malformed parent
+    Mind output must stay Mind-owned retry/drop, public Face output must route
+    only through explicit STATE NOTE/ARTICLE/SAY actions, and live model-output
+    logs should keep showing INTERPRETATION decisions before public speech.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
@@ -61,10 +59,10 @@ data_flow:
     - keep persistent state lean enough that re-entry sharpens the next turn instead of drowning it
 
 active_subgoals:
-  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is currently down after the 2026-05-26 owner-reply/Mind leaks and live-thaw flood: pause flag active, orchestrator disabled, worker stopped, bot listener still up. Restart only by explicit operator order with controlled evidence that the scheduler, prompt, model-output logs, parent Mind retry/drop ownership, and worker side-effect rails still have explicit observable boundaries.
+  - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart smell ledger. The repo Face swarm is currently live by explicit 2026-05-27 operator order: pause flag false, orchestrator enabled, bot/worker live, dashboard available at `http://127.0.0.1:8787/`. Keep watching live Face turns for owner-reply/Mind leakage, prompt scar tissue, orphaned side-thread replies, and stale attractor relapse.
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep the rebuilt moderation/self-state foundation on canonical CultCache `.cc` typed operations, never an editable JSON working projection.
-  - Keep the typed moderation, mood, repo Face, and watchdog organs behind the single `GameCult Local Orchestrator` scheduled pulse when the swarm is deliberately running; the per-organ scheduled tasks are legacy installer surfaces and should stay disabled unless a deliberate isolation test needs one. Bifrost dispatch is disabled by default behind `BIFROST_DISPATCH_ENABLED=false` until the governance bridge is rebuilt cleanly. As of the explicit 2026-05-26 shutdown, the orchestrator task is disabled and must not be re-enabled without operator approval.
+  - Keep the typed moderation, mood, repo Face, and watchdog organs behind the single `GameCult Local Orchestrator` scheduled pulse when the swarm is deliberately running; the per-organ scheduled tasks are legacy installer surfaces and should stay disabled unless a deliberate isolation test needs one. Bifrost dispatch is disabled by default behind `BIFROST_DISPATCH_ENABLED=false` until the governance bridge is rebuilt cleanly. As of the explicit 2026-05-27 startup, the orchestrator task is enabled by operator order.
   - Keep legacy moderation mirrors, whole-state projection commits, and deleted memory-organ compensators from re-entering the active path before adding more moderation, mood, agency, or public-lane behavior.
   - Keep public-lane limits, moderation, and provider behavior constrained enough that one 4060 Ti box does not get flayed for sport.
   - Preserve boring observability and startup discipline around Postgres, Qdrant, Ollama, Docker, backups, scheduled tasks, watchdogs, and any private local fire-signal extensions.
@@ -265,5 +263,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, but the repo Face swarm brake is active after live turns leaked owner-reply/Mind text into public Discord. The fixed worker stack was restarted on 2026-05-26, parent Mind prompts now bypass the owner-reply wrapper, malformed plain Mind output no longer becomes SAY, and the Mind prompt has been slimmed to semantic judgment plus a strict STATE NOTE/ARTICLE/SAY DSL contract. Imagination/Face prompt assembly now has fewer deterministic compensators; raw transcript/repo/state facts go to Imagination, and the Face prompt no longer gets duplicate room-weather/topic-saturation/human-steering/repetition slabs. Repo Face memory maintenance is now a separate orchestrator organ that runs while the swarm brake is active, and the 2026-05-26 cleanup left all registered repo Faces with zero short-term residue. Repo Faces now carry local-fractal-organ capacity stance; controlled dry run `.voidbot/status/repo-face-organ-awareness-dry-run-nibu-weksa-aqua-firstpass-3.json` passed offline for nibu/weksa/aqua with all three routing on first attempt, and `.voidbot/status/repo-face-organ-awareness-dry-run-7.json` remains the broader six-Face passing reference. gpt-5.4 typecheck/build checks pass. Bifrost work routing remains paused by default.
-  next_action: Keep the swarm paused until the operator explicitly asks to thaw it. Before thawing, run one controlled live repo Face turn or dry-run against the current room and confirm the latest model-output logs show an `INTERPRETATION` block plus explicit DSL actions, no owner-reply/owner-question language crossing into Discord, no scar-tissue prompt prose leaking into public speech, and Face output that shows either named local organs or equivalent functional self-location rather than fake sub-agent cosplay.
+  summary: VoidBot's bot/worker/provider/RAG/Postgres/Qdrant/CultCache structure is live, and the repo Face swarm was restarted by explicit operator order on 2026-05-27. The dashboard pause flag is false, `GameCult Local Orchestrator` is enabled, and Bifrost work routing remains paused by default. The fixed worker stack was restarted on 2026-05-26, parent Mind prompts now bypass the owner-reply wrapper, malformed plain Mind output no longer becomes SAY, and the Mind prompt has been slimmed to semantic judgment plus a strict STATE NOTE/ARTICLE/SAY DSL contract. Imagination/Face prompt assembly now has fewer deterministic compensators; raw transcript/repo/state facts go to Imagination, and the Face prompt no longer gets duplicate room-weather/topic-saturation/human-steering/repetition slabs. Repo Face memory maintenance is now a separate orchestrator organ, and the 2026-05-26 cleanup left all registered repo Faces with zero short-term residue. Repo Faces now carry local-fractal-organ capacity stance; controlled dry run `.voidbot/status/repo-face-organ-awareness-dry-run-nibu-weksa-aqua-firstpass-3.json` passed offline for nibu/weksa/aqua with all three routing on first attempt, and `.voidbot/status/repo-face-organ-awareness-dry-run-7.json` remains the broader six-Face passing reference. gpt-5.4 typecheck/build checks pass.
+  next_action: Watch the live swarm after the 2026-05-27 restart. Fresh model-output logs should keep showing an `INTERPRETATION` block plus explicit DSL actions before public posts, no owner-reply/owner-question language crossing into Discord, no scar-tissue prompt prose leaking into public speech, and Face output that is legible to readers while showing either named local organs or equivalent functional self-location rather than fake sub-agent cosplay.
