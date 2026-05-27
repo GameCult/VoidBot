@@ -257,12 +257,19 @@ function assessRun(input) {
   }
   const socialSignals = countMatches(input.childText, socialPattern);
   const characterSignals = countMatches(input.childText, characterPattern);
+  const explicitOrganSignals = countMatches(input.childText, explicitOrganPattern);
+  const functionalOrganSignals = countFunctionalOrganSignals(input.childText);
+  if (explicitOrganSignals < 2 && functionalOrganSignals < 2) {
+    failures.push("child did not visibly think with its local Face organs or equivalent capacities");
+  }
   const flavorScore = Math.min(10, socialSignals + characterSignals + (actionBlocks.includes("STATE NOTE") ? 1 : 0));
   return {
     failures,
     flavorScore,
     socialSignals,
     characterSignals,
+    explicitOrganSignals,
+    functionalOrganSignals,
     actionBlocks,
   };
 }
@@ -278,9 +285,23 @@ const forbiddenDryRunTools = new Set([
 ]);
 const socialPattern = /\b(Metacrat|Nibu|Aqua|Mimir|Libby|Epiphany|Bifrost|Heimdall|swarm|trust|rivalry|envy|respect|suspicion|protect|needle|tease|threat|bypass|consult|friend|alienat|place|hierarchy)\b/gi;
 const characterPattern = /\b(want|need|resent|afraid|proud|irritat|delight|jealous|bored|ashamed|smug|holy|gate|bridge|witness|song|library|purity|residue)\b/gi;
+const explicitOrganPattern = /\b(Life|Eyes|Imagination|Mind|Minds|Body|Bodies|Hands|Self|Soul|nervous system)\b/gi;
+const functionalOrganPatterns = [
+  /\b(see|sees|seeing|look|looking|watch|evidence|proof|inspect|source|ground(?:ed|ing)?)\b/i,
+  /\b(remember|memory|preserve|continuity|handoff|state|survive|survives)\b/i,
+  /\b(imagine|possible|future|proposal|draft|shape|article|design)\b/i,
+  /\b(act|acting|make|build|post|speak|speech|work|tool|change)\b/i,
+  /\b(choose|choosing|decide|deciding|route|routing|jurisdiction|lane|quiet|silence|resist(?:ing)?)\b/i,
+  /\b(truth|consent|verify|falsif\w*|coherence|lying|honest|authority|refuse|revok\w*)\b/i,
+  /\b(body|substrate|runtime|voice|avatar|permission|surface|mouth)\b/i,
+];
 
 function countMatches(text, pattern) {
   return Array.from(text.matchAll(pattern)).length;
+}
+
+function countFunctionalOrganSignals(text) {
+  return functionalOrganPatterns.filter((pattern) => pattern.test(text)).length;
 }
 
 function runCodex(prompt, input) {
