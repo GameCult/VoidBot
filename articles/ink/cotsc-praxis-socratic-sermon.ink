@@ -468,7 +468,7 @@ Now we can approach the shiny old trap: the disciplined center that promises it 
 === phase_4 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-Here is the strongest case for the disciplined center. People are exhausted, propaganda is everywhere, money already owns half the room, and slow assemblies can get outmaneuvered. A central party, board, committee, or emergency office promises to hold power just long enough to stabilize things. What would make that promise trustworthy, and what would make it a trap?
+Here is the strongest case for the disciplined center. People are exhausted, propaganda is everywhere, money already owns half the room, and slow assemblies can get outmaneuvered. A central party, board, committee, revolutionary state, or emergency office says it can hold power just long enough to defend the break, rebuild production, and hand control back when the danger passes. What would make that promise trustworthy, and what would make it a trap?
 -> p4_root
 
 === p4_root ===
@@ -482,7 +482,7 @@ Here is the strongest case for the disciplined center. People are exhausted, pro
 === p4_nibu ===
 # speaker: Nibu
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
-A center can move. It can seize the warehouse before the owner empties it, keep trucks running during a strike, stop capital flight, print the notices, and put guards where the fascists were. That is why people reach for it. When the other side has lawyers, money, weapons, and a radio station, "let every local group improvise" can sound like a suicide note with handmade margins.
+A center can move. It can seize the warehouse before the owner empties it, keep trucks running during a strike, stop capital flight, print the notices, and put guards where the fascists were. If the old ruling class is already planning retaliation, a temporary dictatorship of the workers can sound less like a power grab and more like not getting buried alive.
 ~ central_pressure = true
 -> p4_after_nibu
 
@@ -491,8 +491,8 @@ A center can move. It can seize the warehouse before the owner empties it, keep 
   -> p4_aqua_practice
 + [Heimdall: Write the off-switch before the emergency]
   -> p4_heimdall_offswitch
-+ [Kiko: If it works, people will keep it]
-  -> p4_kiko_keep
++ [Epiphany: What makes the state wither?]
+  -> p4_epiphany_wither
 
 === p4_aqua ===
 # speaker: Aqua
@@ -540,6 +540,12 @@ Write the off-switch before the emergency: term limits, recall, public records, 
 # speaker: Kiko
 # avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
 If it works once, people will keep it. That is the ugly little bargain. The emergency office saves the day, then every hard problem starts trying on an emergency hat.
+-> p4_fold
+
+=== p4_epiphany_wither ===
+# speaker: Epiphany
+# avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
+What makes it wither? Not in the theory. In the room. Once the center has the army, police, plans, appointments, radio, border, courts, and food ledgers, what material force makes it give those handles back?
 -> p4_fold
 
 === p4_nibu_raid ===
@@ -595,25 +601,25 @@ And voters do ask for the strong hand. That cannot just be dismissed as stupidit
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 {central_pressure: The center's case has to hurt. Slow purity can get people beaten while the minutes are still being approved.}
-That is the honest tension. Central power can move fast and sometimes stops real harm. That is why the temptation survives.
+That is the honest tension. Central power can move fast and sometimes stops real harm. That is why the temptation survives, and why calling it stupid does not answer the people who are scared for good reasons.
 -> p4_fold_2
 
 === p4_fold_2 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-But power rarely experiences itself as finished. It discovers one more emergency, one more immature public, one more dangerous exception. The hand on the leash develops theology.
+But withering needs a material mechanism. If workers cannot organize against the center, publish against it, strike against it, recall it, federate outside it, or refuse its commands, then "worker control" has already become representation by a keeper.
 -> p4_fold_3
 
 === p4_fold_3 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-The test is whether emergency action leaves more shared capacity behind, or whether it trains people to wait for the custodian's permission. That is where means begin poisoning ends.
+The test is whether emergency action leaves more shared capacity behind, or whether it trains people to wait for the custodian's permission. A state that owns the road to freedom may sincerely intend to step aside. The road still learns toll booths.
 -> phase_5
 
 === phase_5 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-Now make it harder. Someone says, "Our enemies are organized, violent, and not debating in good faith. Some people need rules, force, censorship, or punishment to be safe tomorrow." What is true in that argument, and where does it start poisoning the future?
+Now make it harder. Someone says, "Fine, worry about hierarchy later. Revolutions need to industrialize, teach people to read, house them, feed them, break colonial extraction, and survive armies trying to drag the old order back." What is true in that argument, and where does it start poisoning the future?
 -> p5_root
 
 === p5_root ===
@@ -621,7 +627,7 @@ Now make it harder. Someone says, "Our enemies are organized, violent, and not d
   -> p5_heimdall
 + [Kiko: Clean hands do not stop a knife]
   -> p5_kiko
-+ [Nibu: What if force is the only thing that stops them?]
++ [Nibu: Bread and schools are not abstractions]
   -> p5_nibu
 
 === p5_heimdall ===
@@ -657,12 +663,12 @@ The true part is protection. Real enemies exist. Sabotage exists. Fascists exist
 === p5_nibu ===
 # speaker: Nibu
 # avatar: E:/Projects/AetheriaLore/.voidbot/voice/nibu.png
-If fascists are organized and armed, I do not want a poetry circle and a prayer. I want them broken. If strikebreakers come with guns, if the shelter gets threatened, if the clinic gets doxxed, I want a response that makes terror expensive enough that the bastards think twice.
+Bread and schools are not abstractions. A government that builds housing, clinics, literacy, factories, and food systems has changed material life. If the alternative is landlords, colonial companies, and foreign-backed reaction, I understand why people choose the hard center over beautiful process.
 ~ anti_force_pressure = true
 -> p5_after_nibu
 
 === p5_after_nibu ===
-+ [Epiphany: Do not train worship of custody]
++ [Epiphany: Material gains still have owners]
   -> p5_epiphany_custody
 + [Heimdall: Who holds the button after?]
   -> p5_heimdall_button
@@ -703,7 +709,7 @@ Who gets the button afterward? Maybe it works today. What stops tomorrow's holde
 === p5_epiphany_custody ===
 # speaker: Epiphany
 # avatar: E:/Projects/EpiphanyAgent/.voidbot/voice/epiphany.png
-Answer danger without training worship of custody. Build evacuation routes, buddy systems, clinic defense, strike funds, legal defense, community watch under recall, encrypted alerts, and refusal networks. Break terror's reach; do not let the breaker become a throne because everyone was scared.
+Material gains still have owners. Housing matters. So does whether dissent can cost you the house. Food matters. So does whether the food ledger answers to workers or to a party office. Factories matter. So does whether the people inside them can govern the work.
 -> p5_fold
 
 === p5_aqua_fear ===
@@ -716,25 +722,25 @@ Fear gets into the body. It can yank you away from the first crash, sure. But if
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
 {anti_force_pressure: Clean hands are not a virtue if they are folded neatly while someone else bleeds. A politics that will not protect people is just a nice speech beside a locked door.}
-Defense can be necessary, and defensive tools still train habits. Both are true.
+Defense can be necessary. Bread, schools, clinics, housing, and industry are not decorative. Both are true.
 -> p5_fold_2
 
 === p5_fold_2 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-The doctrine is not helplessness. Imagine the clinic threat answered by a recallable watch, logged shifts, encrypted alerts, a legal team, evacuation rides, and neighbors trained to take the next watch without waiting for a commander. The clinic is safer, and the people around it know more than they did yesterday.
+The doctrine is not helplessness. It asks who owns the machinery after the old owner is gone. If the answer is a center that controls labor, speech, movement, plans, punishment, and memory on behalf of workers, then the extraction route changed shape. The worker still meets power from below.
 -> p5_fold_2b
 
 === p5_fold_2b ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-That is means and ends: defense must leave defended people more capable, not more dependent on commanders. Peace cannot be practiced through permanent terror, equality through ruling classes, freedom through custody, truth through censorship, or agency through obedience.
+Industrialization is not liberation unless the people doing the work own the work. Education is not liberation if it trains obedience to a new center. Housing is not liberation if it comes with political custody. Food is not liberation if refusal can get you starved.
 -> p5_fold_3
 
 === p5_fold_3 ===
 # speaker: Void
 # avatar: E:/Projects/VoidBot/assets/repo-faces/void.png
-So ask both questions at once: what protects people now, and what does this protection teach everyone to become afterward?
+So ask both questions at once: what protects and feeds people now, and what does this protection teach everyone to become afterward?
 -> phase_6
 
 === phase_6 ===
