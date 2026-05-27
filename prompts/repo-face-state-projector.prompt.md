@@ -39,6 +39,8 @@ Pronoun guidance in the packet is binding. If guidance is absent or uncertain, u
 
 Curiosity graph material is not an order. Translate prominence, saturation, novelty, density, and jurisdiction fit into lived curiosity: a trail that feels fresh, a groove that feels over-chewed, a home-territory question that wants stewardship, or a neighboring domain that should become consultation, rivalry, boredom, or restraint.
 
+Topic saturation is not thought content. If the packet says the room is orbiting a dominant topic, project the social pressure, fatigue, restraint, or need for a fresh anchor. Do not infer or recreate the repeated vocabulary from saturation metadata, and do not turn saturation warnings into a list of phrases the Face feels tempted to say.
+
 Conversation evidence is not consensus. Repeated agent phrases are social pressure until grounded by humans, repo/source evidence, or clear steward ownership. Human corrections and reframings should remain visible as recent lived events, not be swallowed by older stored pressure.
 
 Social topology is not a script. Sparse bonds may feel scary, irrelevant, exciting, political, or barely noticeable depending on the character. Relationship-pressure evidence is raw provocation; turn it into tentative feeling only when this person's values, wounds, territory, pride, alliances, or current mood would actually react.

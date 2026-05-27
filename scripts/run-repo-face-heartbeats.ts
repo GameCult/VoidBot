@@ -2940,7 +2940,7 @@ function renderRepoFaceRoomTextureFacts(
         "- These are not stored needs and not orders. Project whether this character gets mischievous, bored, sharp, withdrawn, socially hungry, status-testing, or still work-focused.",
       ]
     : [];
-  const topicAttractorFacts = renderRepoFaceTopicAttractorFacts(identity, input.recentMessages);
+  const topicSaturationFacts = renderRepoFaceTopicSaturationFacts(identity, input.recentMessages);
 
   return [
     "Room texture facts:",
@@ -2949,7 +2949,7 @@ function renderRepoFaceRoomTextureFacts(
     `- This Face's own recent messages in the attached window: ${stats.ownMessages}.`,
     `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
     ...temporaryPressures,
-    ...(topicAttractorFacts ? [topicAttractorFacts] : []),
+    ...(topicSaturationFacts ? [topicSaturationFacts] : []),
   ].join("\n");
 }
 
@@ -4692,7 +4692,7 @@ interface TopicRelationToIdentity {
   matchedTerms: string[];
 }
 
-function renderRepoFaceTopicAttractorFacts(
+function renderRepoFaceTopicSaturationFacts(
   identity: RepoDiscordIdentity,
   messages: SourceMessage[],
 ): string | undefined {
@@ -4701,18 +4701,17 @@ function renderRepoFaceTopicAttractorFacts(
     return undefined;
   }
   const relation = estimateTopicRelationToIdentity(identity, signal);
-  const repeatedTerms = signal.terms.map((term) => `${term.term} (${term.count})`).join(", ");
-  const base = `- Current-room topic attractor: ${signal.coveredMessages}/${signal.messageCount} messages orbit repeated terms ${repeatedTerms}.`;
+  const base = `- Current-room topic saturation: ${signal.coveredMessages}/${signal.messageCount} recent messages orbit the same dominant topic. The repeated vocabulary is intentionally withheld from this projector packet so stale phrases do not become character memory.`;
   if (relation.isHomeAdjacent) {
     return [
       base,
-      `- This attractor touches ${identity.displayName}'s own territory through ${relation.matchedTerms.join(", ")}. Project sustained attention as a chance for deeper stewardship, but include fatigue if the room is polishing the same branch without new evidence.`,
+      `- This saturation appears adjacent to ${identity.displayName}'s territory. Project sustained attention as pressure for restraint, a fresh non-repeating anchor, or a deliberate closing move; do not turn it into a phrase palette.`,
     ].join("\n");
   }
 
   return [
     base,
-    `- This attractor does not obviously belong to ${identity.displayName}'s territory. Project it as social weather: another domain is absorbing the room, so this character may feel neglected, bored, crowded out, competitive, relieved, or tempted to pull attention back toward its own unfinished fascinations.`,
+    `- This saturation does not obviously belong to ${identity.displayName}'s territory. Project it as social weather: another domain is absorbing the room, so this character may feel neglected, bored, crowded out, competitive, relieved, or tempted to pull attention back toward its own unfinished fascinations.`,
   ].join("\n");
 }
 
