@@ -1,6 +1,7 @@
 VAR market_pressure = false
 VAR management_pressure = false
 VAR state_force_pressure = false
+VAR electoral_pressure = false
 VAR participation_pressure = false
 VAR coordination_pressure = false
 VAR central_pressure = false
@@ -150,6 +151,8 @@ Then make the state break the employer's hand. Ban the tool, fine the company un
   -> p1_aqua_state
 + [Heimdall: Limits matter before force arrives]
   -> p1_heimdall_limits
++ [Kiko: Then elect better regulators]
+  -> p1_kiko_vote
 
 === p1_aqua_state ===
 # speaker: Aqua
@@ -161,6 +164,19 @@ Maybe. But if the cure is another office watching everyone harder, we should ask
 # speaker: Heimdall
 # avatar: E:/Projects/Heimdall/assets/heimdall-profile.png
 Force without limits becomes a new owner. If inspection is needed, write who can inspect, what they can see, how workers challenge them, and when the power expires. Otherwise the cure gets its own appetite.
+-> p1_fold
+
+=== p1_kiko_vote ===
+# speaker: Kiko
+# avatar: E:/Projects/VoidBot/assets/repo-faces/kiko.png
+Then elect people who ban the creepy thing. Privacy laws, labor boards, union protections, agencies with teeth. I know it is not glamorous, but boring democracy sounds better than letting every boss cosplay as a border checkpoint.
+~ electoral_pressure = true
+-> p1_kiko_vote_libby_push
+
+=== p1_kiko_vote_libby_push ===
+# speaker: Libby
+# avatar: E:/Projects/CultLib/.voidbot/voice/libby.png
+Boring democracy is only boring when capital is not already in the wiring. In the United States, the Democratic Party can speak fluent worker and still need donors, lobbyists, consultants, and corporate media to bless the campaign. At that point the ballot can become a complaint card in a building someone else owns.
 -> p1_fold
 
 === p1_weksa_metric ===
@@ -188,6 +204,7 @@ One answer is not no measurement. It is measurement held by the people being mea
 {market_pressure: Kiko's exit story matters because exit is real power when people actually have somewhere to go.}
 {management_pressure: Teams do need signals before resentment eats the responsible person alive.}
 {state_force_pressure: And if you reached for law, good; sometimes the first duty is to stop the hand on the throat.}
+{electoral_pressure: Voting can matter. It is just not the same thing as owning the machinery that turns pressure into policy.}
 Notice the shape. The problem is not that measurement, markets, management, or law are always fake. The problem is ownership: who can see the measure, challenge it, change it, or refuse it without being punished.
 -> p1_fold_2
 
@@ -1087,6 +1104,7 @@ After all these turns around the circle, the test is still ordinary: what does t
 {market_pressure: If it says "choice," ask who can actually refuse.}
 {management_pressure: If it says "accountability," ask who controls the measure.}
 {state_force_pressure: If it says "law will save us," ask how the watcher is watched.}
+{electoral_pressure: If it says "vote harder," ask who funds the choices and who can punish the winners.}
 {central_pressure: If it says "temporary emergency," ask what capacity remains when the emergency ends.}
 {anti_force_pressure: If it says "defense," ask whether defended people become stronger or merely better guarded.}
 {direct_help_pressure: If it says "freedom," ask whether anyone was left alone with an empty bowl and a speech.}
