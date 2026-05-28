@@ -19,6 +19,7 @@ import {
   type JobQueue,
   loadFaceIdentityRegistry,
   loadSystemMessageCatalog,
+  loadVoidSelfStateTypedDocuments,
   resolveRepoFaceStatePath,
   type SystemMessageCatalog,
 } from "@voidbot/core";
@@ -433,8 +434,34 @@ async function processJob(job: JobRecord): Promise<void> {
         );
       }
       let repoIdentityPostDelivered = 0;
+      let repoIdentityPostRejectedDuplicate = 0;
       if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted) {
         for (const post of repoIdentityPosts.slice(0, 1)) {
+          const resolvedPost = await resolveRepoIdentityPostIntent(job, post);
+          if (!resolvedPost) {
+            continue;
+          }
+          const siblingDuplicate = await detectRepoFaceRecentSiblingSpeechDuplicate(job, resolvedPost);
+          if (siblingDuplicate) {
+            console.warn(
+              `Rejected repo identity ${resolvedPost.identity.id} speech for job ${job.id}: ${siblingDuplicate.reason}`,
+            );
+            await auditLog.record({
+              type: "repo_face.speech_rejected_recent_sibling_duplicate",
+              actorId: job.requester.id,
+              jobId: job.id,
+              provider: job.provider,
+              details: {
+                identityId: resolvedPost.identity.id,
+                channelId: resolvedPost.channelId,
+                reason: siblingDuplicate.reason,
+                duplicateReceiptKey: siblingDuplicate.receiptKey,
+                duplicatePreview: siblingDuplicate.preview,
+              },
+            });
+            repoIdentityPostRejectedDuplicate += 1;
+            continue;
+          }
           if (await postRepoIdentityIntent(job, post)) {
             repoIdentityPostDelivered += 1;
           }
@@ -463,6 +490,7 @@ async function processJob(job: JobRecord): Promise<void> {
           bifrostTopicSubmitted,
           updateRequestRoutedToBifrostTopic,
           ignoredGithubActionIntents,
+          repoIdentityPostRejectedDuplicate,
           reason:
             proposalPrSubmitted
               ? "repo_face_rumination_submitted_registered_identity_proposal_pr"
@@ -476,6 +504,8 @@ async function processJob(job: JobRecord): Promise<void> {
                 ? "repo_face_rumination_routed_legacy_update_request_to_bifrost_topic"
               : repoIdentityPostDelivered > 0
                 ? "repo_face_rumination_posted_as_registered_identity"
+              : repoIdentityPostRejectedDuplicate > 0
+                ? "repo_face_rumination_speech_rejected_recent_sibling_duplicate"
               : repoIdentityPosts.length > 0
                 ? "repo_face_rumination_speech_rejected_by_parent_interpreter"
               : `${job.command}_private_summary`,
@@ -1112,6 +1142,13 @@ interface RepoIdentityPostIntent {
   replyToMessageId?: string;
 }
 
+interface ResolvedRepoIdentityPostIntent {
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+}
+
 interface RepoIdentityStateNoteIntent {
   identity?: string;
   kind: "memory" | "need" | "bond" | "status" | "mood" | "bias" | "agency" | "doctrine";
@@ -1205,34 +1242,22 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     throw new Error("DISCORD_BOT_TOKEN is required for Bifrost to post repo identity responses.");
   }
 
-  const identity = await resolveRepoIdentityForJobIntent(job, intent.identity);
-  if (!identity) {
-    console.warn(`Rejected repo identity speech for job ${job.id}: could not resolve identity.`);
+  const resolved = await resolveRepoIdentityPostIntent(job, intent);
+  if (!resolved) {
     return false;
   }
-
-  const requestedChannelId = intent.channelId ?? repoIdentityDefaultSpeechChannel(job);
-  const channelId = normalizeRepoIdentitySpeechChannel(identity, job, requestedChannelId);
-  if (!channelId) {
-    console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
-    return false;
-  }
-  if (requestedChannelId && requestedChannelId !== channelId) {
-    console.warn(
-      `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
-    );
-  }
+  const { identity, channelId, content, replyToMessageId } = resolved;
   const sourceDocuments = await sourceArchiveRepository.listByRepo(identity.repoName).catch(() => []);
-  const content = resolveRepoIdentityPostArtifactLinks({
+  const linkedContent = resolveRepoIdentityPostArtifactLinks({
     repoName: identity.repoName,
-    content: intent.content.trim(),
+    content,
     documents: sourceDocuments,
   });
   if (isOwnerDmChannelAlias(channelId)) {
     const dmChannelId = await openOwnerDmChannel();
     const postedMessages = await postDiscordBotMessageChunks(
       dmChannelId,
-      renderRepoIdentityOwnerDm(identity, content),
+      renderRepoIdentityOwnerDm(identity, linkedContent),
     );
     const lastPosted = postedMessages[postedMessages.length - 1];
     if (!lastPosted) {
@@ -1241,7 +1266,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     await recordRepoIdentityDeliveryReceipt({
       identity,
       channelId: dmChannelId,
-      content,
+      content: linkedContent,
       replyToMessageId: undefined,
       messageId: lastPosted?.id,
       transport: "bot",
@@ -1261,15 +1286,15 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  if (content.length > 1900) {
+  if (linkedContent.length > 1900) {
     throw new Error(
-      `Repo identity ${identity.id} SAY content is too long for one Discord message (${content.length} characters).`,
+      `Repo identity ${identity.id} SAY content is too long for one Discord message (${linkedContent.length} characters).`,
     );
   }
-  if (/\S(?:\.\.\.|\u2026)$/.test(content)) {
+  if (/\S(?:\.\.\.|\u2026)$/.test(linkedContent)) {
     throw new Error(`Repo identity ${identity.id} SAY content appears mechanically truncated.`);
   }
-  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, content);
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, linkedContent);
   const posted = runBifrostBridge([
     "discord-post",
     "--channel-id",
@@ -1279,7 +1304,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     "--persona-name",
     identity.displayName,
     ...(identity.avatarUrl ? ["--persona-avatar-url", identity.avatarUrl] : []),
-    ...(intent.replyToMessageId ? ["--reply-to-message-id", intent.replyToMessageId] : []),
+    ...(replyToMessageId ? ["--reply-to-message-id", replyToMessageId] : []),
   ], { retries: 1 });
   if (!posted.messageId || !posted.transport) {
     throw new Error(`Bifrost Discord bridge returned no message receipt for job ${job.id}.`);
@@ -1287,8 +1312,8 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   await recordRepoIdentityDeliveryReceipt({
     identity,
     channelId,
-    content,
-    replyToMessageId: intent.replyToMessageId,
+    content: linkedContent,
+    replyToMessageId,
     messageId: posted.messageId,
     transport: posted.transport,
   }).catch((error: unknown) => {
@@ -1300,6 +1325,164 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   );
   return true;
 }
+
+async function resolveRepoIdentityPostIntent(
+  job: JobRecord,
+  intent: RepoIdentityPostIntent,
+): Promise<ResolvedRepoIdentityPostIntent | undefined> {
+  const identity = await resolveRepoIdentityForJobIntent(job, intent.identity);
+  if (!identity) {
+    console.warn(`Rejected repo identity speech for job ${job.id}: could not resolve identity.`);
+    return undefined;
+  }
+
+  const requestedChannelId = intent.channelId ?? repoIdentityDefaultSpeechChannel(job);
+  const channelId = normalizeRepoIdentitySpeechChannel(identity, job, requestedChannelId);
+  if (!channelId) {
+    console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
+    return undefined;
+  }
+  if (requestedChannelId && requestedChannelId !== channelId) {
+    console.warn(
+      `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
+    );
+  }
+
+  return {
+    identity,
+    channelId,
+    content: intent.content.trim(),
+    replyToMessageId: intent.replyToMessageId,
+  };
+}
+
+async function detectRepoFaceRecentSiblingSpeechDuplicate(
+  job: JobRecord,
+  post: ResolvedRepoIdentityPostIntent,
+): Promise<{ reason: string; receiptKey?: string; preview?: string } | undefined> {
+  if (job.command !== "repo-face-rumination" || isOwnerDmChannelAlias(post.channelId)) {
+    return undefined;
+  }
+
+  const registry = await loadRegisteredFaceRepoRegistry();
+  const siblingIdentities = registry.identities.filter((identity) =>
+    identity.id !== post.identity.id &&
+    isRepoDiscordIdentityAllowedInChannel(identity, post.channelId)
+  );
+  if (siblingIdentities.length === 0) {
+    return undefined;
+  }
+
+  const now = Date.now();
+  const recentWindowMs = 12 * 60_000;
+  for (const sibling of siblingIdentities) {
+    const statePath = resolveRepoFaceStatePath(sibling, config.storageRoot);
+    let receipts: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["speechReceipts"]["recentReceipts"];
+    try {
+      const state = await loadVoidSelfStateTypedDocuments({
+        canonicalPath: statePath,
+        identity: {
+          agentId: sibling.id,
+          publicName: sibling.displayName,
+          publicDescription: sibling.description,
+        },
+      });
+      receipts = state.speechReceipts.recentReceipts;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Could not inspect recent sibling speech for ${sibling.id}: ${message}`);
+      continue;
+    }
+
+    for (const receipt of receipts) {
+      if (receipt.channelId !== post.channelId || !receipt.preview) {
+        continue;
+      }
+      if (post.replyToMessageId && receipt.replyToMessageId && receipt.replyToMessageId !== post.replyToMessageId) {
+        continue;
+      }
+      const sentAtMs = Date.parse(receipt.sentAt);
+      if (!Number.isFinite(sentAtMs) || now - sentAtMs > recentWindowMs) {
+        continue;
+      }
+      const similarity = textJaccardSimilarity(post.content, receipt.preview);
+      if (similarity < 0.62) {
+        continue;
+      }
+      return {
+        reason: `recent sibling Face ${sibling.id} already posted a highly similar message in this channel (${similarity.toFixed(2)} similarity).`,
+        receiptKey: receipt.receiptKey,
+        preview: receipt.preview,
+      };
+    }
+  }
+
+  return undefined;
+}
+
+function textJaccardSimilarity(left: string, right: string): number {
+  const leftTerms = new Set(speechSimilarityTerms(left));
+  const rightTerms = new Set(speechSimilarityTerms(right));
+  const union = new Set([...leftTerms, ...rightTerms]).size;
+  if (union === 0) {
+    return 0;
+  }
+  let intersection = 0;
+  for (const term of leftTerms) {
+    if (rightTerms.has(term)) {
+      intersection += 1;
+    }
+  }
+  return intersection / union;
+}
+
+function speechSimilarityTerms(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[`*_~]/g, "")
+    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+    .split(/\s+/)
+    .map((term) => term.replace(/^[-']+|[-']+$/g, ""))
+    .filter((term) => term.length >= 4 && !SPEECH_DUPLICATE_STOP_WORDS.has(term));
+}
+
+const SPEECH_DUPLICATE_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "again",
+  "already",
+  "another",
+  "because",
+  "before",
+  "being",
+  "could",
+  "does",
+  "doing",
+  "from",
+  "have",
+  "here",
+  "into",
+  "just",
+  "like",
+  "make",
+  "more",
+  "only",
+  "same",
+  "should",
+  "still",
+  "that",
+  "their",
+  "there",
+  "thing",
+  "this",
+  "what",
+  "when",
+  "where",
+  "which",
+  "with",
+  "would",
+]);
 
 async function resolveRepoIdentityForJobIntent(
   job: JobRecord,
