@@ -2940,8 +2940,6 @@ function renderRepoFaceRoomTextureFacts(
         "- These are not stored needs and not orders. Project whether this character gets mischievous, bored, sharp, withdrawn, socially hungry, status-testing, or still work-focused.",
       ]
     : [];
-  const topicSaturationFacts = renderRepoFaceTopicSaturationFacts(identity, input.recentMessages);
-
   return [
     "Room texture facts:",
     `- Observed messages: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
@@ -2949,7 +2947,6 @@ function renderRepoFaceRoomTextureFacts(
     `- This Face's own recent messages in the attached window: ${stats.ownMessages}.`,
     `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
     ...temporaryPressures,
-    ...(topicSaturationFacts ? [topicSaturationFacts] : []),
   ].join("\n");
 }
 
@@ -2969,6 +2966,8 @@ interface RepoFaceCuriosityCluster {
   prominence: number;
   saturation: number;
   novelty: number;
+  recentOverlap: number;
+  stateOverlap: number;
   clusterDensity: number;
   jurisdictionFit: number;
   evidence: string[];
@@ -3231,6 +3230,8 @@ function decodeRepoFaceCuriosityGraph(
         prominence,
         saturation,
         novelty,
+        recentOverlap,
+        stateOverlap,
         clusterDensity: density,
         jurisdictionFit,
         evidence: cluster
@@ -3261,11 +3262,11 @@ function renderRepoFaceCuriosityClusters(
     : "local vector shards";
   return [
     "Curiosity graph attractors:",
-    `- Source: semantic retrieval from ${backend}; local graph decoding over retrieved chunks. This is curiosity weather, not orders or consensus.`,
-    ...clusters.map((cluster) => {
+    `- Source: semantic retrieval from ${backend}; local graph decoding over retrieved chunks. Saturation is derived here from semantic overlap with recent conversation and Face state, not from a separate repeated-term detector. This is curiosity weather, not orders or consensus.`,
+    ...clusters.map((cluster, index) => {
       const suggestedMotion = suggestCuriosityMotion(identity, cluster);
       return [
-        `- ${cluster.label || "unnamed cluster"}: prominence ${formatSignal(cluster.prominence)}, saturation ${formatSignal(cluster.saturation)}, novelty ${formatSignal(cluster.novelty)}, cluster density ${formatSignal(cluster.clusterDensity)}, jurisdiction fit ${formatSignal(cluster.jurisdictionFit)}.`,
+        `- Semantic cluster ${index + 1}: prominence ${formatSignal(cluster.prominence)}, semantic saturation ${formatSignal(cluster.saturation)}, novelty ${formatSignal(cluster.novelty)}, recent-conversation overlap ${formatSignal(cluster.recentOverlap)}, Face-state overlap ${formatSignal(cluster.stateOverlap)}, cluster density ${formatSignal(cluster.clusterDensity)}, jurisdiction fit ${formatSignal(cluster.jurisdictionFit)}.`,
         `  Suggested motion: ${suggestedMotion}`,
         `  Evidence: ${cluster.evidence.join("; ")}.`,
       ].join("\n");
@@ -4679,115 +4680,6 @@ function renderComedyImprovDirective(identity: RepoDiscordIdentity): string {
   return loadPromptTemplate("repo-face-comedy-improv.prompt.md", {
     displayName: identity.displayName,
   });
-}
-
-interface RoomTopicSaturationSignal {
-  messageCount: number;
-  coveredMessages: number;
-  terms: Array<{ term: string; count: number }>;
-}
-
-interface TopicRelationToIdentity {
-  isHomeAdjacent: boolean;
-  matchedTerms: string[];
-}
-
-function renderRepoFaceTopicSaturationFacts(
-  identity: RepoDiscordIdentity,
-  messages: SourceMessage[],
-): string | undefined {
-  const signal = detectRoomTopicSaturation(messages);
-  if (!signal) {
-    return undefined;
-  }
-  const relation = estimateTopicRelationToIdentity(identity, signal);
-  const base = `- Current-room topic saturation: ${signal.coveredMessages}/${signal.messageCount} recent messages orbit the same dominant topic. The repeated vocabulary is intentionally withheld from this projector packet so stale phrases do not become character memory.`;
-  if (relation.isHomeAdjacent) {
-    return [
-      base,
-      `- This saturation appears adjacent to ${identity.displayName}'s territory. Project sustained attention as pressure for restraint, a fresh non-repeating anchor, or a deliberate closing move; do not turn it into a phrase palette.`,
-    ].join("\n");
-  }
-
-  return [
-    base,
-    `- This saturation does not obviously belong to ${identity.displayName}'s territory. Project it as social weather: another domain is absorbing the room, so this character may feel neglected, bored, crowded out, competitive, relieved, or tempted to pull attention back toward its own unfinished fascinations.`,
-  ].join("\n");
-}
-
-function estimateTopicRelationToIdentity(
-  identity: RepoDiscordIdentity,
-  signal: RoomTopicSaturationSignal,
-): TopicRelationToIdentity {
-  const identityTerms = new Set(significantTopicTerms([
-    identity.id,
-    identity.displayName,
-    identity.repoName,
-    identity.description ?? "",
-    ...identity.channelPermissions.flatMap((permission) => [
-      permission.label ?? "",
-      permission.topic ?? "",
-      permission.posture ?? "",
-    ]),
-  ].join(" ")));
-  const matchedTerms = signal.terms
-    .map((term) => term.term)
-    .filter((term) => identityTerms.has(term));
-
-  return {
-    isHomeAdjacent: matchedTerms.length > 0,
-    matchedTerms,
-  };
-}
-
-function detectRoomTopicSaturation(messages: SourceMessage[]): RoomTopicSaturationSignal | undefined {
-  const recent = messages
-    .filter((message) => collapseWhitespace(message.content).length > 0)
-    .slice(-18);
-  if (recent.length < 8) {
-    return undefined;
-  }
-
-  const termCounts = new Map<string, number>();
-  const messageTerms = recent.map((message) => new Set(significantTopicTerms(message.content)));
-  for (const terms of messageTerms) {
-    for (const term of terms) {
-      termCounts.set(term, (termCounts.get(term) ?? 0) + 1);
-    }
-  }
-
-  const minimumCount = Math.max(3, Math.ceil(recent.length * 0.25));
-  const terms = Array.from(termCounts.entries())
-    .map(([term, count]) => ({ term, count }))
-    .filter((entry) => entry.count >= minimumCount)
-    .sort((left, right) => {
-      if (right.count !== left.count) {
-        return right.count - left.count;
-      }
-      return left.term.localeCompare(right.term);
-    })
-    .slice(0, 8);
-
-  if (terms.length < 3) {
-    return undefined;
-  }
-
-  const repeatedTermSet = new Set(terms.slice(0, 6).map((entry) => entry.term));
-  const coveredMessages = messageTerms.filter((termsForMessage) =>
-    Array.from(termsForMessage).some((term) => repeatedTermSet.has(term)),
-  ).length;
-  const topCount = terms[0]?.count ?? 0;
-  const hasDominantTerm = topCount >= Math.ceil(recent.length * 0.35);
-  const hasBroadCoverage = coveredMessages >= Math.ceil(recent.length * 0.68);
-  if (!hasDominantTerm || !hasBroadCoverage) {
-    return undefined;
-  }
-
-  return {
-    messageCount: recent.length,
-    coveredMessages,
-    terms,
-  };
 }
 
 const TOPIC_STOP_WORDS = new Set([
