@@ -39,6 +39,7 @@ async function main() {
   const voidReasoningEffort = options["void-reasoning-effort"] ?? "low";
   const foldMode = options["void-fold-mode"] ?? "generated";
   const turnInterpreterMode = options["turn-interpreter-mode"] ?? "model";
+  const faceTurnMode = options["face-turn-mode"] ?? "model";
   const outPath = resolve(repoRoot, options.out ?? scenario.outputInkPath);
   const receiptPath = resolve(repoRoot, options.receipts ?? scenario.receiptPath);
   const progressPath = resolve(repoRoot, options.progress ?? ".voidbot/artifacts/socratic-ink/progress.json");
@@ -62,9 +63,11 @@ async function main() {
       voidReasoningEffort,
       foldMode,
       turnInterpreterMode,
+      faceTurnMode,
     },
     faceTurns: [],
     voidFolds: [],
+    dramaturgy: [],
   };
 
   const actors = scenario.actors.map((actor, index) => ({
@@ -74,6 +77,7 @@ async function main() {
     order: index,
     nextReady: index / Math.max(1, scenario.actors.length),
   }));
+  const actorById = new Map(actors.map((actor) => [actor.identityId, actor]));
 
   const ink = [];
   ink.push(`// ghostlight.scenario: ${scenario.scenarioId}`);
@@ -112,29 +116,30 @@ async function main() {
     const nextPhaseKnot = phaseIndex + 1 < phaseCount ? `phase_${phaseIndex + 2}` : "closing";
     const phaseCtb = cloneCtb(actors, phaseIndex * choiceCount);
     const phaseOpening = normalizeUtterances(phase.voidOpening);
+    const phaseUsesDramaturgy = hasDramaturgicPhase(phase);
     writeSpeakerSequence(
       ink,
       `phase_${phaseIndex + 1}`,
       scenario.voidRole?.displayName ?? "Void",
       scenario.voidRole?.avatarPath,
       phaseOpening,
-      nodeName(phaseIndex, []),
+      phaseUsesDramaturgy ? dramaturgyRootName(phaseIndex) : nodeName(phaseIndex, []),
       [
         `ghostlight.phase_id: ${phase.phaseId}`,
         `ghostlight.topic: ${phase.topic}`,
       ],
     );
 
-    await buildBranchNode({
+    const sharedPhaseInput = {
       scenario,
       phase,
       phaseIndex,
       nextPhaseKnot,
-      depth: 0,
       maxDepth,
       generatedTurnBudget,
       choiceCount,
       ctb: phaseCtb,
+      actorById,
       phaseState: {
         generatedFaceTurns: 0,
       },
@@ -154,10 +159,22 @@ async function main() {
       voidReasoningEffort,
       foldMode,
       turnInterpreterMode,
+      faceTurnMode,
       progressPath,
       ink,
       receipts,
-    });
+    };
+    if (phaseUsesDramaturgy) {
+      await buildDramaturgicPhase({
+        ...sharedPhaseInput,
+        phaseRootKnot: dramaturgyRootName(phaseIndex),
+      });
+    } else {
+      await buildBranchNode({
+        ...sharedPhaseInput,
+        depth: 0,
+      });
+    }
   }
 
   writeSpeakerSequence(ink, "closing", scenario.voidRole?.displayName ?? "Void", scenario.voidRole?.avatarPath, normalizeUtterances(scenario.closing), "END");
@@ -314,6 +331,276 @@ async function buildBranchNode(input) {
   }
 }
 
+async function buildDramaturgicPhase(input) {
+  const plan = getDramaturgicPlan(input.phase);
+  const rootBeatIds = plan.rootBeatIds.length
+    ? plan.rootBeatIds
+    : plan.beats.filter((beat) => !beat.respondsTo && !beat.parentId).map((beat) => beat.id);
+  input.receipts.dramaturgy.push({
+    phaseId: input.phase.phaseId,
+    mode: "beat_graph",
+    teachingGoal: plan.teachingGoal,
+    foldInvariant: plan.foldInvariant,
+    rootBeatIds,
+    beatCount: plan.beats.length,
+  });
+  input.ink.push(`=== ${input.phaseRootKnot} ===`);
+  input.ink.push(`// ghostlight.branch_mode: dramaturgic_beat_graph`);
+  input.ink.push(`// ghostlight.phase_id: ${input.phase.phaseId}`);
+  input.ink.push(`// ghostlight.teaching_goal: ${cleanSpeech(plan.teachingGoal)}`);
+  input.ink.push(`// ghostlight.fold_invariant: ${cleanSpeech(plan.foldInvariant)}`);
+  input.ink.push("");
+  await writeDramaturgicChoices({
+    ...input,
+    plan,
+    choiceKnot: input.phaseRootKnot,
+    beatIds: rootBeatIds,
+    transcript: input.transcript,
+    ctb: input.ctb,
+    path: [],
+  });
+}
+
+async function writeDramaturgicChoices(input) {
+  const beats = input.beatIds
+    .map((beatId) => input.plan.beatById.get(beatId))
+    .filter(Boolean);
+  if (!beats.length) {
+    await writeForcedFold(input, input.path);
+    return;
+  }
+  const branches = [];
+  for (const beat of beats) {
+    const actor = selectBeatActor(input, beat);
+    const displayName = actor?.displayName ?? beat.displayName ?? input.scenario.voidRole?.displayName ?? "Void";
+    const beatPath = [...input.path, beat.id];
+    const beatKnot = dramaturgyBeatName(input.phaseIndex, beatPath);
+    const choiceLabel = beat.choiceLabel ?? beat.label ?? beat.stance ?? beat.brief ?? "Answer";
+    input.ink.push(`+ [${formatChoiceLabel(displayName, choiceLabel)}]`);
+    input.ink.push(`  -> ${beatKnot}`);
+    input.ink.push("");
+    branches.push({ beat, actor, beatKnot, beatPath });
+  }
+  for (const branch of branches) {
+    await writeDramaturgicBeat({
+      ...input,
+      beat: branch.beat,
+      actor: branch.actor,
+      beatKnot: branch.beatKnot,
+      path: branch.beatPath,
+    });
+  }
+}
+
+async function writeDramaturgicBeat(input) {
+  const turn = await resolveDramaturgicBeatTurn(input);
+  const speaker = input.actor?.displayName ?? input.beat.displayName ?? input.scenario.voidRole?.displayName ?? "Void";
+  const avatarPath = input.actor?.avatarPath ?? input.scenario.voidRole?.avatarPath;
+  const isVoid = !input.actor || input.beat.actorId === "void" || speaker === (input.scenario.voidRole?.displayName ?? "Void");
+  const comments = [
+    `ghostlight.branch_mode: dramaturgic_beat_graph`,
+    `ghostlight.beat_id: ${input.beat.id}`,
+    `ghostlight.beat_type: ${input.beat.beatType ?? input.beat.type ?? ""}`,
+    `ghostlight.reader_pressure: ${cleanSpeech(input.beat.readerPressure ?? input.beat.readerPerspective?.label ?? "")}`,
+    `ghostlight.tension: ${cleanSpeech(input.beat.tension ?? input.beat.dissonance ?? "")}`,
+  ];
+  writeSpeakerKnot(input.ink, input.beatKnot, speaker, avatarPath, turn.speech, comments);
+  if (!isVoid) {
+    input.ink.push(`~ face_turns += 1`);
+  }
+  for (const line of normalizeInkCommands(input.beat.setFlags ?? input.beat.commands)) {
+    input.ink.push(line);
+  }
+
+  const transcript = [
+    ...input.transcript,
+    { speaker, text: turn.speech },
+  ];
+  const branchCtb = input.actor
+    ? spendActor(input.ctb, input.actor, input.scenario.ctb?.recoveryBase ?? 1)
+    : input.ctb;
+  const childIds = normalizeBeatChildren(input.beat);
+  if (childIds.length === 1 && isForcedChild(input.plan.beatById.get(childIds[0]))) {
+    input.ink.push(`-> ${dramaturgyBeatName(input.phaseIndex, [...input.path, childIds[0]])}`);
+    input.ink.push("");
+    await writeDramaturgicBeat({
+      ...input,
+      beat: input.plan.beatById.get(childIds[0]),
+      actor: selectBeatActor({ ...input, ctb: branchCtb }, input.plan.beatById.get(childIds[0])),
+      beatKnot: dramaturgyBeatName(input.phaseIndex, [...input.path, childIds[0]]),
+      path: [...input.path, childIds[0]],
+      transcript,
+      ctb: branchCtb,
+    });
+    return;
+  }
+  if (childIds.length > 0) {
+    const choiceKnot = dramaturgyChoiceName(input.phaseIndex, input.path);
+    input.ink.push(`-> ${choiceKnot}`);
+    input.ink.push("");
+    input.ink.push(`=== ${choiceKnot} ===`);
+    input.ink.push(`// ghostlight.branch_mode: dramaturgic_beat_graph`);
+    input.ink.push(`// ghostlight.after_beat: ${input.beat.id}`);
+    input.ink.push("");
+    await writeDramaturgicChoices({
+      ...input,
+      choiceKnot,
+      beatIds: childIds,
+      transcript,
+      ctb: branchCtb,
+      path: input.path,
+    });
+    return;
+  }
+  if (input.beat.foldAfter === false || input.beat.noFold === true) {
+    input.ink.push(`-> ${input.nextPhaseKnot}`);
+    input.ink.push("");
+    return;
+  }
+  const fold = await generateVoidFold({
+    ...input,
+    transcript,
+    ctb: branchCtb,
+    depth: input.path.length,
+    actor: input.actor,
+  });
+  const foldStart = dramaturgyFoldName(input.phaseIndex, input.path);
+  input.ink.push(`-> ${foldStart}`);
+  input.ink.push("");
+  writeSpeakerSequence(
+    input.ink,
+    foldStart,
+    input.scenario.voidRole?.displayName ?? "Void",
+    input.scenario.voidRole?.avatarPath,
+    fold.panels ?? [fold.text],
+    input.nextPhaseKnot,
+    [],
+    [`~ void_folds += 1`],
+  );
+}
+
+async function resolveDramaturgicBeatTurn(input) {
+  const actor = input.actor;
+  const displayName = actor?.displayName ?? input.beat.displayName ?? input.scenario.voidRole?.displayName ?? "Void";
+  if (input.beat.speech) {
+    const speech = cleanSpeakerPrefix(input.beat.speech, displayName);
+    const choiceLabel = input.beat.choiceLabel ?? summarizeChoice(speech);
+    input.receipts.faceTurns.push({
+      phaseId: input.phase.phaseId,
+      depth: input.path.length,
+      identityId: actor?.identityId ?? "void",
+      displayName,
+      mode: "scripted_beat",
+      beat: receiptBeat(input.beat),
+      selectedSpeech: speech,
+      choiceLabel,
+    });
+    await writeProgress(input);
+    return { displayName, speech, choiceLabel };
+  }
+  if (!actor) {
+    const speech = cleanSpeakerPrefix(input.beat.brief ?? input.beat.stance ?? "Hold that thought.", displayName);
+    return { displayName, speech, choiceLabel: input.beat.choiceLabel ?? summarizeChoice(speech) };
+  }
+  if (input.faceTurnMode === "scripted") {
+    const speech = cleanSpeakerPrefix(input.beat.brief ?? input.beat.stance ?? "I am not sure I buy that yet.", displayName);
+    return { displayName, speech, choiceLabel: input.beat.choiceLabel ?? summarizeChoice(speech) };
+  }
+  return generateDramaturgicFaceTurn(input);
+}
+
+async function generateDramaturgicFaceTurn(input) {
+  const actorVoiceCard = await getActorVoiceCard(input.actor, input.basePromptCache, input.voiceCardCache, input);
+  const transcript = renderTranscript(input.transcript);
+  const beat = input.beat;
+  const prompt = renderTemplate("socratic-ink-face-beat.prompt.md", {
+    actorVoiceCard,
+    title: input.scenario.title,
+    phaseTopic: input.phase.topic,
+    phaseSetup: input.phase.laySetup ?? "Void has introduced only the immediate question. Keep the response accessible.",
+    phaseLesson: input.phase.lesson ?? "",
+    foldInvariant: input.plan.foldInvariant ?? "",
+    beatType: beat.beatType ?? beat.type ?? "objection",
+    beatBrief: beat.brief ?? beat.stance ?? "",
+    beatTension: beat.tension ?? beat.dissonance ?? "",
+    readerPressure: renderReaderPerspective(beat.readerPerspective ?? {
+      label: beat.readerPressure ?? beat.label ?? "Reader pressure",
+      stance: beat.stance ?? beat.brief ?? "Make the likely reader reaction concrete.",
+      emotionalRegister: beat.emotionalRegister ?? beat.tone ?? "plain-spoken",
+    }),
+    respondsTo: beat.respondsTo ?? beat.parentId ?? "",
+    voidLine: input.transcript.at(-1)?.text ?? "",
+    transcript,
+    actorRole: input.actor.role ?? "",
+    displayName: input.actor.displayName ?? input.actor.identityId,
+    depth: input.path.length,
+  });
+  const faceRun = await runCodex(prompt, {
+    model: input.faceModel,
+    reasoningEffort: input.faceReasoningEffort,
+    mcpMode: "real-readonly",
+    timeoutMs: 240_000,
+  });
+  const faceText = extractFinalText(parseJsonEvents(faceRun.stdout), faceRun.stdout);
+  const parsedFace = parseFaceResponse(faceText, input.actor);
+  const mindPrompt = renderTemplate("socratic-ink-turn-interpreter.prompt.md", {
+    displayName: input.actor.displayName ?? input.actor.identityId,
+    actorRole: input.actor.role ?? "",
+    phaseSetup: input.phase.laySetup ?? "",
+    voidLine: input.transcript.at(-1)?.text ?? "",
+    transcript,
+    draftResponse: faceText,
+  });
+  let mindRun;
+  let mindText;
+  let parsedMind;
+  if (input.turnInterpreterMode === "local") {
+    parsedMind = localArticleInterpretation(parsedFace, faceText, input.actor);
+    mindRun = { code: 0, durationMs: 0, stderr: "" };
+    mindText = JSON.stringify(parsedMind);
+  } else {
+    mindRun = await runCodex(mindPrompt, {
+      model: input.mindModel,
+      reasoningEffort: input.mindReasoningEffort,
+      mcpMode: "none",
+      timeoutMs: 240_000,
+    });
+    mindText = extractFinalText(parseJsonEvents(mindRun.stdout), mindRun.stdout);
+    parsedMind = parseArticleInterpreterOutput(mindText);
+  }
+  const speech = cleanSpeakerPrefix(parsedMind.speech || parsedFace.speech || faceText, input.actor.displayName ?? input.actor.identityId);
+  const choiceLabel = parsedMind.choiceLabel || parsedFace.choiceLabel || `${input.actor.displayName ?? input.actor.identityId}: ${speech}`;
+  input.receipts.faceTurns.push({
+    phaseId: input.phase.phaseId,
+    depth: input.path.length,
+    identityId: input.actor.identityId,
+    displayName: input.actor.displayName ?? input.actor.identityId,
+    mode: "dramaturgic_beat",
+    beat: receiptBeat(input.beat),
+    prompt,
+    face: {
+      exitCode: faceRun.code,
+      durationMs: faceRun.durationMs,
+      text: faceText,
+      parsed: parsedFace,
+      stderrTail: faceRun.stderr.slice(-2000),
+    },
+    mind: {
+      mode: input.turnInterpreterMode,
+      prompt: input.turnInterpreterMode === "local" ? undefined : mindPrompt,
+      exitCode: mindRun.code,
+      durationMs: mindRun.durationMs,
+      text: mindText,
+      parsed: parsedMind,
+      stderrTail: mindRun.stderr.slice(-2000),
+    },
+    selectedSpeech: speech,
+    choiceLabel,
+  });
+  await writeProgress(input);
+  return { displayName: input.actor.displayName ?? input.actor.identityId, speech, choiceLabel };
+}
+
 async function writeForcedFold(input, path) {
   const fold = await generateVoidFold(input);
   const foldStart = foldName(input.phaseIndex, path);
@@ -420,9 +707,11 @@ async function generateFaceTurn(input) {
 
 async function generateVoidFold(input) {
   if (input.foldMode === "template") {
-    const panels = input.phase.foldPanels?.length
-      ? normalizeUtterances(input.phase.foldPanels)
-      : [`Hold that answer.`, `The next question is simpler and sharper: ${input.phase.foldTarget}`];
+    const configuredPanels = input.beat?.foldPanels ?? input.phase.foldPanels;
+    const configuredTarget = input.beat?.foldTarget ?? input.phase.foldTarget;
+    const panels = configuredPanels?.length
+      ? normalizeUtterances(configuredPanels)
+      : [`Hold that answer.`, `The next question is simpler and sharper: ${configuredTarget}`];
     const text = panels.join(" ");
   input.receipts.voidFolds.push({ phaseId: input.phase.phaseId, depth: input.depth, mode: "template", text, panels });
     await writeProgress(input);
@@ -536,6 +825,98 @@ function assignPerspectiveSlots(input, alreadyFilled, choiceCount) {
   return slots;
 }
 
+function hasDramaturgicPhase(phase) {
+  return getDramaturgicPlan(phase).beats.length > 0;
+}
+
+function getDramaturgicPlan(phase) {
+  const source = phase.argumentMap ?? phase.dramaturgy ?? {};
+  const rawBeats = source.beats ?? phase.argumentBeats ?? [];
+  const beats = [];
+  const visit = (beat, parentId) => {
+    if (!beat || typeof beat !== "object") {
+      return;
+    }
+    const id = safeId(beat.id ?? `${parentId ?? "beat"}_${beats.length + 1}`);
+    const children = [];
+    for (const child of beat.children ?? []) {
+      if (typeof child === "string") {
+        children.push(child);
+      } else if (child && typeof child === "object") {
+        const childId = safeId(child.id ?? `${id}_${children.length + 1}`);
+        children.push(childId);
+        visit({ ...child, id: childId }, id);
+      }
+    }
+    beats.push({
+      ...beat,
+      id,
+      parentId: beat.parentId ?? parentId,
+      children,
+    });
+  };
+  for (const beat of rawBeats) {
+    visit(beat, beat.parentId);
+  }
+  const beatById = new Map(beats.map((beat) => [beat.id, beat]));
+  const rootBeatIds = (source.rootBeatIds ?? source.roots ?? phase.rootBeatIds ?? [])
+    .map((id) => safeId(id))
+    .filter((id) => beatById.has(id));
+  return {
+    mode: source.mode ?? "beat_graph",
+    teachingGoal: source.teachingGoal ?? phase.lesson ?? "",
+    foldInvariant: source.foldInvariant ?? phase.foldTarget ?? "",
+    beats,
+    beatById,
+    rootBeatIds,
+  };
+}
+
+function normalizeBeatChildren(beat) {
+  return (beat?.children ?? [])
+    .map((child) => typeof child === "string" ? safeId(child) : safeId(child?.id))
+    .filter(Boolean);
+}
+
+function isForcedChild(beat) {
+  return Boolean(beat) && beat.choice !== true && beat.forced !== false;
+}
+
+function selectBeatActor(input, beat) {
+  if (!beat) {
+    return undefined;
+  }
+  const actorId = beat.actorId ?? beat.identityId ?? beat.actor;
+  if (actorId && String(actorId).toLowerCase() !== "void") {
+    return input.actorById.get(String(actorId));
+  }
+  if (String(actorId).toLowerCase() === "void" || String(beat.speaker ?? "").toLowerCase() === "void") {
+    return undefined;
+  }
+  const preferred = nextActors(input.ctb, 1)[0];
+  return preferred;
+}
+
+function normalizeInkCommands(value) {
+  const raw = Array.isArray(value) ? value : [value];
+  return raw
+    .map((line) => cleanSpeech(line))
+    .filter(Boolean)
+    .map((line) => line.startsWith("~") ? line : `~ ${line}`);
+}
+
+function receiptBeat(beat) {
+  return {
+    id: beat.id,
+    actorId: beat.actorId ?? beat.identityId ?? beat.actor,
+    beatType: beat.beatType ?? beat.type,
+    readerPressure: beat.readerPressure ?? beat.readerPerspective?.label,
+    tension: beat.tension ?? beat.dissonance,
+    respondsTo: beat.respondsTo ?? beat.parentId,
+    children: normalizeBeatChildren(beat),
+  };
+}
+
 function defaultReaderPerspective(phase, depth, optionIndex) {
   const phasePerspectives = Array.isArray(phase.readerPerspectives) ? phase.readerPerspectives : [];
   const commonCounterarguments = Array.isArray(phase.commonCounterarguments) ? phase.commonCounterarguments : [];
@@ -596,6 +977,22 @@ function cloneCtb(actors, phaseOffset = 0) {
 
 function nodeName(phaseIndex, path) {
   return `p${phaseIndex + 1}_${path.length === 0 ? "root" : path.map(safeId).join("_")}`;
+}
+
+function dramaturgyRootName(phaseIndex) {
+  return `p${phaseIndex + 1}_argument_root`;
+}
+
+function dramaturgyBeatName(phaseIndex, path) {
+  return `p${phaseIndex + 1}_beat_${path.map(safeId).join("_")}`;
+}
+
+function dramaturgyChoiceName(phaseIndex, path) {
+  return `p${phaseIndex + 1}_choice_${path.map(safeId).join("_")}`;
+}
+
+function dramaturgyFoldName(phaseIndex, path) {
+  return `p${phaseIndex + 1}_fold_${path.map(safeId).join("_")}`;
 }
 
 function afterChoiceName(phaseIndex, path, identityId) {

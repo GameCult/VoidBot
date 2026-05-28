@@ -51,6 +51,7 @@
     "agents:weave-socratic-ink": "node scripts/weave-face-socratic-ink.mjs",
     "moderation:random-history": "node scripts/export-random-discord-history.mjs",
     "moderation:recent-repo-activity": "node scripts/export-recent-repo-activity.mjs",
+    "agents:weave-socratic-ink:dramaturgy-fixture": "node scripts/weave-face-socratic-ink.mjs --scenario scenarios/fixtures/socratic-ink-dramaturgy.fixture.json --void-fold-mode template --turn-interpreter-mode local --face-turn-mode scripted --max-phases 1",
     "moderation:memory-maintenance": "powershell -ExecutionPolicy Bypass -File scripts/run-void-memory-maintenance.ps1",
     "moderation:memory-maintenance:sleep-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-memory-maintenance-sleep-fixture.ps1",
     "moderation:memory-lifecycle:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-memory-lifecycle-fixture.ps1",

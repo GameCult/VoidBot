@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "voidbot.socratic_ink_scenario.v1.fixture",
+  "scenarioId": "socratic-ink-dramaturgy-fixture",
+  "title": "Dramaturgy Fixture",
+  "outputInkPath": ".voidbot/artifacts/socratic-ink/dramaturgy-fixture.ink",
+  "receiptPath": ".voidbot/artifacts/socratic-ink/dramaturgy-fixture.receipts.json",
+  "scene": {
+    "id": "fixture_agora",
+    "background": "fixture"
+  },
+  "voidRole": {
+    "displayName": "Void",
+    "avatarPath": "E:/Projects/VoidBot/assets/repo-faces/void.png"
+  },
+  "introduction": [
+    "We are testing whether argument pressure can steer the room before initiative does."
+  ],
+  "actors": [
+    {
+      "identityId": "aqua",
+      "displayName": "Aqua",
+      "avatarPath": "E:/Projects/AquaSynth/.voidbot/voice/aqua.png",
+      "speed": 1.08,
+      "role": "Warm synth-fish who notices whether systems give people playable agency or turn them into knobs."
+    },
+    {
+      "identityId": "nibu",
+      "displayName": "Nibu",
+      "avatarPath": "E:/Projects/AetheriaLore/.voidbot/voice/nibu.png",
+      "speed": 1.06,
+      "role": "Abrasive lore steward who cares whether ideals survive institutions."
+    },
+    {
+      "identityId": "kiko",
+      "displayName": "Kiko",
+      "avatarPath": "E:/Projects/VoidBot/assets/repo-faces/kiko.png",
+      "speed": 1.0,
+      "role": "Fast, mischievous systems sprite who notices exits, handles, and spectacle."
+    }
+  ],
+  "ctb": {
+    "choiceCount": 3,
+    "maxFaceTurnsPerPhase": 3,
+    "branchingLimit": 12,
+    "generatedTurnBudgetPerPhase": 12,
+    "recoveryBase": 1.0
+  },
+  "phases": [
+    {
+      "phaseId": "market_pressure",
+      "voidOpening": "A workplace says the market will punish bad bosses. What does that answer miss?",
+      "topic": "Markets, workplaces, and exit",
+      "laySetup": "The audience understands that systems train behavior, but not yet why formal choice may fail when people lack power.",
+      "lesson": "A choice is not free just because an exit exists on paper. Material pressure decides whether exit is real.",
+      "foldTarget": "Ask what freedom means when a person has to eat before they can bargain.",
+      "foldPanels": [
+        "Good. The market answer names a real mechanism, but it leaves the hungry body out of the room.",
+        "If exit only belongs to people who can afford the walk, then the system has not created freedom. It has priced freedom."
+      ],
+      "argumentMap": {
+        "mode": "beat_graph",
+        "teachingGoal": "Expose the difference between formal exit and material freedom.",
+        "foldInvariant": "Freedom has to be usable by the people living under the consequences.",
+        "rootBeatIds": [
+          "market_exit",
+          "state_planning",
+          "worker_exhaustion"
+        ],
+        "beats": [
+          {
+            "id": "market_exit",
+            "actorId": "kiko",
+            "beatType": "libertarian_objection",
+            "choiceLabel": "Bad workplaces should lose workers",
+            "readerPressure": "Let the market sort it out.",
+            "tension": "Formal exit is being treated as material power.",
+            "speech": "If the boss is that awful, people leave and the company eats dirt. Isn't that the cleanest feedback loop we have?",
+            "children": [
+              "aqua_exit_cost"
+            ]
+          },
+          {
+            "id": "aqua_exit_cost",
+            "actorId": "aqua",
+            "beatType": "forced_friction",
+            "forced": true,
+            "choiceLabel": "Leaving is not free",
+            "readerPressure": "People have rent, medicine, and kids.",
+            "tension": "Exit exists, but survival makes it expensive.",
+            "speech": "That only works if leaving is actually playable. If rent is due Friday, the exit door has a price tag on it."
+          },
+          {
+            "id": "state_planning",
+            "actorId": "nibu",
+            "beatType": "ml_objection",
+            "choiceLabel": "Private bosses are worse",
+            "readerPressure": "A state plan may be ugly but at least it can break capital's power.",
+            "tension": "State custody answers capital by creating another command structure.",
+            "speech": "Private bosses already rule the shop. If workers seize the machine through a hard center, that still sounds better than begging shareholders to grow a conscience.",
+            "foldPanels": [
+              "That objection matters because capital does have armies, courts, and ledgers.",
+              "The danger is answering one owner by building another owner and trusting it to resign after it learns to command."
+            ]
+          },
+          {
+            "id": "worker_exhaustion",
+            "actorId": "aqua",
+            "beatType": "exhausted_worker",
+            "choiceLabel": "People are too tired",
+            "readerPressure": "Common workers need to survive today before redesigning society.",
+            "tension": "The doctrine must answer exhaustion without shaming it.",
+            "speech": "Most people are not plotting a new world after a double shift. They are microwaving dinner and hoping tomorrow hurts less.",
+            "foldPanels": [
+              "Yes. A politics that requires every tired person to become a saint by Thursday is just another machine for producing shame.",
+              "The practical question is what structures let exhausted people keep more power where they already stand."
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "closing": [
+    "Fixture complete."
+  ]
+}
