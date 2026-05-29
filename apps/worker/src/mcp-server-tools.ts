@@ -6,6 +6,7 @@ import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 import {
   applyRepoFacePostFatigueAfterSpeech,
   applyVoidSelfStateOperation,
+  buildGameCultPersonaStateFromVoidSelfState,
   buildVoidSelfStateContext,
   faceRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentity,
@@ -711,6 +712,10 @@ export function registerVoidbotTools(
           publicDescription: resolved.identity.description,
         },
       });
+      const personaState = buildGameCultPersonaStateFromVoidSelfState(typedState, {
+        sourceDocumentId: resolved.faceStatePath,
+        identity: resolved.identity,
+      });
 
       return {
         content: [
@@ -720,6 +725,7 @@ export function registerVoidbotTools(
               identity: identityForToolResult(resolved.identity, resolved.face),
               faceStatePath: resolved.faceStatePath,
               summary: rendered.summary,
+              personaState,
               typedState,
             }),
           },
@@ -728,6 +734,7 @@ export function registerVoidbotTools(
           identity: identityForToolResult(resolved.identity, resolved.face),
           faceStatePath: resolved.faceStatePath,
           summary: rendered.summary,
+          personaState,
           typedState,
         },
       };
