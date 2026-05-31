@@ -13,6 +13,12 @@ export interface DiscordPersonaOptions {
   personaAvatarUrl?: string;
 }
 
+export interface DiscordMessageFile {
+  path: string;
+  name: string;
+  mimeType?: string;
+}
+
 interface NormalizedDiscordPersonaOptions {
   personaName: string;
   personaAvatarUrl?: string;
@@ -61,6 +67,7 @@ export async function postDiscordMessage(
   content: string,
   replyToMessageId?: string,
   persona?: DiscordPersonaOptions,
+  files: DiscordMessageFile[] = [],
 ): Promise<{ id: string; transport: "bot" | "webhook" }> {
   const normalizedPersona = normalizePersonaOptions(persona);
 
@@ -71,7 +78,12 @@ export async function postDiscordMessage(
       content,
       normalizedPersona,
       replyToMessageId,
+      files,
     );
+  }
+
+  if (files.length > 0) {
+    throw new Error("Discord bot message attachments are only implemented for persona webhook messages.");
   }
 
   const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
@@ -113,6 +125,7 @@ async function postDiscordPersonaMessage(
   content: string,
   persona: NormalizedDiscordPersonaOptions,
   replyToMessageId?: string,
+  files: DiscordMessageFile[] = [],
 ): Promise<{ id: string; transport: "webhook" }> {
   const target = await resolveWebhookTarget(botToken, channelId);
   const configuredWebhook = await getConfiguredPersonaWebhook(target.webhookChannelId);
@@ -130,6 +143,7 @@ async function postDiscordPersonaMessage(
       replyToMessageId,
       username: persona.personaName,
       avatarUrl: persona.personaAvatarUrl,
+      files,
     });
   } catch (error) {
     if (!isStaleWebhookError(error)) {
@@ -153,6 +167,7 @@ async function postDiscordPersonaMessage(
       replyToMessageId,
       username: persona.personaName,
       avatarUrl: persona.personaAvatarUrl,
+      files,
     });
   }
 }
@@ -313,12 +328,14 @@ async function executePersonaWebhook(
     replyToMessageId,
     username,
     avatarUrl,
+    files = [],
   }: {
     threadId?: string;
     content: string;
     replyToMessageId?: string;
     username: string;
     avatarUrl?: string;
+    files?: DiscordMessageFile[];
   },
 ): Promise<{ id: string; transport: "webhook" }> {
   const url = new URL(`https://discord.com/api/v10/webhooks/${webhook.id}/${webhook.token}`);
@@ -328,38 +345,58 @@ async function executePersonaWebhook(
     url.searchParams.set("thread_id", threadId);
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const requestPayload = {
+    content,
+    username,
+    avatar_url: avatarUrl,
+    message_reference: replyToMessageId
+      ? {
+          message_id: replyToMessageId,
+          fail_if_not_exists: false,
+        }
+      : undefined,
+    allowed_mentions: {
+      parse: [],
     },
-    body: JSON.stringify({
-      content,
-      username,
-      avatar_url: avatarUrl,
-      message_reference: replyToMessageId
-        ? {
-            message_id: replyToMessageId,
-            fail_if_not_exists: false,
-          }
-        : undefined,
-      allowed_mentions: {
-        parse: [],
-      },
-    }),
-  });
+  };
+
+  const response = files.length > 0
+    ? await fetch(url, {
+        method: "POST",
+        body: buildWebhookMultipartBody(requestPayload, files),
+      })
+    : await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestPayload),
+      });
 
   if (!response.ok) {
     throw new Error(`Failed to execute Discord webhook: ${response.status} ${await response.text()}`);
   }
 
-  const payload = (await response.json()) as { id?: string };
+  const responsePayload = (await response.json()) as { id?: string };
 
-  if (!payload.id) {
+  if (!responsePayload.id) {
     throw new Error("Discord webhook execution returned no message id.");
   }
 
-  return { id: payload.id, transport: "webhook" };
+  return { id: responsePayload.id, transport: "webhook" };
+}
+
+function buildWebhookMultipartBody(payload: Record<string, unknown>, files: DiscordMessageFile[]): FormData {
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify(payload));
+
+  for (const [index, file] of files.entries()) {
+    const data = readFileSync(file.path);
+    const blob = new Blob([data], { type: file.mimeType ?? "application/octet-stream" });
+    form.append(`files[${index}]`, blob, file.name);
+  }
+
+  return form;
 }
 
 function normalizePersonaOptions(

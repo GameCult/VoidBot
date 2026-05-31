@@ -58,6 +58,7 @@ import {
   validateRenderedArticleMarkdown,
 } from "./repo-face-article.js";
 import { resolveRepoIdentityPostArtifactLinks } from "./repo-face-artifact-links.js";
+import { postDiscordMessage } from "./mcp-server-discord.js";
 
 const config = loadConfig();
 const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
@@ -377,6 +378,7 @@ async function processJob(job: JobRecord): Promise<void> {
     if (job.command === "repo-face-rumination") {
       const repoFaceOutput = rawFinalResponse;
       const repoIdentityPosts = parseRepoIdentityPostIntents(repoFaceOutput);
+      const repoIdentityMemes = parseRepoIdentityMemeIntents(repoFaceOutput);
       const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(repoFaceOutput);
       const repoIdentityBifrostTopics = config.repoFaceBifrostEnabled
         ? parseRepoIdentityBifrostTopicIntents(repoFaceOutput)
@@ -414,7 +416,7 @@ async function processJob(job: JobRecord): Promise<void> {
         !bifrostTopicSubmitted &&
         repoIdentityUpdateRequests.length > 0;
       console.log(
-        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
+        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, meme=${repoIdentityMemes.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
       );
       for (const stateNote of repoIdentityStateNotes.slice(0, 4)) {
         await applyRepoIdentityStateNoteIntent(job, stateNote);
@@ -464,6 +466,38 @@ async function processJob(job: JobRecord): Promise<void> {
           }
           if (await postRepoIdentityIntent(job, post)) {
             repoIdentityPostDelivered += 1;
+          }
+        }
+        if (repoIdentityPostDelivered === 0) {
+          for (const meme of repoIdentityMemes.slice(0, 1)) {
+            const resolvedMeme = await resolveRepoIdentityMemeIntent(job, meme);
+            if (!resolvedMeme) {
+              continue;
+            }
+            const siblingDuplicate = await detectRepoFaceRecentSiblingSpeechDuplicate(job, resolvedMeme);
+            if (siblingDuplicate) {
+              console.warn(
+                `Rejected repo identity ${resolvedMeme.identity.id} meme for job ${job.id}: ${siblingDuplicate.reason}`,
+              );
+              await auditLog.record({
+                type: "repo_face.speech_rejected_recent_sibling_duplicate",
+                actorId: job.requester.id,
+                jobId: job.id,
+                provider: job.provider,
+                details: {
+                  identityId: resolvedMeme.identity.id,
+                  channelId: resolvedMeme.channelId,
+                  reason: siblingDuplicate.reason,
+                  duplicateReceiptKey: siblingDuplicate.receiptKey,
+                  duplicatePreview: siblingDuplicate.preview,
+                },
+              });
+              repoIdentityPostRejectedDuplicate += 1;
+              continue;
+            }
+            if (await postRepoIdentityMemeIntent(job, meme)) {
+              repoIdentityPostDelivered += 1;
+            }
           }
         }
       }
@@ -1149,6 +1183,17 @@ interface ResolvedRepoIdentityPostIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityMemeIntent {
+  identity?: string;
+  channelId?: string;
+  caption: string;
+  top: string;
+  bottom?: string;
+  alt?: string;
+  style?: string;
+  replyToMessageId?: string;
+}
+
 interface RepoIdentityStateNoteIntent {
   identity?: string;
   kind: "memory" | "need" | "bond" | "status" | "mood" | "bias" | "agency" | "doctrine";
@@ -1354,6 +1399,119 @@ async function resolveRepoIdentityPostIntent(
     content: intent.content.trim(),
     replyToMessageId: intent.replyToMessageId,
   };
+}
+
+async function resolveRepoIdentityMemeIntent(
+  job: JobRecord,
+  intent: RepoIdentityMemeIntent,
+): Promise<ResolvedRepoIdentityPostIntent | undefined> {
+  return resolveRepoIdentityPostIntent(job, {
+    identity: intent.identity,
+    channelId: intent.channelId,
+    replyToMessageId: intent.replyToMessageId,
+    content: intent.caption || [intent.top, intent.bottom].filter(Boolean).join(" / "),
+  });
+}
+
+async function postRepoIdentityMemeIntent(job: JobRecord, intent: RepoIdentityMemeIntent): Promise<boolean> {
+  if (!config.botToken) {
+    throw new Error("DISCORD_BOT_TOKEN is required for Bifrost to post repo identity memes.");
+  }
+
+  const resolved = await resolveRepoIdentityMemeIntent(job, intent);
+  if (!resolved) {
+    return false;
+  }
+
+  const { identity, channelId, content, replyToMessageId } = resolved;
+  const imagePath = await renderRepoIdentityMeme(job, identity.id, intent);
+  const posted = await postDiscordMessage(
+    config.botToken,
+    channelId,
+    content.slice(0, 1900),
+    replyToMessageId,
+    {
+      personaName: identity.displayName,
+      personaAvatarUrl: identity.avatarUrl,
+    },
+    [
+      {
+        path: imagePath,
+        name: `${identity.id}-meme.png`,
+        mimeType: "image/png",
+      },
+    ],
+  );
+
+  await recordRepoIdentityDeliveryReceipt({
+    identity,
+    channelId,
+    content: `${content}\n[image: ${intent.alt ?? [intent.top, intent.bottom].filter(Boolean).join(" / ")}]`,
+    replyToMessageId,
+    messageId: posted.id,
+    transport: posted.transport,
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Could not record repo identity meme delivery receipt for job ${job.id}: ${message}`);
+  });
+  console.log(
+    `Posted repo identity ${identity.id} meme to Discord channel ${channelId} from job ${job.id} via ${posted.transport} message ${posted.id}.`,
+  );
+  return true;
+}
+
+async function renderRepoIdentityMeme(
+  job: JobRecord,
+  identityId: string,
+  intent: RepoIdentityMemeIntent,
+): Promise<string> {
+  const directory = resolve(config.storageRoot, "artifacts", job.id, "repo-face-memes");
+  await mkdir(directory, { recursive: true });
+  const textPath = join(directory, `${sanitizePathSegment(identityId)}-meme.txt`);
+  const imagePath = join(directory, `${sanitizePathSegment(identityId)}-meme.png`);
+  const memeText = [intent.top, intent.bottom].filter(Boolean).join("\n\n").toUpperCase();
+  await writeFile(textPath, memeText, "utf8");
+
+  const colors = normalizeMemeStyle(intent.style);
+  const result = spawnSync("magick", [
+    "-background",
+    colors.background,
+    "-fill",
+    colors.foreground,
+    "-font",
+    "Arial",
+    "-gravity",
+    "center",
+    "-pointsize",
+    "52",
+    "-size",
+    "900x520",
+    `caption:@${textPath}`,
+    imagePath,
+  ], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`ImageMagick meme render failed: ${result.stderr || result.stdout}`);
+  }
+
+  return imagePath;
+}
+
+function normalizeMemeStyle(style: string | undefined): { background: string; foreground: string } {
+  switch (style?.trim().toLowerCase()) {
+    case "terminal":
+      return { background: "#020617", foreground: "#a7f3d0" };
+    case "warning":
+      return { background: "#18181b", foreground: "#fde047" };
+    case "soft":
+      return { background: "#f8fafc", foreground: "#111827" };
+    case "classic":
+    default:
+      return { background: "#111827", foreground: "#f8fafc" };
+  }
 }
 
 async function detectRepoFaceRecentSiblingSpeechDuplicate(
@@ -1565,6 +1723,32 @@ function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIn
   }
 
   return intents;
+}
+
+function parseRepoIdentityMemeIntents(finalResponse: string): RepoIdentityMemeIntent[] {
+  return parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "meme")
+    .flatMap((block): RepoIdentityMemeIntent[] => {
+      const top = requiredDslString(block.fields.top);
+      if (!top) {
+        return [];
+      }
+      const bottom = optionalDslString(block.fields.bottom);
+      const caption =
+        optionalDslString(block.fields.caption) ?? [top, bottom].filter(Boolean).join(" / ");
+      return [
+        {
+          identity: optionalDslString(block.fields.identity),
+          channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+          replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+          caption,
+          top,
+          bottom,
+          alt: optionalDslString(block.fields.alt),
+          style: optionalDslString(block.fields.style),
+        },
+      ];
+    });
 }
 
 function parseRepoIdentityIdFromRequestMessageId(requestMessageId: string | undefined): string | undefined {
@@ -2446,7 +2630,7 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
 }
 
 interface RepoFaceActionBlock {
-  kind: "say" | "state_note" | "article" | "bifrost_topic" | "update_request";
+  kind: "say" | "meme" | "state_note" | "article" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 }
 
@@ -2486,6 +2670,8 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
   switch (line.trim().toUpperCase()) {
     case "SAY":
       return "say";
+    case "MEME":
+      return "meme";
     case "STATE NOTE":
       return "state_note";
     case "ARTICLE":
