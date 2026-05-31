@@ -12,7 +12,7 @@ const stateDir = resolve(requireArg("state-dir"));
 const statusPath = resolve(requireArg("status-path"));
 const logPath = resolve(requireArg("log-path"));
 const mode = args.mode ?? "plan";
-const executor = args.executor ?? "codex-exec";
+const executor = args.executor ?? "model-runtime";
 
 await main();
 

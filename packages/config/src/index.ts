@@ -103,7 +103,7 @@ const envSchema = z.object({
     .min(1)
     .default(".voidbot/private/repo-discord-identities.json"),
   REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
-  REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
+  REPO_FACE_BIRTH_EXECUTOR: z.enum(["model-runtime", "openai-runtime"]).default("model-runtime"),
   REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_BIFROST_ENABLED: booleanFromEnv.default(false),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
@@ -178,7 +178,7 @@ export interface AppConfig {
   moderationAgentStatePath: string;
   repoDiscordIdentitiesPath: string;
   repoFaceBirthMode: "plan" | "run";
-  repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
+  repoFaceBirthExecutor: "model-runtime" | "openai-runtime";
   repoFaceGithubActionsEnabled: boolean;
   repoFaceBifrostEnabled: boolean;
   bifrostRoot: string;
