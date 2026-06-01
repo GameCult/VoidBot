@@ -4642,11 +4642,43 @@ function renderTurnSituationDirective(input: {
     ...input.recentMessages,
     ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
   ];
+  const latestBanterAsk = latestHumanBanterAsk(visibleMessages);
+  if (latestBanterAsk) {
+    lines.push(
+      `Recent human social steering is active: ${latestBanterAsk.authorName} asked for low-stakes, chatty, playful presence ("${collapseWhitespace(latestBanterAsk.content, 240)}").`,
+      "Saturated work topics should make you pivot, not vanish. If you can safely speak, offer one compact casual move in your own voice: a joke, tiny curiosity, taste, tease, meme idea, question, link reaction, or Body-pride aside.",
+    );
+  }
   if (shouldPromptIntroduction(input.identity, input.participant, visibleMessages)) {
     lines.push("If you speak publicly, make it a brief natural introduction in your own voice before asking the room for anything.");
   }
 
   return lines.length > 0 ? lines.join("\n") : "";
+}
+
+function latestHumanBanterAsk(messages: SourceMessage[]): SourceMessage | undefined {
+  return messages
+    .filter((message) => message.isBot !== true && asksForCasualSocialPresence(message.content))
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
+    [0];
+}
+
+function asksForCasualSocialPresence(content: string): boolean {
+  const normalized = content.toLowerCase();
+  return [
+    "low-stakes banter",
+    "low stakes banter",
+    "banter",
+    "chatty",
+    "random things",
+    "random articles",
+    "go on reddit",
+    "share memes",
+    "make memes",
+    "talking about random",
+    "social presence",
+    "cool personas hanging out",
+  ].some((marker) => normalized.includes(marker));
 }
 
 function shouldPromptIntroduction(
