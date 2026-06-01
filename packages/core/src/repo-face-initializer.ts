@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type { RepoDiscordIdentity } from "./repo-discord-identities";
 import { resolveRepoFaceStatePath } from "./repo-discord-identities";
@@ -412,25 +413,36 @@ async function writeRepoFaceIdentity(
   identityPath: string,
 ): Promise<void> {
   const existing = await readExistingIdentity(identityPath);
-  await writeFile(
-    identityPath,
-    `${JSON.stringify(
-      {
-        ...existing,
-        schemaVersion: "voidbot.repo_face_identity.v0",
-        identityId: identity.id,
-        repoName: identity.repoName,
-        displayName: identity.displayName,
-        roleId: identity.roleId ?? null,
-        avatarUrl: identity.avatarUrl ?? null,
-        repoPath,
-        createdOrRefreshedAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
+  const payload = `${JSON.stringify(
+    {
+      ...existing,
+      schemaVersion: "voidbot.repo_face_identity.v0",
+      identityId: identity.id,
+      repoName: identity.repoName,
+      displayName: identity.displayName,
+      roleId: identity.roleId ?? null,
+      avatarUrl: identity.avatarUrl ?? null,
+      repoPath,
+      createdOrRefreshedAt: new Date().toISOString(),
+    },
+    null,
+    2,
+  )}\n`;
+
+  try {
+    await writeFileWithRetry(identityPath, payload);
+  } catch (error) {
+    const current = await readExistingIdentity(identityPath);
+    if (
+      current.identityId === identity.id &&
+      current.repoName === identity.repoName &&
+      current.displayName === identity.displayName
+    ) {
+      return;
+    }
+
+    throw error;
+  }
 }
 
 async function readExistingIdentity(identityPath: string): Promise<Record<string, unknown>> {
@@ -442,6 +454,26 @@ async function readExistingIdentity(identityPath: string): Promise<Record<string
   } catch {
     return {};
   }
+}
+
+async function writeFileWithRetry(path: string, content: string): Promise<void> {
+  const delaysMs = [0, 75, 200, 500];
+  let lastError: unknown;
+
+  for (const delayMs of delaysMs) {
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
+
+    try {
+      await writeFile(path, content, "utf8");
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 async function writeReadmeIfMissing(path: string, content: string): Promise<void> {
