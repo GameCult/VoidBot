@@ -1411,8 +1411,47 @@ async function resolveRepoIdentityPostIntent(
     identity,
     channelId,
     content: intent.content.trim(),
-    replyToMessageId: intent.replyToMessageId,
+    replyToMessageId: intent.replyToMessageId ??
+      inferQuestionReplyAnchor(job, identity, intent.content),
   };
+}
+
+function inferQuestionReplyAnchor(
+  job: JobRecord,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  content: string,
+): string | undefined {
+  const normalizedContent = content.trim();
+  if (!normalizedContent || normalizedContent.includes("\n")) {
+    return undefined;
+  }
+
+  const contentLooksLikeAnswer =
+    /^(my|i|for me|honestly|yeah|yes|no|still)\b/i.test(normalizedContent) ||
+    /\b(answer|for me|my cheap little answer|i think|i love|i hate|i want)\b/i.test(normalizedContent);
+  if (!contentLooksLikeAnswer) {
+    return undefined;
+  }
+
+  const recentQuestions = job.contextBundle.recentMessages
+    .filter((message) =>
+      message.id &&
+      message.content.includes("?") &&
+      message.authorName.trim().toLowerCase() !== identity.displayName.trim().toLowerCase() &&
+      message.timestamp &&
+      Number.isFinite(Date.parse(message.timestamp)),
+    )
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+  const latestQuestion = recentQuestions[0];
+
+  if (!latestQuestion) {
+    return undefined;
+  }
+
+  console.warn(
+    `Inferred reply_to ${latestQuestion.id} for repo identity ${identity.id} SAY from job ${job.id} because the public line appears to answer a recent question.`,
+  );
+  return latestQuestion.id;
 }
 
 async function resolveRepoIdentityMemeIntent(
