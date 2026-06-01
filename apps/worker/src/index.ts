@@ -419,11 +419,11 @@ async function processJob(job: JobRecord): Promise<void> {
       console.log(
         `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, meme=${repoIdentityMemes.length}, stateNote=${repoIdentityStateNotes.length}, selfImprovement=${repoIdentitySelfImprovements.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
       );
-      for (const selfImprovement of repoIdentitySelfImprovements.slice(0, 3)) {
-        await applyRepoIdentitySelfImprovementIntent(job, selfImprovement);
-      }
       for (const stateNote of repoIdentityStateNotes.slice(0, 4)) {
         await applyRepoIdentityStateNoteIntent(job, stateNote);
+      }
+      for (const selfImprovement of repoIdentitySelfImprovements.slice(0, 3)) {
+        await applyRepoIdentitySelfImprovementIntent(job, selfImprovement);
       }
       if (repoIdentityProposals.length > 0) {
         await writeRepoIdentityProposalPrIntent(job, repoIdentityProposals[0]);
@@ -2114,9 +2114,10 @@ function findRepoIdentitySelfImprovementTarget(
     .map((entry) => ({
       entry,
       score: scoreSelfImprovementEntry(entry.entry, query, queryTerms),
+      updatedAt: Date.parse(String(entry.entry.updatedAt ?? entry.entry.createdAt ?? "")) || 0,
     }))
     .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score);
+    .sort((left, right) => right.score - left.score || right.updatedAt - left.updatedAt);
   return scored[0]?.entry;
 }
 
