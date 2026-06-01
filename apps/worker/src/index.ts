@@ -380,6 +380,7 @@ async function processJob(job: JobRecord): Promise<void> {
       const repoIdentityPosts = parseRepoIdentityPostIntents(repoFaceOutput);
       const repoIdentityMemes = parseRepoIdentityMemeIntents(repoFaceOutput);
       const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(repoFaceOutput);
+      const repoIdentitySelfImprovements = parseRepoIdentitySelfImprovementIntents(repoFaceOutput);
       const repoIdentityBifrostTopics = config.repoFaceBifrostEnabled
         ? parseRepoIdentityBifrostTopicIntents(repoFaceOutput)
         : [];
@@ -416,8 +417,11 @@ async function processJob(job: JobRecord): Promise<void> {
         !bifrostTopicSubmitted &&
         repoIdentityUpdateRequests.length > 0;
       console.log(
-        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, meme=${repoIdentityMemes.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
+        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, meme=${repoIdentityMemes.length}, stateNote=${repoIdentityStateNotes.length}, selfImprovement=${repoIdentitySelfImprovements.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
       );
+      for (const selfImprovement of repoIdentitySelfImprovements.slice(0, 3)) {
+        await applyRepoIdentitySelfImprovementIntent(job, selfImprovement);
+      }
       for (const stateNote of repoIdentityStateNotes.slice(0, 4)) {
         await applyRepoIdentityStateNoteIntent(job, stateNote);
       }
@@ -1211,6 +1215,16 @@ interface RepoIdentityStateNoteIntent {
   valence?: number;
 }
 
+interface RepoIdentitySelfImprovementIntent {
+  identity?: string;
+  action: "retire" | "cool";
+  surface: "agency" | "need" | "doctrine" | "memory" | "short_term" | "bond" | "status";
+  sourceId?: string;
+  match?: string;
+  reason: string;
+  replacement?: string;
+}
+
 interface RepoIdentityProposalPrIntent {
   identity?: string;
   title: string;
@@ -1817,6 +1831,28 @@ function parseRepoFaceArticleIntents(finalResponse: string): RepoIdentityArticle
     });
 }
 
+function parseRepoIdentitySelfImprovementIntents(finalResponse: string): RepoIdentitySelfImprovementIntent[] {
+  return parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "self_improvement")
+    .flatMap((block): RepoIdentitySelfImprovementIntent[] => {
+      const action = normalizeSelfImprovementAction(block.fields.action);
+      const surface = normalizeSelfImprovementSurface(block.fields.surface);
+      const reason = optionalDslString(block.fields.reason);
+      if (!action || !surface || !reason) {
+        return [];
+      }
+      return [{
+        identity: optionalDslString(block.fields.identity),
+        action,
+        surface,
+        sourceId: optionalDslString(block.fields.source_id) ?? optionalDslString(block.fields.sourceId),
+        match: optionalDslString(block.fields.match),
+        reason,
+        replacement: optionalDslString(block.fields.replacement),
+      }];
+    });
+}
+
 async function applyRepoIdentityStateNoteIntent(
   job: JobRecord,
   intent: RepoIdentityStateNoteIntent,
@@ -2003,6 +2039,249 @@ async function applyRepoIdentityStateNoteIntent(
     },
     operation,
   );
+}
+
+async function applyRepoIdentitySelfImprovementIntent(
+  job: JobRecord,
+  intent: RepoIdentitySelfImprovementIntent,
+): Promise<void> {
+  const identity = await resolveRepoIdentityForJobIntent(job, intent.identity);
+  if (!identity) {
+    throw new Error(`Could not resolve repo identity for self-improvement on job ${job.id}.`);
+  }
+
+  const now = new Date().toISOString();
+  const canonicalPath = resolveRepoFaceStatePath(identity, config.storageRoot);
+  const typedState = await loadVoidSelfStateTypedDocuments({
+    canonicalPath,
+    identity: {
+      agentId: identity.id,
+      publicName: identity.displayName,
+      publicDescription: identity.description,
+    },
+  });
+  const match = findRepoIdentitySelfImprovementTarget(typedState, intent);
+  if (!match) {
+    console.warn(
+      `Repo-face self-improvement for ${identity.id} on job ${job.id} found no ${intent.surface} match: ${intent.match ?? intent.sourceId ?? "(no match text)"}`,
+    );
+    return;
+  }
+
+  const operation = buildRepoIdentitySelfImprovementOperation(intent, match, now);
+  if (!operation) {
+    console.warn(
+      `Repo-face self-improvement for ${identity.id} on job ${job.id} could not build operation for ${intent.surface}:${match.id}.`,
+    );
+    return;
+  }
+
+  await applyVoidSelfStateOperation(
+    {
+      canonicalPath,
+      identity: {
+        agentId: identity.id,
+        publicName: identity.displayName,
+        publicDescription: identity.description,
+      },
+    },
+    operation,
+  );
+}
+
+function findRepoIdentitySelfImprovementTarget(
+  typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>,
+  intent: RepoIdentitySelfImprovementIntent,
+): { id: string; surface: RepoIdentitySelfImprovementIntent["surface"]; entry: Record<string, unknown> } | undefined {
+  const entries = repoIdentitySelfImprovementCandidates(typedState, intent.surface);
+  if (entries.length === 0) {
+    return undefined;
+  }
+  const sourceId = intent.sourceId?.trim();
+  if (sourceId) {
+    const exact = entries.find((entry) => entry.id === sourceId);
+    if (exact) {
+      return exact;
+    }
+  }
+
+  const query = collapseWhitespace([intent.match, intent.replacement, intent.reason].filter(Boolean).join(" "), 1000);
+  if (!query) {
+    return undefined;
+  }
+  const queryTerms = significantStateMatchTerms(query);
+  const scored = entries
+    .map((entry) => ({
+      entry,
+      score: scoreSelfImprovementEntry(entry.entry, query, queryTerms),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score);
+  return scored[0]?.entry;
+}
+
+function repoIdentitySelfImprovementCandidates(
+  typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>,
+  surface: RepoIdentitySelfImprovementIntent["surface"],
+): Array<{ id: string; surface: RepoIdentitySelfImprovementIntent["surface"]; entry: Record<string, unknown> }> {
+  const active = (entry: Record<string, unknown>): boolean => entry.retiredAt === undefined && entry.status !== "retired";
+  switch (surface) {
+    case "agency":
+      return (typedState.agencyPressure.pressures as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.pressureId), surface, entry }));
+    case "need":
+      return (typedState.faceAffect.needs as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.needId), surface, entry }));
+    case "doctrine":
+      return (typedState.faceAffect.doctrineStances as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.stanceId), surface, entry }));
+    case "memory":
+      return (typedState.thoughtMemory.memories as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.memoryId), surface, entry }));
+    case "short_term":
+      return (typedState.thoughtMemory.shortTerm as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.memoryId), surface, entry }));
+    case "bond":
+      return (typedState.faceAffect.socialBonds as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.bondId), surface, entry }));
+    case "status":
+      return (typedState.faceAffect.statusReads as Array<Record<string, unknown>>)
+        .filter(active)
+        .map((entry) => ({ id: String(entry.readId), surface, entry }));
+  }
+}
+
+function buildRepoIdentitySelfImprovementOperation(
+  intent: RepoIdentitySelfImprovementIntent,
+  match: { id: string; surface: RepoIdentitySelfImprovementIntent["surface"]; entry: Record<string, unknown> },
+  now: string,
+): Record<string, unknown> | undefined {
+  const reason = intent.reason;
+  if (intent.action === "retire") {
+    switch (match.surface) {
+      case "agency":
+        return { operation: "retire_agency_pressure", pressureId: match.id, retiredAt: now, reason };
+      case "need":
+        return { operation: "retire_affect_need", needId: match.id, retiredAt: now, reason };
+      case "doctrine":
+        return { operation: "retire_doctrine_stance", stanceId: match.id, retiredAt: now, reason };
+      case "memory":
+        return { operation: "retire_durable_memory", memoryId: match.id, retiredAt: now, reason };
+      case "short_term":
+        return { operation: "prune_short_term_memories", sourceMemoryIds: [match.id], prunedAt: now, reason };
+      case "bond":
+        return { operation: "retire_social_bond", bondId: match.id, retiredAt: now, reason };
+      case "status":
+        return { operation: "retire_status_read", readId: match.id, retiredAt: now, reason };
+    }
+  }
+
+  return buildRepoIdentityCoolingOperation(match, intent, now);
+}
+
+function buildRepoIdentityCoolingOperation(
+  match: { id: string; surface: RepoIdentitySelfImprovementIntent["surface"]; entry: Record<string, unknown> },
+  intent: RepoIdentitySelfImprovementIntent,
+  now: string,
+): Record<string, unknown> | undefined {
+  const entry = {
+    ...match.entry,
+    status: "cooling",
+    intensity: Math.min(0.45, typeof match.entry.intensity === "number" ? match.entry.intensity : 0.45),
+    updatedAt: now,
+    tags: mergeStrings(
+      Array.isArray(match.entry.tags) ? match.entry.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      "self-improvement:cooled",
+      `job:${intent.reason.slice(0, 80)}`,
+    ),
+  };
+  switch (match.surface) {
+    case "agency":
+      return { operation: "upsert_agency_pressure", pressure: entry };
+    case "need":
+      return { operation: "upsert_affect_need", need: entry };
+    case "doctrine":
+      return { operation: "upsert_doctrine_stance", stance: entry };
+    case "bond":
+      return { operation: "upsert_social_bond", bond: entry };
+    case "memory":
+    case "short_term":
+    case "status":
+      return buildRepoIdentitySelfImprovementOperation({ ...intent, action: "retire" }, match, now);
+  }
+}
+
+function scoreSelfImprovementEntry(entry: Record<string, unknown>, query: string, queryTerms: string[]): number {
+  const haystack = collapseWhitespace([
+    entry.summary,
+    entry.claim,
+    entry.question,
+    entry.tension,
+    entry.actionImplication,
+    entry.target && typeof entry.target === "object" ? Object.values(entry.target as Record<string, unknown>).join(" ") : "",
+  ].filter((value) => typeof value === "string").join(" "), 2000).toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+  let score = haystack.includes(normalizedQuery.slice(0, Math.min(120, normalizedQuery.length))) ? 4 : 0;
+  for (const term of queryTerms) {
+    if (haystack.includes(term)) {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function significantStateMatchTerms(value: string): string[] {
+  const stop = new Set([
+    "about",
+    "again",
+    "because",
+    "change",
+    "coherent",
+    "cool",
+    "face",
+    "future",
+    "less",
+    "more",
+    "pressure",
+    "retire",
+    "state",
+    "this",
+    "that",
+    "their",
+    "there",
+    "with",
+    "would",
+  ]);
+  return [...new Set(value.toLowerCase().match(/[a-z0-9._-]{4,}/g) ?? [])]
+    .filter((term) => !stop.has(term))
+    .slice(0, 24);
+}
+
+function collapseWhitespace(value: string, maxLength?: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return typeof maxLength === "number" && collapsed.length > maxLength
+    ? collapsed.slice(0, maxLength).trim()
+    : collapsed;
+}
+
+function mergeStrings(values: string[], ...nextValues: string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const value of [...values, ...nextValues]) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    merged.push(trimmed);
+  }
+  return merged;
 }
 
 async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdentityArticleIntent): Promise<void> {
@@ -2630,7 +2909,7 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
 }
 
 interface RepoFaceActionBlock {
-  kind: "say" | "meme" | "state_note" | "article" | "bifrost_topic" | "update_request";
+  kind: "say" | "meme" | "state_note" | "self_improvement" | "article" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 }
 
@@ -2674,6 +2953,8 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
       return "meme";
     case "STATE NOTE":
       return "state_note";
+    case "SELF IMPROVEMENT":
+      return "self_improvement";
     case "ARTICLE":
       return "article";
     case "BIFROST TOPIC":
@@ -2772,6 +3053,49 @@ function normalizeStateNoteKind(value: string | undefined): RepoIdentityStateNot
   return ["memory", "need", "bond", "status", "mood", "bias", "agency", "doctrine"].includes(normalized ?? "")
     ? normalized as RepoIdentityStateNoteIntent["kind"]
     : undefined;
+}
+
+function normalizeSelfImprovementAction(value: string | undefined): RepoIdentitySelfImprovementIntent["action"] | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, "_");
+  if (["retire", "remove", "delete", "prune", "drop"].includes(normalized ?? "")) {
+    return "retire";
+  }
+  if (["cool", "cool_down", "lower", "deemphasize", "de-emphasize", "soften"].includes(normalized ?? "")) {
+    return "cool";
+  }
+  return undefined;
+}
+
+function normalizeSelfImprovementSurface(value: string | undefined): RepoIdentitySelfImprovementIntent["surface"] | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  switch (normalized) {
+    case "agency":
+    case "agency_pressure":
+    case "pressure":
+      return "agency";
+    case "need":
+    case "affect_need":
+      return "need";
+    case "doctrine":
+    case "doctrine_stance":
+    case "stance":
+      return "doctrine";
+    case "memory":
+    case "durable_memory":
+      return "memory";
+    case "short_term":
+    case "short_term_memory":
+    case "short":
+      return "short_term";
+    case "bond":
+    case "social_bond":
+      return "bond";
+    case "status":
+    case "status_read":
+      return "status";
+    default:
+      return undefined;
+  }
 }
 
 function normalizeSocialBias(value: string | undefined): "neuroticism" | "threat_sensitivity" | "hostile_attribution_bias" | "reassurance_need" | "grievance_retention" | "status_vigilance" | "trust_baseline" {
