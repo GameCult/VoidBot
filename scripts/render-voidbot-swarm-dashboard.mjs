@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
-import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { networkInterfaces } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -14,8 +11,16 @@ const defaultStatusDir = resolve(defaultStorageRoot, "status");
 const defaultSnapshotPath = resolve(defaultStatusDir, "swarm-state.json");
 const defaultDashboardPath = resolve(defaultStatusDir, "swarm-dashboard.html");
 const defaultCultMeshStorePath = resolve(defaultStatusDir, "cultmesh", "voidbot-swarm-state.cc");
+const providerId = "voidbot.swarm";
+const verseId = "voidbot.local";
 const snapshotDocumentType = "voidbot.swarm_state_snapshot";
 const snapshotSchemaId = "voidbot.swarm_state_snapshot.v1";
+const providerAdvertisementDocumentType = "gamecult.eve.provider_advertisement";
+const providerAdvertisementSchemaId = "gamecult.eve.provider_advertisement.v1";
+const eveBindingDocumentType = "gamecult.eve.interface_binding";
+const eveBindingSchemaId = "gamecult.eve.interface_binding.v1";
+const surfaceDocumentType = "gamecult.eve.surface_state";
+const surfaceSchemaId = "gamecult.eve.surface_state.v1";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -34,6 +39,7 @@ const cultMeshStorePath = resolveConfigPath(
   args.cultmeshStore,
   defaultCultMeshStorePath.replace(defaultStatusDir, statusDir),
 );
+const requireCultMeshAdvertisement = !isFlagEnabled(args.public) && !isFlagEnabled(args.allowUnmeshed);
 
 const renderResult = await render();
 
@@ -42,12 +48,7 @@ if (args.open) {
 }
 
 if (args.serve) {
-  await serveDashboard({
-    host: args.host ?? "0.0.0.0",
-    port: Number.parseInt(args.port ?? "8787", 10),
-    rootDir: dirname(renderResult.dashboardPath),
-    refreshSeconds: Number.parseInt(args.refreshSeconds ?? "10", 10),
-  });
+  throw new Error("VoidBot swarm is exposed through CultMesh/Eve, not a web server. Use npm run swarm:render-dashboard to publish the CultMesh surface.");
 } else {
   console.log(`Swarm dashboard HTML: ${renderResult.dashboardPath}`);
   console.log(`Swarm snapshot JSON: ${renderResult.snapshotPath}`);
@@ -56,16 +57,17 @@ if (args.serve) {
 
 async function render() {
   let snapshot = await buildSnapshot();
-  if (args.public) {
+  if (isFlagEnabled(args.public)) {
     snapshot = redactSnapshot(snapshot);
   }
   await mkdir(dirname(snapshotPath), { recursive: true });
-  await writeFile(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
-
   await mkdir(dirname(dashboardPath), { recursive: true });
-  await writeFile(dashboardPath, renderHtml(snapshot), "utf8");
 
-  const cultMeshWrite = await writeCultMeshSnapshot(snapshot, cultMeshStorePath);
+  const pendingEveState = buildEveProviderState(snapshot);
+  const cultMeshWrite = await writeCultMeshPublication(snapshot, pendingEveState, cultMeshStorePath);
+  if (requireCultMeshAdvertisement && cultMeshWrite.writeStatus !== "ok") {
+    throw new Error(`VoidBot swarm CultMesh advertisement failed: ${cultMeshWrite.writeError ?? cultMeshWrite.writeStatus}`);
+  }
   const finalSnapshot = {
     ...snapshot,
     cultMesh: {
@@ -73,6 +75,7 @@ async function render() {
       ...cultMeshWrite,
     },
   };
+  const finalEveState = buildEveProviderState(finalSnapshot);
 
   await writeFile(snapshotPath, `${JSON.stringify(finalSnapshot, null, 2)}\n`, "utf8");
   await writeFile(dashboardPath, renderHtml(finalSnapshot), "utf8");
@@ -152,7 +155,10 @@ async function buildSnapshot() {
       documentKey: "voidbot-swarm",
       storePath: cultMeshStorePath,
       writeStatus: "pending",
-      note: "CultMesh should distribute this typed CultCache snapshot; the web page remains read-only.",
+      providerId,
+      verseId,
+      eveDeckEndpoint: primaryCultMeshEndpoint(),
+      note: "VoidBot swarm is a CultMesh-advertised Eve provider. The web page is a local lowering of the same surface.",
     },
     summary: {
       state: deriveSwarmState({ heartbeat, orchestrator, paused, activeTurns }),
@@ -601,21 +607,17 @@ function deriveOrchestratorState(organs) {
   return "ok";
 }
 
-async function writeCultMeshSnapshot(snapshot, storePath) {
+async function writeCultMeshPublication(snapshot, eveState, storePath) {
   try {
-    const cultCacheRoot = resolve(repoRoot, "..", "CultCacheTS");
-    const cultCachePackage = resolve(cultCacheRoot, "package.json");
-    if (!existsSync(cultCachePackage)) {
+    const cultPackages = loadCultPackages();
+    if (!cultPackages) {
       return {
         writeStatus: "skipped",
-        writeError: `CultCacheTS package was not found at ${cultCachePackage}.`,
+        writeError: "CultMesh/CultCache packages were not found in known local CultLib paths.",
       };
     }
 
-    const requireCultCache = createRequire(cultCachePackage);
-    const { CultCache, SingleFileMessagePackBackingStore, defineDocumentType } = requireCultCache(
-      resolve(cultCacheRoot, "dist", "index.js"),
-    );
+    const { CultMesh, defineDocumentType } = cultPackages;
     const snapshotDefinition = defineDocumentType({
       type: snapshotDocumentType,
       schemaName: snapshotDocumentType,
@@ -637,16 +639,58 @@ async function writeCultMeshSnapshot(snapshot, storePath) {
         },
       },
     });
-    const store = new SingleFileMessagePackBackingStore(storePath);
-    const cache = CultCache.builder()
-      .withDocumentType(snapshotDefinition)
-      .withGenericStore(store)
-      .build();
-    await cache.pullAllBackingStores();
-    await cache.put(snapshotDefinition, "voidbot-swarm", snapshot);
+    const providerDefinition = defineDocumentType({
+      type: providerAdvertisementDocumentType,
+      schemaName: providerAdvertisementDocumentType,
+      schemaId: providerAdvertisementSchemaId,
+      schemaVersion: providerAdvertisementSchemaId,
+      contentHash: providerAdvertisementSchemaId,
+      global: true,
+      name: "providerId",
+      schema: { parse: parseObjectDocument("Eve provider advertisement") },
+    });
+    const surfaceDefinition = defineDocumentType({
+      type: surfaceDocumentType,
+      schemaName: surfaceDocumentType,
+      schemaId: surfaceSchemaId,
+      schemaVersion: surfaceSchemaId,
+      contentHash: surfaceSchemaId,
+      global: true,
+      name: "providerId",
+      schema: { parse: parseObjectDocument("Eve surface state") },
+    });
+    const eveBindingDefinition = defineDocumentType({
+      type: eveBindingDocumentType,
+      schemaName: eveBindingDocumentType,
+      schemaId: eveBindingSchemaId,
+      schemaVersion: eveBindingSchemaId,
+      contentHash: eveBindingSchemaId,
+      global: true,
+      name: "bindingId",
+      schema: { parse: parseObjectDocument("Eve interface binding") },
+    });
+    const node = await CultMesh.createNode(storePath, {
+      documents: [snapshotDefinition, providerDefinition, surfaceDefinition, eveBindingDefinition],
+    });
+    const providerAdvertisement = buildProviderAdvertisement(snapshot);
+    const eveBinding = buildEveInterfaceBinding(snapshot, eveState);
+    await node.put(snapshotDefinition, "voidbot-swarm", snapshot);
+    await node.put(providerDefinition, providerId, providerAdvertisement);
+    await node.put(surfaceDefinition, providerId, eveState);
+    await node.put(eveBindingDefinition, providerId, eveBinding);
+    await node.flush?.(true);
     return {
       writeStatus: "ok",
       storePath,
+      documents: [snapshotDocumentType, providerAdvertisementDocumentType, surfaceDocumentType, eveBindingDocumentType],
+      providerId,
+      verseId,
+      eveBinding: {
+        documentType: eveBindingDocumentType,
+        schemaId: eveBindingSchemaId,
+        key: providerId,
+      },
+      eveDeckEndpoint: primaryCultMeshEndpoint(),
       writtenAt: new Date().toISOString(),
     };
   } catch (error) {
@@ -656,6 +700,255 @@ async function writeCultMeshSnapshot(snapshot, storePath) {
       writeError: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function loadCultPackages() {
+  const candidates = [
+    resolve(repoRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
+    resolve(repoRoot, "..", "CultMeshTS", "package.json"),
+  ];
+  for (const packageJson of candidates) {
+    if (!existsSync(packageJson)) {
+      continue;
+    }
+    try {
+      const requireCult = createRequire(packageJson);
+      const { CultMesh } = requireCult("cultmesh-ts/dist/index.js");
+      const { defineDocumentType } = requireCult("cultcache-ts/dist/index.js");
+      if (CultMesh && defineDocumentType) {
+        return { CultMesh, defineDocumentType };
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function parseObjectDocument(label) {
+  return (input) => {
+    if (!input || typeof input !== "object") {
+      throw new Error(`${label} must be an object.`);
+    }
+    return input;
+  };
+}
+
+function buildProviderAdvertisement(snapshot) {
+  const endpoints = [
+    primaryCultMeshEndpoint(),
+  ];
+  return {
+    schemaVersion: providerAdvertisementSchemaId,
+    providerId,
+    verseId,
+    title: "VoidBot Swarm",
+    description: "VoidBot swarm status, CTB order, controls, and selected Face state as an Eve/CultUI surface.",
+    version: String(snapshot.summary?.initiativeClock ?? Date.now()),
+    status: snapshot.summary?.state ?? "unknown",
+    updatedAt: snapshot.generatedAt,
+    endpoints,
+    provider: providerManifest(),
+    controlSurface: {
+      primary: primaryCultMeshEndpoint(),
+      controls: {
+        transport: "cultmesh-binding",
+        documentType: eveBindingDocumentType,
+        key: providerId,
+      },
+    },
+    documents: [{
+      type: snapshotDocumentType,
+      schemaId: snapshotSchemaId,
+      key: "voidbot-swarm",
+    }, {
+      type: surfaceDocumentType,
+      schemaId: surfaceSchemaId,
+      key: providerId,
+    }, {
+      type: eveBindingDocumentType,
+      schemaId: eveBindingSchemaId,
+      key: providerId,
+    }],
+  };
+}
+
+function buildEveInterfaceBinding(snapshot, eveState) {
+  return {
+    schemaVersion: eveBindingSchemaId,
+    bindingId: providerId,
+    providerId,
+    verseId,
+    title: "VoidBot Swarm",
+    kind: "eve-cultui-surface",
+    updatedAt: snapshot.generatedAt,
+    authority: {
+      owner: "VoidBot swarm renderer",
+      sourceDocuments: [{
+        type: snapshotDocumentType,
+        schemaId: snapshotSchemaId,
+        key: "voidbot-swarm",
+      }],
+      surfaceDocument: {
+        type: surfaceDocumentType,
+        schemaId: surfaceSchemaId,
+        key: providerId,
+      },
+      controlOwner: "VoidBot heartbeat state",
+    },
+    surface: eveState.surface,
+    stateSummary: {
+      state: snapshot.summary?.state ?? "unknown",
+      participantCount: snapshot.summary?.participantCount ?? 0,
+      activeTurnCount: snapshot.summary?.activeTurnCount ?? 0,
+      pendingMentionCount: snapshot.summary?.pendingMentionCount ?? 0,
+      nextIdentityId: snapshot.summary?.nextIdentityId ?? null,
+      nextDisplayName: snapshot.summary?.nextDisplayName ?? null,
+      lastTickAt: snapshot.summary?.lastTickAt ?? null,
+    },
+    controls: [{
+      id: "swarm.pause",
+      label: "Pause swarm",
+      command: "set-pause",
+      writes: {
+        documentType: eveBindingDocumentType,
+        key: providerId,
+        field: "controlIntent.pause",
+      },
+    }, {
+      id: "swarm.cadence",
+      label: "Set cadence",
+      command: "set-cadence-multiplier",
+      writes: {
+        documentType: eveBindingDocumentType,
+        key: providerId,
+        field: "controlIntent.cadenceMultiplier",
+      },
+    }, {
+      id: "swarm.force-turn",
+      label: "Pull Face forward",
+      command: "force-turn",
+      writes: {
+        documentType: eveBindingDocumentType,
+        key: providerId,
+        field: "controlIntent.manualTurnRequests",
+      },
+    }],
+    rendererHints: {
+      preferredLowerings: ["eve-native", "nightwing-tui", "browser"],
+      viewportMode: "adaptive",
+      tileId: "voidbot-swarm",
+      minWidth: 48,
+      minHeight: 8,
+      preferredWidth: 96,
+      preferredHeight: 16,
+    },
+    lowerings: [{
+      kind: "static-html",
+      role: "local-debug-artifact",
+      path: dashboardPath,
+    }],
+  };
+}
+
+function providerManifest() {
+  return {
+    id: providerId,
+    title: "VoidBot Swarm",
+    description: "Native Eve tab for VoidBot agent status, CTB order, selected Face state, and swarm controls.",
+    version: "1",
+    endpoint: primaryCultMeshEndpoint(),
+    capabilities: ["ctb", "agent-status", "state-tree", "swarm-controls", "cultmesh-snapshot"],
+    usesCultMesh: true,
+    transport: "CultMesh Eve interface binding.",
+  };
+}
+
+function buildEveProviderState(snapshot) {
+  const summary = snapshot.summary ?? {};
+  const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
+  const upcoming = Array.isArray(snapshot.upcomingTurns) ? snapshot.upcomingTurns : [];
+  const nodes = [
+    {
+      id: "voidbot-swarm",
+      label: `VoidBot Swarm\n${summary.state ?? "unknown"}`,
+      kind: "cultmesh-verse",
+      visible: true,
+      health: summary.state ?? "unknown",
+      detail: `agents ${summary.participantCount ?? participants.length}; next ${summary.nextDisplayName ?? "none"}`,
+    },
+    ...participants.slice(0, 24).map((participant, index) => ({
+      id: `face-${participant.identityId}`,
+      label: `${participant.displayName}\n${participant.repoName}`,
+      kind: "repo-face",
+      visible: true,
+      x: -0.9 + (index % 6) * 0.36,
+      y: -0.3 + Math.floor(index / 6) * 0.22,
+      z: 0,
+      rotation: 0,
+      scale: 1,
+      width: 0.26,
+      height: 0.16,
+      health: participant.activeJobId ? "running" : participant.restState?.isNapping ? "napping" : participant.status,
+      detail: `next ${participant.nextTurnInMinutes ?? "?"}m; heat ${participant.heat ?? "?"}`,
+    })),
+  ];
+  return {
+    type: "dashboard-state",
+    schema: "mimir.eve_dashboard_state.v1",
+    providerId,
+    title: "VoidBot Swarm",
+    version: Math.floor(Date.parse(snapshot.generatedAt ?? new Date().toISOString()) / 1000),
+    updatedAt: snapshot.generatedAt,
+    selectedNodeId: "voidbot-swarm",
+    lutPreset: "terminal",
+    nodes,
+    surface: {
+      schema: "gamecult.eve.surface.v1",
+      id: "voidbot.swarm.surface",
+      title: "VoidBot Swarm",
+      root: eveNode("voidbot-cockpit", "cockpit", {
+        title: "VoidBot Swarm",
+        status: summary.state ?? "unknown",
+      }, [
+        eveNode("voidbot-summary", "text", {
+          role: "mono",
+          text: [
+            "VoidBot Swarm",
+            `${summary.state ?? "unknown"}  next ${summary.nextDisplayName ?? "none"}`,
+            `agents ${summary.participantCount ?? participants.length}  ready ${summary.readyNowCount ?? 0}  cadence x${summary.cadenceMultiplier ?? 1}`,
+            `mesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${snapshot.generatedAt}`,
+          ].join("\n"),
+        }),
+        eveNode("voidbot-upcoming", "rail", { title: "CTB order" }, upcoming.slice(0, 12).map((turn, index) =>
+          eveNode(`turn-${turn.identityId}-${index}`, "avatar", {
+            text: turn.displayName,
+            assetUri: turn.avatarUrl,
+            status: turn.activeJobId ? "active" : turn.restState?.isNapping ? "nap" : "ready",
+            detail: `${turn.nextTurnInMinutes ?? "?"}m`,
+          }),
+        )),
+        eveNode("voidbot-participants", "list", { title: "Faces" }, participants.slice(0, 16).map((participant) =>
+          eveNode(`participant-${participant.identityId}`, "row", {
+            title: participant.displayName,
+            detail: `${participant.repoName} / ${participant.status} / heat ${participant.heat ?? "?"}`,
+          }),
+        )),
+      ]),
+      assets: participants
+        .filter((participant) => participant.avatarUrl)
+        .slice(0, 32)
+        .map((participant) => ({
+          id: `avatar-${participant.identityId}`,
+          kind: "image",
+          uri: participant.avatarUrl,
+        })),
+    },
+  };
+}
+
+function eveNode(id, kind, props = {}, children = []) {
+  return { id, kind, props, children };
 }
 
 function renderHtml(snapshot) {
@@ -1358,9 +1651,9 @@ function renderHtml(snapshot) {
         ? "<div class=\\"muted small\\">" + esc(snapshot.summary.pauseReason) + "</div>"
         : "";
       return "<div class=\\"control-grid\\"><p class=\\"kicker\\">Controls</p>" +
-        "<div><div class=\\"muted\\">Swarm brake</div><div class=\\"control-row\\"><span>" + badge(paused ? "paused" : "running", paused ? "Paused" : "Unpaused") + "</span><button id=\\"swarm-pause-toggle\\" type=\\"button\\" data-paused=\\"" + esc(paused ? "true" : "false") + "\\">" + esc(paused ? "Unpause" : "Pause") + "</button></div>" + pauseReason + "</div>" +
-        "<div><div class=\\"muted\\">Heartbeat cadence</div><div class=\\"control-row\\"><input id=\\"cadence-input\\" type=\\"range\\" min=\\"0.01\\" max=\\"12\\" step=\\"0.01\\" value=\\"" + esc(controls.cadenceMultiplier || 1) + "\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div><button id=\\"cadence-apply\\" type=\\"button\\">Apply</button></div>" +
-        "<div><div class=\\"muted\\">Manual next turn</div><div class=\\"force-row\\"><select id=\\"force-identity\\">" + participants.map((agent) => "<option value=\\"" + esc(agent.identityId) + "\\">" + esc(agent.displayName) + " / " + esc(agent.repoName) + "</option>").join("") + "</select><button id=\\"force-turn\\" type=\\"button\\">Pull</button></div></div>" +
+        "<div><div class=\\"muted\\">Swarm brake</div><div class=\\"control-row\\"><span>" + badge(paused ? "paused" : "running", paused ? "Paused" : "Unpaused") + "</span></div>" + pauseReason + "</div>" +
+        "<div><div class=\\"muted\\">Heartbeat cadence</div><div class=\\"control-row\\"><strong id=\\"cadence-value\\" class=\\"mono\\">x" + esc(number(controls.cadenceMultiplier || 1)) + "</strong></div></div>" +
+        "<div><div class=\\"muted\\">Control surface</div><div class=\\"mono\\">CultMesh Eve binding: gamecult.eve.interface_binding / voidbot.swarm</div></div>" +
         "<div class=\\"mono muted\\">Latest request: " + esc(latest?.identityId || "none") + " " + esc(latest?.status || "") + "</div>" +
       "</div>";
     }
@@ -1630,51 +1923,8 @@ function renderHtml(snapshot) {
     }
 
     function attachControls() {
-      const cadenceInput = document.getElementById("cadence-input");
-      const cadenceValue = document.getElementById("cadence-value");
-      const cadenceApply = document.getElementById("cadence-apply");
-      const forceSelect = document.getElementById("force-identity");
-      const forceButton = document.getElementById("force-turn");
-      const pauseButton = document.getElementById("swarm-pause-toggle");
-      if (forceSelect && selectedIdentity) forceSelect.value = selectedIdentity;
-      if (pauseButton) {
-        pauseButton.addEventListener("click", async () => {
-          const currentlyPaused = pauseButton.getAttribute("data-paused") === "true";
-          await postJson("/api/swarm-pause", {
-            paused: !currentlyPaused,
-            reason: currentlyPaused ? "Unpaused from swarm dashboard." : "Paused from swarm dashboard.",
-          });
-          await refresh();
-        });
-      }
-      if (cadenceInput && cadenceValue) {
-        cadenceInput.addEventListener("input", () => cadenceValue.textContent = "x" + Number(cadenceInput.value).toLocaleString(undefined, { maximumFractionDigits: 2 }));
-      }
-      if (cadenceApply && cadenceInput) {
-        cadenceApply.addEventListener("click", async () => {
-          await postJson("/api/controls", { cadenceMultiplier: Number(cadenceInput.value) });
-          await refresh();
-        });
-      }
-      if (forceButton && forceSelect) {
-        forceButton.addEventListener("click", async () => {
-          await postJson("/api/turns/force", { identityId: forceSelect.value });
-          selectedIdentity = forceSelect.value;
-          await refresh();
-        });
-      }
-    }
-
-    async function postJson(url, body) {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || "Control request failed.");
-      }
+      // Static HTML is a debug lowering only. Network controls live in the
+      // CultMesh Eve binding, not HTTP endpoints.
     }
 
     async function refresh() {
@@ -1757,204 +2007,8 @@ function redactSnapshot(snapshot) {
   return redacted;
 }
 
-async function serveDashboard({ host, port, rootDir, refreshSeconds }) {
-  const interval = setInterval(async () => {
-    try {
-      await render();
-    } catch (error) {
-      console.error(`Swarm dashboard refresh failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }, Math.max(refreshSeconds, 2) * 1000);
-  interval.unref();
-
-  const server = createServer(async (request, response) => {
-    try {
-      const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-      if (request.method === "POST" && requestUrl.pathname === "/api/controls") {
-        await handleControlUpdate(request, response);
-        return;
-      }
-      if (request.method === "POST" && requestUrl.pathname === "/api/turns/force") {
-        await handleForceTurn(request, response);
-        return;
-      }
-      if (request.method === "POST" && requestUrl.pathname === "/api/swarm-pause") {
-        await handleSwarmPause(request, response);
-        return;
-      }
-      const pathname = requestUrl.pathname === "/" ? "/swarm-dashboard.html" : decodeURIComponent(requestUrl.pathname);
-      const target = resolve(rootDir, `.${pathname}`);
-      if (!target.startsWith(rootDir)) {
-        response.writeHead(403);
-        response.end("Forbidden");
-        return;
-      }
-      const fileStat = await stat(target);
-      if (!fileStat.isFile()) {
-        response.writeHead(404);
-        response.end("Not found");
-        return;
-      }
-      response.writeHead(200, {
-        "content-type": contentType(target),
-        "cache-control": "no-store",
-      });
-      response.end(await readFile(target));
-    } catch {
-      response.writeHead(404);
-      response.end("Not found");
-    }
-  });
-
-  await new Promise((resolveServer) => server.listen(port, host, resolveServer));
-  console.log(`Swarm dashboard serving ${rootDir}`);
-  for (const url of localUrls(port, host)) {
-    console.log(url);
-  }
-}
-
-async function handleControlUpdate(request, response) {
-  if (args.public) {
-    writeJsonResponse(response, 403, { ok: false, error: "Controls are disabled in public mode." });
-    return;
-  }
-  const body = await readRequestJson(request);
-  const multiplier = Number(body.cadenceMultiplier);
-  if (!Number.isFinite(multiplier) || multiplier < 0.01 || multiplier > 12) {
-    writeJsonResponse(response, 400, { ok: false, error: "cadenceMultiplier must be between 0.01 and 12." });
-    return;
-  }
-  const state = await readMutableHeartbeatState();
-  state.controls = normalizeDashboardControls(state.controls);
-  state.controls.cadenceMultiplier = Math.round(multiplier * 100) / 100;
-  state.controls.updatedAt = new Date().toISOString();
-  await writeMutableHeartbeatState(state);
-  await render();
-  writeJsonResponse(response, 200, { ok: true, controls: state.controls });
-}
-
-async function handleForceTurn(request, response) {
-  if (args.public) {
-    writeJsonResponse(response, 403, { ok: false, error: "Controls are disabled in public mode." });
-    return;
-  }
-  const body = await readRequestJson(request);
-  const identityId = typeof body.identityId === "string" ? body.identityId.trim() : "";
-  if (!identityId) {
-    writeJsonResponse(response, 400, { ok: false, error: "identityId is required." });
-    return;
-  }
-  const state = await readMutableHeartbeatState();
-  state.controls = normalizeDashboardControls(state.controls);
-  state.controls.manualTurnRequests.push({
-    id: randomUUID(),
-    identityId,
-    requestedAt: new Date().toISOString(),
-    status: "pending",
-    note: "Requested from swarm dashboard.",
-  });
-  state.controls.manualTurnRequests = state.controls.manualTurnRequests.slice(-20);
-  state.controls.updatedAt = new Date().toISOString();
-  await writeMutableHeartbeatState(state);
-  await render();
-  writeJsonResponse(response, 200, { ok: true, controls: state.controls });
-}
-
-async function handleSwarmPause(request, response) {
-  if (args.public) {
-    writeJsonResponse(response, 403, { ok: false, error: "Controls are disabled in public mode." });
-    return;
-  }
-  const body = await readRequestJson(request);
-  if (typeof body.paused !== "boolean") {
-    writeJsonResponse(response, 400, { ok: false, error: "paused must be true or false." });
-    return;
-  }
-  const payload = {
-    paused: body.paused,
-    reason: typeof body.reason === "string" && body.reason.trim()
-      ? body.reason.trim().slice(0, 280)
-      : body.paused
-        ? "Paused from swarm dashboard."
-        : "Unpaused from swarm dashboard.",
-    updatedAt: new Date().toISOString(),
-  };
-  await mkdir(dirname(pausePath), { recursive: true });
-  await writeFile(pausePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  await render();
-  writeJsonResponse(response, 200, { ok: true, pause: payload });
-}
-
-async function readMutableHeartbeatState() {
-  const parsed = await readJsonFile(heartbeatStatePath);
-  if (!parsed.ok || !parsed.value || typeof parsed.value !== "object") {
-    throw new Error(`Cannot read heartbeat state at ${heartbeatStatePath}`);
-  }
-  return parsed.value;
-}
-
-async function writeMutableHeartbeatState(state) {
-  await mkdir(dirname(heartbeatStatePath), { recursive: true });
-  await writeFile(heartbeatStatePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-}
-
-function normalizeDashboardControls(value) {
-  const controls = value && typeof value === "object" ? value : {};
-  return {
-    cadenceMultiplier: Math.min(12, Math.max(0.01, Number(controls.cadenceMultiplier) || 1)),
-    manualTurnRequests: Array.isArray(controls.manualTurnRequests) ? controls.manualTurnRequests : [],
-    updatedAt: typeof controls.updatedAt === "string" ? controls.updatedAt : undefined,
-  };
-}
-
-async function readRequestJson(request) {
-  const chunks = [];
-  for await (const chunk of request) {
-    chunks.push(chunk);
-    if (Buffer.concat(chunks).length > 64 * 1024) {
-      throw new Error("Request body is too large.");
-    }
-  }
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
-}
-
-function writeJsonResponse(response, statusCode, payload) {
-  response.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  response.end(`${JSON.stringify(payload)}\n`);
-}
-
-function contentType(path) {
-  switch (extname(path).toLowerCase()) {
-    case ".html":
-      return "text/html; charset=utf-8";
-    case ".json":
-      return "application/json; charset=utf-8";
-    case ".cc":
-      return "application/octet-stream";
-    default:
-      return "text/plain; charset=utf-8";
-  }
-}
-
-function localUrls(port, host) {
-  const urls = [];
-  if (host === "127.0.0.1" || host === "localhost") {
-    urls.push(`http://127.0.0.1:${port}/`);
-    return urls;
-  }
-  urls.push(`http://127.0.0.1:${port}/`);
-  for (const entries of Object.values(networkInterfaces())) {
-    for (const entry of entries ?? []) {
-      if (entry.family === "IPv4" && !entry.internal) {
-        urls.push(`http://${entry.address}:${port}/`);
-      }
-    }
-  }
-  return [...new Set(urls)];
+function primaryCultMeshEndpoint() {
+  return `cultmesh://${verseId}/eve/providers/${providerId}`;
 }
 
 async function readJsonFile(path) {
@@ -2016,6 +2070,10 @@ function parseArgs(argv) {
     }
   }
   return parsed;
+}
+
+function isFlagEnabled(value) {
+  return value === true || value === "true" || value === "1" || value === "yes" || value === "on";
 }
 
 function stripBom(value) {

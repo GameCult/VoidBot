@@ -1,6 +1,7 @@
 # VoidBot Swarm Web Interface
 
-This is the read-only swarm visibility surface for iPad or LAN use.
+This is the VoidBot swarm Eve/CultUI surface. The browser page is only a local
+debug lowering.
 
 ## Owner
 
@@ -16,7 +17,17 @@ It writes:
 - `.voidbot/status/swarm-dashboard.html`
 - `.voidbot/status/cultmesh/voidbot-swarm-state.cc`
 
-The `.cc` file is a CultCache snapshot document with schema id `voidbot.swarm_state_snapshot.v1`. CultMesh should distribute that document when a live mesh bridge is installed.
+The `.cc` file is the CultMesh publication point. It must contain:
+
+- `voidbot.swarm_state_snapshot.v1` keyed as `voidbot-swarm`
+- `gamecult.eve.provider_advertisement.v1` keyed as `voidbot.swarm`
+- `gamecult.eve.surface_state.v1` keyed as `voidbot.swarm`
+- `gamecult.eve.interface_binding.v1` keyed as `voidbot.swarm`
+
+The invariant is blunt: if the swarm surface exists, the Eve interface binding
+must be advertised through CultMesh. There is no network web server for swarm
+state or controls. Static HTML may be rendered as a local debug artifact, but
+the Verse-facing API/GUI/TUI surface is the CultMesh binding.
 
 The app controls do not edit the turn queue directly. They write a small `controls` object into the heartbeat state:
 
@@ -25,25 +36,22 @@ The app controls do not edit the turn queue directly. They write a small `contro
 
 The heartbeat runner owns the actual mutation. Direct mentions, manual pull-forward requests, and the resulting upcoming CTB order are mirrored back into `swarm-state.json` and the CultCache snapshot so the app is seeing state, not guessing from DOM tricks.
 
-## Local iPad Use
+## Local Publishing
 
 From `E:\Projects\VoidBot`:
 
 ```powershell
-npm run swarm:dashboard
+npm run swarm:render-dashboard
 ```
 
-Open the LAN URL printed by the command on the iPad. The server refreshes the snapshot every 10 seconds and serves a fullscreen single-viewport SPA from `.voidbot/status`.
+This writes the CultMesh documents and a static debug artifact under
+`.voidbot/status`. Eve, Odin, Nightwing, and future clients should consume
+`gamecult.eve.interface_binding.v1` for `voidbot.swarm` from CultMesh instead
+of a web endpoint.
 
 The CTB strip is intentionally compact: avatar icons show upcoming Face turns in scheduler order. It occupies the long side of the viewport: top edge in landscape, left edge in portrait. A direct mention should appear as a shuffle in the mirrored snapshot once the heartbeat state records the pending obligation or queued turn.
 
 The main viewport is a direct cockpit: summary, controls, participant list, selected-Face detail, and recent mesh events. The screen should be readable first and clever never. A tiny square HUD sits opposite the CTB rail, using compressed two-column health-bar debug readouts for watchdog, orchestrator, Face heartbeat, mood, rumination, mesh status, heartbeat age, and selected turn.
-
-For a one-shot render without serving:
-
-```powershell
-npm run swarm:render-dashboard
-```
 
 ## Public Hosting Shape
 
