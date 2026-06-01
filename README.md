@@ -423,6 +423,15 @@ Current MCP tools:
 - `search_sources`
 - `get_source_context`
 - `list_indexed_repos`
+- `huginn_read_persona_state`
+- `huginn_apply_persona_state_operation`
+
+`read_repo_face_state` and `apply_repo_face_state_operation` remain
+compatibility aliases, but Huginn owns Persona-state inspection and mutation
+stewardship. VoidBot is only the legacy MCP carrier. The runtime owner is
+CultCacheTS/Huginn, whose next proper surface is a CultMesh provider publishing
+read-only Eve DSL for `.cc` files. Consuming runtimes lower that DSL into their
+own UI.
 - `notify_owner`
 
 Notes:
@@ -635,7 +644,7 @@ npm run moderation:recent-repo-activity -- --hours 96 --max-commits 3
 
 That gives the loop a compact digest of recent commit motion across every tracked source repo, so Void can notice the broader experiment zoo instead of only sniffing whatever one thread happened to say out loud.
 
-The moderator state is now typed CultCache state, not an editable Ghostlight-shaped JSON projection. The typed documents own profile, moderation cursor/open cases, speech receipts, thought memory/incubation, scheduled runtime, agency pressure, candidate interventions, and Face affect. Repo Face reads also emit `gamecult.persona_state.v0` as a portable projection for shared Persona interop. The old JSON projection, state template, and context exporter are gone.
+The moderator state is now typed CultCache state, not an editable Ghostlight-shaped JSON projection. The typed documents own profile, moderation cursor/open cases, speech receipts, thought memory/incubation, scheduled runtime, agency pressure, candidate interventions, and Face affect. Repo Face reads also emit `gamecult.persona_state.v0` as a portable projection for shared Persona interop. Huginn owns the Persona/.cc inspection runtime; VoidBot's MCP state tools are a compatibility carrier until CultCacheTS publishes the same read-only inspection through CultMesh as Eve DSL. The old JSON projection, state template, and context exporter are gone.
 The typed rumination runner can still think about GameCult projects, archived Discord seams, indexed repos, recent cross-repo commit motion, and lore, but durable changes must come back as typed operation payloads. The child does not edit state.
 The mood-drift task owns the sleep transition. Rumination writes short-term memory only; when Void is napping, mood drift invokes `scripts/run-void-memory-maintenance.ps1` once per nap unless the pass already completed for that nap. Memory maintenance reads typed self-state, loads `prompts/void-memory-maintenance.md`, and applies only memory/incubation/candidate typed operation proposals. Short-term memories do not survive sleep unless promoted into durable memory or merged into incubation; the runner fails a real sleep pass that leaves short-term residue behind. Use `-StateFilePath` for fixture stores, `--skip-memory-maintenance` on `simulate-void-mood.mjs` for smoke runs that must not invoke Codex, and `npm run moderation:memory-maintenance:sleep-fixture` to exercise the non-skip model branch with a fake Codex child. Dream residue, identity crystallization, value pressure, and other agency behavior still have to come back through that operation boundary. No compatibility séance.
 Long-term memory is durable, not frozen. Sleep can promote short-term residue into durable memory, and later maintenance can explicitly revise, retire, or crystallize durable memories instead of silently overwriting Void's past thoughts. Use `npm run moderation:memory-lifecycle:fixture` to verify promotion, revision, retirement, and crystallization into an identity memory plus self-profile value. The live language is anchors, not courtroom evidence: a thought needs something that made it real, whether that is room context, repo motion, source/lore retrieval, a prior memory, or self-state pressure.

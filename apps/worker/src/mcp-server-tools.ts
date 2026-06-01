@@ -707,72 +707,39 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
-    "read_repo_face_state",
+    "huginn_read_persona_state",
     {
-      title: "Read Repo Face State",
+      title: "Huginn Read Persona State",
       description:
-        "Read the typed persistent Face state for a registered repo identity. Face state uses the same typed operation machinery as Void, but the state file belongs to the repo identity.",
+        "Huginn-owned Persona state inspection for a registered repo identity. Reads the repo Face typed .cc state, emits the gamecult.persona_state.v0 projection, and leaves canonical authority with the source state file. Huginn is the runtime steward; VoidBot is only the legacy MCP carrier.",
       inputSchema: repoFaceStateInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (input: RepoFaceStateArgs): Promise<CallToolResult> => {
-      const resolved = await resolveRepoIdentityForTool(context, input.identity);
-
-      if (!resolved.identity) {
-        return resolved.error;
-      }
-
-      const typedState = await loadVoidSelfStateTypedDocuments({
-        canonicalPath: resolved.faceStatePath,
-        identity: {
-          agentId: resolved.identity.id,
-          publicName: resolved.identity.displayName,
-          publicDescription: resolved.identity.description,
-        },
-      });
-      const rendered = buildVoidSelfStateContext(typedState, {
-        sourcePath: resolved.faceStatePath,
-        identity: {
-          agentId: resolved.identity.id,
-          publicName: resolved.identity.displayName,
-          publicDescription: resolved.identity.description,
-        },
-      });
-      const personaState = buildGameCultPersonaStateFromVoidSelfState(typedState, {
-        sourceDocumentId: resolved.faceStatePath,
-        identity: resolved.identity,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: renderJsonBlock({
-              identity: identityForToolResult(resolved.identity, resolved.face),
-              faceStatePath: resolved.faceStatePath,
-              summary: rendered.summary,
-              personaState,
-              typedState,
-            }),
-          },
-        ],
-        structuredContent: {
-          identity: identityForToolResult(resolved.identity, resolved.face),
-          faceStatePath: resolved.faceStatePath,
-          summary: rendered.summary,
-          personaState,
-          typedState,
-        },
-      };
+      return readPersonaStateForTool(context, input);
     },
   );
 
   registerIfAllowed(
-    "apply_repo_face_state_operation",
+    "read_repo_face_state",
     {
-      title: "Apply Repo Face State Operation",
+      title: "Read Repo Face State",
       description:
-        "Apply one typed state operation to a registered repo identity's Face state. Use this for Face memory, incubation, agency pressure, candidate interventions, and receipts; do not edit the Face state file directly.",
+        "Compatibility alias for huginn_read_persona_state. Prefer the Huginn-owned tool when inspecting Persona state; VoidBot only hosts the MCP runtime.",
+      inputSchema: repoFaceStateInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: RepoFaceStateArgs): Promise<CallToolResult> => {
+      return readPersonaStateForTool(context, input);
+    },
+  );
+
+  registerIfAllowed(
+    "huginn_apply_persona_state_operation",
+    {
+      title: "Huginn Apply Persona State Operation",
+      description:
+        "Huginn-stewarded mutation path for registered Persona/Face state. Applies one typed state operation to the source repo Face .cc file; use this for memory, incubation, agency pressure, candidate actions/interventions, and receipts. Do not edit the state file directly.",
       inputSchema: applyRepoFaceStateOperationInputSchema,
       annotations: {
         readOnlyHint: false,
@@ -782,43 +749,26 @@ export function registerVoidbotTools(
       },
     },
     async (input: ApplyRepoFaceStateOperationArgs): Promise<CallToolResult> => {
-      const resolved = await resolveRepoIdentityForTool(context, input.identity);
+      return applyPersonaStateOperationForTool(context, input);
+    },
+  );
 
-      if (!resolved.identity) {
-        return resolved.error;
-      }
-
-      const result = await applyVoidSelfStateOperation(
-        {
-          canonicalPath: resolved.faceStatePath,
-          identity: {
-            agentId: resolved.identity.id,
-            publicName: resolved.identity.displayName,
-            publicDescription: resolved.identity.description,
-          },
-        },
-        input.operation,
-      );
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: renderJsonBlock({
-              applied: true,
-              identity: identityForToolResult(resolved.identity, resolved.face),
-              faceStatePath: resolved.faceStatePath,
-              result,
-            }),
-          },
-        ],
-        structuredContent: {
-          applied: true,
-          identity: identityForToolResult(resolved.identity, resolved.face),
-          faceStatePath: resolved.faceStatePath,
-          result,
-        },
-      };
+  registerIfAllowed(
+    "apply_repo_face_state_operation",
+    {
+      title: "Apply Repo Face State Operation",
+      description:
+        "Compatibility alias for huginn_apply_persona_state_operation. Prefer the Huginn-owned tool for Persona-state operations; the typed source state remains the authority.",
+      inputSchema: applyRepoFaceStateOperationInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input: ApplyRepoFaceStateOperationArgs): Promise<CallToolResult> => {
+      return applyPersonaStateOperationForTool(context, input);
     },
   );
 
@@ -1197,6 +1147,116 @@ function decodeHtml(value: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&nbsp;/g, " ");
+}
+
+async function readPersonaStateForTool(
+  context: VoidbotMcpContext,
+  input: RepoFaceStateArgs,
+): Promise<CallToolResult> {
+  const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+  if (!resolved.identity) {
+    return resolved.error;
+  }
+
+  const typedState = await loadVoidSelfStateTypedDocuments({
+    canonicalPath: resolved.faceStatePath,
+    identity: {
+      agentId: resolved.identity.id,
+      publicName: resolved.identity.displayName,
+      publicDescription: resolved.identity.description,
+    },
+  });
+  const rendered = buildVoidSelfStateContext(typedState, {
+    sourcePath: resolved.faceStatePath,
+    identity: {
+      agentId: resolved.identity.id,
+      publicName: resolved.identity.displayName,
+      publicDescription: resolved.identity.description,
+    },
+  });
+  const personaState = buildGameCultPersonaStateFromVoidSelfState(typedState, {
+    sourceDocumentId: resolved.faceStatePath,
+    identity: resolved.identity,
+  });
+  const payload = {
+    steward: personaStateStewardForTool(),
+    host: personaStateHostForTool(),
+    identity: identityForToolResult(resolved.identity, resolved.face),
+    faceStatePath: resolved.faceStatePath,
+    summary: rendered.summary,
+    personaState,
+    typedState,
+  };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: renderJsonBlock(payload),
+      },
+    ],
+    structuredContent: payload,
+  };
+}
+
+async function applyPersonaStateOperationForTool(
+  context: VoidbotMcpContext,
+  input: ApplyRepoFaceStateOperationArgs,
+): Promise<CallToolResult> {
+  const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+  if (!resolved.identity) {
+    return resolved.error;
+  }
+
+  const result = await applyVoidSelfStateOperation(
+    {
+      canonicalPath: resolved.faceStatePath,
+      identity: {
+        agentId: resolved.identity.id,
+        publicName: resolved.identity.displayName,
+        publicDescription: resolved.identity.description,
+      },
+    },
+    input.operation,
+  );
+  const payload = {
+    applied: true,
+    steward: personaStateStewardForTool(),
+    host: personaStateHostForTool(),
+    identity: identityForToolResult(resolved.identity, resolved.face),
+    faceStatePath: resolved.faceStatePath,
+    result,
+  };
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: renderJsonBlock(payload),
+      },
+    ],
+    structuredContent: payload,
+  };
+}
+
+function personaStateStewardForTool() {
+  return {
+    id: "huginn",
+    displayName: "Huginn",
+    repoName: "CultCacheTS",
+    role: "persona_state_runtime_steward",
+    contract: "gamecult.persona_state.v0",
+    cultMeshProviderId: "cultcache.huginn.inspector",
+  };
+}
+
+function personaStateHostForTool() {
+  return {
+    service: "voidbot",
+    role: "legacy_mcp_carrier",
+  };
 }
 
 async function resolveRepoIdentityForTool(

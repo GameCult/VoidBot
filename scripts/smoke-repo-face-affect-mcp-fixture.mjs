@@ -50,12 +50,12 @@ try {
   assertRuntimeInfo(runtimeResult);
 
   const result = await client.callTool({
-    name: "read_repo_face_state",
+    name: "huginn_read_persona_state",
     arguments: { identity },
   });
 
   if (result.isError) {
-    throw new Error(renderToolText(result) || `read_repo_face_state returned isError for ${identity}.`);
+    throw new Error(renderToolText(result) || `huginn_read_persona_state returned isError for ${identity}.`);
   }
 
   const structured = result.structuredContent;
@@ -67,7 +67,10 @@ try {
     throw new Error(`read_repo_face_state did not expose typedState.faceAffect for ${identity}.`);
   }
   if (!personaState || typeof personaState !== "object") {
-    throw new Error(`read_repo_face_state did not expose personaState for ${identity}.`);
+    throw new Error(`huginn_read_persona_state did not expose personaState for ${identity}.`);
+  }
+  if (structured?.steward?.id !== "huginn") {
+    throw new Error(`huginn_read_persona_state did not identify Huginn as steward for ${identity}.`);
   }
   if (personaState.schemaVersion !== "gamecult.persona_state.v0") {
     throw new Error(`personaState has wrong schemaVersion for ${identity}: ${personaState.schemaVersion ?? "(missing)"}.`);
