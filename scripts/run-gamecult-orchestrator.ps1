@@ -355,6 +355,25 @@ try {
     if ($onlySet.Count -gt 0 -and -not $onlySet.ContainsKey($organ.Id.ToLowerInvariant())) {
       continue
     }
+    $enabledConfigName = switch ($organ.Id) {
+      "repo-face-memory-maintenance" { "REPO_FACE_MEMORY_MAINTENANCE_ENABLED"; break }
+      "void-moderation-rumination" { "VOIDBOT_MODERATION_RUMINATION_ENABLED"; break }
+      "voidbot-operations-watchdog" { "VOIDBOT_OPERATIONS_WATCHDOG_ENABLED"; break }
+      default { $null }
+    }
+    if ($null -ne $enabledConfigName -and -not (Get-ConfigBool -Config $config -Name $enabledConfigName -Default $true)) {
+      Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
+        label = $organ.Label
+        intervalMinutes = $organ.IntervalMinutes
+        lastStartedAt = $now.ToString("o")
+        lastFinishedAt = $now.ToString("o")
+        lastExitCode = 0
+        lastStatus = "skipped_disabled"
+        lastLogPath = $null
+      })
+      Write-JsonFile -Path $statePath -Data $state
+      continue
+    }
     if ($organ.Id -eq "bifrost-dispatch" -and -not (Get-ConfigBool -Config $config -Name "BIFROST_DISPATCH_ENABLED" -Default $false)) {
       Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
         label = $organ.Label

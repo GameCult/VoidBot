@@ -77,6 +77,40 @@ function Read-JsonFile {
   return $raw | ConvertFrom-Json
 }
 
+function ConvertFrom-PossibleFencedJson {
+  param([Parameter(Mandatory = $true)][string] $Text)
+
+  $trimmed = $Text.Trim()
+  if ($trimmed.StartsWith('```')) {
+    $match = [regex]::Match($trimmed, '(?s)^```(?:json)?\s*(?<json>.*?)\s*```')
+    if ($match.Success) {
+      $trimmed = $match.Groups['json'].Value.Trim()
+    }
+  }
+  return $trimmed | ConvertFrom-Json
+}
+
+function Restore-OperationOutputFromLastMessage {
+  if ((Test-Path $operationOutputPath) -or -not (Test-Path $lastMessagePath)) {
+    return $false
+  }
+
+  $lastMessage = Get-Content -Path $lastMessagePath -Raw -Encoding UTF8
+  if ([string]::IsNullOrWhiteSpace($lastMessage)) {
+    return $false
+  }
+
+  try {
+    $parsed = ConvertFrom-PossibleFencedJson -Text $lastMessage
+    $operations = Convert-ToOperationArray -Value $parsed
+    Write-JsonFile -Path $operationOutputPath -Data $operations
+    Append-RunLog "restored operation output from final Codex message."
+    return $true
+  } catch {
+    return $false
+  }
+}
+
 function Read-TextFile {
   param([Parameter(Mandatory = $true)][string] $Path)
   return Get-Content -Path $Path -Raw -Encoding UTF8
@@ -612,6 +646,10 @@ if ($SkipModel) {
 
 if ($exitCode -ne 0) {
   throw $(if ([string]::IsNullOrWhiteSpace($combinedText)) { "Codex memory maintenance failed with exit code $exitCode." } else { $combinedText })
+}
+
+if (-not (Test-Path $operationOutputPath)) {
+  [void](Restore-OperationOutputFromLastMessage)
 }
 
 if (-not (Test-Path $operationOutputPath)) {
