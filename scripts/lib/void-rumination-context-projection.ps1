@@ -481,6 +481,54 @@ function Test-RepoHasVoidAuthoredArtifact {
   return $false
 }
 
+function Test-RepoIsWeatherEligible {
+  param($Repo)
+
+  $repoName = Get-ObjectPropertyString -Value $Repo -Name "repoName"
+  if ([string]::IsNullOrWhiteSpace($repoName)) {
+    return $false
+  }
+
+  # Generated agent worktrees can be useful source archives, but they make bad
+  # public weather. The weather skyline should name durable bodies, not clones.
+  return -not (
+    $repoName -match "(?i)-agent-\d{8}t\d+-pass-" -or
+    $repoName -match "(?i)-check-[0-9a-f]{7,}$" -or
+    $repoName -match "^_"
+  )
+}
+
+function Project-RepoWeatherEntryForRumination {
+  param($Repo, [DateTime] $Now)
+
+  if ($null -eq $Repo) {
+    return $null
+  }
+
+  $windowRecentCommitCount = Get-ObjectPropertyValue -Value $Repo -Name "windowRecentCommitCount"
+  $suppressedRecentCommitCount = Get-ObjectPropertyValue -Value $Repo -Name "suppressedRecentCommitCount"
+  $recentCommitCount = Get-ObjectPropertyValue -Value $Repo -Name "recentCommitCount"
+  $latestCommit = Project-RepoCommitForRumination -Commit (Get-ObjectPropertyValue -Value $Repo -Name "latestCommit") -Now $Now
+  $repoName = Get-ObjectPropertyString -Value $Repo -Name "repoName"
+  $latestSubject = if ($null -ne $latestCommit) { Get-ObjectPropertyString -Value $latestCommit -Name "subject" } else { $null }
+  $countText = if ($null -ne $windowRecentCommitCount -and [int]$windowRecentCommitCount -eq 1) { "1 commit" } else { "{0} commits" -f $windowRecentCommitCount }
+
+  return @{
+    repoName = $repoName
+    branch = Get-ObjectPropertyString -Value $Repo -Name "branch"
+    status = Get-ObjectPropertyString -Value $Repo -Name "status"
+    recentCommitCount = $recentCommitCount
+    windowRecentCommitCount = $windowRecentCommitCount
+    suppressedRecentCommitCount = $suppressedRecentCommitCount
+    latestCommit = $latestCommit
+    weatherLine = if (-not [string]::IsNullOrWhiteSpace($latestSubject)) {
+      '{0}: {1}, latest `{2}`' -f $repoName, $countText, $latestSubject
+    } else {
+      "{0}: {1}, no readable latest subject" -f $repoName, $countText
+    }
+  }
+}
+
 function Select-RuminationRepoActivity {
   param($RepoActivity, [DateTime] $Now)
 
@@ -497,6 +545,25 @@ function Select-RuminationRepoActivity {
   }
 
   $repos = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $RepoActivity -Name "repos"))
+  $activeRepos = @(
+    $repos |
+      Where-Object {
+        $repoStatus = Get-ObjectPropertyString -Value $_ -Name "status"
+        $windowRecent = Get-ObjectPropertyValue -Value $_ -Name "windowRecentCommitCount"
+        $repoStatus -eq "ok" -and $null -ne $windowRecent -and [int]$windowRecent -gt 0 -and (Test-RepoIsWeatherEligible -Repo $_)
+      } |
+      Sort-Object -Property @{
+        Expression = { [int](Get-ObjectPropertyValue -Value $_ -Name "windowRecentCommitCount") }
+        Descending = $true
+      }, @{
+        Expression = {
+          $latestCommit = Get-ObjectPropertyValue -Value $_ -Name "latestCommit"
+          Get-ObjectPropertyString -Value $latestCommit -Name "committedAt"
+        }
+        Descending = $true
+      } |
+      Select-Object -First 10
+  )
   $freshRepos = @(
     $repos |
       Where-Object {
@@ -527,11 +594,34 @@ function Select-RuminationRepoActivity {
       }
     }
   )
+  $projectedActiveRepos = @(
+    $activeRepos | ForEach-Object {
+      Project-RepoWeatherEntryForRumination -Repo $_ -Now $Now
+    }
+  )
+  $weatherDigest = @(
+    $projectedActiveRepos |
+      Select-Object -First 6 |
+      ForEach-Object { Get-ObjectPropertyString -Value $_ -Name "weatherLine" }
+  )
+  $weatherDigestText = if ($weatherDigest.Count -gt 0) {
+    "Active tracked repo weather: " + ($weatherDigest -join "; ")
+  } else {
+    "No tracked repo weather inside the recent activity window."
+  }
 
   return @{
     generated = Project-RelativeTimestamp -Value $RepoActivity -Name "generatedAt" -Now $Now
     cursorMode = Get-ObjectPropertyString -Value $RepoActivity -Name "cursorMode"
     summary = if ($projectedRepos.Count -gt 0) { "New tracked repo commits crossed the saved repo-activity cursor." } else { "No new tracked repo commits crossed the saved repo-activity cursor." }
     freshRepos = $projectedRepos
+    activeRepos = $projectedActiveRepos
+    weatherDigest = $weatherDigestText
+    weatherLines = $weatherDigest
+    weatherSummary = if ($projectedActiveRepos.Count -gt 0) {
+      "Recent tracked repo weather is active even when the fresh cursor is quiet; synthesize the skyline, not just the newest commit."
+    } else {
+      "No tracked repo weather inside the recent activity window."
+    }
   }
 }

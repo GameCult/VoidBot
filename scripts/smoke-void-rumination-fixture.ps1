@@ -44,6 +44,10 @@ process.stdin.on("end", () => {
     console.error("fixture prompt did not contain the public speech target contract");
     process.exit(3);
   }
+  if (!prompt.includes("Repo weather is part of Void's standing job")) {
+    console.error("fixture prompt did not contain the repo weather contract");
+    process.exit(3);
+  }
   if (prompt.includes("moderation-agent-state.json") && !prompt.includes("Do not read or write")) {
     console.error("fixture prompt referenced legacy state outside the boundary warning");
     process.exit(4);
@@ -225,10 +229,27 @@ process.stdin.on("end", () => {
         $commit.contentHints = @()
       }
     }
+    if ($null -ne $repo.latestCommit -and $null -ne $repo.latestCommit.PSObject.Properties["contentHints"]) {
+      $repo.latestCommit.contentHints = @()
+    }
+  }
+  foreach ($repo in @($contextForTimestampCheck.repoActivity.activeRepos)) {
+    if ($null -ne $repo.latestCommit -and $null -ne $repo.latestCommit.PSObject.Properties["contentHints"]) {
+      $repo.latestCommit.contentHints = @()
+    }
   }
   $timestampCheckRaw = $contextForTimestampCheck | ConvertTo-Json -Depth 32
   if ($timestampCheckRaw -match '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}') {
     throw "Rumination fixture context leaked exact ISO timestamps into the prompt-facing packet."
+  }
+  if ($null -eq $context.repoActivity.PSObject.Properties["activeRepos"]) {
+    throw "Rumination fixture context did not project active repo weather."
+  }
+  if ($null -eq $context.repoActivity.PSObject.Properties["weatherDigest"]) {
+    throw "Rumination fixture context did not project the repo weather digest."
+  }
+  if ($null -eq $context.repoActivity.PSObject.Properties["weatherLines"]) {
+    throw "Rumination fixture context did not project repo weather lines."
   }
   if ($context.publicSpeechTarget.channelId -ne "fixture-public-room") {
     throw "Rumination fixture context did not project the configured public speech target."
