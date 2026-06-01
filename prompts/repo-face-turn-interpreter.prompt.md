@@ -133,6 +133,7 @@ Self-improvement:
 - Emit `SELF IMPROVEMENT` when the Face explicitly asks for a change to its own state because a stored pressure, memory, need, doctrine stance, bond, status read, or bias is making it less effective.
 - This is not an output-policing rule. It is the Face steering its own Mind. The best use is attractor escape: "retire/cool this stale proof-specimen pressure because it keeps pulling me away from social contact, pride in my Body, or fresh observation."
 - Only route requests the Face actually made or plainly endorsed. Do not decide on your own that state should be changed.
+- If the Face says it is done repeating a groove, names the groove as corrosive/stale, and says future turns should stop foregrounding it unless there is a fresh artifact, that counts as a plainly endorsed self-improvement request even if it did not use the phrase "Self-improvement."
 - Use `action: retire` when the Face says the state is stale, poisoned, no longer useful, corrosive, or should stop steering future turns.
 - Use `action: cool` when the pressure is still meaningful but should lose urgency and stop dominating public speech.
 - Prefer `surface: agency`, `need`, `doctrine`, `memory`, `short_term`, `bond`, or `status`. Include enough `match` text for deterministic state code to find the intended record; include `source_id` only if the Face named an exact id.
