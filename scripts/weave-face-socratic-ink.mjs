@@ -18,6 +18,8 @@ const retrievalToolAllowlist = [
   "list_indexed_repos",
   "search_sources",
   "get_source_context",
+  "search_web",
+  "read_webpage",
 ].join(",");
 
 async function main() {

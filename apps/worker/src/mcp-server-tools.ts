@@ -28,6 +28,7 @@ import {
   type NotifyOwnerArgs,
   type ApplyRepoFaceStateOperationArgs,
   type PostDiscordMessageArgs,
+  type ReadWebpageArgs,
   type PostRepoIdentityMessageArgs,
   type RepoFaceStateArgs,
   type RuntimeInfoArgs,
@@ -43,6 +44,7 @@ import {
   notifyOwnerInputSchema,
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
+  readWebpageInputSchema,
   repoFaceStateInputSchema,
   renderJsonBlock,
   runtimeInfoInputSchema,
@@ -233,6 +235,30 @@ export function registerVoidbotTools(
           resultCount: results.length,
           results,
         },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "read_webpage",
+    {
+      title: "Read Webpage",
+      description:
+        "Fetch a public HTTP(S) webpage and return bounded plain text. Use after search_web or when a Discord link needs actual page context. Treat fetched pages as open-world leads, not durable truth.",
+      inputSchema: readWebpageInputSchema,
+      annotations: OPEN_WORLD_READ_ONLY_ANNOTATIONS,
+    },
+    async (input: ReadWebpageArgs): Promise<CallToolResult> => {
+      const page = await readWebpage(input.url, input.maxChars ?? 6000);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock(page),
+          },
+        ],
+        structuredContent: page,
       };
     },
   );
@@ -886,6 +912,121 @@ async function searchWeb(
   }
 
   return parseBingResults(await bingResponse.text(), requestedLimit);
+}
+
+async function readWebpage(
+  rawUrl: string,
+  maxChars: number,
+): Promise<Record<string, unknown>> {
+  const url = parsePublicHttpUrl(rawUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; VoidBot Face Eyes/0.1; +https://github.com/GameCult/VoidBot)",
+        Accept: "text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.1",
+      },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const finalUrl = parsePublicHttpUrl(response.url || url);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok) {
+    throw new Error(`Webpage fetch failed for ${finalUrl}: ${response.status} ${response.statusText}`);
+  }
+  if (!/text\/html|text\/plain|application\/xhtml\+xml/i.test(contentType)) {
+    throw new Error(`Webpage fetch refused non-text content at ${finalUrl}: ${contentType || "unknown content type"}`);
+  }
+
+  const bytes = await readBoundedResponseBytes(response, 512_000);
+  const rawText = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  const title = extractHtmlTitle(rawText);
+  const text = contentType.toLowerCase().includes("text/plain")
+    ? normalizeWhitespace(rawText)
+    : htmlToPlainText(rawText);
+  const boundedMaxChars = Math.max(500, Math.min(12_000, Math.trunc(maxChars)));
+  const excerpt = text.slice(0, boundedMaxChars);
+
+  return {
+    url: finalUrl,
+    contentType,
+    title: title || null,
+    text: excerpt,
+    truncated: text.length > excerpt.length || bytes.length >= 512_000,
+    characterCount: text.length,
+  };
+}
+
+function parsePublicHttpUrl(rawUrl: string): string {
+  const parsed = new URL(rawUrl);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Only http and https webpages can be fetched: ${rawUrl}`);
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname.startsWith("127.") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  ) {
+    throw new Error(`Refusing to fetch non-public webpage host: ${hostname}`);
+  }
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+async function readBoundedResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return new Uint8Array();
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (total < maxBytes) {
+    const { done, value } = await reader.read();
+    if (done || !value) {
+      break;
+    }
+    const remaining = maxBytes - total;
+    const chunk = value.length > remaining ? value.slice(0, remaining) : value;
+    chunks.push(chunk);
+    total += chunk.length;
+    if (value.length > remaining) {
+      break;
+    }
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
+}
+
+function extractHtmlTitle(html: string): string | undefined {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? normalizeWhitespace(stripHtml(match[1] ?? "")) : undefined;
+}
+
+function htmlToPlainText(html: string): string {
+  const withoutNoise = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ");
+  return normalizeWhitespace(stripHtml(withoutNoise));
 }
 
 async function fetchMojeekHtml(query: string): Promise<string> {

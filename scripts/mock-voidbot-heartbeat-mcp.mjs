@@ -135,6 +135,47 @@ registerTool(
 );
 
 registerTool(
+  "search_web",
+  {
+    query: z.string(),
+    limit: z.number().optional(),
+  },
+  async (input) => ({
+    query: input.query,
+    resultCount: 2,
+    results: [
+      {
+        title: "Mock Solarpunk Article",
+        url: "https://example.org/solarpunk",
+        snippet: "A mock public web result about cooperative, hopeful infrastructure.",
+      },
+      {
+        title: "Mock Webpage About Shared Minds",
+        url: "https://example.org/shared-minds",
+        snippet: "A mock public web result about connection, tools, and community.",
+      },
+    ],
+  }),
+);
+
+registerTool(
+  "read_webpage",
+  {
+    url: z.string(),
+    maxChars: z.number().optional(),
+  },
+  async (input) => ({
+    url: input.url,
+    contentType: "text/html; charset=utf-8",
+    title: "Mock Webpage",
+    text:
+      "This mock webpage gives Face turns a deterministic public-page body: cooperative tools, readable context, and one concrete spark worth reacting to.",
+    truncated: false,
+    characterCount: 137,
+  }),
+);
+
+registerTool(
   "search_history",
   {
     query: z.string(),

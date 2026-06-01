@@ -552,6 +552,7 @@ function restrictMcpServersToRepoFaceExploration(
     "search_sources",
     "get_source_context",
     "search_web",
+    "read_webpage",
   ].join(",");
 
   return servers.map((server) => ({

@@ -19,6 +19,8 @@ const repoFaceRetrievalToolAllowlist = [
   "list_indexed_repos",
   "search_sources",
   "get_source_context",
+  "search_web",
+  "read_webpage",
 ].join(",");
 
 async function main() {
@@ -379,7 +381,7 @@ function appendDryRunSafety(prompt, mcpMode) {
 
 Dry-run safety:
 - This is an offline rehearsal. Do not post to Discord, notify the owner, write state, enqueue work, edit files, or call side-effecting tools.
-- Your complete allowed tool set is: search_history, get_message_context, list_indexed_repos, search_sources, get_source_context.
+- Your complete allowed tool set is: search_history, get_message_context, list_indexed_repos, search_sources, get_source_context, search_web, read_webpage.
 - Do not discover tools. Do not call private state, identity-introspection, or MCP inventory tools such as read_repo_face_state, list_mcp_resources, or read_mcp_resource. Your prompt is the state projection.
 - ${retrievalNote}
 - Do not say retrieval is unavailable unless you actually attempted a retrieval tool call and it failed. If you choose not to use retrieval, simply reason from the attached prompt context and do not claim inspection.

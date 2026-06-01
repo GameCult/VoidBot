@@ -63,6 +63,11 @@ export const searchWebInputSchema = {
   limit: z.number().int().min(1).max(8).optional(),
 };
 
+export const readWebpageInputSchema = {
+  url: z.string().url().max(2048),
+  maxChars: z.number().int().min(500).max(12000).optional(),
+};
+
 export const sourceContextInputSchema = {
   sourceId: z.string().min(1),
   chunkIndex: z.number().int().min(0).optional(),
@@ -131,6 +136,11 @@ export interface SearchSourcesArgs {
 export interface SearchWebArgs {
   query: string;
   limit?: number;
+}
+
+export interface ReadWebpageArgs {
+  url: string;
+  maxChars?: number;
 }
 
 export interface SourceContextArgs {
