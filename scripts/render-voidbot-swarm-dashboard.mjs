@@ -836,12 +836,14 @@ function buildEveInterfaceBinding(snapshot, eveState) {
     }],
     rendererHints: {
       preferredLowerings: ["eve-native", "nightwing-tui", "browser"],
-      viewportMode: "adaptive",
+      viewportMode: "continuous-ops",
       tileId: "voidbot-swarm",
-      minWidth: 48,
-      minHeight: 8,
-      preferredWidth: 96,
-      preferredHeight: 16,
+      minWidth: 112,
+      minHeight: 30,
+      preferredWidth: 156,
+      preferredHeight: 58,
+      priority: -30,
+      density: "continuous",
     },
     lowerings: [{
       kind: "static-html",
@@ -868,6 +870,9 @@ function buildEveProviderState(snapshot) {
   const summary = snapshot.summary ?? {};
   const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
   const upcoming = Array.isArray(snapshot.upcomingTurns) ? snapshot.upcomingTurns : [];
+  const orchestrator = snapshot.orchestrator ?? {};
+  const organs = Array.isArray(orchestrator.organs) ? orchestrator.organs : [];
+  const watchdog = findSnapshotOrgan(organs, "voidbot-operations-watchdog") ?? findSnapshotOrgan(organs, "watchdog");
   const nodes = [
     {
       id: "voidbot-swarm",
@@ -910,30 +915,90 @@ function buildEveProviderState(snapshot) {
       root: eveNode("voidbot-cockpit", "cockpit", {
         title: "VoidBot Swarm",
         status: summary.state ?? "unknown",
+        layout: {
+          direction: "vertical",
+          overflow: "scroll",
+          gap: 8,
+          padding: 8,
+          grow: 5,
+          minWidth: 112,
+          minHeight: 30,
+          preferredWidth: 156,
+          preferredHeight: 58,
+          priority: -30,
+          density: "continuous",
+          viewportMode: "continuous-ops",
+        },
       }, [
-        eveNode("voidbot-summary", "text", {
-          role: "mono",
-          text: [
-            "VoidBot Swarm",
-            `${summary.state ?? "unknown"}  next ${summary.nextDisplayName ?? "none"}`,
-            `agents ${summary.participantCount ?? participants.length}  ready ${summary.readyNowCount ?? 0}  cadence x${summary.cadenceMultiplier ?? 1}`,
-            `mesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${snapshot.generatedAt}`,
-          ].join("\n"),
-        }),
-        eveNode("voidbot-upcoming", "rail", { title: "CTB order" }, upcoming.slice(0, 12).map((turn, index) =>
-          eveNode(`turn-${turn.identityId}-${index}`, "avatar", {
+        eveNode("ctb-rail", "rail", {
+          title: "CTB order",
+          layout: { direction: "horizontal", overflow: "scroll-x", height: 112, gap: 8 },
+        }, upcoming.slice(0, 14).map((turn, index) =>
+          eveNode(`turn-${stableId(turn.identityId)}-${index}`, "avatar", {
             text: turn.displayName,
             assetUri: turn.avatarUrl,
-            status: turn.activeJobId ? "active" : turn.restState?.isNapping ? "nap" : "ready",
-            detail: `${turn.nextTurnInMinutes ?? "?"}m`,
+            status: turnState(turn),
+            detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
           }),
         )),
-        eveNode("voidbot-participants", "list", { title: "Faces" }, participants.slice(0, 16).map((participant) =>
-          eveNode(`participant-${participant.identityId}`, "row", {
-            title: participant.displayName,
-            detail: `${participant.repoName} / ${participant.status} / heat ${participant.heat ?? "?"}`,
+        eveNode("voidbot-ops-row", "row", {
+          title: "Operations",
+          layout: { direction: "horizontal", gap: 8, grow: 1 },
+        }, [
+          eveNode("upcoming-faces-pane", "pane", { title: "Next Faces" }, upcoming.slice(0, 10).map((turn, index) =>
+            eveNode(`upcoming-face-${index}-${stableId(turn.identityId)}`, "text", {
+              role: "mono",
+              text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(8, " ")} ${turn.repoName ?? "repo"}  spd ${formatNumber(turn.effectiveSpeed, 3)} heat ${formatNumber(turn.heat, 2)}`,
+            }),
+          )),
+          eveNode("voidbot-watchdog-pane", "pane", { title: "VoidBot Watchdog" }, [
+            eveNode("watchdog-summary", "text", {
+              role: "mono",
+              text: `orchestrator ${orchestrator.state ?? "unknown"}  organs ${organs.length}`,
+            }),
+            watchdog
+              ? eveNode("watchdog-status", "text", {
+                role: "strong",
+                text: `watchdog ${watchdog.lastStatus ?? "unknown"} exit ${watchdog.lastExitCode ?? 0}\nlast ${shortIso(watchdog.lastFinishedAt ?? watchdog.lastStartedAt)}`,
+              })
+              : eveNode("watchdog-missing", "text", {
+                role: "caption",
+                text: "watchdog organ not present in snapshot",
+              }),
+            ...organs
+              .slice()
+              .sort((left, right) => {
+                const leftWatchdog = String(left.id ?? "").toLowerCase() === "voidbot-operations-watchdog" ? 0 : 1;
+                const rightWatchdog = String(right.id ?? "").toLowerCase() === "voidbot-operations-watchdog" ? 0 : 1;
+                return leftWatchdog - rightWatchdog || String(left.id ?? "").localeCompare(String(right.id ?? ""));
+              })
+              .slice(0, 7)
+              .map((organ) => eveNode(`watchdog-organ-${stableId(organ.id)}`, "text", {
+                role: "caption",
+                text: `${organ.label ?? organ.id ?? "organ"}: ${organ.lastStatus ?? "unknown"}`,
+              })),
+          ]),
+        ]),
+        eveNode("voidbot-workspace", "row", {
+          title: "Swarm State",
+          layout: { direction: "horizontal", gap: 8, grow: 2 },
+        }, [
+          eveNode("voidbot-summary", "text", {
+            role: "mono",
+            text: [
+              "VoidBot Swarm",
+              `${summary.state ?? "unknown"}  next ${summary.nextDisplayName ?? "none"}`,
+              `agents ${summary.participantCount ?? participants.length}  ready ${summary.readyNowCount ?? 0}  cadence x${summary.cadenceMultiplier ?? 1}`,
+              `mesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${snapshot.generatedAt}`,
+            ].join("\n"),
           }),
-        )),
+          eveNode("voidbot-participants", "list", { title: "Faces" }, participants.slice(0, 16).map((participant) =>
+            eveNode(`participant-${stableId(participant.identityId)}`, "row", {
+              title: participant.displayName,
+              detail: `${participant.repoName} / ${participant.status} / heat ${participant.heat ?? "?"}`,
+            }),
+          )),
+        ]),
       ]),
       assets: participants
         .filter((participant) => participant.avatarUrl)
@@ -949,6 +1014,44 @@ function buildEveProviderState(snapshot) {
 
 function eveNode(id, kind, props = {}, children = []) {
   return { id, kind, props, children };
+}
+
+function stableId(value) {
+  return String(value ?? "id")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "id";
+}
+
+function turnState(turn) {
+  if (turn?.activeJobId) return "active";
+  if ((turn?.pendingMentionCount ?? 0) > 0) return "mention";
+  if (turn?.restState?.isNapping) return "nap";
+  return minutesText(turn?.nextTurnInMinutes);
+}
+
+function minutesText(value) {
+  return typeof value === "number"
+    ? value <= 0 ? "ready" : `${value.toFixed(value < 10 ? 1 : 0)}m`
+    : "unknown";
+}
+
+function formatNumber(value, decimals) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals).replace(/\.?0+$/, "") : "?";
+}
+
+function shortIso(value) {
+  const timestamp = Date.parse(value ?? "");
+  if (!Number.isFinite(timestamp)) return "unknown";
+  const date = new Date(timestamp);
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function findSnapshotOrgan(organs, needle) {
+  const lower = String(needle).toLowerCase();
+  return organs.find((organ) =>
+    String(organ?.id ?? "").toLowerCase().includes(lower) ||
+    String(organ?.label ?? "").toLowerCase().includes(lower));
 }
 
 function renderHtml(snapshot) {
