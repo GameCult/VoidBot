@@ -141,6 +141,8 @@ export function createEmptyVoidSelfState(
       socialBonds: [],
       statusReads: [],
       moodDimensions: [],
+      socialBiases: [],
+      doctrineStances: [],
       updatedAt: createdAt,
     }),
   };

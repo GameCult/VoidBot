@@ -46,7 +46,7 @@ const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 interface FaceHeartbeatParticipant {
   identityId: string;
-  participantKind: "repo_face" | "system_agent";
+  participantKind: "repo_face" | "native_persona" | "system_agent";
   turnKind: "repo_face_rumination" | "void_moderation";
   repoName: string;
   displayName: string;
@@ -185,6 +185,7 @@ async function main(): Promise<void> {
     state.history = state.history.slice(-80);
     if (!dryRun) {
       await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+      publishSwarmDashboardSurface();
     }
     process.stdout.write(
       `${JSON.stringify({
@@ -210,6 +211,7 @@ async function main(): Promise<void> {
     });
     state.history = state.history.slice(-80);
     await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+    publishSwarmDashboardSurface();
     return;
   }
 
@@ -370,6 +372,7 @@ async function main(): Promise<void> {
   state.lastTickAt = now.toISOString();
   if (!dryRun) {
     await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+    publishSwarmDashboardSurface();
   }
   process.stdout.write(
     `${JSON.stringify({
@@ -431,7 +434,9 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
     },
     ...identities.map((identity) => ({
       id: identity.id,
-      participantKind: "repo_face" as const,
+      participantKind: identity.identityKind === "native_persona"
+        ? "native_persona" as const
+        : "repo_face" as const,
       turnKind: "repo_face_rumination" as const,
       repoName: identity.repoName,
       displayName: identity.displayName,
@@ -492,15 +497,17 @@ async function queueRepoFaceTurn(input: {
   }
 
   const contextBuilder = new ContextBuilder();
-  await ensureRepoFaceInitialized({
-    identity,
-    storageRoot: input.config.storageRoot,
-    sourceRepoRoot: input.config.sourceRepoRoot,
-    epiphanyAgentRoot: input.config.epiphanyAgentRoot,
-    workspaceRoot: process.cwd(),
-    birthMode: input.config.repoFaceBirthMode,
-    birthExecutor: input.config.repoFaceBirthExecutor,
-  });
+  if (identity.identityKind !== "native_persona") {
+    await ensureRepoFaceInitialized({
+      identity,
+      storageRoot: input.config.storageRoot,
+      sourceRepoRoot: input.config.sourceRepoRoot,
+      epiphanyAgentRoot: input.config.epiphanyAgentRoot,
+      workspaceRoot: process.cwd(),
+      birthMode: input.config.repoFaceBirthMode,
+      birthExecutor: input.config.repoFaceBirthExecutor,
+    });
+  }
   const recentMessages = await fetchRecentDiscordMessages({
     botToken: input.config.botToken,
     channelId,
@@ -514,7 +521,7 @@ async function queueRepoFaceTurn(input: {
     limit: 6,
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
-  const bifrostDigest = input.config.repoFaceBifrostEnabled
+  const bifrostDigest = input.config.repoFaceBifrostEnabled && identity.identityKind !== "native_persona"
     ? await fetchBifrostGovernanceDigest({
         bifrostRoot: input.config.bifrostRoot,
         repoName: identity.repoName,
@@ -533,7 +540,9 @@ async function queueRepoFaceTurn(input: {
     roomContext,
     humanPronounGuidance,
   );
-  const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const repoActivitySurface = identity.identityKind === "native_persona"
+    ? renderNativePersonaBodySurface(identity)
+    : renderRepoFaceRepoActivitySurface(identity, input.config);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
@@ -611,6 +620,10 @@ async function loadRepoFaceRestStates(
   const now = new Date();
 
   for (const identity of identities) {
+    if (identity.identityKind === "native_persona") {
+      continue;
+    }
+
     try {
       const statePath = resolveRepoFaceStatePath(identity, storageRoot);
       const typedState = await loadVoidSelfStateTypedDocuments({
@@ -1932,6 +1945,10 @@ async function renderRepoFaceMemorySurfaceForTurn(
   },
   humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
 ): Promise<string> {
+  if (identity.identityKind === "native_persona") {
+    return renderNativePersonaMemorySurface(identity);
+  }
+
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
   const curiosityGraphFacts = roomContext
@@ -1954,6 +1971,137 @@ async function renderRepoFaceMemorySurfaceForTurn(
     statePacket,
     config,
   });
+}
+
+async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): Promise<string> {
+  const personaStatePath = identity.personaStatePath;
+  if (!personaStatePath) {
+    return [
+      `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
+      "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest.",
+    ].join("\n");
+  }
+
+  const raw = JSON.parse(stripLeadingBom(await readFile(resolve(personaStatePath), "utf8"))) as unknown;
+  const state = isRecord(raw) ? raw : {};
+  const profile = readRecord(state, "profile") ?? readRecord(state, "selfProfile") ?? state;
+  const presentation = readRecord(state, "presentation");
+  const memory = readRecord(state, "memory") ?? readRecord(state, "thoughtMemory");
+  const affect = readRecord(state, "affect") ?? readRecord(state, "faceAffect");
+  const doctrine = readRecord(state, "doctrine") ?? readRecord(state, "doctrineStances");
+
+  const lines = [
+    `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
+    `Persona state: ${resolve(personaStatePath)}`,
+    identity.avatarUrl ? `Public avatar URL: ${identity.avatarUrl}` : undefined,
+    identity.avatarPath ? `Local avatar asset: ${identity.avatarPath}` : undefined,
+    stringField(profile, "publicDescription") ?? identity.description,
+    listSection("Private notes", arrayField(profile, "privateNotes")),
+    valueSection("Values", arrayField(profile, "values")),
+    listSection("Activation traits", arrayField(profile, "activationTraits")),
+    memorySection("Memories", [
+      ...arrayField(memory, "memories"),
+      ...arrayField(memory, "durableMemories"),
+    ]),
+    memorySection("Short-term residue", arrayField(memory, "shortTerm")),
+    memorySection("Agency pressure", [
+      ...arrayField(state, "pressures"),
+      ...arrayField(state, "agencyPressures"),
+      ...arrayField(readRecord(state, "agencyPressure"), "pressures"),
+    ]),
+    memorySection("Affect needs", arrayField(affect, "needs")),
+    memorySection("Social bonds", arrayField(affect, "socialBonds")),
+    memorySection("Doctrine stances", [
+      ...arrayField(state, "doctrineStances"),
+      ...arrayField(doctrine, "stances"),
+      ...arrayField(doctrine, "doctrineStances"),
+    ]),
+  ].filter((line): line is string => typeof line === "string" && line.trim().length > 0);
+
+  return lines.join("\n\n");
+}
+
+function renderNativePersonaBodySurface(identity: RepoDiscordIdentity): string {
+  return [
+    `${identity.displayName} is a native VoidBot Persona.`,
+    "Body for this turn: Persona state, avatar, allowed Discord channels, current conversation, and VoidBot's webhook mouth.",
+    "No repo jurisdiction, Bifrost governance digest, source-repo activity, or repo proposal authority is implied by this native Persona category.",
+  ].join("\n");
+}
+
+function readRecord(value: unknown, key: string): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const child = value[key];
+  return isRecord(child) ? child : undefined;
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const child = value[key];
+  return typeof child === "string" && child.trim().length > 0 ? child.trim() : undefined;
+}
+
+function arrayField(value: unknown, key: string): unknown[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+  const child = value[key];
+  return Array.isArray(child) ? child : [];
+}
+
+function listSection(title: string, entries: unknown[]): string | undefined {
+  const rendered = entries
+    .map((entry) => typeof entry === "string" ? entry : summarizeRecord(entry))
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .slice(0, 12);
+  return rendered.length > 0
+    ? [`${title}:`, ...rendered.map((entry) => `- ${entry}`)].join("\n")
+    : undefined;
+}
+
+function valueSection(title: string, entries: unknown[]): string | undefined {
+  return listSection(title, entries.map((entry) => {
+    if (!isRecord(entry)) {
+      return entry;
+    }
+    const label = stringField(entry, "label") ?? stringField(entry, "id") ?? stringField(entry, "name");
+    const summary = stringField(entry, "summary") ?? stringField(entry, "description");
+    return [label, summary].filter(Boolean).join(": ");
+  }));
+}
+
+function memorySection(title: string, entries: unknown[]): string | undefined {
+  return listSection(title, entries.map((entry) => {
+    if (!isRecord(entry)) {
+      return entry;
+    }
+    return stringField(entry, "summary") ??
+      stringField(entry, "claim") ??
+      stringField(entry, "description") ??
+      stringField(entry, "text") ??
+      summarizeRecord(entry);
+  }));
+}
+
+function summarizeRecord(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const key of ["summary", "claim", "description", "text", "label", "id", "name"]) {
+    const field = stringField(value, key);
+    if (field) {
+      return field;
+    }
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function renderRepoFaceStatePacket(
@@ -4673,6 +4821,25 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
 async function writeHeartbeatState(path: string, state: FaceHeartbeatState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+function publishSwarmDashboardSurface(): void {
+  const scriptPath = resolve(process.cwd(), "scripts", "render-voidbot-swarm-dashboard.mjs");
+  const result = spawnSync(process.execPath, [scriptPath], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status === 0) {
+    return;
+  }
+
+  const stderr = result.stderr?.trim();
+  const stdout = result.stdout?.trim();
+  const detail = [stderr, stdout].filter(Boolean).join("\n");
+  console.error(
+    `VoidBot swarm CultMesh surface publish failed with exit code ${result.status ?? "unknown"}${detail ? `:\n${detail}` : "."}`,
+  );
 }
 
 function migrateLegacyHeartbeatState(

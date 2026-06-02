@@ -1286,7 +1286,54 @@ function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIn
     }
   }
 
+  if (intents.length === 0) {
+    const draftSpeech = parseRepoIdentityDraftSpeechIntent(finalResponse);
+    if (draftSpeech) {
+      intents.push({ content: draftSpeech });
+    }
+  }
+
   return intents;
+}
+
+function parseRepoIdentityDraftSpeechIntent(finalResponse: string): string | undefined {
+  const lines = finalResponse.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index]?.match(/^\s*Would say:\s*(.+?)\s*$/i);
+    if (!match) {
+      continue;
+    }
+
+    const contentLines = [match[1] ?? ""];
+    for (const following of lines.slice(index + 1)) {
+      const trimmed = following.trim();
+      if (!trimmed) {
+        break;
+      }
+      if (/^(Private thought|Private summary|What should stick|State note|Would say):/i.test(trimmed)) {
+        break;
+      }
+      contentLines.push(trimmed);
+    }
+
+    const content = stripPairedQuotes(contentLines.join("\n").trim());
+    if (content) {
+      return content;
+    }
+  }
+
+  return undefined;
+}
+
+function stripPairedQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
 }
 
 function parseRepoIdentityIdFromRequestMessageId(requestMessageId: string | undefined): string | undefined {
@@ -2482,6 +2529,10 @@ async function recordRepoIdentityDeliveryReceipt(input: {
   messageId: string;
   transport: "bot" | "webhook";
 }): Promise<void> {
+  if (input.identity.identityKind === "native_persona") {
+    return;
+  }
+
   await applyVoidSelfStateOperation(
     {
       canonicalPath: resolveRepoFaceStatePath(input.identity, config.storageRoot),

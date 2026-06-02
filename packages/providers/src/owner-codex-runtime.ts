@@ -43,7 +43,7 @@ export async function runCodexExec(input: {
   executable: string;
   executableArgs: string[];
   model: string;
-  reasoningEffort: "low" | "medium" | "high" | "xhigh";
+  reasoningEffort: "none" | "low" | "medium" | "high" | "xhigh";
   timeoutMs: number;
   workingDirectory: string;
   prompt: string;

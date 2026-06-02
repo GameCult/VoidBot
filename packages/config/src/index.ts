@@ -35,6 +35,7 @@ const booleanFromEnv = z.preprocess((value) => {
 }, z.boolean());
 
 type OllamaThinkMode = boolean | "low" | "medium" | "high";
+type CodexReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -89,7 +90,7 @@ const envSchema = z.object({
   CODEX_EXECUTABLE: z.string().min(1).default("codex"),
   CODEX_EXEC_ARGS: z.string().default(""),
   CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
-  CODEX_MODEL_REASONING_EFFORT: z.enum(["low", "medium", "high", "xhigh"]).default("low"),
+  CODEX_MODEL_REASONING_EFFORT: z.enum(["none", "low", "medium", "high", "xhigh"]).default("low"),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   STYLE_PACK_PATH: z.string().min(1).default("styles/void-default.md"),
   SYSTEM_MESSAGES_PATH: z.string().min(1).default("config/system-messages.json"),
@@ -102,7 +103,7 @@ const envSchema = z.object({
     .min(1)
     .default(".voidbot/private/repo-discord-identities.json"),
   REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
-  REPO_FACE_BIRTH_EXECUTOR: z.enum(["codex-exec", "openai-runtime"]).default("codex-exec"),
+  REPO_FACE_BIRTH_EXECUTOR: z.enum(["model-runtime", "openai-runtime"]).default("model-runtime"),
   REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_BIFROST_ENABLED: booleanFromEnv.default(false),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
@@ -111,21 +112,35 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
   REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
-  REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(2),
+  REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(3),
   REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES: z.coerce.number().positive().default(10),
   REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
   REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED: booleanFromEnv.default(true),
-  REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(30),
-  REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(30),
+  REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(180),
+  REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(120),
+  REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES: z.coerce.number().positive().default(360),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
-  REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.3-codex-spark"),
-  REPO_FACE_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.3-codex-spark,gpt-5.4-mini"),
+  REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_FACE_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.4"),
+  REPO_FACE_IMAGINATION_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_FACE_IMAGINATION_CODEX_MODELS: z.string().default("gpt-5.4"),
+  REPO_FACE_MIND_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_FACE_MIND_CODEX_MODELS: z.string().default("gpt-5.4"),
   REPO_FACE_TURN_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_FACE_TURN_CODEX_REASONING_EFFORT: z
+    .enum(["none", "low", "medium", "high", "xhigh"])
+    .default("low"),
+  REPO_FACE_IMAGINATION_CODEX_REASONING_EFFORT: z
+    .enum(["none", "low", "medium", "high", "xhigh"])
+    .default("none"),
+  REPO_FACE_MIND_CODEX_REASONING_EFFORT: z
+    .enum(["none", "low", "medium", "high", "xhigh"])
+    .default("none"),
   REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT: z
-    .enum(["low", "medium", "high", "xhigh"])
-    .optional(),
+    .enum(["none", "low", "medium", "high", "xhigh"])
+    .default("none"),
   REPO_FACE_STATE_PROJECTOR_ENABLED: booleanFromEnv.default(true),
   EPIPHANY_AGENT_ROOT: z.string().min(1).default("E:/Projects/EpiphanyAgent"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
@@ -156,14 +171,14 @@ export interface AppConfig {
   codexExecutable: string;
   codexExecArgs: string[];
   codexModel: string;
-  codexModelReasoningEffort: "low" | "medium" | "high" | "xhigh";
+  codexModelReasoningEffort: CodexReasoningEffort;
   codexExecTimeoutMs: number;
   stylePackPath: string;
   systemMessagesPath: string;
   moderationAgentStatePath: string;
   repoDiscordIdentitiesPath: string;
   repoFaceBirthMode: "plan" | "run";
-  repoFaceBirthExecutor: "codex-exec" | "openai-runtime";
+  repoFaceBirthExecutor: "model-runtime" | "openai-runtime";
   repoFaceGithubActionsEnabled: boolean;
   repoFaceBifrostEnabled: boolean;
   bifrostRoot: string;
@@ -181,13 +196,21 @@ export interface AppConfig {
       enabled: boolean;
       idleAfterMinutes: number;
       recoveryMinutes: number;
+      napAfterMinutes: number;
     };
     speedOverrides: Record<string, number>;
     heatOverrides: Record<string, number>;
     codexModel?: string;
     codexModels: string[];
+    imaginationCodexModel?: string;
+    imaginationCodexModels: string[];
+    mindCodexModel?: string;
+    mindCodexModels: string[];
     turnCodexModel: string;
-    codexModelReasoningEffort?: "low" | "medium" | "high" | "xhigh";
+    turnCodexModelReasoningEffort: CodexReasoningEffort;
+    imaginationCodexModelReasoningEffort: CodexReasoningEffort;
+    mindCodexModelReasoningEffort: CodexReasoningEffort;
+    codexModelReasoningEffort?: CodexReasoningEffort;
     stateProjectorEnabled: boolean;
   };
   epiphanyAgentRoot: string;
@@ -412,6 +435,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         enabled: parsed.REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED,
         idleAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES,
         recoveryMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES,
+        napAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES,
       },
       speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
       heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
@@ -419,7 +443,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       codexModels: parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS).length > 0
         ? parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS)
         : [parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL],
+      imaginationCodexModel: parsed.REPO_FACE_IMAGINATION_CODEX_MODEL,
+      imaginationCodexModels: parseList(parsed.REPO_FACE_IMAGINATION_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_FACE_IMAGINATION_CODEX_MODELS)
+        : [parsed.REPO_FACE_IMAGINATION_CODEX_MODEL],
+      mindCodexModel: parsed.REPO_FACE_MIND_CODEX_MODEL,
+      mindCodexModels: parseList(parsed.REPO_FACE_MIND_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_FACE_MIND_CODEX_MODELS)
+        : [parsed.REPO_FACE_MIND_CODEX_MODEL],
       turnCodexModel: parsed.REPO_FACE_TURN_CODEX_MODEL,
+      turnCodexModelReasoningEffort: parsed.REPO_FACE_TURN_CODEX_REASONING_EFFORT,
+      imaginationCodexModelReasoningEffort: parsed.REPO_FACE_IMAGINATION_CODEX_REASONING_EFFORT,
+      mindCodexModelReasoningEffort: parsed.REPO_FACE_MIND_CODEX_REASONING_EFFORT,
       codexModelReasoningEffort: parsed.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT,
       stateProjectorEnabled: parsed.REPO_FACE_STATE_PROJECTOR_ENABLED,
     },

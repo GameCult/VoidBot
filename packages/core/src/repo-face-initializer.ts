@@ -18,7 +18,7 @@ export interface RepoFaceInitializationOptions {
   epiphanyAgentRoot?: string;
   workspaceRoot?: string;
   birthMode?: "plan" | "run";
-  birthExecutor?: "codex-exec" | "openai-runtime";
+  birthExecutor?: "model-runtime" | "codex-exec" | "openai-runtime";
 }
 
 export interface RepoFaceInitializationResult {
@@ -145,7 +145,9 @@ export async function ensureRepoFaceInitialized(
       "--mode",
       options.birthMode ?? "plan",
       "--executor",
-      options.birthExecutor ?? "codex-exec",
+      options.birthExecutor === "codex-exec"
+        ? "model-runtime"
+        : options.birthExecutor ?? "model-runtime",
     ],
     {
       cwd: options.workspaceRoot ?? process.cwd(),

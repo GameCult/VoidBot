@@ -344,6 +344,43 @@ const faceMoodDimensionSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+const faceSocialBiasSchema = z.object({
+  name: z.enum([
+    "neuroticism",
+    "threat_sensitivity",
+    "hostile_attribution_bias",
+    "reassurance_need",
+    "grievance_retention",
+    "status_vigilance",
+    "trust_baseline",
+  ]),
+  value: z.number().min(0).max(1),
+  summary: z.string().trim().min(1).max(1000),
+  behavioralPull: z.string().trim().min(1).max(1000),
+  updatedAt: timestampSchema,
+}).strict();
+
+const faceDoctrineStanceSchema = z.object({
+  stanceId: nonEmptyStringSchema,
+  doctrine: nonEmptyStringSchema,
+  status: z.enum(["active", "cooling", "crystallized", "resolved", "retired"]),
+  target: thoughtTargetSchema,
+  summary: boundedTextSchema,
+  claim: z.string().trim().min(1).max(2000).optional(),
+  question: z.string().trim().min(1).max(2000).optional(),
+  tension: z.string().trim().min(1).max(2000),
+  actionImplication: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  valence: z.number().min(-1).max(1).default(0),
+  anchorRefs: z.array(anchorRefSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  sourceMemoryIds: z.array(nonEmptyStringSchema).default([]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict();
+
 const selfProfileValueSchema = z.object({
   id: nonEmptyStringSchema,
   label: nonEmptyStringSchema,
@@ -435,6 +472,8 @@ export const voidFaceAffectSchema = z.object({
   socialBonds: z.array(faceSocialBondSchema).default([]),
   statusReads: z.array(faceStatusReadSchema).default([]),
   moodDimensions: z.array(faceMoodDimensionSchema).default([]),
+  socialBiases: z.array(faceSocialBiasSchema).default([]),
+  doctrineStances: z.array(faceDoctrineStanceSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
 
@@ -625,6 +664,21 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     operation: z.literal("update_mood_dimensions"),
     dimensions: z.array(faceMoodDimensionSchema).min(1),
     updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("update_social_biases"),
+    biases: z.array(faceSocialBiasSchema).min(1),
+    updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("upsert_doctrine_stance"),
+    stance: faceDoctrineStanceSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("retire_doctrine_stance"),
+    stanceId: nonEmptyStringSchema,
+    retiredAt: timestampSchema,
+    reason: z.string().trim().min(1).max(1000),
   }).strict(),
   z.object({
     operation: z.literal("update_sleep_cycle"),
