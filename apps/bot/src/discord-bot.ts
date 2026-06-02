@@ -807,7 +807,8 @@ async function ensureRepoIdentityRoles(options: {
   registryPath: string;
   identities: RepoDiscordIdentity[];
 }): Promise<{ identities: RepoDiscordIdentity[] }> {
-  const identitiesMissingRoles = options.identities.filter((identity) => !identity.roleId);
+  const identitiesMissingRoles = options.identities.filter((identity) =>
+    identity.identityKind !== "native_persona" && !identity.roleId);
 
   if (identitiesMissingRoles.length === 0) {
     return { identities: options.identities };

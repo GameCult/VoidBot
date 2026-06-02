@@ -47,7 +47,7 @@ const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 interface FaceHeartbeatParticipant {
   identityId: string;
-  participantKind: "repo_face" | "system_agent";
+  participantKind: "repo_face" | "native_persona" | "system_agent";
   turnKind: "repo_face_rumination" | "void_moderation";
   repoName: string;
   displayName: string;
@@ -553,7 +553,7 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
     },
     ...identities.map((identity) => ({
       id: identity.id,
-      participantKind: "repo_face" as const,
+      participantKind: identity.identityKind === "native_persona" ? "native_persona" as const : "repo_face" as const,
       turnKind: "repo_face_rumination" as const,
       repoName: identity.repoName,
       displayName: identity.displayName,
@@ -614,15 +614,17 @@ async function queueRepoFaceTurn(input: {
   }
 
   const contextBuilder = new ContextBuilder();
-  await ensureRepoFaceInitialized({
-    identity,
-    storageRoot: input.config.storageRoot,
-    sourceRepoRoot: input.config.sourceRepoRoot,
-    epiphanyAgentRoot: input.config.epiphanyAgentRoot,
-    workspaceRoot: process.cwd(),
-    birthMode: input.config.repoFaceBirthMode,
-    birthExecutor: input.config.repoFaceBirthExecutor,
-  });
+  if (identity.identityKind !== "native_persona") {
+    await ensureRepoFaceInitialized({
+      identity,
+      storageRoot: input.config.storageRoot,
+      sourceRepoRoot: input.config.sourceRepoRoot,
+      epiphanyAgentRoot: input.config.epiphanyAgentRoot,
+      workspaceRoot: process.cwd(),
+      birthMode: input.config.repoFaceBirthMode,
+      birthExecutor: input.config.repoFaceBirthExecutor,
+    });
+  }
   const recentMessages = await fetchRecentDiscordMessages({
     botToken: input.config.botToken,
     channelId,
@@ -637,6 +639,7 @@ async function queueRepoFaceTurn(input: {
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
   const bifrostDigest = input.config.repoFaceBifrostEnabled
+    && identity.identityKind !== "native_persona"
     ? await fetchBifrostGovernanceDigest({
         bifrostRoot: input.config.bifrostRoot,
         repoName: identity.repoName,
@@ -655,7 +658,9 @@ async function queueRepoFaceTurn(input: {
     roomContext,
     humanPronounGuidance,
   );
-  const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const repoActivitySurface = identity.identityKind === "native_persona"
+    ? renderNativePersonaBodySurface(identity)
+    : renderRepoFaceRepoActivitySurface(identity, input.config);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
@@ -747,6 +752,10 @@ async function loadRepoFaceRuntimeSnapshots(
   const now = new Date();
 
   for (const identity of identities) {
+    if (identity.identityKind === "native_persona") {
+      continue;
+    }
+
     try {
       const statePath = resolveRepoFaceStatePath(identity, storageRoot);
       const typedState = await loadVoidSelfStateTypedDocuments({
@@ -2528,6 +2537,10 @@ async function renderRepoFaceMemorySurfaceForTurn(
   },
   humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
 ): Promise<string> {
+  if (identity.identityKind === "native_persona") {
+    return renderNativePersonaMemorySurface(identity);
+  }
+
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
   const curiosityGraphFacts = roomContext
@@ -2550,6 +2563,108 @@ async function renderRepoFaceMemorySurfaceForTurn(
     statePacket,
     config,
   });
+}
+
+async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): Promise<string> {
+  const statePath = identity.personaStatePath ?? resolveRepoFaceStatePath(identity, ".voidbot");
+  const raw = await readFile(resolve(statePath), "utf8");
+  const state = JSON.parse(stripLeadingBom(raw)) as {
+    publicName?: string;
+    publicDescription?: string;
+    presentation?: {
+      pronouns?: string;
+      voiceSummary?: string;
+      homeContext?: { label?: string; id?: string; kind?: string };
+    };
+    privateNotes?: string[];
+    values?: Array<{ label?: string; priority?: number; summary?: string }>;
+    thoughtMemory?: {
+      memories?: Array<{ id?: string; status?: string; summary?: string; claim?: string; question?: string; tension?: string; actionImplication?: string; tags?: string[] }>;
+      shortTerm?: Array<{ summary?: string; claim?: string; tension?: string; actionImplication?: string }>;
+      incubation?: Array<{ summary?: string; question?: string; tension?: string; actionImplication?: string }>;
+    };
+    agencyPressure?: {
+      pressures?: Array<{ status?: string; summary?: string; tension?: string; actionImplication?: string; intensity?: number }>;
+    };
+    affect?: {
+      needs?: Array<{ status?: string; summary?: string; tension?: string; actionImplication?: string; intensity?: number }>;
+      statusReads?: Array<{ statusKind?: string; summary?: string; confidence?: number; intensity?: number }>;
+      moodDimensions?: Array<{ name?: string; value?: number }>;
+      socialBiases?: Array<{ name?: string; value?: number; summary?: string; behavioralPull?: string }>;
+      doctrineStances?: Array<{ stanceKind?: string; principle?: string; summary?: string; actionImplication?: string; intensity?: number }>;
+    };
+  };
+  const lines: string[] = [
+    `${state.publicName ?? identity.displayName} is a native VoidBot Persona, not a repo Face.`,
+    state.publicDescription ? `Public identity: ${state.publicDescription}` : undefined,
+    state.presentation?.pronouns ? `Pronouns: ${state.presentation.pronouns}.` : undefined,
+    state.presentation?.voiceSummary ? `Voice: ${state.presentation.voiceSummary}` : undefined,
+    state.presentation?.homeContext ? `Home context: ${state.presentation.homeContext.label ?? state.presentation.homeContext.id ?? state.presentation.homeContext.kind}.` : undefined,
+    identity.avatarPath ? `Avatar asset: ${identity.avatarPath}.` : undefined,
+    "Authority boundary: no repo jurisdiction, no repo proposal grant, no Discord role authority, no cultural or supernatural authority claim. Challenge is conversational and consent-preserving.",
+  ].filter((line): line is string => typeof line === "string" && line.trim().length > 0);
+
+  lines.push("", "Private standing notes:");
+  lines.push(...formatNativePersonaBullets(state.privateNotes, 8));
+  lines.push("", "Values, strongest first:");
+  lines.push(...(state.values ?? [])
+    .slice()
+    .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0))
+    .slice(0, 8)
+    .map((value) => `- ${value.label ?? "value"}${typeof value.priority === "number" ? ` (${value.priority.toFixed(2)})` : ""}: ${value.summary ?? ""}`.trim()));
+  lines.push("", "Personal memory, in this Persona's own mythic perspective:");
+  lines.push(...formatNativePersonaMemory(state.thoughtMemory?.memories, 10));
+  lines.push("", "Active pressures:");
+  lines.push(...formatNativePersonaPressures(state.agencyPressure?.pressures, 6));
+  lines.push("", "Needs and status reads:");
+  lines.push(...formatNativePersonaPressures(state.affect?.needs, 5));
+  lines.push(...(state.affect?.statusReads ?? []).slice(0, 5).map((read) =>
+    `- ${read.statusKind ?? "status"}: ${read.summary ?? "unspecified"}${typeof read.intensity === "number" ? ` (intensity ${read.intensity.toFixed(2)})` : ""}`));
+  lines.push("", "Mood and social bias:");
+  lines.push(...(state.affect?.moodDimensions ?? []).slice(0, 6).map((mood) =>
+    `- ${mood.name ?? "mood"}: ${typeof mood.value === "number" ? mood.value.toFixed(2) : "?"}`));
+  lines.push(...(state.affect?.socialBiases ?? []).slice(0, 5).map((bias) =>
+    `- ${bias.name ?? "bias"}: ${bias.summary ?? ""} ${bias.behavioralPull ?? ""}`.trim()));
+  lines.push("", "Doctrine stances:");
+  lines.push(...(state.affect?.doctrineStances ?? []).slice(0, 8).map((stance) =>
+    `- ${stance.stanceKind ?? "stance"}: ${stance.principle ?? stance.summary ?? "unnamed stance"} -> ${stance.actionImplication ?? stance.summary ?? "let it affect speech"}`));
+
+  return rejectLeakyMemorySurface(lines.join("\n"));
+}
+
+function formatNativePersonaBullets(values: string[] | undefined, max: number): string[] {
+  const lines = (values ?? []).slice(0, max).map((value) => `- ${value}`);
+  return lines.length > 0 ? lines : ["- No standing private notes were attached."];
+}
+
+function formatNativePersonaMemory(
+  memories: Array<{ id?: string; status?: string; summary?: string; claim?: string; question?: string; tension?: string; actionImplication?: string; tags?: string[] }> | undefined,
+  max: number,
+): string[] {
+  const lines = (memories ?? [])
+    .filter((memory) => memory.status !== "retired")
+    .slice(0, max)
+    .map((memory) => [
+      `- ${memory.summary ?? memory.id ?? "memory"}`,
+      memory.claim ? `  Claim: ${memory.claim}` : undefined,
+      memory.question ? `  Question: ${memory.question}` : undefined,
+      memory.tension ? `  Tension: ${memory.tension}` : undefined,
+      memory.actionImplication ? `  Action: ${memory.actionImplication}` : undefined,
+      memory.tags?.length ? `  Tags: ${memory.tags.join(", ")}` : undefined,
+    ].filter(Boolean).join("\n"));
+  return lines.length > 0 ? lines : ["- No personal memories were attached."];
+}
+
+function formatNativePersonaPressures(
+  pressures: Array<{ status?: string; summary?: string; tension?: string; actionImplication?: string; intensity?: number }> | undefined,
+  max: number,
+): string[] {
+  const lines = (pressures ?? [])
+    .filter((pressure) => pressure.status !== "retired")
+    .slice(0, max)
+    .map((pressure) =>
+      `- ${pressure.summary ?? "pressure"}${typeof pressure.intensity === "number" ? ` (${pressure.intensity.toFixed(2)})` : ""}: ${pressure.tension ?? ""} ${pressure.actionImplication ?? ""}`.trim());
+  return lines.length > 0 ? lines : ["- No active pressures were attached."];
 }
 
 function renderRepoFaceStatePacket(
@@ -4510,7 +4625,7 @@ function buildInspectionParticipant(
 ): FaceHeartbeatParticipant {
   return {
     identityId: identity.id,
-    participantKind: "repo_face",
+    participantKind: identity.identityKind === "native_persona" ? "native_persona" : "repo_face",
     turnKind: "repo_face_rumination",
     repoName: identity.repoName,
     displayName: identity.displayName,
@@ -4521,7 +4636,7 @@ function buildInspectionParticipant(
     status: "active",
     groups: [
       "all",
-      "kind:repo_face",
+      `kind:${identity.identityKind === "native_persona" ? "native_persona" : "repo_face"}`,
       "turn:repo_face_rumination",
       `identity:${normalizeKey(identity.id)}`,
       `repo:${normalizeKey(identity.repoName)}`,
@@ -4536,6 +4651,16 @@ function buildInspectionParticipant(
       "Character memory and affect prose must come from the Interpreter memory surface.",
     ],
   };
+}
+
+function renderNativePersonaBodySurface(identity: RepoDiscordIdentity): string {
+  return [
+    `- ${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
+    `- Local Body: persona state ${identity.personaStatePath ?? resolveRepoFaceStatePath(identity, ".voidbot")}.`,
+    identity.avatarPath ? `- Avatar asset: ${identity.avatarPath}.` : undefined,
+    "- No repo jurisdiction, repo proposal authority, repo birth initialization, or Discord role registration is implied.",
+    "- Treat the Persona state, avatar, voice, allowed channels, and conversation surface as the Body for this turn.",
+  ].filter((line): line is string => typeof line === "string").join("\n");
 }
 
 function buildChannelPlan(

@@ -36,6 +36,7 @@ const jurisdictionSchema = z.object({
 
 const faceIdentitySchema = z.object({
   id: z.string().trim().min(1),
+  identityKind: z.enum(["repo_face", "native_persona"]).default("repo_face"),
   displayName: z.string().trim().min(1).max(80),
   repoName: z.string().trim().min(1).optional(),
   repoPath: z.string().trim().min(1).optional(),
@@ -50,7 +51,9 @@ const faceIdentitySchema = z.object({
     posture: z.string().trim().min(1).optional(),
   })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
+  avatarPath: z.string().trim().min(1).optional(),
   faceStatePath: z.string().trim().min(1).optional(),
+  personaStatePath: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
   grants: z.array(agencyGrantSchema).default(["discussion", "rumination", "discord_text"]),
   jurisdictions: z.array(jurisdictionSchema).default([]),
@@ -117,6 +120,7 @@ export function faceToRepoDiscordIdentity(face: ResolvedFaceIdentity): RepoDisco
 
   return {
     id: face.id,
+    identityKind: face.identityKind,
     repoName,
     displayName: face.displayName,
     repoPath: face.repoPath,
@@ -124,7 +128,9 @@ export function faceToRepoDiscordIdentity(face: ResolvedFaceIdentity): RepoDisco
     allowedChannelIds: face.allowedChannelIds,
     channelPermissions: face.channelPermissions,
     avatarUrl: face.avatarUrl,
+    avatarPath: face.avatarPath,
     faceStatePath: face.faceStatePath,
+    personaStatePath: face.personaStatePath,
     description: renderFaceDescription(face),
   };
 }
@@ -178,6 +184,7 @@ function repoIdentityToEpiphany(identity: RepoDiscordIdentity): EpiphanyIdentity
     faces: [
       {
         id: identity.id,
+        identityKind: identity.identityKind,
         displayName: identity.displayName,
         repoName: identity.repoName,
         repoPath: identity.repoPath,
@@ -185,7 +192,9 @@ function repoIdentityToEpiphany(identity: RepoDiscordIdentity): EpiphanyIdentity
         allowedChannelIds: getRepoDiscordIdentityAllowedChannelIds(identity),
         channelPermissions: identity.channelPermissions,
         avatarUrl: identity.avatarUrl,
+        avatarPath: identity.avatarPath,
         faceStatePath: identity.faceStatePath,
+        personaStatePath: identity.personaStatePath,
         description: identity.description,
         grants: [
           "discussion",
@@ -229,6 +238,7 @@ function normalizeEpiphanies(epiphanies: EpiphanyIdentity[]): EpiphanyIdentity[]
         return {
           ...face,
           id: face.id.trim(),
+          identityKind: face.identityKind,
           displayName: face.displayName.trim().slice(0, 80),
           repoName: face.repoName?.trim(),
           repoPath: face.repoPath?.trim(),
@@ -242,7 +252,9 @@ function normalizeEpiphanies(epiphanies: EpiphanyIdentity[]): EpiphanyIdentity[]
             posture: permission.posture?.trim(),
           })),
           avatarUrl: face.avatarUrl?.trim(),
+          avatarPath: face.avatarPath?.trim(),
           faceStatePath: face.faceStatePath?.trim(),
+          personaStatePath: face.personaStatePath?.trim(),
           description: face.description?.trim(),
           grants: [...new Set(face.grants)],
           jurisdictions: face.jurisdictions.map(normalizeJurisdiction),

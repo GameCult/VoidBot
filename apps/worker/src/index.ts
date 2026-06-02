@@ -1306,12 +1306,13 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
   const { identity, channelId, content, replyToMessageId } = resolved;
-  const sourceDocuments = await sourceArchiveRepository.listByRepo(identity.repoName).catch(() => []);
-  const linkedContent = resolveRepoIdentityPostArtifactLinks({
-    repoName: identity.repoName,
-    content,
-    documents: sourceDocuments,
-  });
+  const linkedContent = identity.identityKind === "native_persona"
+    ? content
+    : resolveRepoIdentityPostArtifactLinks({
+        repoName: identity.repoName,
+        content,
+        documents: await sourceArchiveRepository.listByRepo(identity.repoName).catch(() => []),
+      });
   if (isOwnerDmChannelAlias(channelId)) {
     const dmChannelId = await openOwnerDmChannel();
     const postedMessages = await postDiscordBotMessageChunks(
@@ -1578,6 +1579,7 @@ async function detectRepoFaceRecentSiblingSpeechDuplicate(
   const registry = await loadRegisteredFaceRepoRegistry();
   const siblingIdentities = registry.identities.filter((identity) =>
     identity.id !== post.identity.id &&
+    identity.identityKind !== "native_persona" &&
     isRepoDiscordIdentityAllowedInChannel(identity, post.channelId)
   );
   if (siblingIdentities.length === 0) {
@@ -3402,15 +3404,17 @@ async function recordRepoIdentityDeliveryReceipt(input: {
     },
   );
 
-  try {
-    await applyRepoFacePostFatigueAfterSpeech({
-      identity: input.identity,
-      storageRoot: config.storageRoot,
-      heartbeatStatePath: config.repoFaceHeartbeats.statePath,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`Could not apply repo Face post fatigue for ${input.identity.id}: ${message}`);
+  if (input.identity.identityKind !== "native_persona") {
+    try {
+      await applyRepoFacePostFatigueAfterSpeech({
+        identity: input.identity,
+        storageRoot: config.storageRoot,
+        heartbeatStatePath: config.repoFaceHeartbeats.statePath,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Could not apply repo Face post fatigue for ${input.identity.id}: ${message}`);
+    }
   }
 }
 

@@ -5,6 +5,7 @@ import { z } from "zod";
 
 const repoDiscordIdentitySchema = z.object({
   id: z.string().trim().min(1),
+  identityKind: z.enum(["repo_face", "native_persona"]).default("repo_face"),
   repoName: z.string().trim().min(1),
   displayName: z.string().trim().min(1).max(80),
   repoPath: z.string().trim().min(1).optional(),
@@ -19,7 +20,9 @@ const repoDiscordIdentitySchema = z.object({
     posture: z.string().trim().min(1).optional(),
   })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
+  avatarPath: z.string().trim().min(1).optional(),
   faceStatePath: z.string().trim().min(1).optional(),
+  personaStatePath: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
 });
 
@@ -144,6 +147,10 @@ export function resolveRepoFaceStatePath(
     return resolve(identity.faceStatePath);
   }
 
+  if (identity.personaStatePath) {
+    return resolve(identity.personaStatePath);
+  }
+
   return resolve(storageRoot, "private", "repo-faces", `${sanitizePathSegment(identity.id)}.cc`);
 }
 
@@ -199,6 +206,7 @@ function normalizeRepoDiscordIdentities(
     return {
       ...identity,
       id: identity.id.trim(),
+      identityKind: identity.identityKind,
       repoName: identity.repoName.trim(),
       displayName: identity.displayName.trim().slice(0, 80),
       repoPath: identity.repoPath?.trim(),
@@ -206,7 +214,9 @@ function normalizeRepoDiscordIdentities(
       allowedChannelIds: [...new Set(identity.allowedChannelIds.map((entry) => entry.trim()))],
       channelPermissions: normalizeChannelPermissions(identity.channelPermissions),
       avatarUrl: identity.avatarUrl?.trim(),
+      avatarPath: identity.avatarPath?.trim(),
       faceStatePath: identity.faceStatePath?.trim(),
+      personaStatePath: identity.personaStatePath?.trim(),
       description: identity.description?.trim(),
     };
   });

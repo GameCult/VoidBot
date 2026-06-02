@@ -2,7 +2,7 @@
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -288,8 +288,10 @@ function projectParticipant(participant, pendingMentions, initiativeClock, ident
     repoName: String(participant.repoName ?? metadata.repoName ?? "unknown"),
     repoPath: stringOrNull(metadata.repoPath),
     faceStatePath: stringOrNull(metadata.faceStatePath),
+    personaStatePath: stringOrNull(metadata.personaStatePath),
     description: stringOrNull(metadata.description),
     avatarUrl: metadata.avatarUrl ?? null,
+    avatarPath: metadata.avatarPath ?? null,
     channelPermissions: Array.isArray(metadata.channelPermissions)
       ? metadata.channelPermissions.slice(0, 12).map((entry) => ({
         label: stringOrNull(entry?.label),
@@ -364,9 +366,12 @@ async function readIdentityMetadata(registryPathValue) {
         displayName: stringOrNull(identity?.displayName),
         repoName: stringOrNull(identity?.repoName),
         repoPath: stringOrNull(identity?.repoPath),
+        identityKind: stringOrNull(identity?.identityKind),
         faceStatePath: stringOrNull(identity?.faceStatePath),
+        personaStatePath: stringOrNull(identity?.personaStatePath),
         description: stringOrNull(identity?.description),
         avatarUrl: stringOrNull(identity?.avatarUrl),
+        avatarPath: stringOrNull(identity?.avatarPath),
         channelPermissions: Array.isArray(identity?.channelPermissions) ? identity.channelPermissions : [],
       });
     }
@@ -393,6 +398,11 @@ async function readFaceStates(identityMetadata) {
   }
 
   for (const [id, identity] of identityMetadata.entries()) {
+    if (identity.identityKind === "native_persona") {
+      states.set(id, readPersonaStateSummary(identity));
+      continue;
+    }
+
     if (!identity.faceStatePath) {
       states.set(id, {
         readable: false,
@@ -439,6 +449,67 @@ async function readFaceStates(identityMetadata) {
     }
   }
   return states;
+}
+
+function readPersonaStateSummary(identity) {
+  if (!identity.personaStatePath) {
+    return {
+      readable: false,
+      path: null,
+      error: "No Persona state path registered.",
+      tree: [],
+    };
+  }
+
+  try {
+    const raw = readFileSync(resolve(identity.personaStatePath), "utf8");
+    const state = JSON.parse(stripBom(raw));
+    return {
+      readable: true,
+      kind: "native_persona",
+      path: identity.personaStatePath,
+      summary: truncate(state.publicDescription ?? state.presentation?.voiceSummary ?? "", 1200),
+      counts: {
+        memory: state.thoughtMemory?.memories?.length ?? 0,
+        pressures: state.agencyPressure?.pressures?.length ?? 0,
+        needs: state.affect?.needs?.length ?? 0,
+        statusReads: state.affect?.statusReads?.length ?? 0,
+        doctrine: state.affect?.doctrineStances?.length ?? 0,
+      },
+      tree: buildPersonaStateTree(state),
+    };
+  } catch (error) {
+    return {
+      readable: false,
+      kind: "native_persona",
+      path: identity.personaStatePath,
+      error: error instanceof Error ? error.message : String(error),
+      tree: [],
+    };
+  }
+}
+
+function buildPersonaStateTree(state) {
+  return [
+    node("Persona", "persona", [
+      leaf("Public Name", state.publicName),
+      leaf("Description", state.publicDescription),
+      leaf("Voice", state.presentation?.voiceSummary),
+      collectionNode("Values", "values", state.values, valueNode),
+      objectNode("Activation", "activationProfile", state.activationProfile),
+      collectionNode("Private Notes", "privateNotes", state.privateNotes, valueNode),
+    ]),
+    node("Thought Memory", "thoughtMemory", [
+      collectionNode("Short Term", "thoughtMemory.shortTerm", state.thoughtMemory?.shortTerm, memoryNode),
+      collectionNode("Durable Memories", "thoughtMemory.memories", state.thoughtMemory?.memories, memoryNode),
+      collectionNode("Incubation", "thoughtMemory.incubation", state.thoughtMemory?.incubation, memoryNode),
+    ]),
+    node("Affect", "affect", [
+      collectionNode("Needs", "affect.needs", state.affect?.needs, valueNode),
+      collectionNode("Status Reads", "affect.statusReads", state.affect?.statusReads, valueNode),
+      collectionNode("Doctrine", "affect.doctrineStances", state.affect?.doctrineStances, valueNode),
+    ]),
+  ];
 }
 
 function projectRestState(typedState) {
