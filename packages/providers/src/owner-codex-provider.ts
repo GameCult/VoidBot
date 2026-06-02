@@ -551,6 +551,9 @@ function restrictMcpServersToRepoFaceExploration(
     "list_indexed_repos",
     "search_sources",
     "get_source_context",
+    "list_odin_providers",
+    "list_odin_verses",
+    "get_odin_surface",
   ].join(",");
 
   return servers.map((server) => ({

@@ -50,6 +50,15 @@ export const applyRepoFaceStateOperationInputSchema = {
 
 export const runtimeInfoInputSchema = {};
 
+export const odinEndpointInputSchema = {
+  odinBaseUrl: z.string().url().optional(),
+};
+
+export const odinSurfaceInputSchema = {
+  odinBaseUrl: z.string().url().optional(),
+  providerId: z.string().min(1).optional(),
+};
+
 export const searchSourcesInputSchema = {
   query: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(MAX_RETRIEVAL_RESULT_LIMIT).optional(),
@@ -109,6 +118,15 @@ export interface ApplyRepoFaceStateOperationArgs {
 
 export interface RuntimeInfoArgs {
   [key: string]: never;
+}
+
+export interface OdinEndpointArgs {
+  odinBaseUrl?: string;
+}
+
+export interface OdinSurfaceArgs {
+  odinBaseUrl?: string;
+  providerId?: string;
 }
 
 export interface ListIndexedReposArgs {

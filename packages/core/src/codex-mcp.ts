@@ -12,6 +12,7 @@ export function buildVoidMcpServerConfig(workspaceRoot: string): CodexMcpServerC
     cwd: workspaceRoot,
     env: {
       VOIDBOT_WORKSPACE_ROOT: workspaceRoot,
+      ...(process.env.ODIN_BASE_URL ? { ODIN_BASE_URL: process.env.ODIN_BASE_URL } : {}),
     },
   };
 }

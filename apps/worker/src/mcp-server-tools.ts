@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import crypto from "node:crypto";
+import net from "node:net";
 
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
@@ -25,6 +27,8 @@ import {
   type ListIndexedReposArgs,
   type MessageContextArgs,
   type NotifyOwnerArgs,
+  type OdinEndpointArgs,
+  type OdinSurfaceArgs,
   type ApplyRepoFaceStateOperationArgs,
   type PostDiscordMessageArgs,
   type PostRepoIdentityMessageArgs,
@@ -39,6 +43,8 @@ import {
   applyRepoFaceStateOperationInputSchema,
   messageContextInputSchema,
   notifyOwnerInputSchema,
+  odinEndpointInputSchema,
+  odinSurfaceInputSchema,
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
   repoFaceStateInputSchema,
@@ -55,6 +61,8 @@ const READ_ONLY_ANNOTATIONS = {
   idempotentHint: true,
   openWorldHint: false,
 } as const;
+
+const DEFAULT_ODIN_BASE_URL = "http://127.0.0.1:8797";
 
 function isMcpToolAllowed(name: string): boolean {
   const raw = process.env.VOIDBOT_MCP_TOOL_ALLOWLIST?.trim();
@@ -110,6 +118,123 @@ export function registerVoidbotTools(
           },
         ],
         structuredContent: runtimeInfo,
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "list_odin_providers",
+    {
+      title: "List Odin Providers",
+      description:
+        "List Eve/CultUI providers currently advertised through Odin. This is read-only Verse discovery; use it to learn which provider-owned surfaces Odin can see.",
+      inputSchema: odinEndpointInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: OdinEndpointArgs): Promise<CallToolResult> => {
+      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
+      const catalog = await fetchOdinProviderCatalog(odinBaseUrl);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              odinBaseUrl,
+              providerCount: catalog.providers.length,
+              providers: catalog.providers,
+            }),
+          },
+        ],
+        structuredContent: {
+          odinBaseUrl,
+          providerCount: catalog.providers.length,
+          providers: catalog.providers,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "list_odin_verses",
+    {
+      title: "List Odin Verses",
+      description:
+        "Read Odin's current all-seer surface and list the Verse/service nodes it publishes. This is read-only; Odin remains the registry owner.",
+      inputSchema: odinEndpointInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: OdinEndpointArgs): Promise<CallToolResult> => {
+      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
+      const snapshot = await fetchOdinDeckSnapshot(odinBaseUrl);
+      const verses = summarizeOdinVerses(snapshot);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              odinBaseUrl,
+              providerId: snapshot.providerId,
+              title: snapshot.title,
+              version: snapshot.version,
+              updatedAt: snapshot.updatedAt,
+              verseCount: verses.length,
+              verses,
+            }),
+          },
+        ],
+        structuredContent: {
+          odinBaseUrl,
+          providerId: snapshot.providerId,
+          title: snapshot.title,
+          version: snapshot.version,
+          updatedAt: snapshot.updatedAt,
+          verseCount: verses.length,
+          verses,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "get_odin_surface",
+    {
+      title: "Get Odin Surface",
+      description:
+        "Read Odin's current all-seer Eve/CultUI surface, or ask Odin for one provider surface by providerId. Use this for read-only interface inspection, not command execution.",
+      inputSchema: odinSurfaceInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: OdinSurfaceArgs): Promise<CallToolResult> => {
+      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
+      const snapshot = await fetchOdinDeckSnapshot(odinBaseUrl, input.providerId);
+      const surfaceSummary = summarizeOdinSurface(snapshot);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              odinBaseUrl,
+              providerId: snapshot.providerId,
+              title: snapshot.title,
+              version: snapshot.version,
+              updatedAt: snapshot.updatedAt,
+              selectedNodeId: snapshot.selectedNodeId,
+              surface: surfaceSummary,
+            }),
+          },
+        ],
+        structuredContent: {
+          odinBaseUrl,
+          providerId: snapshot.providerId,
+          title: snapshot.title,
+          version: snapshot.version,
+          updatedAt: snapshot.updatedAt,
+          selectedNodeId: snapshot.selectedNodeId,
+          surface: surfaceSummary,
+        },
       };
     },
   );
@@ -905,4 +1030,277 @@ function identityForToolResult(
     jurisdictions: face ? [...face.inheritedJurisdictions, ...face.jurisdictions] : [],
     doctrine: face ? renderFaceIdentityDoctrine(face) : null,
   };
+}
+
+function normalizeOdinBaseUrl(value: string | undefined): string {
+  return (value ?? process.env.ODIN_BASE_URL ?? DEFAULT_ODIN_BASE_URL).replace(/\/+$/, "");
+}
+
+async function fetchOdinProviderCatalog(odinBaseUrl: string): Promise<{ providers: Array<Record<string, unknown>> }> {
+  const response = await fetch(`${odinBaseUrl}/eve/deck/providers`);
+  if (!response.ok) {
+    throw new Error(`Odin provider catalog failed: HTTP ${response.status}`);
+  }
+  const payload = await response.json() as { providers?: unknown };
+  const providers = Array.isArray(payload.providers)
+    ? payload.providers.filter(isRecord)
+    : [];
+  return { providers };
+}
+
+async function fetchOdinDeckSnapshot(
+  odinBaseUrl: string,
+  providerId?: string,
+): Promise<Record<string, unknown>> {
+  const deckUrl = new URL(odinBaseUrl);
+  deckUrl.protocol = deckUrl.protocol === "https:" ? "wss:" : "ws:";
+  deckUrl.pathname = "/eve/deck";
+  deckUrl.search = "";
+  const socket = await openWebSocketSnapshotSocket(deckUrl);
+  try {
+    if (providerId) {
+      sendClientWebSocketText(socket, JSON.stringify({ type: "open-provider", providerId }));
+    }
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const message = await readServerWebSocketText(socket, 3000);
+      const parsed = JSON.parse(message) as unknown;
+      if (!isRecord(parsed)) {
+        continue;
+      }
+      if (!providerId || parsed.providerId === providerId) {
+        return parsed;
+      }
+    }
+    throw new Error(providerId
+      ? `Odin did not publish provider ${providerId} in the snapshot window.`
+      : "Odin did not publish a deck snapshot.");
+  } finally {
+    socket.destroy();
+  }
+}
+
+function summarizeOdinVerses(snapshot: Record<string, unknown>) {
+  const root = getSurfaceRoot(snapshot);
+  const children = Array.isArray(root?.children) ? root.children.filter(isRecord) : [];
+  return children
+    .filter((child) => child.kind === "verse")
+    .map((child) => {
+      const props = isRecord(child.props) ? child.props : {};
+      const services = Array.isArray(props.services)
+        ? props.services.filter(isRecord).map((service) => ({
+            id: stringValue(service.id),
+            name: stringValue(service.name),
+            state: stringValue(service.state),
+            detail: stringValue(service.detail),
+          }))
+        : [];
+      return {
+        id: stringValue(props.verseId) || stringValue(child.id),
+        title: stringValue(props.title),
+        role: stringValue(props.role),
+        status: stringValue(props.status),
+        capabilities: Array.isArray(props.capabilities) ? props.capabilities.map(String) : [],
+        serviceCount: services.length,
+        services,
+      };
+    });
+}
+
+function summarizeOdinSurface(snapshot: Record<string, unknown>) {
+  const root = getSurfaceRoot(snapshot);
+  const children = Array.isArray(root?.children) ? root.children.filter(isRecord) : [];
+  const nodes = Array.isArray(snapshot.nodes) ? snapshot.nodes.filter(isRecord) : [];
+  const interfaces = children
+    .filter((child) => child.kind === "interface")
+    .map((child) => {
+      const props = isRecord(child.props) ? child.props : {};
+      return {
+        id: stringValue(child.id),
+        providerId: stringValue(props.providerId),
+        title: stringValue(props.title),
+        status: stringValue(props.status),
+        detail: stringValue(props.detail),
+        source: stringValue(props.source),
+        version: props.version ?? null,
+        updatedAt: stringValue(props.updatedAt),
+        rootKind: child.children && Array.isArray(child.children) && isRecord(child.children[0])
+          ? stringValue(child.children[0].kind)
+          : "",
+      };
+    });
+  const observationStreams = children
+    .filter((child) => child.kind === "pane" && isRecord(child.props) && child.props.title === "Device Observation Streams")
+    .flatMap((pane) => Array.isArray(pane.children) ? pane.children.filter(isRecord) : [])
+    .filter((child) => child.kind === "observation-stream")
+    .map((child) => {
+      const props = isRecord(child.props) ? child.props : {};
+      return {
+        id: stringValue(child.id),
+        deviceId: stringValue(props.deviceId),
+        streamId: stringValue(props.streamId),
+        kind: stringValue(props.kind),
+        state: stringValue(props.state),
+        latestAt: stringValue(props.latestAt),
+      };
+    });
+
+  return {
+    schema: isRecord(snapshot.surface) ? stringValue(snapshot.surface.schema) : "",
+    rootId: stringValue(root?.id),
+    rootKind: stringValue(root?.kind),
+    title: isRecord(root?.props) ? stringValue(root.props.title) : "",
+    summary: isRecord(root?.props) ? stringValue(root.props.summary) : "",
+    nodeCount: nodes.length,
+    childCount: children.length,
+    interfaceCount: interfaces.length,
+    interfaces,
+    observationStreamCount: observationStreams.length,
+    observationStreams,
+  };
+}
+
+function getSurfaceRoot(snapshot: Record<string, unknown>): Record<string, unknown> | undefined {
+  const surface = isRecord(snapshot.surface) ? snapshot.surface : undefined;
+  return isRecord(surface?.root) ? surface.root : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : value === null || value === undefined ? "" : String(value);
+}
+
+function openWebSocketSnapshotSocket(url: URL): Promise<net.Socket> {
+  return new Promise((resolve, reject) => {
+    if (url.protocol === "wss:") {
+      reject(new Error("Odin WSS is not supported by this lightweight MCP snapshot client yet."));
+      return;
+    }
+    const port = Number(url.port || 80);
+    const socket = net.createConnection({ host: url.hostname, port, timeout: 3000 });
+    const key = crypto.randomBytes(16).toString("base64");
+    let buffer = Buffer.alloc(0);
+    socket.on("connect", () => {
+      socket.write([
+        `GET ${url.pathname || "/eve/deck"} HTTP/1.1`,
+        `Host: ${url.hostname}:${port}`,
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Key: ${key}`,
+        "Sec-WebSocket-Version: 13",
+        "",
+        "",
+      ].join("\r\n"));
+    });
+    socket.on("data", function onHandshake(chunk) {
+      buffer = Buffer.concat([buffer, chunk]);
+      const marker = buffer.indexOf("\r\n\r\n");
+      if (marker < 0) {
+        return;
+      }
+      const header = buffer.subarray(0, marker).toString("latin1");
+      if (!header.startsWith("HTTP/1.1 101")) {
+        reject(new Error(header.split(/\r?\n/)[0] || "Odin websocket handshake failed"));
+        socket.destroy();
+        return;
+      }
+      socket.off("data", onHandshake);
+      socket.unshift(buffer.subarray(marker + 4));
+      resolve(socket);
+    });
+    socket.on("timeout", () => {
+      reject(new Error("Odin websocket connection timed out"));
+      socket.destroy();
+    });
+    socket.on("error", reject);
+  });
+}
+
+function sendClientWebSocketText(socket: net.Socket, text: string): void {
+  const payload = Buffer.from(text, "utf8");
+  const mask = crypto.randomBytes(4);
+  const header = [0x81];
+  if (payload.length < 126) {
+    header.push(0x80 | payload.length);
+  } else if (payload.length <= 0xffff) {
+    header.push(0x80 | 126, payload.length >> 8, payload.length & 0xff);
+  } else {
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(payload.length));
+    header.push(0x80 | 127, ...length);
+  }
+  const masked = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
+  socket.write(Buffer.concat([Buffer.from(header), mask, masked]));
+}
+
+function readServerWebSocketText(socket: net.Socket, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0);
+    const timer = setTimeout(() => cleanup(new Error("Timed out waiting for Odin deck frame")), timeoutMs);
+    function cleanup(error?: Error, value?: string) {
+      clearTimeout(timer);
+      socket.off("data", onData);
+      socket.off("error", onError);
+      if (error) {
+        reject(error);
+      } else {
+        resolve(value ?? "");
+      }
+    }
+    function onError(error: Error) {
+      cleanup(error);
+    }
+    function onData(chunk: Buffer) {
+      buffer = Buffer.concat([buffer, chunk]);
+      const frame = tryReadWebSocketFrame(buffer);
+      if (!frame) {
+        return;
+      }
+      buffer = buffer.subarray(frame.consumed);
+      if (frame.opcode === 0x1) {
+        cleanup(undefined, frame.payload.toString("utf8"));
+      } else if (frame.opcode === 0x8) {
+        cleanup(new Error("Odin websocket closed"));
+      }
+    }
+    socket.on("data", onData);
+    socket.on("error", onError);
+  });
+}
+
+function tryReadWebSocketFrame(buffer: Buffer): { opcode: number; payload: Buffer; consumed: number } | null {
+  if (buffer.length < 2) {
+    return null;
+  }
+  const opcode = buffer[0] & 0x0f;
+  const masked = Boolean(buffer[1] & 0x80);
+  let length = buffer[1] & 0x7f;
+  let offset = 2;
+  if (length === 126) {
+    if (buffer.length < offset + 2) {
+      return null;
+    }
+    length = buffer.readUInt16BE(offset);
+    offset += 2;
+  } else if (length === 127) {
+    if (buffer.length < offset + 8) {
+      return null;
+    }
+    length = Number(buffer.readBigUInt64BE(offset));
+    offset += 8;
+  }
+  const mask = masked ? buffer.subarray(offset, offset + 4) : null;
+  if (masked) {
+    offset += 4;
+  }
+  if (buffer.length < offset + length) {
+    return null;
+  }
+  let payload = buffer.subarray(offset, offset + length);
+  if (mask) {
+    payload = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
+  }
+  return { opcode, payload, consumed: offset + length };
 }
