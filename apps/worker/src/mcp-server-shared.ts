@@ -59,6 +59,22 @@ export const odinSurfaceInputSchema = {
   providerId: z.string().min(1).optional(),
 };
 
+export const odinInterfaceContextInputSchema = {
+  odinBaseUrl: z.string().url().optional(),
+  providerId: z.string().min(1),
+  maxTextItems: z.number().int().min(1).max(80).optional(),
+  maxTreeItems: z.number().int().min(1).max(160).optional(),
+};
+
+export const odinInterfaceCommandInputSchema = {
+  odinBaseUrl: z.string().url().optional(),
+  providerId: z.string().min(1),
+  command: z.string().min(1),
+  payload: z.record(z.unknown()).optional(),
+  frame: z.record(z.unknown()).optional(),
+  expectReceiptMs: z.number().int().min(0).max(15000).optional(),
+};
+
 export const searchSourcesInputSchema = {
   query: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(MAX_RETRIEVAL_RESULT_LIMIT).optional(),
@@ -127,6 +143,22 @@ export interface OdinEndpointArgs {
 export interface OdinSurfaceArgs {
   odinBaseUrl?: string;
   providerId?: string;
+}
+
+export interface OdinInterfaceContextArgs {
+  odinBaseUrl?: string;
+  providerId: string;
+  maxTextItems?: number;
+  maxTreeItems?: number;
+}
+
+export interface OdinInterfaceCommandArgs {
+  odinBaseUrl?: string;
+  providerId: string;
+  command: string;
+  payload?: Record<string, unknown>;
+  frame?: Record<string, unknown>;
+  expectReceiptMs?: number;
 }
 
 export interface ListIndexedReposArgs {

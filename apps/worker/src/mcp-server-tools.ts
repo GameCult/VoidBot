@@ -28,6 +28,8 @@ import {
   type MessageContextArgs,
   type NotifyOwnerArgs,
   type OdinEndpointArgs,
+  type OdinInterfaceCommandArgs,
+  type OdinInterfaceContextArgs,
   type OdinSurfaceArgs,
   type ApplyRepoFaceStateOperationArgs,
   type PostDiscordMessageArgs,
@@ -44,6 +46,8 @@ import {
   messageContextInputSchema,
   notifyOwnerInputSchema,
   odinEndpointInputSchema,
+  odinInterfaceCommandInputSchema,
+  odinInterfaceContextInputSchema,
   odinSurfaceInputSchema,
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
@@ -234,6 +238,127 @@ export function registerVoidbotTools(
           updatedAt: snapshot.updatedAt,
           selectedNodeId: snapshot.selectedNodeId,
           surface: surfaceSummary,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "load_odin_interface_context",
+    {
+      title: "Load Odin Interface Context",
+      description:
+        "Load one provider-owned CultMesh/Eve interface visible through Odin and lower it into compact text, tree, and command context for an agent. This is token-efficient TUI access, not raw dashboard dumping.",
+      inputSchema: odinInterfaceContextInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: OdinInterfaceContextArgs): Promise<CallToolResult> => {
+      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
+      const loaded = await loadOdinProviderInterface(odinBaseUrl, input.providerId);
+      const contextSummary = summarizeProviderInterface(loaded, {
+        maxTextItems: input.maxTextItems ?? 32,
+        maxTreeItems: input.maxTreeItems ?? 80,
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              odinBaseUrl,
+              ...contextSummary,
+            }),
+          },
+        ],
+        structuredContent: {
+          odinBaseUrl,
+          ...contextSummary,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "invoke_odin_interface_command",
+    {
+      title: "Invoke Odin Interface Command",
+      description:
+        "Send an explicit command through a provider-owned Eve/CultUI command boundary discovered via Odin. The command must be advertised by the provider interface. Odin is not the side-effect owner; this relays to the provider endpoint when the interface exposes a WebSocket command transport.",
+      inputSchema: odinInterfaceCommandInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (input: OdinInterfaceCommandArgs): Promise<CallToolResult> => {
+      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
+      const loaded = await loadOdinProviderInterface(odinBaseUrl, input.providerId);
+      const command = findAdvertisedCommand(loaded, input.command);
+
+      if (!command) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Provider ${input.providerId} does not advertise command "${input.command}". Load the interface context first and use one of its advertised commands.`,
+            },
+          ],
+          structuredContent: {
+            sent: false,
+            reason: "command_not_advertised",
+            providerId: input.providerId,
+            command: input.command,
+            advertisedCommands: extractProviderCommands(loaded).map((entry) => entry.command),
+          },
+          isError: true,
+        };
+      }
+
+      if (!loaded.source.startsWith("ws://")) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Provider ${input.providerId} is visible through ${loaded.source || "an unknown source"}, but this MCP relay only supports provider WebSocket command endpoints right now.`,
+            },
+          ],
+          structuredContent: {
+            sent: false,
+            reason: "unsupported_command_transport",
+            providerId: input.providerId,
+            command: input.command,
+            source: loaded.source,
+          },
+          isError: true,
+        };
+      }
+
+      const frame = input.frame ?? buildCommandFrame(input.providerId, command, input.payload ?? {});
+      const receipt = await sendProviderCommandFrame(loaded.source, frame, input.expectReceiptMs ?? 5000);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              sent: true,
+              providerId: input.providerId,
+              source: loaded.source,
+              command: input.command,
+              frame,
+              receipt,
+            }),
+          },
+        ],
+        structuredContent: {
+          sent: true,
+          providerId: input.providerId,
+          source: loaded.source,
+          command: input.command,
+          frame,
+          receipt,
         },
       };
     },
@@ -1161,6 +1286,368 @@ function summarizeOdinSurface(snapshot: Record<string, unknown>) {
     observationStreamCount: observationStreams.length,
     observationStreams,
   };
+}
+
+interface LoadedOdinInterface {
+  providerId: string;
+  title: string;
+  source: string;
+  status: string;
+  detail: string;
+  manifest: Record<string, unknown> | null;
+  snapshot: Record<string, unknown>;
+  root?: Record<string, unknown>;
+  loadedFrom: "provider-websocket" | "odin-embedded-interface";
+}
+
+interface InterfaceCommandSummary {
+  command: string;
+  label: string;
+  source: "surface.commands" | "node.action" | "node.command";
+  nodeId?: string;
+  transport?: string;
+  frameTemplate?: unknown;
+  payloadSchema?: unknown;
+  raw: Record<string, unknown>;
+}
+
+async function loadOdinProviderInterface(
+  odinBaseUrl: string,
+  providerId: string,
+): Promise<LoadedOdinInterface> {
+  const odinSnapshot = await fetchOdinDeckSnapshot(odinBaseUrl);
+  const interfaceNode = findOdinInterfaceNode(odinSnapshot, providerId);
+  if (!interfaceNode) {
+    throw new Error(`Odin does not currently expose provider interface ${providerId}.`);
+  }
+
+  const props = isRecord(interfaceNode.props) ? interfaceNode.props : {};
+  const source = stringValue(props.source);
+  if (source.startsWith("ws://")) {
+    try {
+      const providerSnapshot = await fetchProviderDeckSnapshot(source, providerId);
+      return {
+        providerId,
+        title: stringValue(providerSnapshot.title) || stringValue(props.title) || providerId,
+        source,
+        status: stringValue(props.status),
+        detail: stringValue(props.detail),
+        manifest: isRecord(props.manifest) ? props.manifest : null,
+        snapshot: providerSnapshot,
+        root: getSurfaceRoot(providerSnapshot),
+        loadedFrom: "provider-websocket",
+      };
+    } catch (error) {
+      const embedded = embeddedInterfaceRoot(interfaceNode);
+      if (!embedded) {
+        throw error;
+      }
+      return {
+        providerId,
+        title: stringValue(props.title) || providerId,
+        source,
+        status: stringValue(props.status),
+        detail: `provider websocket failed; using Odin embedded root: ${error instanceof Error ? error.message : String(error)}`,
+        manifest: isRecord(props.manifest) ? props.manifest : null,
+        snapshot: odinSnapshot,
+        root: embedded,
+        loadedFrom: "odin-embedded-interface",
+      };
+    }
+  }
+
+  return {
+    providerId,
+    title: stringValue(props.title) || providerId,
+    source,
+    status: stringValue(props.status),
+    detail: stringValue(props.detail),
+    manifest: isRecord(props.manifest) ? props.manifest : null,
+    snapshot: odinSnapshot,
+    root: embeddedInterfaceRoot(interfaceNode),
+    loadedFrom: "odin-embedded-interface",
+  };
+}
+
+async function fetchProviderDeckSnapshot(
+  deckUrlText: string,
+  providerId: string,
+): Promise<Record<string, unknown>> {
+  const deckUrl = new URL(deckUrlText);
+  const connection = await openWebSocketSnapshotSocket(deckUrl);
+  const { socket } = connection;
+  let pendingBuffer = connection.initialBuffer;
+  try {
+    sendClientWebSocketText(socket, JSON.stringify({ type: "open-provider", providerId }));
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const frame = await readServerWebSocketText(socket, 3000, pendingBuffer);
+      pendingBuffer = frame.remaining;
+      const parsed = JSON.parse(frame.text) as unknown;
+      if (isRecord(parsed) && parsed.providerId === providerId) {
+        return parsed;
+      }
+    }
+    throw new Error(`Provider deck did not publish ${providerId}.`);
+  } finally {
+    socket.destroy();
+  }
+}
+
+function findOdinInterfaceNode(
+  odinSnapshot: Record<string, unknown>,
+  providerId: string,
+): Record<string, unknown> | undefined {
+  const root = getSurfaceRoot(odinSnapshot);
+  const children = Array.isArray(root?.children) ? root.children.filter(isRecord) : [];
+  return children.find((child) =>
+    child.kind === "interface" &&
+    isRecord(child.props) &&
+    child.props.providerId === providerId,
+  );
+}
+
+function embeddedInterfaceRoot(interfaceNode: Record<string, unknown>): Record<string, unknown> | undefined {
+  const children = Array.isArray(interfaceNode.children) ? interfaceNode.children.filter(isRecord) : [];
+  return children[0];
+}
+
+function summarizeProviderInterface(
+  loaded: LoadedOdinInterface,
+  limits: {
+    maxTextItems: number;
+    maxTreeItems: number;
+  },
+) {
+  const surface = isRecord(loaded.snapshot.surface) ? loaded.snapshot.surface : {};
+  const root = loaded.root;
+  const commands = extractProviderCommands(loaded);
+  const flatNodes = flattenInterfaceNodes(root, limits.maxTreeItems);
+  const textItems = flatNodes
+    .map((entry) => entry.text)
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, limits.maxTextItems);
+
+  return {
+    providerId: loaded.providerId,
+    title: loaded.title,
+    source: loaded.source,
+    status: loaded.status,
+    detail: loaded.detail,
+    loadedFrom: loaded.loadedFrom,
+    updatedAt: stringValue(loaded.snapshot.updatedAt),
+    surface: {
+      schema: stringValue(surface.schema),
+      rootId: stringValue(root?.id),
+      rootKind: stringValue(root?.kind),
+      summary: isRecord(root?.props) ? stringValue(root.props.summary) : "",
+    },
+    commands,
+    textItems,
+    tree: flatNodes,
+  };
+}
+
+function flattenInterfaceNodes(
+  root: Record<string, unknown> | undefined,
+  limit: number,
+) {
+  const output: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    text?: string;
+    status?: string;
+    command?: string;
+    depth: number;
+  }> = [];
+
+  function visit(node: Record<string, unknown> | undefined, depth: number): void {
+    if (!node || output.length >= limit) {
+      return;
+    }
+    const props = isRecord(node.props) ? node.props : {};
+    const action = isRecord(props.action) ? props.action : undefined;
+    const command = stringValue(props.command) || stringValue(node.command) || stringValue(action?.command) || stringValue(action?.type);
+    output.push({
+      id: stringValue(node.id),
+      kind: stringValue(node.kind),
+      title: stringValue(props.title) || stringValue(props.label),
+      text: stringValue(props.text) || stringValue(props.detail) || undefined,
+      status: stringValue(props.status) || stringValue(props.tone) || undefined,
+      command: command || undefined,
+      depth,
+    });
+    const children = Array.isArray(node.children) ? node.children.filter(isRecord) : [];
+    for (const child of children) {
+      visit(child, depth + 1);
+    }
+  }
+
+  visit(root, 0);
+  return output;
+}
+
+function extractProviderCommands(loaded: LoadedOdinInterface): InterfaceCommandSummary[] {
+  const commands: InterfaceCommandSummary[] = [];
+  const surface = isRecord(loaded.snapshot.surface) ? loaded.snapshot.surface : {};
+  const surfaceCommands = Array.isArray(surface.commands)
+    ? surface.commands.filter(isRecord)
+    : Array.isArray(loaded.snapshot.commands)
+      ? loaded.snapshot.commands.filter(isRecord)
+      : [];
+
+  for (const command of surfaceCommands) {
+    const commandName = stringValue(command.command) || stringValue(command.id);
+    if (!commandName) {
+      continue;
+    }
+    commands.push({
+      command: commandName,
+      label: stringValue(command.label) || commandName,
+      source: "surface.commands",
+      transport: stringValue(command.transport),
+      frameTemplate: command.frameTemplate,
+      payloadSchema: command.payloadSchema,
+      raw: command,
+    });
+  }
+
+  for (const nodeCommand of extractNodeCommands(loaded.root)) {
+    if (!commands.some((entry) => entry.command === nodeCommand.command && entry.nodeId === nodeCommand.nodeId)) {
+      commands.push(nodeCommand);
+    }
+  }
+
+  return commands;
+}
+
+function extractNodeCommands(root: Record<string, unknown> | undefined): InterfaceCommandSummary[] {
+  const commands: InterfaceCommandSummary[] = [];
+  function visit(node: Record<string, unknown> | undefined): void {
+    if (!node) {
+      return;
+    }
+    const props = isRecord(node.props) ? node.props : {};
+    const action = isRecord(props.action) ? props.action : undefined;
+    const commandName = stringValue(props.command) || stringValue(node.command) || stringValue(action?.command) || stringValue(action?.type);
+    if (commandName) {
+      commands.push({
+        command: commandName,
+        label: stringValue(props.label) || stringValue(props.title) || commandName,
+        source: action ? "node.action" : "node.command",
+        nodeId: stringValue(node.id),
+        transport: stringValue(action?.transport),
+        frameTemplate: action?.frameTemplate,
+        payloadSchema: action?.payloadSchema,
+        raw: action ?? node,
+      });
+    }
+    const children = Array.isArray(node.children) ? node.children.filter(isRecord) : [];
+    for (const child of children) {
+      visit(child);
+    }
+  }
+  visit(root);
+  return commands;
+}
+
+function findAdvertisedCommand(
+  loaded: LoadedOdinInterface,
+  command: string,
+): InterfaceCommandSummary | undefined {
+  return extractProviderCommands(loaded).find((entry) => entry.command === command);
+}
+
+function buildCommandFrame(
+  providerId: string,
+  command: InterfaceCommandSummary,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (isRecord(command.frameTemplate)) {
+    return materializeFrameTemplate(command.frameTemplate, payload);
+  }
+
+  return {
+    type: "surface-command",
+    schema: "gamecult.eve.command.v1",
+    providerId,
+    command: command.command,
+    payload,
+    nodeId: command.nodeId,
+  };
+}
+
+function materializeFrameTemplate(
+  template: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const materialized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(template)) {
+    materialized[key] = materializeTemplateValue(value, payload);
+  }
+  return materialized;
+}
+
+function materializeTemplateValue(value: unknown, payload: Record<string, unknown>): unknown {
+  if (typeof value === "string") {
+    const exact = value.match(/^\$\{([A-Za-z0-9_.-]+)\??\}$/);
+    if (exact) {
+      return payload[exact[1]] ?? "";
+    }
+    return value.replace(/\$\{([A-Za-z0-9_.-]+)\??\}/g, (_match, key: string) =>
+      payload[key] === undefined || payload[key] === null ? "" : String(payload[key]),
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => materializeTemplateValue(entry, payload));
+  }
+  if (isRecord(value)) {
+    return materializeFrameTemplate(value, payload);
+  }
+  return value;
+}
+
+async function sendProviderCommandFrame(
+  deckUrlText: string,
+  frame: Record<string, unknown>,
+  expectReceiptMs: number,
+) {
+  const deckUrl = new URL(deckUrlText);
+  const connection = await openWebSocketSnapshotSocket(deckUrl);
+  const { socket } = connection;
+  let pendingBuffer = connection.initialBuffer;
+  try {
+    try {
+      const initial = await readServerWebSocketText(socket, 1000, pendingBuffer);
+      pendingBuffer = initial.remaining;
+    } catch {
+      // Some providers do not send an initial deck frame before commands.
+    }
+    sendClientWebSocketText(socket, JSON.stringify(frame));
+    if (expectReceiptMs <= 0) {
+      return {
+        received: false,
+        detail: "Command frame sent; receipt wait disabled.",
+      };
+    }
+    try {
+      const response = await readServerWebSocketText(socket, expectReceiptMs, pendingBuffer);
+      pendingBuffer = response.remaining;
+      const parsed = JSON.parse(response.text) as unknown;
+      return {
+        received: true,
+        frame: isRecord(parsed) ? parsed : response.text,
+        remainingBytes: pendingBuffer.length,
+      };
+    } catch (error) {
+      return {
+        received: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  } finally {
+    socket.destroy();
+  }
 }
 
 function getSurfaceRoot(snapshot: Record<string, unknown>): Record<string, unknown> | undefined {
