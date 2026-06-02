@@ -1056,13 +1056,17 @@ async function fetchOdinDeckSnapshot(
   deckUrl.protocol = deckUrl.protocol === "https:" ? "wss:" : "ws:";
   deckUrl.pathname = "/eve/deck";
   deckUrl.search = "";
-  const socket = await openWebSocketSnapshotSocket(deckUrl);
+  const connection = await openWebSocketSnapshotSocket(deckUrl);
+  const { socket } = connection;
+  let pendingBuffer = connection.initialBuffer;
   try {
     if (providerId) {
       sendClientWebSocketText(socket, JSON.stringify({ type: "open-provider", providerId }));
     }
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      const message = await readServerWebSocketText(socket, 3000);
+      const frame = await readServerWebSocketText(socket, 3000, pendingBuffer);
+      pendingBuffer = frame.remaining;
+      const message = frame.text;
       const parsed = JSON.parse(message) as unknown;
       if (!isRecord(parsed)) {
         continue;
@@ -1172,7 +1176,7 @@ function stringValue(value: unknown): string {
   return typeof value === "string" ? value : value === null || value === undefined ? "" : String(value);
 }
 
-function openWebSocketSnapshotSocket(url: URL): Promise<net.Socket> {
+function openWebSocketSnapshotSocket(url: URL): Promise<{ socket: net.Socket; initialBuffer: Buffer }> {
   return new Promise((resolve, reject) => {
     if (url.protocol === "wss:") {
       reject(new Error("Odin WSS is not supported by this lightweight MCP snapshot client yet."));
@@ -1207,8 +1211,7 @@ function openWebSocketSnapshotSocket(url: URL): Promise<net.Socket> {
         return;
       }
       socket.off("data", onHandshake);
-      socket.unshift(buffer.subarray(marker + 4));
-      resolve(socket);
+      resolve({ socket, initialBuffer: buffer.subarray(marker + 4) });
     });
     socket.on("timeout", () => {
       reject(new Error("Odin websocket connection timed out"));
@@ -1235,18 +1238,22 @@ function sendClientWebSocketText(socket: net.Socket, text: string): void {
   socket.write(Buffer.concat([Buffer.from(header), mask, masked]));
 }
 
-function readServerWebSocketText(socket: net.Socket, timeoutMs: number): Promise<string> {
+function readServerWebSocketText(
+  socket: net.Socket,
+  timeoutMs: number,
+  initialBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0),
+): Promise<{ text: string; remaining: Buffer<ArrayBufferLike> }> {
   return new Promise((resolve, reject) => {
-    let buffer = Buffer.alloc(0);
+    let buffer = initialBuffer;
     const timer = setTimeout(() => cleanup(new Error("Timed out waiting for Odin deck frame")), timeoutMs);
-    function cleanup(error?: Error, value?: string) {
+    function cleanup(error?: Error, value?: { text: string; remaining: Buffer<ArrayBufferLike> }) {
       clearTimeout(timer);
       socket.off("data", onData);
       socket.off("error", onError);
       if (error) {
         reject(error);
       } else {
-        resolve(value ?? "");
+        resolve(value ?? { text: "", remaining: Buffer.alloc(0) });
       }
     }
     function onError(error: Error) {
@@ -1254,19 +1261,26 @@ function readServerWebSocketText(socket: net.Socket, timeoutMs: number): Promise
     }
     function onData(chunk: Buffer) {
       buffer = Buffer.concat([buffer, chunk]);
+      readBufferedFrame();
+    }
+    function readBufferedFrame() {
       const frame = tryReadWebSocketFrame(buffer);
       if (!frame) {
         return;
       }
       buffer = buffer.subarray(frame.consumed);
       if (frame.opcode === 0x1) {
-        cleanup(undefined, frame.payload.toString("utf8"));
+        cleanup(undefined, {
+          text: frame.payload.toString("utf8"),
+          remaining: buffer,
+        });
       } else if (frame.opcode === 0x8) {
         cleanup(new Error("Odin websocket closed"));
       }
     }
     socket.on("data", onData);
     socket.on("error", onError);
+    readBufferedFrame();
   });
 }
 
