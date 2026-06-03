@@ -1,5 +1,5 @@
 {
-  "paused": true,
-  "reason": "Operator reported repo Faces saying nothing or speaking in code blocks; pause while Face prompt and interpreter logs are inspected.",
-  "updatedAt": "2026-06-03T00:36:00.0000000Z"
+  "paused": false,
+  "reason": "Resumed after live inspection showed the code-block report referred to pre-repair Discord messages; the public Face mouth now also normalizes inline Markdown code spans before Bifrost posting.",
+  "updatedAt": "2026-06-03T01:52:05.1079871Z"
 }

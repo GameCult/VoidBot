@@ -55,9 +55,15 @@ import {
   resolveArticleRepoRoot,
   validateRenderedArticleMarkdown,
 } from "./repo-face-article.js";
+import {
+  REPO_IDENTITY_POST_SENTINEL,
+  isNonPublicRepoIdentitySpeech,
+  normalizePublicRepoIdentitySpeech,
+  parseRepoIdentityPostIntents,
+  type RepoIdentityPostIntent,
+} from "./repo-face-speech.js";
 
 const config = loadConfig();
-const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
@@ -1013,13 +1019,6 @@ function parseRepoIdentityIdFromPrompt(prompt: string): string | undefined {
   );
 }
 
-interface RepoIdentityPostIntent {
-  identity?: string;
-  channelId?: string;
-  content: string;
-  replyToMessageId?: string;
-}
-
 interface RepoIdentityStateNoteIntent {
   identity?: string;
   kind: "memory" | "need" | "bond" | "status" | "mood" | "agency";
@@ -1129,8 +1128,15 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
       `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
     );
   }
+  const rawContent = intent.content.trim();
+  if (isNonPublicRepoIdentitySpeech(rawContent)) {
+    throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
+  }
+  const content = normalizePublicRepoIdentitySpeech(rawContent);
+  if (isNonPublicRepoIdentitySpeech(content)) {
+    throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
+  }
   if (isOwnerDmChannelAlias(channelId)) {
-    const content = intent.content.trim();
     const dmChannelId = await openOwnerDmChannel();
     const postedMessages = await postDiscordBotMessageChunks(
       dmChannelId,
@@ -1163,7 +1169,6 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  const content = intent.content.trim();
   if (content.length > 1900) {
     throw new Error(
       `Repo identity ${identity.id} SAY content is too long for one Discord message (${content.length} characters).`,
@@ -1171,9 +1176,6 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   }
   if (/\S(?:\.\.\.|…)$/.test(content)) {
     throw new Error(`Repo identity ${identity.id} SAY content appears mechanically truncated.`);
-  }
-  if (isNonPublicRepoIdentitySpeech(content)) {
-    throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
   }
   const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, content);
   const posted = runBifrostBridge([
@@ -1242,92 +1244,6 @@ async function loadRegisteredFaceRepoRegistry() {
   return faceRegistryAsRepoDiscordRegistry(
     await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath),
   );
-}
-
-function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
-  const intents: RepoIdentityPostIntent[] = parseRepoFaceActionBlocks(finalResponse)
-    .filter((block) => block.kind === "say")
-    .flatMap((block): RepoIdentityPostIntent[] => {
-      const content = requiredDslString(block.fields.content);
-      if (!content) {
-        return [];
-      }
-      return [
-        {
-          identity: optionalDslString(block.fields.identity),
-          channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
-          replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
-          content,
-        },
-      ];
-    });
-
-  for (const line of finalResponse.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith(REPO_IDENTITY_POST_SENTINEL)) {
-      continue;
-    }
-
-    const payload = trimmed.slice(REPO_IDENTITY_POST_SENTINEL.length).trim();
-    try {
-      const parsed = JSON.parse(payload) as Record<string, unknown>;
-      const content = typeof parsed.content === "string" ? parsed.content.trim() : "";
-      if (!content) {
-        continue;
-      }
-      intents.push({
-        identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
-        channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
-        replyToMessageId:
-          typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
-        content,
-      });
-    } catch {
-      continue;
-    }
-  }
-
-  return intents;
-}
-
-function isNonPublicRepoIdentitySpeech(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return true;
-  }
-  if (isSingleMarkdownFence(trimmed)) {
-    return true;
-  }
-  const unfenced = stripSingleMarkdownFence(trimmed);
-  const normalized = unfenced
-    .toLowerCase()
-    .replace(/[.!?]+$/g, "")
-    .trim();
-  return [
-    "nothing",
-    "nothing right now",
-    "nothing public",
-    "nothing in aquarium",
-    "stay private",
-    "no public speech",
-  ].includes(normalized);
-}
-
-function stripSingleMarkdownFence(value: string): string {
-  const trimmed = value.trim();
-  if (!isSingleMarkdownFence(trimmed)) {
-    return trimmed;
-  }
-  const singleLine = trimmed.match(/^`([^`\r\n]+)`$/);
-  if (singleLine) {
-    return singleLine[1].trim();
-  }
-  const block = trimmed.match(/^```[A-Za-z0-9_-]*\s*\r?\n([\s\S]*?)\r?\n```$/);
-  return block ? block[1].trim() : trimmed;
-}
-
-function isSingleMarkdownFence(value: string): boolean {
-  return /^`[^`\r\n]+`$/.test(value) || /^```[A-Za-z0-9_-]*\s*\r?\n[\s\S]*?\r?\n```$/.test(value);
 }
 
 function parseRepoIdentityIdFromRequestMessageId(requestMessageId: string | undefined): string | undefined {

@@ -35,6 +35,7 @@
     "agents:assemble-character-prompt": "tsx scripts/run-repo-face-heartbeats.ts --assemble-prompt",
     "agents:heartbeat-model-smoke": "node scripts/smoke-repo-face-heartbeat-model-scenarios.mjs",
     "agents:interpreter-loop-smoke": "node scripts/smoke-repo-face-interpreter-loop.mjs",
+    "agents:speech-boundary-smoke": "tsx scripts/smoke-repo-face-speech-boundary.ts",
     "agents:memory-projection-smoke": "node scripts/smoke-repo-face-memory-projection.mjs",
     "agents:article-contract-smoke": "tsx scripts/smoke-repo-face-article-contract.ts",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
