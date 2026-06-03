@@ -6,6 +6,8 @@ VoidBot is a Discord-native assistant for GameCult.
 
 It can answer from archived Discord history, indexed GameCult repos, and Aetheria lore, then hand deeper work off to Codex when Discord stops being a sane place to do it. The current build already supports real Discord replies, semantic retrieval, source and lore indexing, and Codex handoff flows.
 
+VoidBot's Verse contract is documented in `docs/architecture/voidbot-verse-service-contract.md`: durable agent/service state should be typed CultCache `.cc` or have a `.cc` witness/export, meaningful operator presentation goes through Eve/CultUI DSL published through CultMesh, Odin discovers provider-owned surfaces, and Huginn owns Persona/.cc runtime inspection stewardship. Local browser output is only a lowering, not dashboard authority.
+
 ## What VoidBot Can Do
 
 - answer owner questions through a Discord-safe `codex exec` lane
@@ -50,6 +52,8 @@ The repo is split into a bot, a worker, and a handful of focused packages:
 The durable local state is split on purpose: Postgres holds jobs, audit events, and interaction memory, while `.voidbot/` keeps artifacts, archives, logs, and detached indexing status.
 
 There is also a project-memory spine now for future Codex sessions: `state/map.yaml`, `state/scratch.md`, `state/evidence.jsonl`, `notes/fresh-workspace-handoff.md`, and the helper CLIs under `tools/`. The point is to rehydrate from canonical files instead of pretending the transcript will stay coherent forever.
+
+VoidBot also publishes a current swarm Eve/CultUI surface through CultMesh as `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by `.voidbot/status/cultmesh/voidbot-swarm-state.cc`. The generated `swarm-dashboard.html` is a local debug lowering of that surface.
 
 ## Quick Start
 

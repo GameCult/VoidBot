@@ -2,6 +2,8 @@
 
 This note is the source-grounded description of how the live VoidBot stack is shaped right now. It is not a prose replacement for the code, and it is not a second canonical map. Its job is to explain the major organs and their data flow in plain language with concrete path anchors.
 
+Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract.md`. VoidBot owns Discord cognition, archive/source retrieval, typed Void self-state, and repo Face compatibility rails. Huginn owns Persona/.cc runtime inspection stewardship. Bifrost owns governed work transport. Odin discovers provider-owned CultMesh surfaces. Eve/CultUI is the presentation contract; browser HTML is only a lowering.
+
 ## Main Organs
 
 - `apps/bot/src/discord-bot.ts`
@@ -193,6 +195,57 @@ This note is the source-grounded description of how the live VoidBot stack is sh
   - dashboard rendering for the local ops surface.
 
 When present, an ignored local script at `.voidbot/private/check-voidbot-operations.local.ps1` can inject adjacent-service checks into the same ops lane. That keeps private infrastructure gossip out of tracked code while preserving one boring place for smoke alarms to land.
+
+## Verse Service Contract
+
+- Owner:
+  - VoidBot owns Discord ingress, room cognition, moderation judgment, archive/source retrieval, direct owner handoff, typed Void self-state, repo Face scheduling compatibility, and parent-owned speech delivery.
+  - Huginn owns Persona-state and `.cc` runtime inspection stewardship: schema availability, migration pressure, projection health, access-tool sanity, CultMesh publication, and Eve DSL inspection for typed state.
+  - Bifrost owns governed public crossings for GitHub proposals/articles/comments, work topics, dispatch receipts, and future Discord-native work interfaces.
+  - Odin owns Verse/provider discovery and interface aggregation, not provider state.
+  - Eve/CultUI owns presentation shape; browser/native/TUI renderers lower provider-owned surfaces.
+- Inputs:
+  - Discord gateway events, archived Discord corpus, indexed source/lore archives, Postgres jobs/audit/interaction memory, Qdrant vectors, typed `.cc` self/Face state, Bifrost governance digest, and orchestrator status.
+- Outputs:
+  - Discord replies or webhook persona posts through parent-owned rails, owner handoff artifacts, MCP retrieval/tool results, typed CultCache operations, and CultMesh-advertised Eve/CultUI provider surfaces.
+- Derived state:
+  - JSON status files, generated HTML, source/archive freshness summaries, prompt-facing projections, and local debug snapshots are witnesses or lowerings. They do not own durable truth.
+- Forbidden writers:
+  - Child prompts, renderers, static dashboards, legacy JSON projections, Odin discovery, and Huginn inspection tools must not mutate VoidBot state except through advertised command bindings or typed operation ports.
+- Shared paths:
+  - Manual turns, CTB heartbeats, direct mentions, role/name addressing, moderation rumination, repo Face speech, Bifrost digest reads, and swarm controls should converge on typed operations and Eve/CultUI bindings rather than parallel dashboard endpoints.
+- Cut line:
+  - If a new status/control surface is meaningful to operators, publish it as typed CultCache or a `.cc` witness and an Eve/CultUI CultMesh surface. Do not add a separate HTTP dashboard or status-card authority.
+
+Current CultMesh namespace:
+
+- Verse id: `voidbot.local`
+- Provider id: `voidbot.swarm`
+- Endpoint: `cultmesh://voidbot.local/eve/providers/voidbot.swarm`
+- Snapshot document: `voidbot.swarm_state_snapshot`
+- Provider advertisement: `gamecult.eve.provider_advertisement`
+- Eve surface state: `gamecult.eve.surface_state`
+- Eve interface binding: `gamecult.eve.interface_binding`
+- Store path: `.voidbot/status/cultmesh/voidbot-swarm-state.cc`
+
+Target Eve surfaces:
+
+- `voidbot.discord`: room obligations, direct mentions, speech receipts, moderation/open-case pressure, delivery targets.
+- `voidbot.archive`: archived Discord corpus status, import/backfill health, bot-directed-prompt exclusion, history vector freshness.
+- `voidbot.source`: repo/lore shard freshness, indexed coverage, Qdrant collection health, detached reindex jobs.
+- `voidbot.repo_face`: registered identities, repo-local `.cc` witnesses, channel grants, prompt assembly status, Bifrost digest availability, Huginn inspection readiness.
+- `voidbot.swarm`: CTB order, active turns, pending mention queues, heat/cadence controls, orchestrator status, selected Face state witness.
+
+Migration order:
+
+1. Keep `voidbot.swarm` publishing a CultMesh Eve provider through `.voidbot/status/cultmesh/voidbot-swarm-state.cc`.
+2. Add `.cc` witness/export documents for JSON-only status surfaces before treating them as Verse state.
+3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while VoidBot remains the Discord compatibility carrier.
+4. Publish `voidbot.discord`, `voidbot.archive`, `voidbot.source`, and `voidbot.repo_face` as typed Eve/CultUI bindings.
+5. Let Odin discover and aggregate the provider-owned surfaces.
+6. Demote old JSON exports, local HTML, and legacy MCP state reads to diagnostics once CultMesh/Eve and Huginn cover the same reality.
+
+Huginn demotion line: VoidBot may carry repo Face `.cc` state paths, MCP diagnostics, and Discord compatibility registry data, but Persona/.cc inspection and portable Persona publication belong to Huginn. VoidBot must not let its private registry, static HTML, or legacy MCP state tools become the canonical Persona authority.
 
 ## Storage Boundaries
 

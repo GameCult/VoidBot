@@ -24,6 +24,13 @@ Discord Gateway
 - `packages/rag` contains the message archive, chunking pipeline, local embedding backends, pluggable vector-store backends, and log import state.
 - `packages/sandbox` defines policy profiles and a dry-run policy runner.
 
+VoidBot's Verse-facing service contract lives in
+`docs/architecture/voidbot-verse-service-contract.md`. The short version:
+VoidBot owns Discord cognition, archive/source retrieval, typed Void self-state,
+and repo Face compatibility rails; Huginn owns Persona/.cc runtime inspection
+stewardship; Bifrost owns governed work transport; Odin discovers
+provider-owned CultMesh surfaces; Eve/CultUI is the presentation contract.
+
 ## Current shortcuts and tradeoffs
 
 - Postgres now owns jobs, audit events, and interaction memory, but the archive side of RAG is still file-backed under `.voidbot/`.
@@ -40,10 +47,18 @@ Discord Gateway
   - `local_exec_owner_only` tries a read-only `codex exec` pass for direct Discord replies
   - `manual_package` remains available when you want explicit approval-gated packaging
 - When the local Discord-safe lane is not enough, the worker posts a handoff notice and writes the full context bundle to `.voidbot/artifacts/<job-id>/`.
+- The current swarm operator surface is published as an Eve/CultUI CultMesh
+  provider at `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by
+  `.voidbot/status/cultmesh/voidbot-swarm-state.cc`; any generated browser page
+  is only a debug lowering of that provider surface.
 
 ## Upgrade path
 
-1. Add a true restore drill path instead of stopping at backup verification plus freshness monitoring.
-2. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
-3. Expand worker-side run records and admin tooling around the interaction memory/event stores.
-4. Expand sandbox execution from dry-run policy checks to real constrained runners.
+1. Keep the current `voidbot.swarm` CultMesh publication discoverable through Odin.
+2. Add `.cc` witnesses or native typed CultCache documents for remaining JSON-only status surfaces before treating them as Verse state.
+3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while VoidBot remains the Discord compatibility carrier.
+4. Publish separate Eve/CultUI surfaces for Discord, archive, source, repo Face, and swarm state instead of growing a bespoke dashboard authority.
+5. Add a true restore drill path instead of stopping at backup verification plus freshness monitoring.
+6. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
+7. Expand worker-side run records and admin tooling around the interaction memory/event stores.
+8. Expand sandbox execution from dry-run policy checks to real constrained runners.
