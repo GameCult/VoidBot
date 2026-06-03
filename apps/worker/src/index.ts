@@ -737,9 +737,7 @@ function routeRepoFaceInterpretedOutput(
   interpretation: RepoFaceParentInterpretation,
   input: { job: JobRecord; faceOutputText: string },
 ): ProviderResponse {
-  const rawOutputText =
-    interpretation.routedOutput?.trim() ||
-    stripRepoIdentityPostIntents(fitDiscordMessage(response.outputText ?? response.summary));
+  const rawOutputText = interpretation.routedOutput?.trim() ?? "";
   const outputText = normalizeInterpretedRepoFaceSpeechDestinations(rawOutputText, input);
   const summary = outputText || "Repo Face parent interpreter routed no public or governed action.";
   return {
@@ -1174,6 +1172,9 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   if (/\S(?:\.\.\.|…)$/.test(content)) {
     throw new Error(`Repo identity ${identity.id} SAY content appears mechanically truncated.`);
   }
+  if (isNonPublicRepoIdentitySpeech(content)) {
+    throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
+  }
   const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, content);
   const posted = runBifrostBridge([
     "discord-post",
@@ -1286,54 +1287,47 @@ function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIn
     }
   }
 
-  if (intents.length === 0) {
-    const draftSpeech = parseRepoIdentityDraftSpeechIntent(finalResponse);
-    if (draftSpeech) {
-      intents.push({ content: draftSpeech });
-    }
-  }
-
   return intents;
 }
 
-function parseRepoIdentityDraftSpeechIntent(finalResponse: string): string | undefined {
-  const lines = finalResponse.split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index]?.match(/^\s*Would say:\s*(.+?)\s*$/i);
-    if (!match) {
-      continue;
-    }
-
-    const contentLines = [match[1] ?? ""];
-    for (const following of lines.slice(index + 1)) {
-      const trimmed = following.trim();
-      if (!trimmed) {
-        break;
-      }
-      if (/^(Private thought|Private summary|What should stick|State note|Would say):/i.test(trimmed)) {
-        break;
-      }
-      contentLines.push(trimmed);
-    }
-
-    const content = stripPairedQuotes(contentLines.join("\n").trim());
-    if (content) {
-      return content;
-    }
+function isNonPublicRepoIdentitySpeech(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
   }
-
-  return undefined;
+  if (isSingleMarkdownFence(trimmed)) {
+    return true;
+  }
+  const unfenced = stripSingleMarkdownFence(trimmed);
+  const normalized = unfenced
+    .toLowerCase()
+    .replace(/[.!?]+$/g, "")
+    .trim();
+  return [
+    "nothing",
+    "nothing right now",
+    "nothing public",
+    "nothing in aquarium",
+    "stay private",
+    "no public speech",
+  ].includes(normalized);
 }
 
-function stripPairedQuotes(value: string): string {
+function stripSingleMarkdownFence(value: string): string {
   const trimmed = value.trim();
-  if (
-    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1).trim();
+  if (!isSingleMarkdownFence(trimmed)) {
+    return trimmed;
   }
-  return trimmed;
+  const singleLine = trimmed.match(/^`([^`\r\n]+)`$/);
+  if (singleLine) {
+    return singleLine[1].trim();
+  }
+  const block = trimmed.match(/^```[A-Za-z0-9_-]*\s*\r?\n([\s\S]*?)\r?\n```$/);
+  return block ? block[1].trim() : trimmed;
+}
+
+function isSingleMarkdownFence(value: string): boolean {
+  return /^`[^`\r\n]+`$/.test(value) || /^```[A-Za-z0-9_-]*\s*\r?\n[\s\S]*?\r?\n```$/.test(value);
 }
 
 function parseRepoIdentityIdFromRequestMessageId(requestMessageId: string | undefined): string | undefined {

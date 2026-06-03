@@ -1,6 +1,5 @@
 {
-  "paused": false,
-  "reason": "Resumed by operator request.",
-  "pausedAt": "2026-05-24T09:14:06.6535422Z",
-  "resumedAt": "2026-05-24T10:19:00Z"
+  "paused": true,
+  "reason": "Operator reported repo Faces saying nothing or speaking in code blocks; pause while Face prompt and interpreter logs are inspected.",
+  "updatedAt": "2026-06-03T00:36:00.0000000Z"
 }
