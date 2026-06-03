@@ -1,0 +1,633 @@
+{
+  "documentType": "voidbot.provider_advertisement_catalog",
+  "schemaId": "voidbot.provider_advertisement_catalog.v0",
+  "fixtureKind": "read-only-contract-export",
+  "note": "This tracked fixture advertises VoidBot Verse provider boundaries. It is not live service state, not a dashboard, and not a Persona inspection authority.",
+  "verseId": "voidbot.local",
+  "providerAdvertisement": {
+    "documentType": "gamecult.eve.provider_advertisement",
+    "schemaId": "gamecult.eve.provider_advertisement.v1"
+  },
+  "eveDocuments": {
+    "surfaceState": {
+      "documentType": "gamecult.eve.surface_state",
+      "schemaId": "gamecult.eve.surface_state.v1"
+    },
+    "interfaceBinding": {
+      "documentType": "gamecult.eve.interface_binding",
+      "schemaId": "gamecult.eve.interface_binding.v1"
+    }
+  },
+  "cultMeshKeys": {
+    "providerCatalog": {
+      "verseId": "voidbot.local",
+      "key": "voidbot.providers",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.providers"
+    },
+    "providerAdvertisements": [
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.discord",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.discord"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.archive",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.source",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.source"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.repo_face",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.swarm",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm"
+      }
+    ],
+    "surfaceStates": [
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.discord",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.discord"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.archive",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.source",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.source"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.repo_face",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.swarm",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm"
+      }
+    ],
+    "interfaceBindings": [
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.discord",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.discord"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.archive",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.source",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.source"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.repo_face",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.swarm",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm"
+      }
+    ],
+    "liveSwarmStore": ".voidbot/status/cultmesh/voidbot-swarm-state.cc"
+  },
+  "huginnInspectionHandoff": {
+    "owner": "Huginn",
+    "scope": [
+      "Persona-state schema availability",
+      ".cc inspection and projection health",
+      "Persona migration pressure",
+      "CultMesh publication of Persona/.cc inspection surfaces",
+      "Eve DSL emission for typed-state inspection"
+    ],
+    "voidbotRole": [
+      "Carries Discord compatibility registry data.",
+      "Names repo Face .cc witness paths.",
+      "Feeds context to Huginn when requested.",
+      "Does not become the Persona runtime steward."
+    ],
+    "personaSchema": "E:/Projects/EpiphanyAgent/schemas/cultnet/gamecult.persona_state.v0.schema.json"
+  },
+  "personaStateBoundaries": {
+    "portableAuthority": "gamecult.persona_state.v0",
+    "voidbotCompatibilityOnly": [
+      "repo Discord identity registry",
+      "webhook persona addressing",
+      "repo Face .cc witness paths",
+      "legacy MCP state diagnostics"
+    ],
+    "forbiddenAuthority": [
+      "VoidBot static HTML as Persona truth",
+      "VoidBot private registry as portable Persona state",
+      "Odin mutation of provider state",
+      "Huginn inspection tools mutating VoidBot state outside advertised typed command ports"
+    ]
+  },
+  "providers": [
+    {
+      "schemaVersion": "gamecult.eve.provider_advertisement.v1",
+      "providerId": "voidbot.discord",
+      "verseId": "voidbot.local",
+      "title": "VoidBot Discord",
+      "description": "Discord ingress, room obligations, direct mentions, speech receipts, moderation pressure, and delivery targets.",
+      "status": "planned-witness",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.discord",
+      "documents": [
+        {
+          "type": "gamecult.eve.provider_advertisement",
+          "schemaId": "gamecult.eve.provider_advertisement.v1",
+          "key": "voidbot.discord"
+        },
+        {
+          "type": "gamecult.eve.surface_state",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "key": "voidbot.discord"
+        },
+        {
+          "type": "gamecult.eve.interface_binding",
+          "schemaId": "gamecult.eve.interface_binding.v1",
+          "key": "voidbot.discord"
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "voidbot.discord.room_obligations",
+          "title": "Room obligations",
+          "purpose": "Open direct asks, moderation cases, recent speech receipts, and channel delivery targets.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.discord.mention_queue",
+          "title": "Mention queue",
+          "purpose": "Role/name/bot mentions that become CTB obligations instead of direct provider jobs.",
+          "presentationOwner": "Eve/CultUI"
+        }
+      ],
+      "commands": [
+        {
+          "id": "discord.inspect_room_obligations",
+          "mode": "read-only",
+          "purpose": "Load current open room obligations and speech receipts through the provider surface.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "discord.inspect_delivery_targets",
+          "mode": "read-only",
+          "purpose": "Load configured parent-owned delivery targets without sending speech.",
+          "advertisedOnly": true
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "voidbot.private_self_state",
+          "path": ".voidbot/private/void-self-state.cc",
+          "owner": "VoidBot typed operations",
+          "contains": [
+            "void.moderation_cursor",
+            "void.speech_receipts",
+            "void.candidate_interventions"
+          ]
+        },
+        {
+          "id": "voidbot.discord_archive",
+          "path": ".voidbot/rag/messages.json",
+          "owner": "VoidBot raw archive",
+          "contains": [
+            "archived Discord messages",
+            "forensic bot-directed prompts"
+          ]
+        },
+        {
+          "id": "voidbot.moderation_status",
+          "path": ".voidbot/status/moderation-rumination.json",
+          "owner": "VoidBot rumination runner",
+          "contains": [
+            "debug status only"
+          ]
+        },
+        {
+          "id": "voidbot.pending_mentions",
+          "path": ".voidbot/status/void-moderation-pending-mentions.json",
+          "owner": "VoidBot CTB scheduler",
+          "contains": [
+            "debug status only"
+          ]
+        }
+      ],
+      "owners": {
+        "state": "VoidBot typed self-state service",
+        "inspection": "VoidBot for Discord-specific obligations; Huginn for Persona/.cc generic inspection",
+        "presentation": "Eve/CultUI lowerings"
+      },
+      "demotions": []
+    },
+    {
+      "schemaVersion": "gamecult.eve.provider_advertisement.v1",
+      "providerId": "voidbot.archive",
+      "verseId": "voidbot.local",
+      "title": "VoidBot Archive",
+      "description": "Archived Discord corpus status, import/backfill health, bot-directed-prompt exclusion, and history retrieval caveats.",
+      "status": "planned-witness",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive",
+      "documents": [
+        {
+          "type": "gamecult.eve.provider_advertisement",
+          "schemaId": "gamecult.eve.provider_advertisement.v1",
+          "key": "voidbot.archive"
+        },
+        {
+          "type": "gamecult.eve.surface_state",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "key": "voidbot.archive"
+        },
+        {
+          "type": "gamecult.eve.interface_binding",
+          "schemaId": "gamecult.eve.interface_binding.v1",
+          "key": "voidbot.archive"
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "voidbot.archive.import_health",
+          "title": "Archive import health",
+          "purpose": "Discord archive freshness, backfill status, and ingestion warnings.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.archive.retrieval_health",
+          "title": "History retrieval health",
+          "purpose": "Vector freshness and archive caveats for agent retrieval.",
+          "presentationOwner": "Eve/CultUI"
+        }
+      ],
+      "commands": [
+        {
+          "id": "archive.search_history",
+          "mode": "read-only",
+          "purpose": "Search archived Discord history through VoidBot MCP/retrieval surfaces.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "archive.get_message_context",
+          "mode": "read-only",
+          "purpose": "Fetch a bounded context window around an archived Discord message.",
+          "advertisedOnly": true
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "voidbot.discord_archive",
+          "path": ".voidbot/rag/messages.json",
+          "owner": "VoidBot raw archive",
+          "contains": [
+            "raw archive",
+            "forensics"
+          ]
+        },
+        {
+          "id": "voidbot.history_vectors",
+          "path": "qdrant://voidbot/history",
+          "owner": "Qdrant",
+          "contains": [
+            "semantic history vectors"
+          ]
+        },
+        {
+          "id": "voidbot.operations_health",
+          "path": ".voidbot/status/operations-health.json",
+          "owner": "VoidBot watchdog",
+          "contains": [
+            "debug status only"
+          ]
+        }
+      ],
+      "owners": {
+        "state": "VoidBot archive and retrieval stack",
+        "inspection": "VoidBot MCP/retrieval tools",
+        "presentation": "Eve/CultUI lowerings"
+      },
+      "demotions": []
+    },
+    {
+      "schemaVersion": "gamecult.eve.provider_advertisement.v1",
+      "providerId": "voidbot.source",
+      "verseId": "voidbot.local",
+      "title": "VoidBot Source",
+      "description": "Indexed repo/lore coverage, repo shard status, vector collection health, and source reindex jobs.",
+      "status": "planned-witness",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.source",
+      "documents": [
+        {
+          "type": "gamecult.eve.provider_advertisement",
+          "schemaId": "gamecult.eve.provider_advertisement.v1",
+          "key": "voidbot.source"
+        },
+        {
+          "type": "gamecult.eve.surface_state",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "key": "voidbot.source"
+        },
+        {
+          "type": "gamecult.eve.interface_binding",
+          "schemaId": "gamecult.eve.interface_binding.v1",
+          "key": "voidbot.source"
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "voidbot.source.coverage",
+          "title": "Source coverage",
+          "purpose": "Indexed repository and lore coverage with shard freshness.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.source.reindex_jobs",
+          "title": "Source reindex jobs",
+          "purpose": "Detached indexing job status and hook reconciliation pressure.",
+          "presentationOwner": "Eve/CultUI"
+        }
+      ],
+      "commands": [
+        {
+          "id": "source.search_sources",
+          "mode": "read-only",
+          "purpose": "Search indexed source and lore repositories.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "source.get_source_context",
+          "mode": "read-only",
+          "purpose": "Fetch a bounded source chunk window from an indexed document.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "source.list_indexed_repos",
+          "mode": "read-only",
+          "purpose": "List indexed source/lore repositories visible to VoidBot.",
+          "advertisedOnly": true
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "voidbot.source_archive_manifest",
+          "path": ".voidbot/rag/source-documents.json",
+          "owner": "VoidBot source archive",
+          "contains": [
+            "manifest"
+          ]
+        },
+        {
+          "id": "voidbot.source_archive_shards",
+          "path": ".voidbot/rag/source-documents.repos/",
+          "owner": "VoidBot source archive",
+          "contains": [
+            "per-repo source shards"
+          ]
+        },
+        {
+          "id": "voidbot.source_vectors",
+          "path": "qdrant://voidbot/source",
+          "owner": "Qdrant",
+          "contains": [
+            "semantic source vectors"
+          ]
+        },
+        {
+          "id": "voidbot.source_hooks_status",
+          "path": ".voidbot/status/source-hooks/",
+          "owner": "VoidBot source hook scripts",
+          "contains": [
+            "debug status only"
+          ]
+        }
+      ],
+      "owners": {
+        "state": "VoidBot RAG/source archive stack",
+        "inspection": "VoidBot MCP/retrieval tools",
+        "presentation": "Eve/CultUI lowerings"
+      },
+      "demotions": []
+    },
+    {
+      "schemaVersion": "gamecult.eve.provider_advertisement.v1",
+      "providerId": "voidbot.repo_face",
+      "verseId": "voidbot.local",
+      "title": "VoidBot Repo Face Compatibility",
+      "description": "Registered Face address book, repo-local state witnesses, channel grants, prompt assembly status, Bifrost digest availability, and Huginn inspection readiness.",
+      "status": "planned-handoff",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face",
+      "documents": [
+        {
+          "type": "gamecult.eve.provider_advertisement",
+          "schemaId": "gamecult.eve.provider_advertisement.v1",
+          "key": "voidbot.repo_face"
+        },
+        {
+          "type": "gamecult.eve.surface_state",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "key": "voidbot.repo_face"
+        },
+        {
+          "type": "gamecult.eve.interface_binding",
+          "schemaId": "gamecult.eve.interface_binding.v1",
+          "key": "voidbot.repo_face"
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "voidbot.repo_face.address_book",
+          "title": "Repo Face address book",
+          "purpose": "Role-backed Discord identity registry and webhook persona compatibility data.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.repo_face.state_witnesses",
+          "title": "Repo Face state witnesses",
+          "purpose": "Repo-local .cc state paths and Huginn handoff readiness.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.repo_face.prompt_assembly",
+          "title": "Prompt assembly",
+          "purpose": "Read-only status for state projection, channel grants, Bifrost digest reads, and current-room transcript attachment.",
+          "presentationOwner": "Eve/CultUI"
+        }
+      ],
+      "commands": [
+        {
+          "id": "repo_face.list_identities",
+          "mode": "read-only",
+          "purpose": "List registered repo Face Discord identities and compatibility metadata.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "repo_face.inspect_prompt_packet",
+          "mode": "read-only",
+          "purpose": "Render an exact Face prompt packet for diagnostics without queueing a turn.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "repo_face.handoff_to_huginn",
+          "mode": "handoff",
+          "purpose": "Ask Huginn to inspect, validate, migrate, or publish Persona/.cc state; VoidBot does not become the Persona steward.",
+          "advertisedOnly": true
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "voidbot.repo_discord_identities",
+          "path": "REPO_DISCORD_IDENTITIES_PATH",
+          "owner": "VoidBot compatibility registry",
+          "contains": [
+            "Discord role ids",
+            "webhook persona address book",
+            "channel grants"
+          ]
+        },
+        {
+          "id": "voidbot.repo_face_state",
+          "path": ".voidbot/private/repo-faces/<identity>.cc or repo-local Face state path",
+          "owner": "VoidBot compatibility carrier",
+          "contains": [
+            "legacy Face .cc state witness"
+          ]
+        },
+        {
+          "id": "gamecult.persona_state.v0",
+          "path": "E:/Projects/EpiphanyAgent/schemas/cultnet/gamecult.persona_state.v0.schema.json",
+          "owner": "Epiphany Persona schema",
+          "contains": [
+            "portable Persona state schema"
+          ]
+        }
+      ],
+      "owners": {
+        "state": "VoidBot compatibility registry for Discord addressing; repo-local owners for Face state",
+        "inspection": "Huginn for Persona/.cc stewardship",
+        "presentation": "Eve/CultUI lowerings"
+      },
+      "demotions": [
+        "VoidBot repo Face MCP state reads are diagnostics, not canonical Persona inspection.",
+        "VoidBot registry data is a Discord compatibility projection, not portable Persona authority.",
+        "Persona publication and .cc inspection readiness belong to Huginn once the handoff path exists."
+      ]
+    },
+    {
+      "schemaVersion": "gamecult.eve.provider_advertisement.v1",
+      "providerId": "voidbot.swarm",
+      "verseId": "voidbot.local",
+      "title": "VoidBot Swarm",
+      "description": "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Face state witness.",
+      "status": "live",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm",
+      "documents": [
+        {
+          "type": "gamecult.eve.provider_advertisement",
+          "schemaId": "gamecult.eve.provider_advertisement.v1",
+          "key": "voidbot.swarm"
+        },
+        {
+          "type": "gamecult.eve.surface_state",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "key": "voidbot.swarm"
+        },
+        {
+          "type": "gamecult.eve.interface_binding",
+          "schemaId": "gamecult.eve.interface_binding.v1",
+          "key": "voidbot.swarm"
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "voidbot.swarm.ctb_order",
+          "title": "CTB order",
+          "purpose": "Initiative order, active turns, recovery timing, pending mentions, and selected Face witness.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.swarm.controls",
+          "title": "Swarm controls",
+          "purpose": "Pause, cadence, and manual turn request controls through the Eve binding.",
+          "presentationOwner": "Eve/CultUI"
+        }
+      ],
+      "commands": [
+        {
+          "id": "swarm.inspect",
+          "mode": "read-only",
+          "purpose": "Load the current CTB and selected Face state surface.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "swarm.set_pause",
+          "mode": "side-effecting",
+          "purpose": "Set the repo-controlled swarm pause flag through the provider-owned command boundary.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "swarm.set_cadence_multiplier",
+          "mode": "side-effecting",
+          "purpose": "Update scheduler cadence through the provider-owned command boundary.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "swarm.force_turn",
+          "mode": "side-effecting",
+          "purpose": "Queue a manual turn request through the provider-owned command boundary.",
+          "advertisedOnly": true
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "voidbot.swarm_state_snapshot",
+          "path": ".voidbot/status/cultmesh/voidbot-swarm-state.cc",
+          "owner": "scripts/render-voidbot-swarm-dashboard.mjs",
+          "contains": [
+            "voidbot.swarm_state_snapshot",
+            "gamecult.eve.provider_advertisement",
+            "gamecult.eve.surface_state",
+            "gamecult.eve.interface_binding"
+          ]
+        },
+        {
+          "id": "voidbot.repo_face_heartbeat_state",
+          "path": ".voidbot/status/repo-face-heartbeats.json",
+          "owner": "VoidBot CTB scheduler",
+          "contains": [
+            "debug/status source"
+          ]
+        },
+        {
+          "id": "voidbot.orchestrator_state",
+          "path": ".voidbot/status/gamecult-orchestrator.json",
+          "owner": "GameCult Local Orchestrator",
+          "contains": [
+            "debug/status source"
+          ]
+        }
+      ],
+      "owners": {
+        "state": "VoidBot CTB heartbeat state and typed operation ports",
+        "inspection": "VoidBot swarm renderer for swarm-only state; Huginn for Persona/.cc detail",
+        "presentation": "Eve/CultUI lowerings"
+      },
+      "demotions": []
+    }
+  ]
+}
