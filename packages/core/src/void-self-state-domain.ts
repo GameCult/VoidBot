@@ -443,7 +443,41 @@ export const voidSelfProfileSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
-export const voidModerationCursorSchema = z.object({
+const legacyModerationCursorEpoch = "1970-01-01T00:00:00.000Z";
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function latestUserStatusTimestamp(userStatuses: unknown[]): string | undefined {
+  const timestamps = userStatuses
+    .map((entry) => isUnknownRecord(entry) ? entry.updatedAt : undefined)
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .sort();
+  return timestamps.at(-1);
+}
+
+function normalizeLegacyModerationCursorInput(value: unknown): unknown {
+  if (!isUnknownRecord(value) || value.schemaVersion !== undefined || !Array.isArray(value.userStatuses)) {
+    return value;
+  }
+
+  return {
+    schemaVersion: 1,
+    lastReviewedMessageId:
+      typeof value.lastReviewedMessageId === "string" ? value.lastReviewedMessageId : undefined,
+    lastReviewedTimestamp:
+      typeof value.lastReviewedTimestamp === "string" ? value.lastReviewedTimestamp : undefined,
+    openCases: Array.isArray(value.openCases) ? value.openCases : [],
+    userStatuses: value.userStatuses,
+    repoActivityCursor: Array.isArray(value.repoActivityCursor) ? value.repoActivityCursor : [],
+    updatedAt: typeof value.updatedAt === "string"
+      ? value.updatedAt
+      : latestUserStatusTimestamp(value.userStatuses) ?? legacyModerationCursorEpoch,
+  };
+}
+
+const voidModerationCursorPayloadSchema = z.object({
   schemaVersion: z.literal(1),
   lastReviewedMessageId: z.string().trim().min(1).optional(),
   lastReviewedTimestamp: timestampSchema.optional(),
@@ -452,6 +486,11 @@ export const voidModerationCursorSchema = z.object({
   repoActivityCursor: z.array(moderationRepoCursorSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
+
+export const voidModerationCursorSchema = z.preprocess(
+  normalizeLegacyModerationCursorInput,
+  voidModerationCursorPayloadSchema,
+);
 
 export const voidSpeechReceiptsSchema = z.object({
   schemaVersion: z.literal(1),

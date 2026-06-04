@@ -98,6 +98,8 @@ try {
   $state = $stateJson | ConvertFrom-Json
   $memory = @($state.thoughtMemory.shortTerm | Where-Object { $_.memoryId -eq "fixture-future-short-term" })[0]
   $candidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-targetless-queued" })[0]
+  $legacyCursorJson = Invoke-NodeChecked -Arguments @("-e", "const core=require('./packages/core/dist/index.js'); const parsed=core.voidModerationCursorSchema.parse({ userStatuses: [{ userId: 'fixture-user', userName: 'Fixture User', status: 'watched', summary: 'Legacy bare status patch should decode as a cursor document.', updatedAt: '2026-06-04T00:00:00.000Z' }] }); console.log(JSON.stringify(parsed));")
+  $legacyCursor = $legacyCursorJson | ConvertFrom-Json
 
   if ($memory.createdAt -eq "2999-01-01T00:00:00.000Z" -or $memory.updatedAt -eq "2999-01-01T00:00:00.000Z") {
     throw "Short-term memory kept model-authored future timestamps."
@@ -110,6 +112,12 @@ try {
   }
   if (-not @($candidate.tags).Contains("normalized:targetless-queued-to-deferred")) {
     throw "Targetless queued candidate was deferred without a normalization tag."
+  }
+  if ($legacyCursor.schemaVersion -ne 1 -or @($legacyCursor.openCases).Count -ne 0 -or @($legacyCursor.repoActivityCursor).Count -ne 0) {
+    throw "Legacy bare moderation userStatuses patch did not normalize to a canonical cursor document."
+  }
+  if ($legacyCursor.updatedAt -ne "2026-06-04T00:00:00.000Z") {
+    throw "Legacy bare moderation cursor did not inherit the latest status timestamp."
   }
   Assert-NotFutureTimestamp -Timestamp $candidate.createdAt -Label "candidate createdAt"
   Assert-NotFutureTimestamp -Timestamp $candidate.updatedAt -Label "candidate updatedAt"
