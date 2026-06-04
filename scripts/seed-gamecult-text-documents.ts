@@ -20,14 +20,15 @@ async function main(): Promise<void> {
   const checkOnly = process.argv.includes("--check");
   const preview = process.argv.includes("--preview");
   const marqueePreview = process.argv.includes("--marquee-preview");
+  const documentId = readArgValue("--document-id") ?? ODIN_VERSE_POEM_DOCUMENT_ID;
 
   const documentSet = checkOnly
     ? await loadGameCultTextDocumentSet(storePath)
     : await ensureGameCultTextDocumentSet(storePath);
-  const poem = documentSet.documents.find((document) => document.id === ODIN_VERSE_POEM_DOCUMENT_ID);
+  const poem = documentSet.documents.find((document) => document.id === documentId);
 
   if (!poem) {
-    throw new Error(`Missing canonical document ${ODIN_VERSE_POEM_DOCUMENT_ID} in ${storePath}.`);
+    throw new Error(`Missing canonical document ${documentId} in ${storePath}.`);
   }
 
   console.log(JSON.stringify({
@@ -36,7 +37,8 @@ async function main(): Promise<void> {
     storePath,
     owner: documentSet.owner,
     documentCount: documentSet.documents.length,
-    firstDocument: {
+    documentIds: documentSet.documents.map((document) => document.id),
+    selectedDocument: {
       id: poem.id,
       title: poem.title,
       author: poem.author,

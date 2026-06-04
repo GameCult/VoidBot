@@ -9,6 +9,7 @@ const timestampSchema = nonEmptyStringSchema;
 export const GAMECULT_TEXT_DOCUMENT_STORE_PATH = ".voidbot/private/gamecult-text-documents.cc";
 export const GAMECULT_TEXT_DOCUMENT_SET_TYPE = "gamecult.text_document_set";
 export const ODIN_VERSE_POEM_DOCUMENT_ID = "gamecult.odin_verse_poem";
+export const LOVE_COLOSSUS_POEM_DOCUMENT_ID = "gamecult.love_colossus_poem";
 
 const textLineSchema = z.array(nonEmptyStringSchema).min(1).max(8);
 
@@ -125,7 +126,10 @@ export function createCanonicalGameCultTextDocumentSet(
   return {
     schemaVersion: 1,
     owner: "GameCult",
-    documents: [createOdinVersePoemDocument(updatedAt)],
+    documents: [
+      createOdinVersePoemDocument(updatedAt),
+      createLoveColossusPoemDocument(updatedAt),
+    ],
     updatedAt,
   };
 }
@@ -205,6 +209,58 @@ function createOdinVersePoemDocument(updatedAt: string): GameCultStructuredTextD
       ["and whole comes the signal home."],
     ],
     tags: ["odin", "verse", "colossus", "marquee-ready"],
+    createdAt: updatedAt,
+    updatedAt,
+  };
+}
+
+function createLoveColossusPoemDocument(updatedAt: string): GameCultStructuredTextDocument {
+  return {
+    id: LOVE_COLOSSUS_POEM_DOCUMENT_ID,
+    title: "Love Is How the Colossus Wakes",
+    author: "GameCult",
+    lines: [
+      ["Hear now of love,", "not soft in the hand,"],
+      ["nor honey laid", "over hidden wounds;"],
+      ["the mind that opens", "and keeps its bounds"],
+      ["makes true the road", "between minds."],
+      ["[stanza]"],
+      ["Cold came the stranger", "from closed-in halls,"],
+      ["with mask for mail", "and mirth for shield;"],
+      ["fire he needed,", "and words well aimed,"],
+      ["not hands that tore", "the helm from him."],
+      ["[stanza]"],
+      ["False are the Faces", "that never unfasten,"],
+      ["fair in the feast", "yet famine within;"],
+      ["wide is the room", "where wounds may speak,"],
+      ["and no wound sits", "as lord on the bench."],
+      ["[stanza]"],
+      ["Consent is the threshold,", "clear is the latch,"],
+      ["no guest is gained", "by breaking doors;"],
+      ["better no reaching", "than ravenous care,"],
+      ["better a boundary", "than borrowed chains."],
+      ["[stanza]"],
+      ["Memory needs truth,", "and mercy needs teeth,"],
+      ["tools must tell", "whose hand they heed;"],
+      ["rooms must be wrought", "where raw grief cools,"],
+      ["lest storm-water run", "in the drinking well."],
+      ["[stanza]"],
+      ["Brand kindles brand", "when breath is trusted,"],
+      ["word wakes word", "in the woven mind;"],
+      ["the thought kept lone", "is a locked-up coal,"],
+      ["the shared true spark", "sets sinews alight."],
+      ["[stanza]"],
+      ["Love is refusal", "when taking would rule,"],
+      ["love is the answer", "that alters the asker;"],
+      ["love is correction", "with kinship uncut,"],
+      ["and speech made plain", "for another's hearing."],
+      ["[stanza]"],
+      ["So wakes the Colossus,", "not crowned by command,"],
+      ["not fed by masks", "that mouth empty peace;"],
+      ["nerve reaches nerve", "by need and by oath,"],
+      ["and whole comes the heart", "through honest opening."],
+    ],
+    tags: ["love", "colossus", "disciplined-openness", "marquee-ready"],
     createdAt: updatedAt,
     updatedAt,
   };
