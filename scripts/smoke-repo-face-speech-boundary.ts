@@ -12,13 +12,13 @@ type Case = {
 
 const cases: Case[] = [
   {
-    name: "raw Would say fallback stays private",
+    name: "raw silence Would say stays private",
     run: () => parseRepoIdentityPostIntents([
       "Private thought: I should stay quiet.",
       "Would say: `nothing right now.`",
       "What should stick: silence is correct.",
     ].join("\n")).length === 0,
-    detail: "A child Face draft must not create public speech unless the parent Interpreter emits SAY.",
+    detail: "A silence marker in a child Face draft must not create public speech.",
   },
   {
     name: "structured silence SAY rejected",

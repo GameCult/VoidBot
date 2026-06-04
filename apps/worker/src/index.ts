@@ -574,6 +574,14 @@ async function executeRepoFaceJobWithInterpreter(
     });
   }
 
+  const firstObligationRoute = routeUnparsedWouldSay(firstResponse, firstInterpretation, {
+    job,
+    faceOutputText: firstText,
+  });
+  if (firstObligationRoute) {
+    return firstObligationRoute;
+  }
+
   if (firstInterpretation.decision === "drop") {
     return dropRepoFaceActionBlocks(firstResponse, firstInterpretation);
   }
@@ -625,6 +633,14 @@ async function executeRepoFaceJobWithInterpreter(
       job,
       faceOutputText: retryText,
     });
+  }
+
+  const retryObligationRoute = routeUnparsedWouldSay(retryResponse, retryInterpretation, {
+    job,
+    faceOutputText: retryText,
+  });
+  if (retryObligationRoute) {
+    return retryObligationRoute;
   }
 
   await auditLog.record({
@@ -768,6 +784,59 @@ function routeRepoFaceInterpretedOutput(
       repoFaceParentInterpretedOutput: interpretation.routedOutput ? "true" : "false",
     },
   };
+}
+
+function routeUnparsedWouldSay(
+  response: ProviderResponse,
+  interpretation: RepoFaceParentInterpretation,
+  input: { job: JobRecord; faceOutputText: string },
+): ProviderResponse | undefined {
+  if (input.job.command !== "repo-face-rumination") {
+    return undefined;
+  }
+  if (!interpretation.reasons.some((reason) => /parseable reason|did not provide/i.test(reason))) {
+    return undefined;
+  }
+
+  const content = extractUnconditionalWouldSay(input.faceOutputText);
+  if (!content || isNonPublicRepoIdentitySpeech(content)) {
+    return undefined;
+  }
+
+  return routeRepoFaceInterpretedOutput(
+    response,
+    {
+      decision: "route",
+      reasons: [
+        "Face produced an unconditional Would say and the parent interpreter failed to parse a routing reason.",
+      ],
+      routedOutput: [
+        "Parent interpreter fallback: routed unconditional Face Would say.",
+        "",
+        "SAY",
+        "identity: current_face_id",
+        "channel: current_room",
+        "reply_to:",
+        "content:",
+        ...content.split(/\r?\n/).map((line) => `  ${line}`),
+        "END",
+      ].join("\n"),
+    },
+    input,
+  );
+}
+
+function extractUnconditionalWouldSay(outputText: string): string | undefined {
+  const match = outputText.match(/(?:^|\n)Would say:\s*([\s\S]*?)(?=\n\n[A-Z][A-Za-z /-]{2,}:|\n\nWhat should stick:|\n\nWork\/proposal:|\n\nPrivate thought:|$)/i);
+  const content = match?.[1]?.trim();
+  if (!content) {
+    return undefined;
+  }
+  const normalized = content.toLowerCase().replace(/^["'`]+|["'`]+$/g, "").trim();
+  if (/^(nothing|nothing public|nothing right now|stay private|no public speech)\b/.test(normalized)) {
+    return undefined;
+  }
+  return content;
 }
 
 function normalizeInterpretedRepoFaceSpeechDestinations(

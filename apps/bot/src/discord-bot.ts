@@ -314,6 +314,17 @@ export async function startBot(): Promise<void> {
 
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) {
+      await queueRepoFaceCollaborationHooksFromBotMessage({
+        message,
+        registry: repoDiscordIdentities,
+        statePath: config.repoFaceHeartbeats.statePath,
+        storageRoot: config.storageRoot,
+        sourceRepoRoot: config.sourceRepoRoot,
+        epiphanyAgentRoot: config.epiphanyAgentRoot,
+        workspaceRoot: process.cwd(),
+        birthMode: config.repoFaceBirthMode,
+        birthExecutor: config.repoFaceBirthExecutor,
+      });
       return;
     }
 
@@ -799,6 +810,68 @@ function uniqueRepoIdentities(identities: RepoDiscordIdentity[]): RepoDiscordIde
     result.push(identity);
   }
   return result;
+}
+
+async function queueRepoFaceCollaborationHooksFromBotMessage(input: {
+  message: Message;
+  registry: { identities: RepoDiscordIdentity[] };
+  statePath: string;
+  storageRoot: string;
+  sourceRepoRoot?: string;
+  epiphanyAgentRoot: string;
+  workspaceRoot: string;
+  birthMode: Parameters<typeof ensureRepoFaceInitialized>[0]["birthMode"];
+  birthExecutor: Parameters<typeof ensureRepoFaceInitialized>[0]["birthExecutor"];
+}): Promise<void> {
+  if (!input.message.inGuild() || !isRepoFaceCollaborationHook(input.message.content)) {
+    return;
+  }
+
+  const addressed = uniqueRepoIdentities(findRepoDiscordIdentitiesByTextMentions(
+    input.registry,
+    stripBotMention(input.message.content),
+    input.message.channelId,
+  ));
+  if (addressed.length === 0) {
+    return;
+  }
+
+  const speakerIdentity = findRepoDiscordIdentityByPersonaName(
+    input.registry,
+    input.message.author.username,
+    input.message.channelId,
+  );
+  for (const identity of addressed.filter((entry) => entry.id !== speakerIdentity?.id)) {
+    const faceInitialization = await ensureRepoFaceInitialized({
+      identity,
+      storageRoot: input.storageRoot,
+      sourceRepoRoot: input.sourceRepoRoot,
+      epiphanyAgentRoot: input.epiphanyAgentRoot,
+      workspaceRoot: input.workspaceRoot,
+      birthMode: input.birthMode,
+      birthExecutor: input.birthExecutor,
+    });
+    const queuedMention = await queueRepoFaceMention({
+      statePath: input.statePath,
+      identity,
+      channelId: input.message.channelId,
+      messageId: input.message.id,
+      authorId: input.message.author.id,
+      authorName: input.message.author.username,
+      content: input.message.content,
+      visiblePrompt:
+        `A public collaboration hook named ${identity.displayName}. Treat this as a live consultation or coauthorship obligation, not passive background: ${input.message.content}`,
+    });
+    console.log(
+      `Queued repo Face collaboration hook ${input.message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
+        faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
+      }`,
+    );
+  }
+}
+
+function isRepoFaceCollaborationHook(content: string): boolean {
+  return /\b(consult(?:ation|ed|ing)?|co[- ]?author(?:ship|ed|ing)?|collab(?:oration|orate|orating)?|parallel byline|byline|stewardship|consensus check|ask(?:ed|ing)?|invite(?:d|s|ing)?)\b/i.test(content);
 }
 
 async function ensureRepoIdentityRoles(options: {
