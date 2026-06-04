@@ -43,6 +43,23 @@ export const repoFaceStateInputSchema = {
   identity: z.string().min(1),
 };
 
+export const repoFaceSelfTranscriptsListInputSchema = {
+  identity: z.string().min(1),
+  limit: z.number().int().min(1).max(20).optional(),
+};
+
+export const repoFaceSelfTranscriptInputSchema = {
+  identity: z.string().min(1),
+  jobId: z.string().min(1),
+  includeRaw: z.boolean().optional(),
+};
+
+export const repoFaceSelfTranscriptSearchInputSchema = {
+  identity: z.string().min(1),
+  query: z.string().min(1).max(240),
+  limit: z.number().int().min(1).max(20).optional(),
+};
+
 export const applyRepoFaceStateOperationInputSchema = {
   identity: z.string().min(1),
   operation: z.record(z.unknown()),
@@ -125,6 +142,23 @@ export interface PostRepoIdentityMessageArgs {
 
 export interface RepoFaceStateArgs {
   identity: string;
+}
+
+export interface RepoFaceSelfTranscriptsListArgs {
+  identity: string;
+  limit?: number;
+}
+
+export interface RepoFaceSelfTranscriptArgs {
+  identity: string;
+  jobId: string;
+  includeRaw?: boolean;
+}
+
+export interface RepoFaceSelfTranscriptSearchArgs {
+  identity: string;
+  query: string;
+  limit?: number;
 }
 
 export interface ApplyRepoFaceStateOperationArgs {

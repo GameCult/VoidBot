@@ -1,7 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import crypto from "node:crypto";
+import { readFile } from "node:fs/promises";
 import net from "node:net";
+import { join, resolve } from "node:path";
 
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
@@ -34,6 +36,9 @@ import {
   type ApplyRepoFaceStateOperationArgs,
   type PostDiscordMessageArgs,
   type PostRepoIdentityMessageArgs,
+  type RepoFaceSelfTranscriptArgs,
+  type RepoFaceSelfTranscriptSearchArgs,
+  type RepoFaceSelfTranscriptsListArgs,
   type RepoFaceStateArgs,
   type RuntimeInfoArgs,
   type SearchHistoryArgs,
@@ -51,6 +56,9 @@ import {
   odinSurfaceInputSchema,
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
+  repoFaceSelfTranscriptInputSchema,
+  repoFaceSelfTranscriptSearchInputSchema,
+  repoFaceSelfTranscriptsListInputSchema,
   repoFaceStateInputSchema,
   renderJsonBlock,
   runtimeInfoInputSchema,
@@ -941,6 +949,140 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
+    "list_repo_face_self_transcripts",
+    {
+      title: "List Repo Face Self Transcripts",
+      description:
+        "List recent read-only Projector / Persona / Interpreter / Delivery witness packets for a registered repo Face. Use this when the Face wants to inspect how recent turns were shaped without injecting those transcripts into every prompt.",
+      inputSchema: repoFaceSelfTranscriptsListInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: RepoFaceSelfTranscriptsListArgs): Promise<CallToolResult> => {
+      const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+      if (!resolved.identity) {
+        return resolved.error;
+      }
+
+      const packets = await listRepoFaceSelfTranscriptPackets(context, resolved.identity, input.limit ?? 5);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              identity: identityForToolResult(resolved.identity, resolved.face),
+              count: packets.length,
+              packets,
+            }),
+          },
+        ],
+        structuredContent: {
+          identity: identityForToolResult(resolved.identity, resolved.face),
+          count: packets.length,
+          packets,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "read_repo_face_self_transcript",
+    {
+      title: "Read Repo Face Self Transcript",
+      description:
+        "Read one read-only self-transcript witness packet for a registered repo Face: what was projected, what the Persona wrote, what the Interpreter routed, and what delivery receipts exist.",
+      inputSchema: repoFaceSelfTranscriptInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: RepoFaceSelfTranscriptArgs): Promise<CallToolResult> => {
+      const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+      if (!resolved.identity) {
+        return resolved.error;
+      }
+
+      const packet = await readRepoFaceSelfTranscriptPacket(
+        context,
+        resolved.identity,
+        input.jobId,
+        Boolean(input.includeRaw),
+      );
+      if (!packet) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No self-transcript packet for ${resolved.identity.id} matched job ${input.jobId}.`,
+            },
+          ],
+          structuredContent: {
+            found: false,
+            identity: identityForToolResult(resolved.identity, resolved.face),
+            jobId: input.jobId,
+          },
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock(packet),
+          },
+        ],
+        structuredContent: packet,
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "search_repo_face_self_transcripts",
+    {
+      title: "Search Repo Face Self Transcripts",
+      description:
+        "Search recent read-only self-transcript witness packets for a registered repo Face. This searches Projector, Persona, Interpreter, and delivery preview text.",
+      inputSchema: repoFaceSelfTranscriptSearchInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: RepoFaceSelfTranscriptSearchArgs): Promise<CallToolResult> => {
+      const resolved = await resolveRepoIdentityForTool(context, input.identity);
+
+      if (!resolved.identity) {
+        return resolved.error;
+      }
+
+      const packets = await searchRepoFaceSelfTranscriptPackets(
+        context,
+        resolved.identity,
+        input.query,
+        input.limit ?? 5,
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: renderJsonBlock({
+              identity: identityForToolResult(resolved.identity, resolved.face),
+              query: input.query,
+              count: packets.length,
+              packets,
+            }),
+          },
+        ],
+        structuredContent: {
+          identity: identityForToolResult(resolved.identity, resolved.face),
+          query: input.query,
+          count: packets.length,
+          packets,
+        },
+      };
+    },
+  );
+
+  registerIfAllowed(
     "apply_repo_face_state_operation",
     {
       title: "Apply Repo Face State Operation",
@@ -1089,6 +1231,323 @@ async function resolveRepoIdentityForTool(
     face: faceRegistry.faces.find((face) => face.id === identity.id),
     faceStatePath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
   };
+}
+
+interface RepoFaceModelOutputRecord {
+  jobId: string;
+  command: string;
+  promptMarker?: string | null;
+  loggedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  model?: string;
+  finalMessage?: string | null;
+  artifactRefs?: Record<string, string>;
+  usage?: unknown;
+  exitCode?: number | null;
+  timedOut?: boolean;
+}
+
+interface RepoFaceDeliveryReceipt {
+  receiptKey?: string;
+  sentAt?: string;
+  channelId?: string;
+  replyToMessageId?: string;
+  messageId?: string;
+  transport?: string;
+  preview?: string;
+}
+
+async function listRepoFaceSelfTranscriptPackets(
+  context: VoidbotMcpContext,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  limit: number,
+): Promise<Array<Record<string, unknown>>> {
+  const logs = await readRepoFaceModelOutputLogs(context);
+  const grouped = await groupRepoFaceTurnLogsForIdentity(context, identity, logs);
+  const receipts = await readRepoFaceDeliveryReceipts(context, identity);
+  return grouped
+    .slice(0, limit)
+    .map((group) => summarizeRepoFaceTranscriptGroup(identity, group, logs, receipts, false));
+}
+
+async function readRepoFaceSelfTranscriptPacket(
+  context: VoidbotMcpContext,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  jobId: string,
+  includeRaw: boolean,
+): Promise<Record<string, unknown> | undefined> {
+  const logs = await readRepoFaceModelOutputLogs(context);
+  const grouped = await groupRepoFaceTurnLogsForIdentity(context, identity, logs);
+  const group = grouped.find((entry) => entry.jobId === jobId);
+  if (!group) {
+    return undefined;
+  }
+  const receipts = await readRepoFaceDeliveryReceipts(context, identity);
+  return summarizeRepoFaceTranscriptGroup(identity, group, logs, receipts, includeRaw);
+}
+
+async function searchRepoFaceSelfTranscriptPackets(
+  context: VoidbotMcpContext,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  query: string,
+  limit: number,
+): Promise<Array<Record<string, unknown>>> {
+  const logs = await readRepoFaceModelOutputLogs(context);
+  const grouped = await groupRepoFaceTurnLogsForIdentity(context, identity, logs);
+  const receipts = await readRepoFaceDeliveryReceipts(context, identity);
+  const needle = query.toLowerCase();
+  return grouped
+    .map((group) => summarizeRepoFaceTranscriptGroup(identity, group, logs, receipts, false))
+    .filter((packet) => JSON.stringify(packet).toLowerCase().includes(needle))
+    .slice(0, limit);
+}
+
+async function readRepoFaceModelOutputLogs(context: VoidbotMcpContext): Promise<RepoFaceModelOutputRecord[]> {
+  const logPath = join(context.config.storageRoot, "logs", "model-outputs.jsonl");
+  let content = "";
+  try {
+    content = await readFile(logPath, "utf8");
+  } catch {
+    return [];
+  }
+
+  return content
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as RepoFaceModelOutputRecord;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((record): record is RepoFaceModelOutputRecord => Boolean(record))
+    .filter((record) =>
+      record.command === "repo-face-rumination" ||
+      record.command === "repo-face-state-projector"
+    );
+}
+
+async function groupRepoFaceTurnLogsForIdentity(
+  context: VoidbotMcpContext,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  logs: RepoFaceModelOutputRecord[],
+): Promise<Array<{
+  jobId: string;
+  requestPath?: string;
+  requestExcerpt?: string;
+  persona: RepoFaceModelOutputRecord[];
+  interpreter: RepoFaceModelOutputRecord[];
+  firstAt?: string;
+  lastAt?: string;
+}>> {
+  const byJob = new Map<string, RepoFaceModelOutputRecord[]>();
+  for (const record of logs.filter((entry) => entry.command === "repo-face-rumination")) {
+    if (!record.jobId) {
+      continue;
+    }
+    const records = byJob.get(record.jobId) ?? [];
+    records.push(record);
+    byJob.set(record.jobId, records);
+  }
+
+  const groups: Array<{
+    jobId: string;
+    requestPath?: string;
+    requestExcerpt?: string;
+    persona: RepoFaceModelOutputRecord[];
+    interpreter: RepoFaceModelOutputRecord[];
+    firstAt?: string;
+    lastAt?: string;
+  }> = [];
+
+  for (const [jobId, records] of byJob) {
+    const requestPath = resolve(context.config.storageRoot, "artifacts", jobId, "request.md");
+    const request = await readOptionalText(requestPath);
+    if (!request || !requestBelongsToRepoFace(request, identity)) {
+      continue;
+    }
+    const sorted = records.slice().sort(compareModelOutputRecords);
+    groups.push({
+      jobId,
+      requestPath,
+      requestExcerpt: excerptRequestWitness(request),
+      persona: sorted.filter((record) => record.promptMarker === "character-turn"),
+      interpreter: sorted.filter((record) => record.promptMarker === "repo-face-turn-interpreter"),
+      firstAt: sorted[0]?.startedAt ?? sorted[0]?.loggedAt,
+      lastAt: sorted.at(-1)?.finishedAt ?? sorted.at(-1)?.loggedAt,
+    });
+  }
+
+  return groups.sort((left, right) =>
+    Date.parse(right.firstAt ?? "") - Date.parse(left.firstAt ?? "")
+  );
+}
+
+function summarizeRepoFaceTranscriptGroup(
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  group: {
+    jobId: string;
+    requestPath?: string;
+    requestExcerpt?: string;
+    persona: RepoFaceModelOutputRecord[];
+    interpreter: RepoFaceModelOutputRecord[];
+    firstAt?: string;
+    lastAt?: string;
+  },
+  logs: RepoFaceModelOutputRecord[],
+  receipts: RepoFaceDeliveryReceipt[],
+  includeRaw: boolean,
+): Record<string, unknown> {
+  const projector = findNearestProjectorRecord(identity, logs, group.firstAt);
+  const delivered = receipts.filter((receipt) => receiptInTurnWindow(receipt, group.firstAt, group.lastAt));
+  return {
+    schemaVersion: 1,
+    identity: {
+      id: identity.id,
+      displayName: identity.displayName,
+      repoName: identity.repoName,
+    },
+    jobId: group.jobId,
+    startedAt: group.firstAt ?? null,
+    finishedAt: group.lastAt ?? null,
+    seen: {
+      requestPath: group.requestPath ?? null,
+      requestExcerpt: group.requestExcerpt ?? null,
+    },
+    projected: projector
+      ? modelRecordSummary(projector, includeRaw)
+      : null,
+    persona: group.persona.map((record) => modelRecordSummary(record, includeRaw)),
+    interpreted: group.interpreter.map((record) => modelRecordSummary(record, includeRaw)),
+    delivered: delivered.map((receipt) => ({
+      sentAt: receipt.sentAt ?? null,
+      channelId: receipt.channelId ?? null,
+      replyToMessageId: receipt.replyToMessageId ?? null,
+      messageId: receipt.messageId ?? receipt.receiptKey?.split(":").at(-1) ?? null,
+      transport: receipt.transport ?? null,
+      preview: receipt.preview ?? null,
+    })),
+    artifactRefs: {
+      persona: group.persona.map((record) => record.artifactRefs ?? {}),
+      interpreter: group.interpreter.map((record) => record.artifactRefs ?? {}),
+    },
+  };
+}
+
+function modelRecordSummary(record: RepoFaceModelOutputRecord, includeRaw: boolean): Record<string, unknown> {
+  return {
+    jobId: record.jobId,
+    command: record.command,
+    promptMarker: record.promptMarker ?? null,
+    model: record.model ?? null,
+    loggedAt: record.loggedAt ?? null,
+    startedAt: record.startedAt ?? null,
+    finishedAt: record.finishedAt ?? null,
+    exitCode: record.exitCode ?? null,
+    timedOut: record.timedOut ?? false,
+    usage: record.usage ?? null,
+    finalMessage: includeRaw
+      ? record.finalMessage ?? null
+      : collapseText(record.finalMessage ?? "", 900),
+    artifactRefs: record.artifactRefs ?? {},
+  };
+}
+
+function findNearestProjectorRecord(
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+  logs: RepoFaceModelOutputRecord[],
+  before: string | undefined,
+): RepoFaceModelOutputRecord | undefined {
+  const beforeMs = Date.parse(before ?? "");
+  return logs
+    .filter((record) =>
+      record.command === "repo-face-state-projector" &&
+      record.jobId?.startsWith(`state-projector:${identity.id}:`)
+    )
+    .filter((record) => {
+      if (!Number.isFinite(beforeMs)) {
+        return true;
+      }
+      const loggedAtMs = Date.parse(record.loggedAt ?? record.finishedAt ?? record.startedAt ?? "");
+      return Number.isFinite(loggedAtMs) && loggedAtMs <= beforeMs;
+    })
+    .sort(compareModelOutputRecords)
+    .at(-1);
+}
+
+async function readRepoFaceDeliveryReceipts(
+  context: VoidbotMcpContext,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+): Promise<RepoFaceDeliveryReceipt[]> {
+  const typedState = await loadVoidSelfStateTypedDocuments({
+    canonicalPath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
+    identity: {
+      agentId: identity.id,
+      publicName: identity.displayName,
+      publicDescription: identity.description,
+    },
+  });
+  const receipts = (typedState.speechReceipts as { recentReceipts?: unknown[] }).recentReceipts ?? [];
+  return receipts.filter((entry): entry is RepoFaceDeliveryReceipt =>
+    Boolean(entry) && typeof entry === "object"
+  );
+}
+
+function receiptInTurnWindow(receipt: RepoFaceDeliveryReceipt, startedAt: string | undefined, finishedAt: string | undefined): boolean {
+  const sentAtMs = Date.parse(receipt.sentAt ?? "");
+  const startMs = Date.parse(startedAt ?? "");
+  const finishMs = Date.parse(finishedAt ?? "");
+  if (!Number.isFinite(sentAtMs)) {
+    return false;
+  }
+  const lower = Number.isFinite(startMs) ? startMs - 60_000 : -Infinity;
+  const upper = Number.isFinite(finishMs) ? finishMs + 5 * 60_000 : Infinity;
+  return sentAtMs >= lower && sentAtMs <= upper;
+}
+
+function requestBelongsToRepoFace(
+  request: string,
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
+): boolean {
+  const firstLine = request.split(/\r?\n/).find((line) => line.startsWith("Be "));
+  return Boolean(
+    firstLine &&
+    firstLine.includes(`Be ${identity.displayName} `) &&
+    firstLine.includes(` around ${identity.repoName}.`),
+  );
+}
+
+function excerptRequestWitness(request: string): string {
+  const markers = [
+    "Recent conversation transcript:",
+    "Fresh projected state for this turn:",
+    "Current room (",
+    "Visible cross-channel chronology",
+  ];
+  const index = markers
+    .map((marker) => request.indexOf(marker))
+    .filter((entry) => entry >= 0)
+    .sort((left, right) => left - right)[0] ?? 0;
+  return collapseText(request.slice(index), 1800);
+}
+
+async function readOptionalText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function compareModelOutputRecords(left: RepoFaceModelOutputRecord, right: RepoFaceModelOutputRecord): number {
+  return Date.parse(left.startedAt ?? left.loggedAt ?? "") - Date.parse(right.startedAt ?? right.loggedAt ?? "");
+}
+
+function collapseText(value: string, maxLength: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length > maxLength ? `${collapsed.slice(0, Math.max(0, maxLength - 3))}...` : collapsed;
 }
 
 async function recordRepoIdentityDeliveryReceipt(input: {
