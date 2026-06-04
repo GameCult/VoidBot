@@ -11,8 +11,9 @@ VoidBot surfaces as they become first-class Verse nodes.
 Native swarm communication is CultNet over CultMesh. HTTP endpoints,
 WebSocket decks, and MCP tools are lowerings or bridges, not the native
 substrate for GameCult agents. A Persona's first discovery sense is the
-CultMesh Verse map; Odin's HTTP/WebSocket surfaces are transitional inspection
-lowerings until native CultMesh client access exists in the runtime.
+CultMesh Verse map through the TypeScript runtime at
+`E:\Projects\CultLib\packages\cultmesh-ts`; Odin's HTTP/WebSocket surfaces are
+transitional inspection lowerings, not the native client path.
 
 ## Owner Map
 
@@ -74,6 +75,11 @@ history search, room transcript memory, and compatibility MCP tools are second
 order evidence. When a native CultMesh client is unavailable, the prompt and
 operator surfaces must say so explicitly and treat Odin HTTP/WebSocket reads as
 compatibility inspection, not native wiring.
+
+The native TypeScript runtime location is singular:
+`E:\Projects\CultLib\packages\cultmesh-ts`. A missing or unbuilt package there
+is an urgent CultLib/runtime bug. VoidBot must not fall back to a sibling
+`CultMeshTS` repository or grow its own private CultMesh implementation.
 
 Required native surfaces:
 

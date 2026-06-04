@@ -2782,7 +2782,6 @@ function operatorDmStorePath(): string {
 function loadCultMeshRuntime(): { CultMesh: any; defineDocumentType: any } | null {
   const candidates = [
     resolve(process.cwd(), "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
-    resolve(process.cwd(), "..", "CultMeshTS", "package.json"),
   ];
 
   for (const packageJson of candidates) {

@@ -139,7 +139,7 @@ export function registerVoidbotTools(
     {
       title: "List Odin Providers",
       description:
-        "Compatibility relay: list Eve/CultUI providers currently advertised through Odin's transitional HTTP surface. Native GameCult agents should prefer CultNet/CultMesh Verse discovery when available.",
+        "Compatibility relay: list Eve/CultUI providers currently advertised through Odin's transitional HTTP surface. Native GameCult agents use CultNet/CultMesh Verse discovery through CultLib's cultmesh-ts runtime.",
       inputSchema: odinEndpointInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },

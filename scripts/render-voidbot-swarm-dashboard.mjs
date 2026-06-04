@@ -793,7 +793,6 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
 function loadCultPackages() {
   const candidates = [
     resolve(repoRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
-    resolve(repoRoot, "..", "CultMeshTS", "package.json"),
   ];
   for (const packageJson of candidates) {
     if (!existsSync(packageJson)) {
