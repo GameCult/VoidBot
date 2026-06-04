@@ -61,6 +61,43 @@ const moderationOpenCaseSchema = z.object({
   tags: z.array(nonEmptyStringSchema).default([]),
 }).strict();
 
+const moderationStrikeSchema = z.object({
+  strikeId: nonEmptyStringSchema,
+  reason: boundedTextSchema,
+  ruleRef: z.string().trim().min(1).max(240).optional(),
+  sourceMessageId: z.string().trim().min(1).optional(),
+  channelId: z.string().trim().min(1).optional(),
+  issuedAt: timestampSchema,
+  expiresAt: timestampSchema,
+  expiredAt: timestampSchema.optional(),
+  issuedBy: z.string().trim().min(1).max(240).optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict();
+
+const moderationStatusNoticeSchema = z.object({
+  noticeId: nonEmptyStringSchema,
+  kind: z.enum(["status_update", "strike_added", "strike_expired", "status_clear"]),
+  summary: z.string().trim().min(1).max(1000),
+  body: boundedTextSchema,
+  createdAt: timestampSchema,
+  sentAt: timestampSchema.optional(),
+  channelId: z.string().trim().min(1).optional(),
+  messageId: z.string().trim().min(1).optional(),
+  error: z.string().trim().min(1).max(2000).optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict();
+
+const moderationUserStatusSchema = z.object({
+  userId: nonEmptyStringSchema,
+  userName: z.string().trim().min(1).max(240).optional(),
+  status: z.enum(["clear", "watched", "active", "retired"]),
+  summary: z.string().trim().min(1).max(1000).optional(),
+  strikes: z.array(moderationStrikeSchema).default([]),
+  pendingNotices: z.array(moderationStatusNoticeSchema).default([]),
+  updatedAt: timestampSchema,
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict();
+
 const moderationRepoCursorSchema = z.object({
   repo: nonEmptyStringSchema,
   lastCommitAt: timestampSchema.optional(),
@@ -411,6 +448,7 @@ export const voidModerationCursorSchema = z.object({
   lastReviewedMessageId: z.string().trim().min(1).optional(),
   lastReviewedTimestamp: timestampSchema.optional(),
   openCases: z.array(moderationOpenCaseSchema).default([]),
+  userStatuses: z.array(moderationUserStatusSchema).default([]),
   repoActivityCursor: z.array(moderationRepoCursorSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
@@ -552,6 +590,19 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     status: z.enum(["answered", "resolved", "closed", "retired", "dropped"]),
     resolvedAt: timestampSchema,
     resolutionSummary: z.string().trim().min(1).max(2000).optional(),
+  }).strict(),
+  z.object({
+    operation: z.literal("upsert_moderation_user_status"),
+    status: moderationUserStatusSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("mark_moderation_status_notice_sent"),
+    userId: nonEmptyStringSchema,
+    noticeId: nonEmptyStringSchema,
+    sentAt: timestampSchema,
+    channelId: z.string().trim().min(1).optional(),
+    messageId: z.string().trim().min(1).optional(),
+    error: z.string().trim().min(1).max(2000).optional(),
   }).strict(),
   z.object({
     operation: z.literal("update_repo_activity_cursor"),

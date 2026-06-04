@@ -223,6 +223,65 @@ function Project-OpenCasesForRumination {
   )
 }
 
+function Project-ModerationUserStatusesForRumination {
+  param($Statuses, [DateTime] $Now)
+
+  return @(
+    @(Convert-ToValueArray -Value $Statuses) |
+      Where-Object {
+        (Get-ObjectPropertyString -Value $_ -Name "status") -ne "retired" -or
+          @(
+            @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "pendingNotices")) |
+              Where-Object { [string]::IsNullOrWhiteSpace((Get-ObjectPropertyString -Value $_ -Name "sentAt")) }
+          ).Count -gt 0
+      } |
+      ForEach-Object {
+        $strikes = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "strikes"))
+        $activeStrikes = @(
+          $strikes | Where-Object { [string]::IsNullOrWhiteSpace((Get-ObjectPropertyString -Value $_ -Name "expiredAt")) }
+        )
+        $pendingNotices = @(
+          @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "pendingNotices")) |
+            Where-Object { [string]::IsNullOrWhiteSpace((Get-ObjectPropertyString -Value $_ -Name "sentAt")) }
+        )
+        @{
+          userId = Get-ObjectPropertyString -Value $_ -Name "userId"
+          userName = Get-ObjectPropertyString -Value $_ -Name "userName"
+          status = Get-ObjectPropertyString -Value $_ -Name "status"
+          summary = Get-ObjectPropertyString -Value $_ -Name "summary"
+          activeStrikeCount = [int]$activeStrikes.Count
+          pendingNoticeCount = [int]$pendingNotices.Count
+          activeStrikes = @(
+            $activeStrikes | ForEach-Object {
+              @{
+                strikeId = Get-ObjectPropertyString -Value $_ -Name "strikeId"
+                reason = Get-ObjectPropertyString -Value $_ -Name "reason"
+                ruleRef = Get-ObjectPropertyString -Value $_ -Name "ruleRef"
+                sourceMessageId = Get-ObjectPropertyString -Value $_ -Name "sourceMessageId"
+                channelId = Get-ObjectPropertyString -Value $_ -Name "channelId"
+                issued = Project-RelativeTimestamp -Value $_ -Name "issuedAt" -Now $Now
+                expires = Project-RelativeTimestamp -Value $_ -Name "expiresAt" -Now $Now
+                tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
+              }
+            }
+          )
+          pendingNotices = @(
+            $pendingNotices | ForEach-Object {
+              @{
+                noticeId = Get-ObjectPropertyString -Value $_ -Name "noticeId"
+                kind = Get-ObjectPropertyString -Value $_ -Name "kind"
+                summary = Get-ObjectPropertyString -Value $_ -Name "summary"
+                created = Project-RelativeTimestamp -Value $_ -Name "createdAt" -Now $Now
+                tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
+              }
+            }
+          )
+          tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $_ -Name "tags"))
+        }
+      }
+  )
+}
+
 function Test-RuminationCaseTerminal {
   param([string] $Status)
 

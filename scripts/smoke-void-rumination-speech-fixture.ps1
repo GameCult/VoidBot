@@ -218,6 +218,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   $previousStatusDir = $env:VOID_RUMINATION_STATUS_DIR
   $previousLogDir = $env:VOID_RUMINATION_LOG_DIR
   $previousSendScript = $env:VOID_SEND_DISCORD_SCRIPT
+  $previousDiscordTransport = $env:VOID_DISCORD_TRANSPORT
   $previousDisableRepoCursorAdvance = $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE
 
   try {
@@ -227,6 +228,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_RUMINATION_STATUS_DIR = $fixtureStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $fixtureLogDir
     $env:VOID_SEND_DISCORD_SCRIPT = $fakeSendPath
+    $env:VOID_DISCORD_TRANSPORT = "direct"
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = "1"
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-void-moderator-rumination.ps1 -StateFilePath $stateFilePath | Out-Null
@@ -237,6 +239,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_RUMINATION_STATUS_DIR = $previousStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $previousLogDir
     $env:VOID_SEND_DISCORD_SCRIPT = $previousSendScript
+    $env:VOID_DISCORD_TRANSPORT = $previousDiscordTransport
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = $previousDisableRepoCursorAdvance
   }
 

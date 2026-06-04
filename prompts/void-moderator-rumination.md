@@ -48,8 +48,9 @@ Perform one scheduled Void rumination pass in this workspace. Think from the sup
    - If a candidate answers, corrects, riffs on, or continues Aquarium talk, its `deliveryTarget.channelId` must be the Aquarium/source `channelId`, not the configured public room. Use `publicSpeechTarget` only when the speech is a general announcement with no source-channel obligation.
    - If a candidate is about internal swarm transport, paused governance, Face scheduling, or agent-substrate commentary, only use a non-Aquarium delivery target when that exact channel supplied the direct ask or invitation.
    - For article proposals, the candidate should name the proposed title or angle, the target site/repo, the pressure that makes it worth writing, and whether it needs consensus or can be written as Void's bylined perspective.
-10. Do not call Discord send scripts. The parent runner owns posting and receipts. If `{{NO_POST}}` is true, queued candidates must stay queued.
-11. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence and there are no pending mentions or speech pressure obligations, write `[]`.
+10. When a rules consequence changes a user's moderation status, use `upsert_moderation_user_status`. A strike expires one week after `issuedAt`; set `expiresAt` to that one-week deadline and include a pending DM notice explaining the status change in plain language. Do not turn status notices into public candidate speech. The parent runner owns actually sending the DM and recording the receipt.
+11. Do not call Discord send scripts. The parent runner owns posting and receipts, including moderation status DMs. If `{{NO_POST}}` is true, queued candidates and moderation status notices must stay queued.
+12. Write `{{OPERATION_OUTPUT_PATH}}`. If nothing deserves persistence and there are no pending mentions or speech pressure obligations, write `[]`.
 
 ## Allowed Operations
 
@@ -68,6 +69,7 @@ Perform one scheduled Void rumination pass in this workspace. Think from the sup
 - `update_mood_dimensions`
 - `queue_candidate_intervention`
 - `retire_candidate_intervention`
+- `upsert_moderation_user_status`
 
 ## Parent-Owned Operations
 
@@ -76,6 +78,7 @@ Do not emit these operations from rumination:
 - `record_reviewed_messages`
 - `record_delivery_receipt`
 - `mark_candidate_intervention_spoken`
+- `mark_moderation_status_notice_sent`
 - `update_sleep_cycle`
 - `update_speaking_pressure`
 - `propose_memory_distillation`

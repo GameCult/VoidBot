@@ -29,6 +29,8 @@ import {
   type VoidSelfStateTypedProjection,
 } from "./void-self-state-projection";
 
+const MODERATION_STRIKE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export interface VoidSelfStateServiceOptions {
   canonicalPath: string;
   identity?: VoidSelfStateIdentityDefaults;
@@ -130,6 +132,7 @@ function readTypedStateOrEmpty(
   if (identity) {
     repairSelfProfileIdentity(state, identity);
   }
+  normalizeModerationCursor(state.moderationCursor, new Date().toISOString());
   normalizeDeliveryReceipts(state);
   return state;
 }
@@ -139,6 +142,7 @@ async function writeTypedState(
   state: VoidSelfStateTypedProjection,
 ): Promise<void> {
   normalizeTypedStateForWrite(state);
+  normalizeModerationCursor(state.moderationCursor, new Date().toISOString());
   normalizeDeliveryReceipts(state);
   await cache.putGlobal(voidSelfProfileDocument, stripUndefined(state.selfProfile));
   await cache.putGlobal(voidModerationCursorDocument, stripUndefined(state.moderationCursor));
@@ -207,6 +211,7 @@ function normalizeTypedStateForWrite(
   observedAt = new Date().toISOString(),
 ): void {
   pruneRetiredTypedState(state);
+  normalizeModerationCursor(state.moderationCursor, observedAt);
 
   let thoughtMemoryChanged = false;
   for (const memory of state.thoughtMemory.shortTerm) {
@@ -248,6 +253,7 @@ function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
   state.moderationCursor.openCases = state.moderationCursor.openCases.filter((entry) =>
     !isTerminalCaseStatus(entry.status)
   );
+  state.moderationCursor.userStatuses = state.moderationCursor.userStatuses.filter(isLiveModerationUserStatus);
   state.thoughtMemory.shortTerm = state.thoughtMemory.shortTerm.filter(isNotRetiredEntry);
   state.thoughtMemory.memories = state.thoughtMemory.memories.filter(isNotRetiredEntry);
   state.thoughtMemory.incubation = state.thoughtMemory.incubation.filter(isNotRetiredEntry);
@@ -265,6 +271,13 @@ function isNotRetiredEntry(entry: { status?: string; retiredAt?: string }): bool
 
 function isLiveCandidateIntervention(entry: { status?: string; retiredAt?: string }): boolean {
   return (entry.status === "queued" || entry.status === "deferred") && !entry.retiredAt;
+}
+
+function isLiveModerationUserStatus(entry: VoidModerationCursor["userStatuses"][number]): boolean {
+  if (entry.status !== "retired") {
+    return true;
+  }
+  return entry.pendingNotices.some((notice) => !notice.sentAt);
 }
 
 function clampFutureTimestampFields<T extends Record<string, unknown>>(
@@ -312,6 +325,18 @@ function applyTypedOperation(
       return;
     case "close_open_case":
       closeTypedOpenCase(state.moderationCursor, operation);
+      return;
+    case "upsert_moderation_user_status":
+      upsertBy(
+        state.moderationCursor.userStatuses,
+        normalizeModerationUserStatusOperation(state.moderationCursor, operation.status, appliedAt),
+        (entry) => entry.userId,
+      );
+      normalizeModerationCursor(state.moderationCursor, appliedAt);
+      state.moderationCursor.updatedAt = appliedAt;
+      return;
+    case "mark_moderation_status_notice_sent":
+      markModerationStatusNoticeSent(state.moderationCursor, operation);
       return;
     case "update_repo_activity_cursor":
       upsertBy(state.moderationCursor.repoActivityCursor, operation.cursor, (entry) => entry.repo.toLowerCase());
@@ -473,6 +498,174 @@ function applyTypedOperation(
       state.thoughtMemory.updatedAt = operation.appliedAt;
       return;
   }
+}
+
+function normalizeModerationUserStatusOperation(
+  cursor: VoidModerationCursor,
+  status: VoidModerationCursor["userStatuses"][number],
+  appliedAt: string,
+): VoidModerationCursor["userStatuses"][number] {
+  const existing = cursor.userStatuses.find((entry) => entry.userId === status.userId);
+  return {
+    ...status,
+    strikes: status.strikes.map((strike) => ({
+      ...strike,
+      expiresAt: normalizeStrikeExpiry(strike.issuedAt, strike.expiresAt),
+    })),
+    pendingNotices: mergeModerationStatusNotices(existing?.pendingNotices ?? [], status.pendingNotices),
+    updatedAt: appliedAt,
+  };
+}
+
+function normalizeStrikeExpiry(issuedAt: string, expiresAt: string): string {
+  const issuedAtMs = Date.parse(issuedAt);
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(issuedAtMs)) {
+    return expiresAt;
+  }
+
+  const canonicalExpiresAt = new Date(issuedAtMs + MODERATION_STRIKE_TTL_MS).toISOString();
+  if (!Number.isFinite(expiresAtMs)) {
+    return canonicalExpiresAt;
+  }
+
+  const latestAllowedExpiryMs = issuedAtMs + MODERATION_STRIKE_TTL_MS;
+  return expiresAtMs > latestAllowedExpiryMs ? canonicalExpiresAt : expiresAt;
+}
+
+function normalizeModerationCursor(cursor: VoidModerationCursor, observedAt: string): void {
+  let changed = false;
+  for (const status of cursor.userStatuses) {
+    const statusChanged = normalizeModerationUserStatus(status, observedAt);
+    changed = statusChanged || changed;
+  }
+
+  cursor.userStatuses = cursor.userStatuses
+    .filter(isLiveModerationUserStatus)
+    .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+    .slice(-128);
+
+  if (isFutureTimestamp(cursor.updatedAt, observedAt) || changed) {
+    cursor.updatedAt = observedAt;
+  }
+}
+
+function normalizeModerationUserStatus(
+  status: VoidModerationCursor["userStatuses"][number],
+  observedAt: string,
+): boolean {
+  let changed = false;
+  const observedAtMs = Date.parse(observedAt);
+
+  status.strikes = status.strikes.map((strike) => {
+    const normalizedExpiresAt = normalizeStrikeExpiry(strike.issuedAt, strike.expiresAt);
+    const nextStrike = normalizedExpiresAt === strike.expiresAt ? strike : { ...strike, expiresAt: normalizedExpiresAt };
+    const expiresAtMs = Date.parse(nextStrike.expiresAt);
+    if (
+      !nextStrike.expiredAt &&
+      Number.isFinite(expiresAtMs) &&
+      Number.isFinite(observedAtMs) &&
+      expiresAtMs <= observedAtMs
+    ) {
+      changed = true;
+      return {
+        ...nextStrike,
+        expiredAt: nextStrike.expiresAt,
+        tags: Array.from(new Set([...nextStrike.tags, "expired:one-week-policy"])),
+      };
+    }
+    if (nextStrike !== strike) {
+      changed = true;
+    }
+    return nextStrike;
+  });
+
+  const activeStrikes = status.strikes.filter((strike) => !strike.expiredAt);
+  for (const strike of status.strikes) {
+    if (!strike.expiredAt) {
+      continue;
+    }
+    const noticeId = `strike-expired-${status.userId}-${strike.strikeId}`;
+    if (status.pendingNotices.some((notice) => notice.noticeId === noticeId)) {
+      continue;
+    }
+    status.pendingNotices.push({
+      noticeId,
+      kind: "strike_expired",
+      summary: `Strike expired: ${strike.reason}`,
+      body: [
+        "Moderation status update:",
+        "",
+        `Your strike for ${strike.reason} has expired. Strikes expire after one week under the current server policy.`,
+        activeStrikes.length > 0
+          ? `You still have ${activeStrikes.length} active strike(s).`
+          : "You currently have no active strikes.",
+      ].join("\n"),
+      createdAt: observedAt,
+      tags: ["policy:one-week-strike-expiry"],
+    });
+    changed = true;
+  }
+
+  status.pendingNotices = mergeModerationStatusNotices([], status.pendingNotices)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .slice(-24);
+
+  const nextStatus = activeStrikes.length > 0
+    ? "active"
+    : status.pendingNotices.some((notice) => !notice.sentAt)
+      ? "clear"
+      : status.status === "retired"
+        ? "retired"
+        : "clear";
+  if (status.status !== nextStatus) {
+    status.status = nextStatus;
+    changed = true;
+  }
+  if (changed) {
+    status.updatedAt = observedAt;
+  }
+  return changed;
+}
+
+function mergeModerationStatusNotices(
+  existing: VoidModerationCursor["userStatuses"][number]["pendingNotices"],
+  incoming: VoidModerationCursor["userStatuses"][number]["pendingNotices"],
+): VoidModerationCursor["userStatuses"][number]["pendingNotices"] {
+  const byId = new Map<string, VoidModerationCursor["userStatuses"][number]["pendingNotices"][number]>();
+  for (const notice of [...existing, ...incoming]) {
+    const prior = byId.get(notice.noticeId);
+    byId.set(notice.noticeId, prior ? { ...prior, ...notice } : notice);
+  }
+  return Array.from(byId.values());
+}
+
+function markModerationStatusNoticeSent(
+  cursor: VoidModerationCursor,
+  operation: Extract<VoidSelfStateOperation, { operation: "mark_moderation_status_notice_sent" }>,
+): void {
+  const status = cursor.userStatuses.find((entry) => entry.userId === operation.userId);
+  if (!status) {
+    return;
+  }
+
+  const notice = status.pendingNotices.find((entry) => entry.noticeId === operation.noticeId);
+  if (!notice) {
+    return;
+  }
+
+  notice.sentAt = operation.sentAt;
+  if (operation.channelId) {
+    notice.channelId = operation.channelId;
+  }
+  if (operation.messageId) {
+    notice.messageId = operation.messageId;
+  }
+  if (operation.error) {
+    notice.error = operation.error;
+  }
+  status.updatedAt = operation.sentAt;
+  cursor.updatedAt = operation.sentAt;
 }
 
 function normalizeShortTermMemoryOperation(

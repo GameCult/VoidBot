@@ -27,30 +27,32 @@ async function main() {
     throw new Error("Message content is empty.");
   }
 
-  if (options.ownerDm) {
-    const ownerId = env.DISCORD_OWNER_ID?.trim();
+  if (options.ownerDm || options.userDm) {
+    const recipientId = options.userDm ?? env.DISCORD_OWNER_ID?.trim();
 
-    if (!ownerId) {
-      throw new Error("DISCORD_OWNER_ID is required for --owner-dm.");
+    if (!recipientId) {
+      throw new Error("DISCORD_OWNER_ID is required for --owner-dm, or provide --user-dm <recipientId>.");
     }
 
-    const channelId = await openOwnerDmChannel(botToken, ownerId);
+    const mode = options.userDm ? "user_dm" : "owner_dm";
+    const channelId = await openDiscordDmChannel(botToken, recipientId);
     await postChunkedDiscordMessage(botToken, channelId, content, undefined, undefined);
     writeLastSpeechStatus({
       sentAt: new Date().toISOString(),
-      mode: "owner_dm",
+      mode,
       transport: "bot",
       channelId,
+      recipientId,
       contentLength: content.length,
       chunkCount: splitDiscordContent(content).length,
       preview: content.slice(0, 280),
     });
-    process.stdout.write(`${JSON.stringify({ ok: true, mode: "owner_dm", channelId })}\n`);
+    process.stdout.write(`${JSON.stringify({ ok: true, mode, channelId, recipientId })}\n`);
     return;
   }
 
   if (!options.channelId) {
-    throw new Error("Provide --owner-dm or --channel-id.");
+    throw new Error("Provide --owner-dm, --user-dm, or --channel-id.");
   }
 
   await postChunkedDiscordMessage(
@@ -89,6 +91,7 @@ async function main() {
 function parseArgs(args) {
   const options = {
     ownerDm: false,
+    userDm: undefined,
     channelId: undefined,
     replyToMessageId: undefined,
     content: undefined,
@@ -103,6 +106,10 @@ function parseArgs(args) {
     switch (argument) {
       case "--owner-dm":
         options.ownerDm = true;
+        break;
+      case "--user-dm":
+        options.userDm = args[index + 1];
+        index += 1;
         break;
       case "--channel-id":
         options.channelId = args[index + 1];
@@ -133,8 +140,10 @@ function parseArgs(args) {
     }
   }
 
-  if (options.ownerDm && options.channelId) {
-    throw new Error("Use either --owner-dm or --channel-id, not both.");
+  const targetCount = [options.ownerDm, Boolean(options.userDm), Boolean(options.channelId)]
+    .filter(Boolean).length;
+  if (targetCount > 1) {
+    throw new Error("Use only one of --owner-dm, --user-dm, or --channel-id.");
   }
 
   return options;
@@ -209,7 +218,7 @@ async function readContent(options) {
   });
 }
 
-async function openOwnerDmChannel(botToken, recipientId) {
+async function openDiscordDmChannel(botToken, recipientId) {
   const response = await fetch("https://discord.com/api/v10/users/@me/channels", {
     method: "POST",
     headers: {

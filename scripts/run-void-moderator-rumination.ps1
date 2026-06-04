@@ -48,6 +48,23 @@ $sendMessageScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_SEND_DI
 } else {
   Join-Path $repoRoot "scripts\send-discord-message.mjs"
 }
+$bifrostRoot = if (-not [string]::IsNullOrWhiteSpace($env:BIFROST_ROOT)) {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:BIFROST_ROOT)
+} else {
+  "E:\Projects\Bifrost"
+}
+$bifrostBridgeScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_BIFROST_BRIDGE_SCRIPT)) {
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_BIFROST_BRIDGE_SCRIPT)
+} else {
+  Join-Path $bifrostRoot "tools\bifrost-bridge.mjs"
+}
+$discordTransportMode = if (-not [string]::IsNullOrWhiteSpace($env:VOID_DISCORD_TRANSPORT)) {
+  $env:VOID_DISCORD_TRANSPORT.Trim().ToLowerInvariant()
+} elseif (Test-Path $bifrostBridgeScriptPath) {
+  "bifrost"
+} else {
+  "direct"
+}
 $startedAtUtc = [DateTime]::UtcNow
 
 . $contextProjectionScriptPath
@@ -611,7 +628,8 @@ function Assert-AllowedRuminationOperation {
     "retire_status_read",
     "update_mood_dimensions",
     "queue_candidate_intervention",
-    "retire_candidate_intervention"
+    "retire_candidate_intervention",
+    "upsert_moderation_user_status"
   )
 
   if ($null -eq $operationName -or -not $allowed.Contains($operationName)) {
@@ -726,21 +744,37 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
   $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
   [System.IO.File]::WriteAllText($contentPath, $draft, $utf8NoBom)
 
-  $arguments = @($sendMessageScriptPath, "--content-file", $contentPath)
   $mode = Get-ObjectPropertyString -Value $deliveryTarget -Name "mode"
-  if ($mode -eq "owner_dm") {
-    $arguments += "--owner-dm"
-  } else {
+  $arguments = @()
+  if ($discordTransportMode -eq "bifrost") {
+    if ($mode -eq "owner_dm") {
+      throw "Candidate intervention '$interventionId' targets owner_dm. Bifrost is the default public transport; use VOID_DISCORD_TRANSPORT=direct only for standalone owner-private installs."
+    }
     $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
     if ([string]::IsNullOrWhiteSpace($channelId)) {
       throw "Candidate intervention '$interventionId' has deliveryTarget without channelId."
     }
-    $arguments += @("--channel-id", $channelId)
+    $arguments = @($bifrostBridgeScriptPath, "discord-post", "--channel-id", $channelId, "--content-file", $contentPath)
+  } else {
+    $arguments = @($sendMessageScriptPath, "--content-file", $contentPath)
+    if ($mode -eq "owner_dm") {
+      $arguments += "--owner-dm"
+    } else {
+      $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
+      if ([string]::IsNullOrWhiteSpace($channelId)) {
+        throw "Candidate intervention '$interventionId' has deliveryTarget without channelId."
+      }
+      $arguments += @("--channel-id", $channelId)
+    }
   }
 
   $replyToMessageId = Get-ObjectPropertyString -Value $deliveryTarget -Name "replyToMessageId"
   if (-not [string]::IsNullOrWhiteSpace($replyToMessageId)) {
-    $arguments += @("--reply-to", $replyToMessageId)
+    if ($discordTransportMode -eq "bifrost") {
+      $arguments += @("--reply-to-message-id", $replyToMessageId)
+    } else {
+      $arguments += @("--reply-to", $replyToMessageId)
+    }
   }
 
   $personaName = Get-ObjectPropertyString -Value $deliveryTarget -Name "personaName"
@@ -770,13 +804,153 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
     Remove-Item -LiteralPath $contentPath -Force -ErrorAction SilentlyContinue
   }
 
+  if ($discordTransportMode -eq "bifrost") {
+    $bridgeReceiptText = [string]($sendOutput -join [Environment]::NewLine)
+    $speech = Convert-BifrostBridgeReceiptToSpeechStatus -Receipt ($bridgeReceiptText | ConvertFrom-Json) -Preview $draft
+    return Convert-LastSpeechToSpokenCandidateOperation -InterventionId $interventionId -Speech $speech
+  }
+
   $lastSpeechPath = Join-Path $statusDir "void-last-speech.json"
   if (-not (Test-Path $lastSpeechPath)) {
     throw "Candidate intervention delivery did not write last speech status."
   }
-
   $speech = Read-JsonFile -Path $lastSpeechPath
   return Convert-LastSpeechToSpokenCandidateOperation -InterventionId $interventionId -Speech $speech
+}
+
+function Convert-BifrostBridgeReceiptToSpeechStatus {
+  param(
+    $Receipt,
+    [string] $Preview
+  )
+
+  if ($null -eq $Receipt) {
+    return $null
+  }
+
+  return [pscustomobject]@{
+    sentAt = [DateTime]::UtcNow.ToString("o")
+    mode = Get-ObjectPropertyString -Value $Receipt -Name "action"
+    transport = Get-ObjectPropertyString -Value $Receipt -Name "transport"
+    channelId = Get-ObjectPropertyString -Value $Receipt -Name "channelId"
+    messageId = Get-ObjectPropertyString -Value $Receipt -Name "messageId"
+    recipientId = Get-ObjectPropertyString -Value $Receipt -Name "recipientId"
+    preview = if ([string]::IsNullOrWhiteSpace($Preview)) { $null } else { $Preview.Substring(0, [Math]::Min(280, $Preview.Length)) }
+  }
+}
+
+function Get-PendingModerationStatusNotices {
+  param($TypedState)
+
+  $statuses = @(Convert-ToValueArray -Value $TypedState.moderationCursor.userStatuses)
+  return @(
+    $statuses | ForEach-Object {
+      $status = $_
+      $userId = Get-ObjectPropertyString -Value $status -Name "userId"
+      if ([string]::IsNullOrWhiteSpace($userId)) {
+        return
+      }
+
+      @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $status -Name "pendingNotices")) |
+        Where-Object { [string]::IsNullOrWhiteSpace((Get-ObjectPropertyString -Value $_ -Name "sentAt")) } |
+        ForEach-Object {
+          [pscustomobject]@{
+            userId = $userId
+            userName = Get-ObjectPropertyString -Value $status -Name "userName"
+            notice = $_
+          }
+        }
+    }
+  )
+}
+
+function Convert-LastSpeechToModerationStatusNoticeSentOperation {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $UserId,
+    [Parameter(Mandatory = $true)]
+    [string] $NoticeId,
+    $Speech
+  )
+
+  $sentAt = Get-ObjectPropertyString -Value $Speech -Name "sentAt"
+  if ($null -eq $Speech -or [string]::IsNullOrWhiteSpace($sentAt)) {
+    return $null
+  }
+
+  $operation = @{
+    operation = "mark_moderation_status_notice_sent"
+    userId = $UserId
+    noticeId = $NoticeId
+    sentAt = $sentAt
+  }
+
+  foreach ($key in @("channelId", "messageId")) {
+    $propertyValue = Get-ObjectPropertyString -Value $Speech -Name $key
+    if ($null -ne $propertyValue) {
+      $operation[$key] = $propertyValue
+    }
+  }
+
+  return $operation
+}
+
+function Invoke-ModerationStatusNoticeDelivery {
+  param(
+    [Parameter(Mandatory = $true)]
+    $PendingNotice
+  )
+
+  $userId = Get-ObjectPropertyString -Value $PendingNotice -Name "userId"
+  $notice = Get-ObjectPropertyValue -Value $PendingNotice -Name "notice"
+  $noticeId = Get-ObjectPropertyString -Value $notice -Name "noticeId"
+  $body = Get-ObjectPropertyString -Value $notice -Name "body"
+  if (
+    [string]::IsNullOrWhiteSpace($userId) -or
+    [string]::IsNullOrWhiteSpace($noticeId) -or
+    [string]::IsNullOrWhiteSpace($body)
+  ) {
+    return $null
+  }
+
+  $contentPath = Join-Path $statusDir ("moderation-status-dm-{0}.txt" -f ([Guid]::NewGuid().ToString("n")))
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($contentPath, $body, $utf8NoBom)
+
+  $arguments = if ($discordTransportMode -eq "bifrost") {
+    @($bifrostBridgeScriptPath, "discord-dm", "--recipient-id", $userId, "--content-file", $contentPath)
+  } else {
+    @($sendMessageScriptPath, "--content-file", $contentPath, "--user-dm", $userId)
+  }
+  $previousVoidStatusDir = $env:VOID_STATUS_DIR
+  try {
+    $env:VOID_STATUS_DIR = $statusDir
+    $sendOutput = & node @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      $sendDetail = [string]($sendOutput -join [Environment]::NewLine)
+      if ([string]::IsNullOrWhiteSpace($sendDetail)) {
+        throw "Moderation status DM '$noticeId' failed with exit code $LASTEXITCODE."
+      }
+
+      throw "Moderation status DM '$noticeId' failed with exit code $LASTEXITCODE`: $($sendDetail.Trim())"
+    }
+  } finally {
+    $env:VOID_STATUS_DIR = $previousVoidStatusDir
+    Remove-Item -LiteralPath $contentPath -Force -ErrorAction SilentlyContinue
+  }
+
+  if ($discordTransportMode -eq "bifrost") {
+    $bridgeReceiptText = [string]($sendOutput -join [Environment]::NewLine)
+    $speech = Convert-BifrostBridgeReceiptToSpeechStatus -Receipt ($bridgeReceiptText | ConvertFrom-Json) -Preview $body
+    return Convert-LastSpeechToModerationStatusNoticeSentOperation -UserId $userId -NoticeId $noticeId -Speech $speech
+  }
+
+  $lastSpeechPath = Join-Path $statusDir "void-last-speech.json"
+  if (-not (Test-Path $lastSpeechPath)) {
+    throw "Moderation status DM '$noticeId' did not write last speech status."
+  }
+  $speech = Read-JsonFile -Path $lastSpeechPath
+  return Convert-LastSpeechToModerationStatusNoticeSentOperation -UserId $userId -NoticeId $noticeId -Speech $speech
 }
 
 function Test-LockProcessAlive {
@@ -933,10 +1107,21 @@ if (Test-Path $operationOutputPath) {
   Remove-Item -LiteralPath $operationOutputPath -Force
 }
 
-foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath, $sendMessageScriptPath)) {
+foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath)) {
   if (-not (Test-Path $requiredPath)) {
     throw "Missing required helper at $requiredPath"
   }
+}
+if ($discordTransportMode -eq "bifrost") {
+  if (-not (Test-Path $bifrostBridgeScriptPath)) {
+    throw "VOID_DISCORD_TRANSPORT=bifrost but Bifrost bridge helper is missing at $bifrostBridgeScriptPath"
+  }
+} elseif ($discordTransportMode -eq "direct") {
+  if (-not (Test-Path $sendMessageScriptPath)) {
+    throw "VOID_DISCORD_TRANSPORT=direct but direct Discord helper is missing at $sendMessageScriptPath"
+  }
+} else {
+  throw "Unsupported VOID_DISCORD_TRANSPORT '$discordTransportMode'. Use bifrost or direct."
 }
 if (-not (Test-Path $promptTemplatePath)) {
   throw "Missing rumination prompt template at $promptTemplatePath"
@@ -987,6 +1172,7 @@ $typedState = $typedContext.typedState
 $priorCursor = $typedState.moderationCursor
 $speechPressureObligations = @(Get-SpeechPressureObligations -TypedState $typedState)
 $deliverableCandidates = @(Get-DeliverableCandidateInterventions -TypedState $typedState)
+$pendingModerationStatusNotices = @(Get-PendingModerationStatusNotices -TypedState $typedState)
 
 $historyArgs = @($recentHistoryScriptPath)
 $priorCursorTimestamp = Get-ObjectPropertyString -Value $priorCursor -Name "lastReviewedTimestamp"
@@ -1044,6 +1230,7 @@ Write-JsonFile -Path $contextPath -Data @{
   selfStateSummary = $typedContext.summary
   chronology = "Times in this prompt-facing context are relative phrases. Exact timestamps stay parent-owned for typed state and cursor bookkeeping."
   openCases = @(Project-OpenCasesForRumination -Cases $typedState.moderationCursor.openCases -Now $startedAtUtc)
+  moderationUserStatuses = @(Project-ModerationUserStatusesForRumination -Statuses $typedState.moderationCursor.userStatuses -Now $startedAtUtc)
   speechReceipts = @(Project-SpeechReceiptsForRumination -Receipts $typedState.speechReceipts.recentReceipts -Now $startedAtUtc)
   memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
   shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
@@ -1067,7 +1254,7 @@ $openCaseCount = @(
   @(Convert-ToValueArray -Value $typedState.moderationCursor.openCases) |
     Where-Object { Test-OpenCaseRequiresRumination -Case $_ }
 ).Count
-if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $deliverableCandidates.Count -eq 0) {
+if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $deliverableCandidates.Count -eq 0 -and $pendingModerationStatusNotices.Count -eq 0) {
   Append-RunLog "napping: no new room messages or open cases; skipping awake rumination."
   Write-JsonFile -Path $operationOutputPath -Data @()
   $finishedAtUtc = [DateTime]::UtcNow
@@ -1085,6 +1272,7 @@ if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $delivera
     observedMessageCount = [int]$messageCount
     openCaseCount = [int]$openCaseCount
     deliverableCandidateCount = [int]$deliverableCandidates.Count
+    pendingModerationStatusNoticeCount = [int]$pendingModerationStatusNotices.Count
     tracePath = [string]$tracePath
     lastMessagePath = [string]$lastMessagePath
   }
@@ -1201,6 +1389,7 @@ if (-not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
 }
 
 $deliveredCandidateCount = 0
+$deliveredModerationStatusNoticeCount = 0
 if (-not $NoPost) {
   $refreshedTypedContext = Get-TypedSelfState
   $alreadyAnsweredCandidateOperations = @(Get-AlreadyAnsweredCandidateRetireOperations -TypedState $refreshedTypedContext.typedState -RetiredAt ([DateTime]::UtcNow))
@@ -1224,6 +1413,19 @@ if (-not $NoPost) {
       $deliveredCandidateCount += 1
     }
   }
+
+  $refreshedTypedContext = Get-TypedSelfState
+  $pendingModerationStatusNotices = @(Get-PendingModerationStatusNotices -TypedState $refreshedTypedContext.typedState)
+  foreach ($pendingNotice in $pendingModerationStatusNotices) {
+    if ($deliveredModerationStatusNoticeCount -ge 3) {
+      break
+    }
+    $noticeOperation = Invoke-ModerationStatusNoticeDelivery -PendingNotice $pendingNotice
+    if ($null -ne $noticeOperation) {
+      $appliedOperations += Apply-TypedOperation -Operation $noticeOperation
+      $deliveredModerationStatusNoticeCount += 1
+    }
+  }
 }
 
 Append-RunLog "writing final rumination status."
@@ -1235,6 +1437,8 @@ $lastMessageSummary = @(
   "proposed=" + [string]@($proposedOperations).Count
   "applied=" + [string]@($appliedOperations).Count
   "deliveredCandidates=" + [string]$deliveredCandidateCount
+  "deliveredModerationStatusNotices=" + [string]$deliveredModerationStatusNoticeCount
+  "discordTransport=" + [string]$discordTransportMode
   "finishedAt=" + $finishedAtUtc.ToString("o")
 ) -join [Environment]::NewLine
 [System.IO.File]::WriteAllText($lastMessagePath, $lastMessageSummary + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
@@ -1260,6 +1464,8 @@ $finalStatus = [ordered]@{
   appliedOperationCount = [int]@($appliedOperations).Count
   repoCursorOperationCount = [int]@($repoCursorOperations).Count
   deliveredCandidateCount = [int]$deliveredCandidateCount
+  deliveredModerationStatusNoticeCount = [int]$deliveredModerationStatusNoticeCount
+  discordTransport = [string]$discordTransportMode
   stateUpdated = [bool](@($appliedOperations).Count -gt 0)
   tracePath = [string]$tracePath
   lastMessagePath = [string]$lastMessagePath

@@ -8,6 +8,12 @@ Source messages:
 
 These are the rules the moderation review automation should treat as authoritative.
 
+Consequences policy for automation:
+- Moderation can record a strike when a rule violation needs tracked consequence short of removal.
+- A strike expires one week after it is issued.
+- Users should be informed by DM when a strike is issued, expires, or otherwise materially changes their moderation status.
+- Severe or repeated violations may still lead to immediate moderator action, including removal.
+
 ## English
 
 ```text

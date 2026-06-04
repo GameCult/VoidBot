@@ -98,6 +98,7 @@ export function createEmptyVoidSelfState(
     moderationCursor: voidModerationCursorSchema.parse({
       schemaVersion: 1,
       openCases: [],
+      userStatuses: [],
       repoActivityCursor: [],
       updatedAt: createdAt,
     }),
@@ -210,6 +211,13 @@ export function renderVoidSelfStateSummary(
     .slice(-4)
     .reverse()
     .map((entry) => `- ${entry.summary}${entry.authorName ? ` [from ${entry.authorName}]` : ""}`);
+  const activeModerationStatuses = state.moderationCursor.userStatuses
+    .filter((status) =>
+      status.status !== "retired" &&
+      status.strikes.some((strike) => !strike.expiredAt && Date.parse(strike.expiresAt) > Date.now()),
+    );
+  const pendingModerationNotices = state.moderationCursor.userStatuses
+    .reduce((count, status) => count + status.pendingNotices.filter((notice) => !notice.sentAt).length, 0);
   const interventions = state.candidateInterventions.interventions
     .filter((entry) => entry.status === "queued" || entry.status === "deferred")
     .slice(-3)
@@ -247,6 +255,9 @@ export function renderVoidSelfStateSummary(
     openCases.length > 0
       ? [`- What ${identityName} owes the room:`, ...openCases].join("\n")
       : `- What ${identityName} owes the room: nothing unresolved.`,
+    activeModerationStatuses.length > 0 || pendingModerationNotices > 0
+      ? `- Moderation status: ${activeModerationStatuses.length} users with active strikes; ${pendingModerationNotices} status DMs pending.`
+      : "- Moderation status: no active strikes or pending status DMs.",
     memories.length > 0
       ? [`- What ${identityName} remembers:`, ...memories].join("\n")
       : `- What ${identityName} remembers: nothing durable yet.`,

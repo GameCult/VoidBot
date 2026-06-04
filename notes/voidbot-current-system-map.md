@@ -199,15 +199,15 @@ When present, an ignored local script at `.voidbot/private/check-voidbot-operati
 ## Verse Service Contract
 
 - Owner:
-  - VoidBot owns Discord ingress, room cognition, moderation judgment, archive/source retrieval, direct owner handoff, typed Void self-state, repo Face scheduling compatibility, and parent-owned speech delivery.
+  - VoidBot owns Discord ingress, room cognition, moderation judgment, archive/source retrieval, direct owner handoff, typed Void self-state, repo Face scheduling compatibility, and parent-owned speech intent/receipt application. Default Discord egress crosses through Bifrost; direct VoidBot send helpers are standalone fallback.
   - Huginn owns Persona-state and `.cc` runtime inspection stewardship: schema availability, migration pressure, projection health, access-tool sanity, CultMesh publication, and Eve DSL inspection for typed state.
-  - Bifrost owns governed public crossings for GitHub proposals/articles/comments, work topics, dispatch receipts, and future Discord-native work interfaces.
+  - Bifrost owns governed public crossings for GitHub proposals/articles/comments, work topics, dispatch receipts, current Discord egress for swarm/moderation status, and future Discord-native work interfaces.
   - Odin owns Verse/provider discovery and interface aggregation, not provider state.
   - Eve/CultUI owns presentation shape; browser/native/TUI renderers lower provider-owned surfaces.
 - Inputs:
   - Discord gateway events, archived Discord corpus, indexed source/lore archives, Postgres jobs/audit/interaction memory, Qdrant vectors, typed `.cc` self/Face state, Bifrost governance digest, and orchestrator status.
 - Outputs:
-  - Discord replies or webhook persona posts through parent-owned rails, owner handoff artifacts, MCP retrieval/tool results, typed CultCache operations, and CultMesh-advertised Eve/CultUI provider surfaces.
+  - Discord reply/status intents sent through Bifrost with receipts applied to typed state, owner handoff artifacts, MCP retrieval/tool results, typed CultCache operations, and CultMesh-advertised Eve/CultUI provider surfaces.
 - Derived state:
   - JSON status files, generated HTML, source/archive freshness summaries, prompt-facing projections, and local debug snapshots are witnesses or lowerings. They do not own durable truth.
 - Forbidden writers:
