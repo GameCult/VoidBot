@@ -384,6 +384,57 @@ function Convert-ToOperationArray {
   return @($Value)
 }
 
+function Convert-ModerationUserStatusesPatchToOperations {
+  param($Operation)
+
+  $userStatuses = Get-ObjectPropertyValue -Value $Operation -Name "userStatuses"
+  if ($null -eq $userStatuses) {
+    $userStatuses = Get-ObjectPropertyValue -Value $Operation -Name "moderationUserStatuses"
+  }
+  if ($null -eq $userStatuses) {
+    return @()
+  }
+
+  return @(
+    @(Convert-ToValueArray -Value $userStatuses) |
+      Where-Object { $null -ne $_ } |
+      ForEach-Object {
+        @{
+          operation = "upsert_moderation_user_status"
+          status = $_
+        }
+      }
+  )
+}
+
+function Normalize-ProposedRuminationOperations {
+  param($Operations)
+
+  $normalized = @()
+  foreach ($operation in @(Convert-ToOperationArray -Value $Operations)) {
+    if ($null -eq $operation) {
+      continue
+    }
+
+    $operationName = Get-ObjectPropertyString -Value $operation -Name "operation"
+    if ($null -ne $operationName) {
+      $normalized += $operation
+      continue
+    }
+
+    $statusOperations = @(Convert-ModerationUserStatusesPatchToOperations -Operation $operation)
+    if ($statusOperations.Count -gt 0) {
+      Append-RunLog ("normalized legacy moderation user status patch into {0} operation(s)." -f $statusOperations.Count)
+      $normalized += $statusOperations
+      continue
+    }
+
+    $normalized += $operation
+  }
+
+  return @($normalized)
+}
+
 function Test-OpenCaseRequiresRumination {
   param($Case)
 
@@ -1346,7 +1397,7 @@ if (-not (Test-Path $operationOutputPath)) {
 }
 
 Append-RunLog "reading proposed operation output."
-$proposedOperations = @(Convert-ToOperationArray -Value (Read-JsonFile -Path $operationOutputPath))
+$proposedOperations = @(Normalize-ProposedRuminationOperations -Operations (Read-JsonFile -Path $operationOutputPath))
 $appliedOperations = @()
 
 Assert-SpeechPressureObligationsResolved -Obligations $speechPressureObligations -Operations $proposedOperations

@@ -157,6 +157,41 @@ process.stdin.on("end", () => {
         tags: ["fixture"],
       },
     },
+    {
+      userStatuses: [
+        {
+          userId: "fixture-status-user",
+          userName: "Fixture Status User",
+          status: "active",
+          summary: "Fixture legacy patch should normalize into an upsert operation.",
+          strikes: [
+            {
+              strikeId: "fixture-status-strike",
+              reason: "testing legacy userStatuses normalization",
+              ruleRef: "fixture-rule",
+              sourceMessageId: "fixture-status-message",
+              channelId: "fixture-channel",
+              issuedAt: "2026-06-04T00:00:00.000Z",
+              expiresAt: "2026-06-11T00:00:00.000Z",
+              issuedBy: "Void",
+              tags: ["fixture"],
+            },
+          ],
+          pendingNotices: [
+            {
+              noticeId: "fixture-status-notice",
+              kind: "strike_added",
+              summary: "Fixture status notice",
+              body: "Fixture moderation status notice.",
+              createdAt: "2026-06-04T00:00:00.000Z",
+              tags: ["fixture"],
+            },
+          ],
+          updatedAt: "2026-06-04T00:00:00.000Z",
+          tags: ["fixture"],
+        },
+      ],
+    },
   ];
 
   mkdirSync(dirname(operationOutputPath), { recursive: true });
@@ -212,8 +247,8 @@ process.stdin.on("end", () => {
   if ($status.status -ne "ok") {
     throw "Rumination fixture did not finish ok."
   }
-  if ([int]$status.proposedOperationCount -ne 4 -or [int]$status.appliedOperationCount -ne 4) {
-    throw "Rumination fixture expected four proposed/applied operations."
+  if ([int]$status.proposedOperationCount -ne 5 -or [int]$status.appliedOperationCount -ne 5) {
+    throw "Rumination fixture expected five proposed/applied operations."
   }
 
   $contextRaw = Get-Content -LiteralPath $contextPath -Raw -Encoding UTF8
@@ -241,6 +276,7 @@ process.stdin.on("end", () => {
   $incubation = @($state.thoughtMemory.incubation)
   $agency = @($state.agencyPressure.pressures)
   $candidates = @($state.candidateInterventions.interventions)
+  $moderationStatuses = @($state.moderationCursor.userStatuses)
 
   if ($shortTerm.Count -ne 1 -or $shortTerm[0].memoryId -ne "fixture-rumination-short-term") {
     throw "Rumination fixture did not persist the short-term memory proposal."
@@ -257,6 +293,10 @@ process.stdin.on("end", () => {
   if ($candidates.Count -ne 1 -or $candidates[0].interventionId -ne "fixture-rumination-candidate") {
     throw "Rumination fixture did not persist the candidate intervention proposal."
   }
+  $userStatus = @($moderationStatuses | Where-Object { $_.userId -eq "fixture-status-user" }) | Select-Object -First 1
+  if ($null -eq $userStatus -or $userStatus.strikes[0].strikeId -ne "fixture-status-strike") {
+    throw "Rumination fixture did not normalize the legacy userStatuses patch."
+  }
 
   @{
     status = "ok"
@@ -264,6 +304,7 @@ process.stdin.on("end", () => {
     incubationCount = $incubation.Count
     agencyPressureCount = $agency.Count
     candidateCount = $candidates.Count
+    moderationStatusCount = $moderationStatuses.Count
   } | ConvertTo-Json -Compress
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
