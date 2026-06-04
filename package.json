@@ -25,6 +25,7 @@
     "swarm:render-dashboard": "node scripts/render-voidbot-swarm-dashboard.mjs",
     "verse:advertisements": "node scripts/export-voidbot-provider-advertisements.mjs",
     "verse:advertisements:check": "node scripts/export-voidbot-provider-advertisements.mjs --check",
+    "texts:seed": "tsx scripts/seed-gamecult-text-documents.ts",
     "state:sync-offsite": "powershell -ExecutionPolicy Bypass -File scripts/sync-voidbot-backup-offsite.ps1",
     "state:install-startup-task": "powershell -ExecutionPolicy Bypass -File scripts/install-stack-startup-task.ps1",
     "state:install-offsite-task": "powershell -ExecutionPolicy Bypass -File scripts/install-offsite-backup-task.ps1",

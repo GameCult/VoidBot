@@ -11,13 +11,16 @@ import {
   buildEpiphanyIdentityRegistry,
   ContextBuilder,
   createStateStorage,
+  ensureGameCultTextDocument,
   ensureRepoFaceInitialized,
   getRepoDiscordIdentityAllowedChannelIds,
   faceRegistryAsRepoDiscordRegistry,
+  ODIN_VERSE_POEM_DOCUMENT_ID,
   projectRepoFaceSleepCycleForNow,
   applyVoidSelfStateOperation,
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
+  renderGameCultStructuredTextDocument,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
   type RepoFaceRestSnapshot,
   resolveRepoFaceStatePath,
@@ -556,6 +559,10 @@ async function queueRepoFaceTurn(input: {
     ? renderNativePersonaBodySurface(identity)
     : renderRepoFaceRepoActivitySurface(identity, input.config);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
+  const colossusOdinDoctrine = await renderColossusOdinDoctrine({
+    displayName: identity.displayName,
+    repoName: identity.repoName,
+  });
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
     recentMessages,
@@ -579,6 +586,7 @@ async function queueRepoFaceTurn(input: {
     jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
     globalAgentDoctrine,
+    colossusOdinDoctrine,
   });
   const imageAttachments = collectPromptImageAttachments([
     recentMessages,
@@ -1834,18 +1842,15 @@ function buildHeartbeatPrompt(input: {
   jurisdictionDive: JurisdictionDiveDirective;
   githubActionsEnabled: boolean;
   globalAgentDoctrine: string;
+  colossusOdinDoctrine: string;
 }): string {
-  const colossusOdinDoctrine = loadPromptTemplate("repo-face-colossus-odin-doctrine.prompt.md", {
-    displayName: input.identity.displayName,
-    repoName: input.identity.repoName,
-  });
   return loadPromptTemplate("repo-face-turn.prompt.md", {
     displayName: input.identity.displayName,
     identityId: input.identity.id,
     repoName: input.identity.repoName,
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     globalAgentDoctrine: input.globalAgentDoctrine,
-    colossusOdinDoctrine,
+    colossusOdinDoctrine: input.colossusOdinDoctrine,
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
@@ -1878,6 +1883,23 @@ function buildHeartbeatPrompt(input: {
     worldbuildingPublicationDirective: renderWorldbuildingPublicationDirective(input.identity),
     jurisdictionDiveLine: input.jurisdictionDive.promptLine,
     githubActionsEnabled: input.githubActionsEnabled,
+  });
+}
+
+async function renderColossusOdinDoctrine(input: {
+  displayName: string;
+  repoName: string;
+}): Promise<string> {
+  const poem = await ensureGameCultTextDocument(ODIN_VERSE_POEM_DOCUMENT_ID);
+  const odinVersePoem = renderGameCultStructuredTextDocument(poem, {
+    halfLineSeparator: "    ",
+    stanzaSeparator: "\n\n",
+  });
+
+  return loadPromptTemplate("repo-face-colossus-odin-doctrine.prompt.md", {
+    displayName: input.displayName,
+    repoName: input.repoName,
+    odinVersePoem,
   });
 }
 
@@ -1957,6 +1979,10 @@ async function assembleRepoFaceTurnPrompt(input: {
       );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
+  const colossusOdinDoctrine = await renderColossusOdinDoctrine({
+    displayName: identity.displayName,
+    repoName: identity.repoName,
+  });
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
     : renderRepoFaceConversationTranscript({
@@ -1986,6 +2012,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     jurisdictionDive: buildJurisdictionDiveDirective(identity, participant),
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
     globalAgentDoctrine,
+    colossusOdinDoctrine,
   });
 
   if (input.outPath) {

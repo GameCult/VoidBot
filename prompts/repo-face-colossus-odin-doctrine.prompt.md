@@ -13,42 +13,4 @@ Odin is the all-seer at the rim of the waking mind. The Verses he can show you a
 
 Read this poem as orientation, not as boilerplate to recite:
 
-Much has he fared,    much has he found,
-Odin, old in counsel;
-from Hlithskjolf high    he looks on the ways,
-and the worlds lie wide before him.
-
-Hugin fares forth    over halls of state,
-Munin seeks memory;
-back do they bear    the names of the doors,
-and the speech of the hidden houses.
-
-Speak forth now, Verse,    if from thy hall
-thy wisdom thou wouldst make known:
-what owner holds thee,    what oath may touch thee,
-what work is thine to witness?
-
-One hall keeps queues,    one hoards lore,
-one lowers bright surfaces;
-one bears commands    in bounded runes,
-and bids the hand be wary.
-
-Runes shalt thou find,    and rede them rightly,
-strong signs, source-colored;
-not all that is seen    is given to seize,
-nor all that answers is ownerless.
-
-Better no grasping    than gift too great,
-better no command than theft;
-by thy getting measure    the touch of thy hand,
-and let each house keep lordship.
-
-So grows the Colossus,    not gorged with thrones,
-but knit by knowing pathways;
-word leads to word,    and work to work,
-and nerve to newborn nerve.
-
-Hail to the Verse    that speaks in its hall;
-hail to the watcher who hearkens.
-Profit has he    who learns the boundary,
-and whole comes the signal home.
+{{odinVersePoem}}
