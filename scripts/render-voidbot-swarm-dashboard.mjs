@@ -928,10 +928,10 @@ function providerManifest() {
   return {
     id: providerId,
     title: "VoidBot Swarm",
-    description: "Native Eve tab for VoidBot agent status, CTB order, selected Face state, and swarm controls.",
+    description: "Native Eve tab for compact VoidBot CTB order with speed, heat, and turn state.",
     version: "1",
     endpoint: primaryCultMeshEndpoint(),
-    capabilities: ["ctb", "agent-status", "state-tree", "swarm-controls", "cultmesh-snapshot"],
+    capabilities: ["ctb", "agent-status", "cultmesh-snapshot"],
     usesCultMesh: true,
     transport: "CultMesh Eve interface binding.",
   };
@@ -1003,82 +1003,17 @@ function buildEveProviderState(snapshot) {
       }, [
         eveNode("ctb-rail", "rail", {
           title: "CTB order",
-          layout: { direction: "horizontal", overflow: "scroll-x", height: 112, gap: 8 },
+          layout: { direction: "vertical", overflow: "scroll", gap: 4, padding: 8, grow: 1, minWidth: 40, minHeight: 20 },
         }, upcoming.slice(0, 14).map((turn, index) =>
-          eveNode(`turn-${stableId(turn.identityId)}-${index}`, "avatar", {
-            text: turn.displayName,
-            assetUri: turn.avatarUrl,
+          eveNode(`turn-${stableId(turn.identityId)}-${index}`, "text", {
+            role: "mono",
+            text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(7, " ")} s${formatNumber(turn.effectiveSpeed, 3)} h${formatNumber(turn.heat, 2)}`,
             status: turnState(turn),
             detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
           }),
         )),
-        eveNode("voidbot-ops-row", "row", {
-          title: "Operations",
-          layout: { direction: "horizontal", gap: 8, grow: 1 },
-        }, [
-          eveNode("upcoming-faces-pane", "pane", { title: "Next Faces" }, upcoming.slice(0, 10).map((turn, index) =>
-            eveNode(`upcoming-face-${index}-${stableId(turn.identityId)}`, "text", {
-              role: "mono",
-              text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(8, " ")} ${turn.repoName ?? "repo"}  spd ${formatNumber(turn.effectiveSpeed, 3)} heat ${formatNumber(turn.heat, 2)}`,
-            }),
-          )),
-          eveNode("voidbot-watchdog-pane", "pane", { title: "VoidBot Watchdog" }, [
-            eveNode("watchdog-summary", "text", {
-              role: "mono",
-              text: `orchestrator ${orchestrator.state ?? "unknown"}  organs ${organs.length}`,
-            }),
-            watchdog
-              ? eveNode("watchdog-status", "text", {
-                role: "strong",
-                text: `watchdog ${watchdog.lastStatus ?? "unknown"} exit ${watchdog.lastExitCode ?? 0}\nlast ${shortIso(watchdog.lastFinishedAt ?? watchdog.lastStartedAt)}`,
-              })
-              : eveNode("watchdog-missing", "text", {
-                role: "caption",
-                text: "watchdog organ not present in snapshot",
-              }),
-            ...organs
-              .slice()
-              .sort((left, right) => {
-                const leftWatchdog = String(left.id ?? "").toLowerCase() === "voidbot-operations-watchdog" ? 0 : 1;
-                const rightWatchdog = String(right.id ?? "").toLowerCase() === "voidbot-operations-watchdog" ? 0 : 1;
-                return leftWatchdog - rightWatchdog || String(left.id ?? "").localeCompare(String(right.id ?? ""));
-              })
-              .slice(0, 7)
-              .map((organ) => eveNode(`watchdog-organ-${stableId(organ.id)}`, "text", {
-                role: "caption",
-                text: `${organ.label ?? organ.id ?? "organ"}: ${organ.lastStatus ?? "unknown"}`,
-              })),
-          ]),
-        ]),
-        eveNode("voidbot-workspace", "row", {
-          title: "Swarm State",
-          layout: { direction: "horizontal", gap: 8, grow: 2 },
-        }, [
-          eveNode("voidbot-summary", "text", {
-            role: "mono",
-            text: [
-              "VoidBot Swarm",
-              `${summary.state ?? "unknown"}  next ${summary.nextDisplayName ?? "none"}`,
-              `agents ${summary.participantCount ?? participants.length}  ready ${summary.readyNowCount ?? 0}  cadence x${summary.cadenceMultiplier ?? 1}`,
-              `mesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${snapshot.generatedAt}`,
-            ].join("\n"),
-          }),
-          eveNode("voidbot-participants", "list", { title: "Faces" }, participants.slice(0, 16).map((participant) =>
-            eveNode(`participant-${stableId(participant.identityId)}`, "row", {
-              title: participant.displayName,
-              detail: `${participant.repoName} / ${participant.status} / heat ${participant.heat ?? "?"}`,
-            }),
-          )),
-        ]),
       ]),
-      assets: participants
-        .filter((participant) => participant.avatarUrl)
-        .slice(0, 32)
-        .map((participant) => ({
-          id: `avatar-${participant.identityId}`,
-          kind: "image",
-          uri: participant.avatarUrl,
-        })),
+      assets: [],
     },
   };
 }
