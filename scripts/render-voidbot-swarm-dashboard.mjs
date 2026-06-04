@@ -22,6 +22,8 @@ const eveBindingDocumentType = "gamecult.eve.interface_binding";
 const eveBindingSchemaId = "gamecult.eve.interface_binding.v1";
 const surfaceDocumentType = "gamecult.eve.surface_state";
 const surfaceSchemaId = "gamecult.eve.surface_state.v1";
+const operatorDmRequestDocumentType = "gamecult.operator_dm_request";
+const operatorDmRequestSchemaId = "gamecult.operator_dm_request.v1";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -701,7 +703,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
         schemaVersion: snapshotSchemaId,
         description: "Redacted read-only VoidBot swarm state snapshot for CultMesh distribution.",
       }),
-      global: true,
+      global: false,
       schema: {
         parse(input) {
           if (!input || typeof input !== "object") {
@@ -717,7 +719,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
       schemaId: providerAdvertisementSchemaId,
       schemaVersion: providerAdvertisementSchemaId,
       contentHash: providerAdvertisementSchemaId,
-      global: true,
+      global: false,
       name: "providerId",
       schema: { parse: parseObjectDocument("Eve provider advertisement") },
     });
@@ -727,7 +729,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
       schemaId: surfaceSchemaId,
       schemaVersion: surfaceSchemaId,
       contentHash: surfaceSchemaId,
-      global: true,
+      global: false,
       name: "providerId",
       schema: { parse: parseObjectDocument("Eve surface state") },
     });
@@ -737,30 +739,38 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
       schemaId: eveBindingSchemaId,
       schemaVersion: eveBindingSchemaId,
       contentHash: eveBindingSchemaId,
-      global: true,
+      global: false,
       name: "bindingId",
       schema: { parse: parseObjectDocument("Eve interface binding") },
     });
+    const operatorDmRequestDefinition = defineDocumentType({
+      type: operatorDmRequestDocumentType,
+      schemaName: operatorDmRequestDocumentType,
+      schemaId: operatorDmRequestSchemaId,
+      schemaVersion: operatorDmRequestSchemaId,
+      contentHash: operatorDmRequestSchemaId,
+      global: false,
+      name: "requestId",
+      schema: { parse: parseObjectDocument("Operator DM request") },
+    });
     const node = await CultMesh.createNode(storePath, {
-      documents: [snapshotDefinition, providerDefinition, surfaceDefinition, eveBindingDefinition],
+      documents: [snapshotDefinition, providerDefinition, surfaceDefinition, eveBindingDefinition, operatorDmRequestDefinition],
     });
     const providerAdvertisement = buildProviderAdvertisement(snapshot);
     const eveBinding = buildEveInterfaceBinding(snapshot, eveState);
-    const operatorDmState = buildOperatorDmProviderState(snapshot);
     const operatorDmAdvertisement = buildOperatorDmProviderAdvertisement(snapshot);
-    const operatorDmBinding = buildOperatorDmInterfaceBinding(snapshot, operatorDmState);
     await node.put(snapshotDefinition, "voidbot-swarm", snapshot);
     await node.put(providerDefinition, providerId, providerAdvertisement);
     await node.put(providerDefinition, operatorDmProviderId, operatorDmAdvertisement);
     await node.put(surfaceDefinition, providerId, eveState);
-    await node.put(surfaceDefinition, operatorDmProviderId, operatorDmState);
     await node.put(eveBindingDefinition, providerId, eveBinding);
-    await node.put(eveBindingDefinition, operatorDmProviderId, operatorDmBinding);
-    await node.flush?.(true);
+    await node.delete(surfaceDefinition, operatorDmProviderId);
+    await node.delete(eveBindingDefinition, operatorDmProviderId);
+    await node.flush?.();
     return {
       writeStatus: "ok",
       storePath,
-      documents: [snapshotDocumentType, providerAdvertisementDocumentType, surfaceDocumentType, eveBindingDocumentType],
+      documents: [snapshotDocumentType, providerAdvertisementDocumentType, surfaceDocumentType, eveBindingDocumentType, operatorDmRequestDocumentType],
       providerId,
       verseId,
       eveBinding: {
@@ -975,113 +985,11 @@ function buildOperatorDmProviderAdvertisement(snapshot) {
       type: eveBindingDocumentType,
       schemaId: eveBindingSchemaId,
       key: operatorDmProviderId,
+    }, {
+      type: operatorDmRequestDocumentType,
+      schemaId: operatorDmRequestSchemaId,
+      key: "requestId",
     }],
-  };
-}
-
-function buildOperatorDmInterfaceBinding(snapshot, eveState) {
-  return {
-    schemaVersion: eveBindingSchemaId,
-    bindingId: operatorDmProviderId,
-    providerId: operatorDmProviderId,
-    verseId,
-    title: "VoidBot Operator DM",
-    kind: "eve-cultui-command-surface",
-    updatedAt: snapshot.generatedAt,
-    authority: {
-      owner: "VoidBot Discord owner-DM helper",
-      commandOwner: "VoidBot worker notify_owner path",
-      sourceDocuments: [{
-        type: providerAdvertisementDocumentType,
-        schemaId: providerAdvertisementSchemaId,
-        key: operatorDmProviderId,
-      }],
-      surfaceDocument: {
-        type: surfaceDocumentType,
-        schemaId: surfaceSchemaId,
-        key: operatorDmProviderId,
-      },
-      forbiddenWriters: ["Mimir Well", "Odin", "Eve renderers"],
-    },
-    surface: eveState.surface,
-    stateSummary: {
-      state: ownerDmStatus(snapshot),
-      botTokenConfigured: Boolean(env.DISCORD_BOT_TOKEN),
-      ownerConfigured: Boolean(env.DISCORD_OWNER_ID),
-      command: "owner.dm.send",
-    },
-    controls: [ownerDmCommandDescriptor()],
-    commands: [ownerDmCommandDescriptor()],
-    rendererHints: {
-      preferredLowerings: ["nightwing-tui", "eve-native"],
-      viewportMode: "operator-alerts",
-      tileId: "voidbot-operator-dm",
-      minWidth: 44,
-      minHeight: 8,
-      preferredWidth: 72,
-      preferredHeight: 14,
-      priority: -80,
-      density: "compact",
-    },
-  };
-}
-
-function buildOperatorDmProviderState(snapshot) {
-  const state = ownerDmStatus(snapshot);
-  return {
-    schema: surfaceSchemaId,
-    providerId: operatorDmProviderId,
-    title: "VoidBot Operator DM",
-    version: Number(snapshot.summary?.initiativeClock ?? Date.now()),
-    updatedAt: snapshot.generatedAt,
-    surface: {
-      schema: "gamecult.eve.surface.v1",
-      id: "voidbot.operator-dm.surface",
-      title: "VoidBot Operator DM",
-      commands: [ownerDmCommandDescriptor()],
-      root: {
-        id: "voidbot-operator-dm-root",
-        kind: "pane",
-        props: {
-          title: "Operator DM",
-          providerId: operatorDmProviderId,
-          status: state,
-          summary: state === "active"
-            ? "owner.dm.send is advertised; VoidBot owns delivery."
-            : "owner.dm.send is advertised but Discord credentials are incomplete.",
-          command: "owner.dm.send",
-        },
-        children: [{
-          id: "voidbot-operator-dm-status",
-          kind: "metric",
-          props: {
-            label: "Owner DM",
-            value: state,
-            tone: state === "active" ? "ok" : "warn",
-          },
-          children: [],
-        }, {
-          id: "voidbot-operator-dm-command",
-          kind: "button",
-          props: {
-            label: "Send owner DM",
-            command: "owner.dm.send",
-            action: ownerDmCommandAction(),
-            status: state,
-          },
-          children: [],
-        }, {
-          id: "voidbot-operator-dm-contract",
-          kind: "text",
-          props: {
-            text: "Mimir may request operator intervention through gamecult.operator_dm_request.v1; VoidBot owns Discord delivery.",
-          },
-          children: [],
-        }],
-      },
-      assets: [],
-    },
-    commands: [ownerDmCommandDescriptor()],
   };
 }
 
@@ -1092,7 +1000,7 @@ function ownerDmCommandDescriptor() {
     command: "owner.dm.send",
     transport: "cultmesh-command",
     payloadSchema: {
-      schemaId: "gamecult.operator_dm_request.v1",
+      schemaId: operatorDmRequestSchemaId,
       type: "object",
       required: ["message"],
       properties: {
@@ -1104,8 +1012,8 @@ function ownerDmCommandDescriptor() {
       },
     },
     writes: {
-      documentType: "gamecult.operator_dm_request",
-      schemaId: "gamecult.operator_dm_request.v1",
+      documentType: operatorDmRequestDocumentType,
+      schemaId: operatorDmRequestSchemaId,
       owner: operatorDmProviderId,
     },
     action: ownerDmCommandAction(),
@@ -1118,7 +1026,7 @@ function ownerDmCommandAction() {
     command: "owner.dm.send",
     transport: "cultmesh-command",
     providerId: operatorDmProviderId,
-    payloadSchemaId: "gamecult.operator_dm_request.v1",
+    payloadSchemaId: operatorDmRequestSchemaId,
   };
 }
 

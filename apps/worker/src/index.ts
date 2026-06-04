@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -132,6 +133,8 @@ let providerRegistry: ProviderRegistry;
 let systemMessages: SystemMessageCatalog;
 let jobQueue: JobQueue;
 let auditLog: AuditLog;
+let isDrainingOperatorDm = false;
+let operatorDmDrainUnavailableLogged = false;
 
 void main().catch((error) => {
   console.error(error);
@@ -194,6 +197,14 @@ async function pollPendingJobs(): Promise<void> {
     const message =
       error instanceof Error ? `${error.name}: ${error.message}` : "Unexpected worker poll failure.";
     console.error(`Worker poll failed: ${message}`);
+  }
+
+  try {
+    await drainOperatorDmRequests();
+  } catch (error) {
+    const message =
+      error instanceof Error ? `${error.name}: ${error.message}` : "Unexpected operator DM drain failure.";
+    console.error(`Operator DM drain failed: ${message}`);
   }
 }
 
@@ -2489,6 +2500,235 @@ async function postOwnerNotification(content: string): Promise<void> {
 
   const dmChannelId = await openOwnerDmChannel();
   await postDiscordBotMessage(dmChannelId, fitDiscordMessage(content));
+}
+
+type OperatorDmRequestStatus = "pending" | "sent" | "failed";
+
+interface OperatorDmRequest {
+  requestId?: string;
+  command?: string;
+  message?: string;
+  severity?: string;
+  service?: string;
+  sourceId?: string;
+  status?: OperatorDmRequestStatus | string;
+  reason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  sentAt?: string;
+  failedAt?: string;
+  attempts?: number;
+  channelId?: string;
+  messageId?: string;
+  error?: string;
+}
+
+async function drainOperatorDmRequests(): Promise<void> {
+  if (isDrainingOperatorDm) {
+    return;
+  }
+
+  isDrainingOperatorDm = true;
+  try {
+    const runtime = loadCultMeshRuntime();
+    if (!runtime) {
+      if (!operatorDmDrainUnavailableLogged) {
+        operatorDmDrainUnavailableLogged = true;
+        console.warn("Operator DM CultMesh drain skipped: CultMesh/CultCache runtime unavailable.");
+      }
+      return;
+    }
+
+    const { CultMesh, defineDocumentType } = runtime;
+    const documents = operatorDmCultMeshDocuments(defineDocumentType);
+    const node = await CultMesh.createNode(operatorDmStorePath(), {
+      documents: documents.all,
+    });
+    const requests = node.cache.getAll(documents.requestDefinition) as OperatorDmRequest[];
+    for (const request of requests) {
+      if (!shouldSendOperatorDmRequest(request)) {
+        continue;
+      }
+
+      const requestId = operatorDmRequestId(request);
+      const attempts = (typeof request.attempts === "number" ? request.attempts : 0) + 1;
+      try {
+        const dmChannelId = await openOwnerDmChannel();
+        const posted = await postDiscordBotMessage(dmChannelId, renderOperatorDmRequest(request));
+        await node.put(documents.requestDefinition, requestId, {
+          ...request,
+          requestId,
+          status: "sent",
+          attempts,
+          channelId: dmChannelId,
+          messageId: posted.id,
+          sentAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          error: undefined,
+        });
+        console.log(`Sent operator DM request ${requestId} as Discord message ${posted.id}.`);
+      } catch (error) {
+        await node.put(documents.requestDefinition, requestId, {
+          ...request,
+          requestId,
+          status: "failed",
+          attempts,
+          failedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          error: error instanceof Error ? error.message : String(error),
+        });
+        console.error(`Operator DM request ${requestId} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    await node.flush?.();
+  } finally {
+    isDrainingOperatorDm = false;
+  }
+}
+
+function operatorDmCultMeshDocuments(defineDocumentType: any): {
+  requestDefinition: any;
+  all: any[];
+} {
+  const objectSchema = (label: string) => ({
+    parse(input: unknown): unknown {
+      if (!input || typeof input !== "object") {
+        throw new Error(`${label} must be an object.`);
+      }
+      return input;
+    },
+  });
+  const requestDefinition = defineDocumentType({
+    type: "gamecult.operator_dm_request",
+    schemaName: "gamecult.operator_dm_request",
+    schemaId: "gamecult.operator_dm_request.v1",
+    schemaVersion: "gamecult.operator_dm_request.v1",
+    contentHash: "gamecult.operator_dm_request.v1",
+    global: false,
+    name: (value: OperatorDmRequest) => value.requestId ?? "operator-dm-request",
+    schema: {
+      parse(input: unknown): OperatorDmRequest {
+        if (!input || typeof input !== "object") {
+          throw new Error("Operator DM request must be an object.");
+        }
+        return input as OperatorDmRequest;
+      },
+    },
+  });
+
+  return {
+    requestDefinition,
+    all: [
+      defineDocumentType({
+        type: "voidbot.swarm_state_snapshot",
+        schemaName: "voidbot.swarm_state_snapshot",
+        schemaId: "voidbot.swarm_state_snapshot.v1",
+        schemaVersion: "voidbot.swarm_state_snapshot.v1",
+        contentHash: "voidbot.swarm_state_snapshot.v1",
+        global: false,
+        schema: objectSchema("VoidBot swarm snapshot"),
+      }),
+      defineDocumentType({
+        type: "gamecult.eve.provider_advertisement",
+        schemaName: "gamecult.eve.provider_advertisement",
+        schemaId: "gamecult.eve.provider_advertisement.v1",
+        schemaVersion: "gamecult.eve.provider_advertisement.v1",
+        contentHash: "gamecult.eve.provider_advertisement.v1",
+        global: false,
+        name: "providerId",
+        schema: objectSchema("Eve provider advertisement"),
+      }),
+      defineDocumentType({
+        type: "gamecult.eve.surface_state",
+        schemaName: "gamecult.eve.surface_state",
+        schemaId: "gamecult.eve.surface_state.v1",
+        schemaVersion: "gamecult.eve.surface_state.v1",
+        contentHash: "gamecult.eve.surface_state.v1",
+        global: false,
+        name: "providerId",
+        schema: objectSchema("Eve surface state"),
+      }),
+      defineDocumentType({
+        type: "gamecult.eve.interface_binding",
+        schemaName: "gamecult.eve.interface_binding",
+        schemaId: "gamecult.eve.interface_binding.v1",
+        schemaVersion: "gamecult.eve.interface_binding.v1",
+        contentHash: "gamecult.eve.interface_binding.v1",
+        global: false,
+        name: "bindingId",
+        schema: objectSchema("Eve interface binding"),
+      }),
+      requestDefinition,
+    ],
+  };
+}
+
+function shouldSendOperatorDmRequest(request: OperatorDmRequest): boolean {
+  if (!request || typeof request !== "object") {
+    return false;
+  }
+  if (request.command && request.command !== "owner.dm.send") {
+    return false;
+  }
+  if (!request.message || !request.message.trim()) {
+    return false;
+  }
+  return !request.status || request.status === "pending";
+}
+
+function renderOperatorDmRequest(request: OperatorDmRequest): string {
+  const message = request.message?.trim() ?? "";
+  const header = [
+    request.severity ? `[${request.severity.toUpperCase()}]` : "[ALERT]",
+    request.service ?? "GameCult service",
+    request.sourceId ? `source ${request.sourceId}` : "",
+  ].filter(Boolean).join(" ");
+  const reason = request.reason ? `\nReason: ${request.reason}` : "";
+  return `${header}\n${message}${reason}`.trim();
+}
+
+function operatorDmRequestId(request: OperatorDmRequest): string {
+  if (request.requestId?.trim()) {
+    return request.requestId.trim();
+  }
+
+  return `operator-dm-${createHash("sha1")
+    .update(JSON.stringify({
+      command: request.command ?? "owner.dm.send",
+      message: request.message ?? "",
+      severity: request.severity ?? "",
+      service: request.service ?? "",
+      sourceId: request.sourceId ?? "",
+      createdAt: request.createdAt ?? "",
+    }))
+    .digest("hex")
+    .slice(0, 16)}`;
+}
+
+function operatorDmStorePath(): string {
+  return resolve(config.storageRoot, "status", "cultmesh", "voidbot-swarm-state.cc");
+}
+
+function loadCultMeshRuntime(): { CultMesh: any; defineDocumentType: any } | null {
+  const candidates = [
+    resolve(process.cwd(), "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
+    resolve(process.cwd(), "..", "CultMeshTS", "package.json"),
+  ];
+
+  for (const packageJson of candidates) {
+    try {
+      const requireCult = createRequire(packageJson);
+      const { CultMesh } = requireCult("cultmesh-ts/dist/index.js");
+      const { defineDocumentType } = requireCult("cultcache-ts/dist/index.js");
+      if (CultMesh && defineDocumentType) {
+        return { CultMesh, defineDocumentType };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 async function postDiscordBotMessage(channelId: string, content: string): Promise<{ id: string }> {
