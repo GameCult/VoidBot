@@ -62,6 +62,32 @@ const cases: Case[] = [
       "show \"rear pair drifting 38 ms\", \"geometry confidence low\", \"world model provisional\".",
     detail: "Repo Faces can mention technical labels without speaking in code spans.",
   },
+  {
+    name: "older side-thread route requires explicit reply anchor",
+    run: () => {
+      const posts = parseRepoIdentityPostIntents([
+        "INTERPRETATION",
+        "correction_check: retry",
+        "doctrine_check: none",
+        "decision: route",
+        "reason:",
+        "  The newest room context has moved to CNC workflow; this revives an older side thread.",
+        "END",
+        "",
+        "SAY",
+        "identity: current_face_id",
+        "channel: current_room",
+        "reply_to:",
+        "content:",
+        "  A stale field can lie very politely.",
+        "END",
+      ].join("\n"));
+      return posts.length === 1 &&
+        posts[0]?.requiresExplicitReplyTo === true &&
+        posts[0]?.replyToMessageId === undefined;
+    },
+    detail: "A routed old-topic reply without reply_to must be marked so the worker refuses an orphan post.",
+  },
 ];
 
 const failures = cases.filter((entry) => !entry.run());

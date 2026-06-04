@@ -5,6 +5,7 @@ export interface RepoIdentityPostIntent {
   channelId?: string;
   content: string;
   replyToMessageId?: string;
+  requiresExplicitReplyTo?: boolean;
 }
 
 type RepoFaceActionBlock = {
@@ -13,6 +14,7 @@ type RepoFaceActionBlock = {
 };
 
 export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
+  const requiresExplicitReplyTo = repoFaceInterpretationRequiresExplicitReplyAnchor(finalResponse);
   const intents: RepoIdentityPostIntent[] = parseRepoFaceActionBlocks(finalResponse)
     .filter((block) => block.kind === "say")
     .flatMap((block): RepoIdentityPostIntent[] => {
@@ -25,6 +27,7 @@ export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentit
           identity: optionalDslString(block.fields.identity),
           channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
           replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+          requiresExplicitReplyTo,
           content,
         },
       ];
@@ -48,6 +51,7 @@ export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentit
         channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
         replyToMessageId:
           typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,
+        requiresExplicitReplyTo,
         content,
       });
     } catch {
@@ -56,6 +60,20 @@ export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentit
   }
 
   return intents;
+}
+
+export function repoFaceInterpretationRequiresExplicitReplyAnchor(finalResponse: string): boolean {
+  const interpretation = finalResponse.match(/INTERPRETATION\s*([\s\S]*?)\s*END/i)?.[1] ?? "";
+  if (!interpretation.trim()) {
+    return false;
+  }
+
+  return [
+    /\bnewest\b[\s\S]{0,160}\b(moved|elsewhere|topic)\b/i,
+    /\bolder side thread\b/i,
+    /\brevives?\b[\s\S]{0,120}\b(older|stale|side thread)\b/i,
+    /\bstale\b[\s\S]{0,120}\b(room|context|topic|thread)\b/i,
+  ].some((pattern) => pattern.test(interpretation));
 }
 
 export function isNonPublicRepoIdentitySpeech(value: string): boolean {

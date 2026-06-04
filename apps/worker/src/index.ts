@@ -1208,6 +1208,11 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
       `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
     );
   }
+  if (intent.requiresExplicitReplyTo && !intent.replyToMessageId) {
+    throw new Error(
+      `Repo identity ${identity.id} SAY for job ${job.id} revived older context but did not include an explicit reply_to anchor.`,
+    );
+  }
   const replyToMessageId = intent.replyToMessageId ?? repoIdentityDefaultReplyToMessageId(job, channelId);
   const rawContent = intent.content.trim();
   if (isNonPublicRepoIdentitySpeech(rawContent)) {
