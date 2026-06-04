@@ -180,6 +180,55 @@ function Get-ConfigValue {
   return $null
 }
 
+function Convert-ToEnvKeySuffix {
+  param([string] $Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ""
+  }
+
+  return (($Value.Trim().ToUpperInvariant() -replace '[^A-Z0-9]+', '_') -replace '^_+|_+$', '')
+}
+
+function Resolve-DeliveryPersonaAvatarUrl {
+  param(
+    $DeliveryTarget,
+    [string] $PersonaName
+  )
+
+  $explicitAvatarUrl = Get-ObjectPropertyString -Value $DeliveryTarget -Name "personaAvatarUrl"
+  if (-not [string]::IsNullOrWhiteSpace($explicitAvatarUrl)) {
+    return $explicitAvatarUrl.Trim()
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($PersonaName)) {
+    $personaSuffix = Convert-ToEnvKeySuffix -Value $PersonaName
+    if (-not [string]::IsNullOrWhiteSpace($personaSuffix)) {
+      $personaKey = "DISCORD_PERSONA_AVATAR_URL_$personaSuffix"
+      $personaAvatarUrl = Get-ConfigValue -Name $personaKey -Values $script:envValues
+      if (-not [string]::IsNullOrWhiteSpace($personaAvatarUrl)) {
+        return $personaAvatarUrl.Trim()
+      }
+    }
+  }
+
+  $defaultAvatarUrl = Get-ConfigValue -Name "DISCORD_PERSONA_AVATAR_URL" -Values $script:envValues
+  if (-not [string]::IsNullOrWhiteSpace($defaultAvatarUrl)) {
+    return $defaultAvatarUrl.Trim()
+  }
+
+  if (
+    -not [string]::IsNullOrWhiteSpace($PersonaName) -and
+    -not [string]::IsNullOrWhiteSpace($script:publicRoomPersonaName) -and
+    $PersonaName.Trim().Equals($script:publicRoomPersonaName.Trim(), [System.StringComparison]::OrdinalIgnoreCase) -and
+    -not [string]::IsNullOrWhiteSpace($script:publicRoomPersonaAvatarUrl)
+  ) {
+    return $script:publicRoomPersonaAvatarUrl.Trim()
+  }
+
+  return $null
+}
+
 function Split-CommandArgs {
   param(
     [string] $Value
@@ -833,7 +882,7 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
     $arguments += @("--persona-name", $personaName)
   }
 
-  $personaAvatarUrl = Get-ObjectPropertyString -Value $deliveryTarget -Name "personaAvatarUrl"
+  $personaAvatarUrl = Resolve-DeliveryPersonaAvatarUrl -DeliveryTarget $deliveryTarget -PersonaName $personaName
   if (-not [string]::IsNullOrWhiteSpace($personaAvatarUrl)) {
     $arguments += @("--persona-avatar-url", $personaAvatarUrl)
   }

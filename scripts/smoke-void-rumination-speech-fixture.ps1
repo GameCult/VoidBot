@@ -140,6 +140,7 @@ const contentFileIndex = process.argv.indexOf("--content-file");
 const channelIndex = process.argv.indexOf("--channel-id");
 const replyIndex = process.argv.indexOf("--reply-to");
 const personaIndex = process.argv.indexOf("--persona-name");
+const personaAvatarIndex = process.argv.indexOf("--persona-avatar-url");
 
 if (contentFileIndex < 0 || channelIndex < 0) {
   console.error("fake sender expected --content-file and --channel-id");
@@ -150,6 +151,7 @@ const content = readFileSync(resolve(process.argv[contentFileIndex + 1]), "utf8"
 const channelId = process.argv[channelIndex + 1];
 const replyToMessageId = replyIndex >= 0 ? process.argv[replyIndex + 1] : undefined;
 const personaName = personaIndex >= 0 ? process.argv[personaIndex + 1] : undefined;
+const personaAvatarUrl = personaAvatarIndex >= 0 ? process.argv[personaAvatarIndex + 1] : undefined;
 const payload = {
   sentAt: "2026-05-17T03:01:00.000Z",
   mode: "channel",
@@ -157,6 +159,7 @@ const payload = {
   channelId,
   replyToMessageId,
   personaName,
+  personaAvatarUrl,
   contentLength: content.trim().length,
   chunkCount: 1,
   preview: content.trim().slice(0, 280),
@@ -220,6 +223,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   $previousSendScript = $env:VOID_SEND_DISCORD_SCRIPT
   $previousDiscordTransport = $env:VOID_DISCORD_TRANSPORT
   $previousDisableRepoCursorAdvance = $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE
+  $previousVoidAvatarUrl = $env:DISCORD_PERSONA_AVATAR_URL_VOID
 
   try {
     $env:CODEX_EXECUTABLE = "node"
@@ -230,6 +234,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_SEND_DISCORD_SCRIPT = $fakeSendPath
     $env:VOID_DISCORD_TRANSPORT = "direct"
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = "1"
+    $env:DISCORD_PERSONA_AVATAR_URL_VOID = "https://example.invalid/void-fixture-avatar.png"
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-void-moderator-rumination.ps1 -StateFilePath $stateFilePath | Out-Null
   } finally {
@@ -241,6 +246,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_SEND_DISCORD_SCRIPT = $previousSendScript
     $env:VOID_DISCORD_TRANSPORT = $previousDiscordTransport
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = $previousDisableRepoCursorAdvance
+    $env:DISCORD_PERSONA_AVATAR_URL_VOID = $previousVoidAvatarUrl
   }
 
   $status = Get-Content -LiteralPath $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -276,6 +282,9 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   }
   if ($receipt.channelId -ne "fixture-channel-id" -or $receipt.replyToMessageId -ne "fixture-message-id") {
     throw "Speech fixture did not preserve the delivery receipt target."
+  }
+  if ($receipt.personaName -ne "Void" -or $receipt.personaAvatarUrl -ne "https://example.invalid/void-fixture-avatar.png") {
+    throw "Speech fixture did not resolve the configured Void persona avatar at delivery time."
   }
   if ($receipt.candidateInterventionId -ne "fixture-parent-owned-speech") {
     throw "Speech fixture did not link the delivery receipt back to the spoken candidate."
