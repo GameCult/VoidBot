@@ -48,9 +48,11 @@ provider-owned CultMesh surfaces; Eve/CultUI is the presentation contract.
   - `manual_package` remains available when you want explicit approval-gated packaging
 - When the local Discord-safe lane is not enough, the worker posts a handoff notice and writes the full context bundle to `.voidbot/artifacts/<job-id>/`.
 - The current swarm operator surface is published as an Eve/CultUI CultMesh
-  provider at `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by
-  `.voidbot/status/cultmesh/voidbot-swarm-state.cc`; any generated browser page
-  is only a debug lowering of that provider surface.
+  provider at `asgard.starfire.voidbot/swarm/eve/tui`, backed by
+  `.voidbot/status/cultmesh/voidbot-swarm-state.cc`; the legacy
+  `cultmesh://voidbot.local/eve/providers/voidbot.swarm` key is only a route,
+  and any generated browser page is only a debug lowering of that provider
+  surface.
 
 ## Upgrade path
 

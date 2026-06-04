@@ -4,6 +4,10 @@
   "fixtureKind": "read-only-contract-export",
   "note": "This tracked fixture advertises VoidBot Verse provider boundaries. It is not live service state, not a dashboard, and not a Persona inspection authority.",
   "verseId": "voidbot.local",
+  "rootVerse": "asgard",
+  "canonicalService": "asgard.voidbot",
+  "locatedService": "asgard.starfire.voidbot",
+  "cultMeshAddress": "asgard.starfire.voidbot",
   "providerAdvertisement": {
     "documentType": "gamecult.eve.provider_advertisement",
     "schemaId": "gamecult.eve.provider_advertisement.v1"
@@ -144,10 +148,42 @@
       "schemaVersion": "gamecult.eve.provider_advertisement.v1",
       "providerId": "voidbot.discord",
       "verseId": "voidbot.local",
+      "rootVerse": "asgard",
+      "canonicalService": "asgard.voidbot",
+      "locatedService": "asgard.starfire.voidbot",
+      "cultMeshAddress": "asgard.starfire.voidbot/discord/eve/tui",
       "title": "VoidBot Discord",
       "description": "Discord ingress, room obligations, direct mentions, speech receipts, moderation pressure, and delivery targets.",
       "status": "planned-witness",
-      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.discord",
+      "endpoint": "asgard.starfire.voidbot/discord/eve/tui",
+      "endpoints": [
+        {
+          "kind": "tui",
+          "address": "asgard.starfire.voidbot/discord/eve/tui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "tui",
+            "agent"
+          ]
+        },
+        {
+          "kind": "gui",
+          "address": "asgard.starfire.voidbot/discord/eve/gui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "gui",
+            "eve-native",
+            "browser"
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "kind": "cultmesh-document",
+          "address": "cultmesh://voidbot.local/eve/providers/voidbot.discord",
+          "note": "Legacy CultMesh document key; route only, not service identity."
+        }
+      ],
       "documents": [
         {
           "type": "gamecult.eve.provider_advertisement",
@@ -241,10 +277,42 @@
       "schemaVersion": "gamecult.eve.provider_advertisement.v1",
       "providerId": "voidbot.archive",
       "verseId": "voidbot.local",
+      "rootVerse": "asgard",
+      "canonicalService": "asgard.voidbot",
+      "locatedService": "asgard.starfire.voidbot",
+      "cultMeshAddress": "asgard.starfire.voidbot/archive/eve/tui",
       "title": "VoidBot Archive",
       "description": "Archived Discord corpus status, import/backfill health, bot-directed-prompt exclusion, and history retrieval caveats.",
       "status": "planned-witness",
-      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive",
+      "endpoint": "asgard.starfire.voidbot/archive/eve/tui",
+      "endpoints": [
+        {
+          "kind": "tui",
+          "address": "asgard.starfire.voidbot/archive/eve/tui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "tui",
+            "agent"
+          ]
+        },
+        {
+          "kind": "gui",
+          "address": "asgard.starfire.voidbot/archive/eve/gui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "gui",
+            "eve-native",
+            "browser"
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "kind": "cultmesh-document",
+          "address": "cultmesh://voidbot.local/eve/providers/voidbot.archive",
+          "note": "Legacy CultMesh document key; route only, not service identity."
+        }
+      ],
       "documents": [
         {
           "type": "gamecult.eve.provider_advertisement",
@@ -328,10 +396,42 @@
       "schemaVersion": "gamecult.eve.provider_advertisement.v1",
       "providerId": "voidbot.source",
       "verseId": "voidbot.local",
+      "rootVerse": "asgard",
+      "canonicalService": "asgard.voidbot",
+      "locatedService": "asgard.starfire.voidbot",
+      "cultMeshAddress": "asgard.starfire.voidbot/source/eve/tui",
       "title": "VoidBot Source",
       "description": "Indexed repo/lore coverage, repo shard status, vector collection health, and source reindex jobs.",
       "status": "planned-witness",
-      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.source",
+      "endpoint": "asgard.starfire.voidbot/source/eve/tui",
+      "endpoints": [
+        {
+          "kind": "tui",
+          "address": "asgard.starfire.voidbot/source/eve/tui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "tui",
+            "agent"
+          ]
+        },
+        {
+          "kind": "gui",
+          "address": "asgard.starfire.voidbot/source/eve/gui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "gui",
+            "eve-native",
+            "browser"
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "kind": "cultmesh-document",
+          "address": "cultmesh://voidbot.local/eve/providers/voidbot.source",
+          "note": "Legacy CultMesh document key; route only, not service identity."
+        }
+      ],
       "documents": [
         {
           "type": "gamecult.eve.provider_advertisement",
@@ -428,10 +528,42 @@
       "schemaVersion": "gamecult.eve.provider_advertisement.v1",
       "providerId": "voidbot.repo_face",
       "verseId": "voidbot.local",
+      "rootVerse": "asgard",
+      "canonicalService": "asgard.voidbot",
+      "locatedService": "asgard.starfire.voidbot",
+      "cultMeshAddress": "asgard.starfire.voidbot/repo-face/eve/tui",
       "title": "VoidBot Repo Face Compatibility",
       "description": "Registered Face address book, repo-local state witnesses, channel grants, prompt assembly status, Bifrost digest availability, and Huginn inspection readiness.",
       "status": "planned-handoff",
-      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face",
+      "endpoint": "asgard.starfire.voidbot/repo-face/eve/tui",
+      "endpoints": [
+        {
+          "kind": "tui",
+          "address": "asgard.starfire.voidbot/repo-face/eve/tui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "tui",
+            "agent"
+          ]
+        },
+        {
+          "kind": "gui",
+          "address": "asgard.starfire.voidbot/repo-face/eve/gui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "gui",
+            "eve-native",
+            "browser"
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "kind": "cultmesh-document",
+          "address": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face",
+          "note": "Legacy CultMesh document key; route only, not service identity."
+        }
+      ],
       "documents": [
         {
           "type": "gamecult.eve.provider_advertisement",
@@ -532,10 +664,42 @@
       "schemaVersion": "gamecult.eve.provider_advertisement.v1",
       "providerId": "voidbot.swarm",
       "verseId": "voidbot.local",
+      "rootVerse": "asgard",
+      "canonicalService": "asgard.voidbot",
+      "locatedService": "asgard.starfire.voidbot",
+      "cultMeshAddress": "asgard.starfire.voidbot/swarm/eve/tui",
       "title": "VoidBot Swarm",
       "description": "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Face state witness.",
       "status": "live",
-      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm",
+      "endpoint": "asgard.starfire.voidbot/swarm/eve/tui",
+      "endpoints": [
+        {
+          "kind": "tui",
+          "address": "asgard.starfire.voidbot/swarm/eve/tui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "tui",
+            "agent"
+          ]
+        },
+        {
+          "kind": "gui",
+          "address": "asgard.starfire.voidbot/swarm/eve/gui",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "lowerings": [
+            "gui",
+            "eve-native",
+            "browser"
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "kind": "cultmesh-document",
+          "address": "cultmesh://voidbot.local/eve/providers/voidbot.swarm",
+          "note": "Legacy CultMesh document key; route only, not service identity."
+        }
+      ],
       "documents": [
         {
           "type": "gamecult.eve.provider_advertisement",

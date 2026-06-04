@@ -15,6 +15,10 @@ const surfaceStateSchemaId = "gamecult.eve.surface_state.v1";
 const fixtureDocumentType = "voidbot.provider_advertisement_catalog";
 const fixtureSchemaId = "voidbot.provider_advertisement_catalog.v0";
 const verseId = "voidbot.local";
+const rootVerse = "asgard";
+const currentMachine = "starfire";
+const canonicalService = `${rootVerse}.voidbot`;
+const locatedService = `${rootVerse}.${currentMachine}.voidbot`;
 
 const args = parseArgs(process.argv.slice(2));
 const outPath = resolve(repoRoot, args.out ?? defaultOutPath);
@@ -176,6 +180,10 @@ function buildCatalog() {
     fixtureKind: "read-only-contract-export",
     note: "This tracked fixture advertises VoidBot Verse provider boundaries. It is not live service state, not a dashboard, and not a Persona inspection authority.",
     verseId,
+    rootVerse,
+    canonicalService,
+    locatedService,
+    cultMeshAddress: locatedService,
     providerAdvertisement: {
       documentType: providerAdvertisementDocumentType,
       schemaId: providerAdvertisementSchemaId,
@@ -234,14 +242,27 @@ function buildCatalog() {
 }
 
 function provider(input) {
+  const resourceBase = providerResourceBase(input.id);
+  const cultMeshAddress = `${locatedService}/${resourceBase}/eve/tui`;
   return {
     schemaVersion: providerAdvertisementSchemaId,
     providerId: input.id,
     verseId,
+    rootVerse,
+    canonicalService,
+    locatedService,
+    cultMeshAddress,
     title: input.title,
     description: input.description,
     status: input.status,
-    endpoint: `cultmesh://${verseId}/eve/providers/${input.id}`,
+    endpoint: cultMeshAddress,
+    endpoints: [
+      endpoint("tui", cultMeshAddress, surfaceStateSchemaId, ["tui", "agent"]),
+      endpoint("gui", `${locatedService}/${resourceBase}/eve/gui`, surfaceStateSchemaId, ["gui", "eve-native", "browser"]),
+    ],
+    routes: [
+      route("cultmesh-document", key(input.id).endpoint, "Legacy CultMesh document key; route only, not service identity."),
+    ],
     documents: [
       document(providerAdvertisementDocumentType, providerAdvertisementSchemaId, input.id),
       document(surfaceStateDocumentType, surfaceStateSchemaId, input.id),
@@ -269,6 +290,18 @@ function command(id, mode, purpose) {
 
 function document(type, schemaId, keyValue) {
   return { type, schemaId, key: keyValue };
+}
+
+function endpoint(kind, address, schemaId, lowerings) {
+  return { kind, address, schemaId, lowerings };
+}
+
+function route(kind, address, note) {
+  return { kind, address, note };
+}
+
+function providerResourceBase(providerId) {
+  return providerId.replace(/^voidbot\./u, "").replace(/_/gu, "-");
 }
 
 function key(value) {

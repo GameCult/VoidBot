@@ -14,6 +14,10 @@ const defaultCultMeshStorePath = resolve(defaultStatusDir, "cultmesh", "voidbot-
 const providerId = "voidbot.swarm";
 const operatorDmProviderId = "voidbot.operator-dm";
 const verseId = "voidbot.local";
+const rootVerse = "asgard";
+const currentMachine = "starfire";
+const canonicalService = `${rootVerse}.voidbot`;
+const locatedService = `${rootVerse}.${currentMachine}.voidbot`;
 const snapshotDocumentType = "voidbot.swarm_state_snapshot";
 const snapshotSchemaId = "voidbot.swarm_state_snapshot.v1";
 const providerAdvertisementDocumentType = "gamecult.eve.provider_advertisement";
@@ -160,7 +164,12 @@ async function buildSnapshot() {
       writeStatus: "pending",
       providerId,
       verseId,
-      eveDeckEndpoint: primaryCultMeshEndpoint(),
+      rootVerse,
+      canonicalService,
+      locatedService,
+      cultMeshAddress: primaryCultMeshAddress(),
+      eveDeckEndpoint: primaryCultMeshAddress(),
+      routes: providerRoutes(providerId, cultMeshStorePath),
       note: "VoidBot swarm is a CultMesh-advertised Eve provider. The web page is a local lowering of the same surface.",
     },
     summary: {
@@ -773,12 +782,17 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
       documents: [snapshotDocumentType, providerAdvertisementDocumentType, surfaceDocumentType, eveBindingDocumentType, operatorDmRequestDocumentType],
       providerId,
       verseId,
+      rootVerse,
+      canonicalService,
+      locatedService,
+      cultMeshAddress: primaryCultMeshAddress(),
       eveBinding: {
         documentType: eveBindingDocumentType,
         schemaId: eveBindingSchemaId,
         key: providerId,
       },
-      eveDeckEndpoint: primaryCultMeshEndpoint(),
+      eveDeckEndpoint: primaryCultMeshAddress(),
+      routes: providerRoutes(providerId, storePath),
       writtenAt: new Date().toISOString(),
     };
   } catch (error) {
@@ -823,21 +837,27 @@ function parseObjectDocument(label) {
 
 function buildProviderAdvertisement(snapshot) {
   const endpoints = [
-    primaryCultMeshEndpoint(),
+    endpoint("tui", primaryCultMeshAddress(), surfaceSchemaId, ["tui", "nightwing-tui", "agent"]),
+    endpoint("gui", `${locatedService}/swarm/eve/gui`, surfaceSchemaId, ["gui", "eve-native", "browser"]),
   ];
   return {
     schemaVersion: providerAdvertisementSchemaId,
     providerId,
     verseId,
+    rootVerse,
+    canonicalService,
+    locatedService,
+    cultMeshAddress: primaryCultMeshAddress(),
     title: "VoidBot Swarm",
     description: "VoidBot swarm status, CTB order, controls, and selected Face state as an Eve/CultUI surface.",
     version: String(snapshot.summary?.initiativeClock ?? Date.now()),
     status: snapshot.summary?.state ?? "unknown",
     updatedAt: snapshot.generatedAt,
     endpoints,
+    routes: providerRoutes(providerId, snapshot.cultMesh?.storePath ?? cultMeshStorePath),
     provider: providerManifest(),
     controlSurface: {
-      primary: primaryCultMeshEndpoint(),
+      primary: primaryCultMeshAddress(),
       controls: {
         transport: "cultmesh-binding",
         documentType: eveBindingDocumentType,
@@ -866,6 +886,10 @@ function buildEveInterfaceBinding(snapshot, eveState) {
     bindingId: providerId,
     providerId,
     verseId,
+    rootVerse,
+    canonicalService,
+    locatedService,
+    cultMeshAddress: primaryCultMeshAddress(),
     title: "VoidBot Swarm",
     kind: "eve-cultui-surface",
     updatedAt: snapshot.generatedAt,
@@ -946,7 +970,13 @@ function providerManifest() {
     title: "VoidBot Swarm",
     description: "Native Eve tab for compact VoidBot CTB order with speed, heat, and turn state.",
     version: "1",
-    endpoint: primaryCultMeshEndpoint(),
+    endpoint: primaryCultMeshAddress(),
+    cultMeshAddress: primaryCultMeshAddress(),
+    endpoints: [
+      endpoint("tui", primaryCultMeshAddress(), surfaceSchemaId, ["tui", "nightwing-tui", "agent"]),
+      endpoint("gui", `${locatedService}/swarm/eve/gui`, surfaceSchemaId, ["gui", "eve-native", "browser"]),
+    ],
+    routes: providerRoutes(providerId, cultMeshStorePath),
     capabilities: ["ctb", "agent-status", "cultmesh-snapshot"],
     usesCultMesh: true,
     transport: "CultMesh Eve interface binding.",
@@ -958,15 +988,22 @@ function buildOperatorDmProviderAdvertisement(snapshot) {
     schemaVersion: providerAdvertisementSchemaId,
     providerId: operatorDmProviderId,
     verseId,
+    rootVerse,
+    canonicalService,
+    locatedService,
+    cultMeshAddress: operatorDmCultMeshAddress(),
     title: "VoidBot Operator DM",
     description: "VoidBot-owned operator notification boundary for service alerts that need an owner DM.",
     version: String(snapshot.summary?.initiativeClock ?? Date.now()),
     status: ownerDmStatus(snapshot),
     updatedAt: snapshot.generatedAt,
-    endpoints: [operatorDmCultMeshEndpoint()],
+    endpoints: [
+      endpoint("command", operatorDmCultMeshAddress(), operatorDmRequestSchemaId, ["command", "operator-alert"]),
+    ],
+    routes: providerRoutes(operatorDmProviderId, snapshot.cultMesh?.storePath ?? cultMeshStorePath),
     provider: operatorDmProviderManifest(snapshot),
     commandSurface: {
-      primary: operatorDmCultMeshEndpoint(),
+      primary: operatorDmCultMeshAddress(),
       transport: "cultmesh-interface-binding",
       commands: [ownerDmCommandDescriptor()],
       executionOwner: "VoidBot Discord owner-DM helper",
@@ -1035,7 +1072,12 @@ function operatorDmProviderManifest(snapshot) {
     title: "VoidBot Operator DM",
     description: "Provider-owned owner-DM command boundary for service intervention alerts.",
     version: "1",
-    endpoint: operatorDmCultMeshEndpoint(),
+    endpoint: operatorDmCultMeshAddress(),
+    cultMeshAddress: operatorDmCultMeshAddress(),
+    endpoints: [
+      endpoint("command", operatorDmCultMeshAddress(), operatorDmRequestSchemaId, ["command", "operator-alert"]),
+    ],
+    routes: providerRoutes(operatorDmProviderId, cultMeshStorePath),
     capabilities: ["operator-alerts", "owner-dm", "cultmesh-command"],
     usesCultMesh: true,
     status: ownerDmStatus(snapshot),
@@ -1048,8 +1090,8 @@ function ownerDmStatus() {
   return env.DISCORD_BOT_TOKEN && env.DISCORD_OWNER_ID ? "active" : "degraded";
 }
 
-function operatorDmCultMeshEndpoint() {
-  return `cultmesh://${verseId}/eve/providers/${operatorDmProviderId}`;
+function operatorDmCultMeshAddress() {
+  return `${locatedService}/operator-dm/commands/owner-dm`;
 }
 
 function buildEveProviderState(snapshot) {
@@ -2231,8 +2273,27 @@ function redactSnapshot(snapshot) {
   return redacted;
 }
 
-function primaryCultMeshEndpoint() {
-  return `cultmesh://${verseId}/eve/providers/${providerId}`;
+function primaryCultMeshAddress() {
+  return `${locatedService}/swarm/eve/tui`;
+}
+
+function endpoint(kind, address, schemaId, lowerings) {
+  return { kind, address, schemaId, lowerings };
+}
+
+function providerRoutes(routeProviderId, storePath) {
+  return [
+    {
+      kind: "cultcache-store",
+      address: storePath,
+      note: "Local CultCache publication store.",
+    },
+    {
+      kind: "cultmesh-legacy-uri",
+      address: `cultmesh://${verseId}/eve/providers/${routeProviderId}`,
+      note: "Legacy document key route; not service identity.",
+    },
+  ];
 }
 
 async function readJsonFile(path) {

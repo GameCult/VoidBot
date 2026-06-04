@@ -53,7 +53,7 @@ The durable local state is split on purpose: Postgres holds jobs, audit events, 
 
 There is also a project-memory spine now for future Codex sessions: `state/map.yaml`, `state/scratch.md`, `state/evidence.jsonl`, `notes/fresh-workspace-handoff.md`, and the helper CLIs under `tools/`. The point is to rehydrate from canonical files instead of pretending the transcript will stay coherent forever.
 
-VoidBot also publishes a current swarm Eve/CultUI surface through CultMesh as `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by `.voidbot/status/cultmesh/voidbot-swarm-state.cc`. The generated `swarm-dashboard.html` is a local debug lowering of that surface.
+VoidBot also publishes a current swarm Eve/CultUI surface through CultMesh as `asgard.starfire.voidbot/swarm/eve/tui`, backed by `.voidbot/status/cultmesh/voidbot-swarm-state.cc`. The legacy `cultmesh://voidbot.local/eve/providers/voidbot.swarm` key remains only as a document route. The generated `swarm-dashboard.html` is a local debug lowering of that surface.
 
 ## Quick Start
 

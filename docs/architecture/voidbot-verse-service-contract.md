@@ -102,7 +102,12 @@ The current published swarm namespace is:
 
 - Verse id: `voidbot.local`
 - Provider id: `voidbot.swarm`
-- Endpoint: `cultmesh://voidbot.local/eve/providers/voidbot.swarm`
+- Root Verse: `asgard`
+- Canonical service: `asgard.voidbot`
+- Located service: `asgard.starfire.voidbot`
+- Primary surface: `asgard.starfire.voidbot/swarm/eve/tui`
+- GUI surface: `asgard.starfire.voidbot/swarm/eve/gui`
+- Legacy route: `cultmesh://voidbot.local/eve/providers/voidbot.swarm`
 - Snapshot document: `voidbot.swarm_state_snapshot`
 - Provider advertisement: `gamecult.eve.provider_advertisement`
 - Eve surface state: `gamecult.eve.surface_state`
