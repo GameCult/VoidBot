@@ -1769,12 +1769,17 @@ function buildHeartbeatPrompt(input: {
   githubActionsEnabled: boolean;
   globalAgentDoctrine: string;
 }): string {
+  const colossusOdinDoctrine = loadPromptTemplate("repo-face-colossus-odin-doctrine.prompt.md", {
+    displayName: input.identity.displayName,
+    repoName: input.identity.repoName,
+  });
   return loadPromptTemplate("repo-face-turn.prompt.md", {
     displayName: input.identity.displayName,
     identityId: input.identity.id,
     repoName: input.identity.repoName,
     identityDoctrine: renderRepoCharacterIdentityDoctrine(input.identity),
     globalAgentDoctrine: input.globalAgentDoctrine,
+    colossusOdinDoctrine,
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
