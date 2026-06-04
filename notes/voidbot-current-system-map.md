@@ -199,7 +199,7 @@ When present, an ignored local script at `.voidbot/private/check-voidbot-operati
 ## Verse Service Contract
 
 - Owner:
-  - VoidBot owns Discord ingress, room cognition, moderation judgment, archive/source retrieval, direct owner handoff, typed Void self-state, repo Face scheduling compatibility, and parent-owned speech intent/receipt application. Default Discord egress crosses through Bifrost; direct VoidBot send helpers are standalone fallback.
+  - VoidBot owns Discord ingress for the current bot gateway body, room cognition, moderation judgment, archive/source retrieval, direct owner handoff, typed Void self-state, repo Face scheduling compatibility, and parent-owned speech intent/receipt application. Moderation Discord egress requires Bifrost; direct VoidBot send helpers are not a standalone deployment fallback.
   - Huginn owns Persona-state and `.cc` runtime inspection stewardship: schema availability, migration pressure, projection health, access-tool sanity, CultMesh publication, and Eve DSL inspection for typed state.
   - Bifrost owns governed public crossings for GitHub proposals/articles/comments, work topics, dispatch receipts, current Discord egress for swarm/moderation status, and future Discord-native work interfaces.
   - Odin owns Verse/provider discovery and interface aggregation, not provider state.

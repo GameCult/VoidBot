@@ -8,7 +8,7 @@ Set-Location -LiteralPath $repoRoot
 $tempRoot = Join-Path $env:TEMP ("void-rumination-speech-fixture-" + [guid]::NewGuid().ToString("n"))
 $stateFilePath = Join-Path $tempRoot "void-self-state.cc"
 $fakeCodexPath = Join-Path $tempRoot "fake-codex-rumination-speech.mjs"
-$fakeSendPath = Join-Path $tempRoot "fake-send-discord-message.mjs"
+$fakeBridgePath = Join-Path $tempRoot "fake-bifrost-bridge.mjs"
 $cursorOperationPath = Join-Path $tempRoot "cursor.json"
 $fixtureStatusDir = Join-Path $tempRoot "status"
 $fixtureLogDir = Join-Path $tempRoot "logs"
@@ -131,19 +131,19 @@ process.stdin.on("end", () => {
 '@
   [System.IO.File]::WriteAllText($fakeCodexPath, $fakeCodexSource, [System.Text.UTF8Encoding]::new($false))
 
-  $fakeSendSource = @'
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+  $fakeBridgeSource = @'
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const statusDir = resolve(process.env.VOID_STATUS_DIR);
+const command = process.argv[2];
 const contentFileIndex = process.argv.indexOf("--content-file");
 const channelIndex = process.argv.indexOf("--channel-id");
-const replyIndex = process.argv.indexOf("--reply-to");
+const replyIndex = process.argv.indexOf("--reply-to-message-id");
 const personaIndex = process.argv.indexOf("--persona-name");
 const personaAvatarIndex = process.argv.indexOf("--persona-avatar-url");
 
-if (contentFileIndex < 0 || channelIndex < 0) {
-  console.error("fake sender expected --content-file and --channel-id");
+if (command !== "discord-post" || contentFileIndex < 0 || channelIndex < 0) {
+  console.error("fake Bifrost bridge expected discord-post, --content-file, and --channel-id");
   process.exit(2);
 }
 
@@ -153,24 +153,20 @@ const replyToMessageId = replyIndex >= 0 ? process.argv[replyIndex + 1] : undefi
 const personaName = personaIndex >= 0 ? process.argv[personaIndex + 1] : undefined;
 const personaAvatarUrl = personaAvatarIndex >= 0 ? process.argv[personaAvatarIndex + 1] : undefined;
 const payload = {
-  sentAt: "2026-05-17T03:01:00.000Z",
-  mode: "channel",
-  transport: personaName ? "webhook" : "bot",
+  action: "discord-post",
+  ok: true,
   channelId,
+  messageId: "fixture-bifrost-speech-message",
+  transport: personaName ? "webhook" : "bot",
   replyToMessageId,
   personaName,
   personaAvatarUrl,
-  contentLength: content.trim().length,
-  chunkCount: 1,
   preview: content.trim().slice(0, 280),
 };
 
-mkdirSync(statusDir, { recursive: true });
-writeFileSync(resolve(statusDir, "void-last-speech.json"), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-writeFileSync(resolve(statusDir, "void-speech-log.jsonl"), `${JSON.stringify(payload)}\n`, { encoding: "utf8", flag: "a" });
-process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + "\n");
+process.stdout.write(JSON.stringify(payload) + "\n");
 '@
-  [System.IO.File]::WriteAllText($fakeSendPath, $fakeSendSource, [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText($fakeBridgePath, $fakeBridgeSource, [System.Text.UTF8Encoding]::new($false))
 
   $cursorOperation = @{
     operation = "record_reviewed_messages"
@@ -220,7 +216,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
   $previousFixtureOutput = $env:VOID_RUMINATION_FIXTURE_OPERATION_OUTPUT
   $previousStatusDir = $env:VOID_RUMINATION_STATUS_DIR
   $previousLogDir = $env:VOID_RUMINATION_LOG_DIR
-  $previousSendScript = $env:VOID_SEND_DISCORD_SCRIPT
+  $previousBridgeScript = $env:VOID_BIFROST_BRIDGE_SCRIPT
   $previousDiscordTransport = $env:VOID_DISCORD_TRANSPORT
   $previousDisableRepoCursorAdvance = $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE
   $previousVoidAvatarUrl = $env:DISCORD_PERSONA_AVATAR_URL_VOID
@@ -231,8 +227,8 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_RUMINATION_FIXTURE_OPERATION_OUTPUT = $statusOperationPath
     $env:VOID_RUMINATION_STATUS_DIR = $fixtureStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $fixtureLogDir
-    $env:VOID_SEND_DISCORD_SCRIPT = $fakeSendPath
-    $env:VOID_DISCORD_TRANSPORT = "direct"
+    $env:VOID_BIFROST_BRIDGE_SCRIPT = $fakeBridgePath
+    $env:VOID_DISCORD_TRANSPORT = "bifrost"
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = "1"
     $env:DISCORD_PERSONA_AVATAR_URL_VOID = "https://example.invalid/void-fixture-avatar.png"
 
@@ -243,7 +239,7 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "channel", channelId }) + 
     $env:VOID_RUMINATION_FIXTURE_OPERATION_OUTPUT = $previousFixtureOutput
     $env:VOID_RUMINATION_STATUS_DIR = $previousStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $previousLogDir
-    $env:VOID_SEND_DISCORD_SCRIPT = $previousSendScript
+    $env:VOID_BIFROST_BRIDGE_SCRIPT = $previousBridgeScript
     $env:VOID_DISCORD_TRANSPORT = $previousDiscordTransport
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = $previousDisableRepoCursorAdvance
     $env:DISCORD_PERSONA_AVATAR_URL_VOID = $previousVoidAvatarUrl

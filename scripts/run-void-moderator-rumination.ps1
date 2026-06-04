@@ -43,11 +43,6 @@ $contextProjectionScriptPath = Join-Path $repoRoot "scripts\lib\void-rumination-
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $repoActivityScriptPath = Join-Path $repoRoot "scripts\export-recent-repo-activity.mjs"
 $selfStateScriptPath = Join-Path $repoRoot "scripts\void-self-state.mjs"
-$sendMessageScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_SEND_DISCORD_SCRIPT)) {
-  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_SEND_DISCORD_SCRIPT)
-} else {
-  Join-Path $repoRoot "scripts\send-discord-message.mjs"
-}
 $bifrostRoot = if (-not [string]::IsNullOrWhiteSpace($env:BIFROST_ROOT)) {
   $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:BIFROST_ROOT)
 } else {
@@ -58,13 +53,7 @@ $bifrostBridgeScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_BIFRO
 } else {
   Join-Path $bifrostRoot "tools\bifrost-bridge.mjs"
 }
-$discordTransportMode = if (-not [string]::IsNullOrWhiteSpace($env:VOID_DISCORD_TRANSPORT)) {
-  $env:VOID_DISCORD_TRANSPORT.Trim().ToLowerInvariant()
-} elseif (Test-Path $bifrostBridgeScriptPath) {
-  "bifrost"
-} else {
-  "direct"
-}
+$discordTransportMode = "bifrost"
 $startedAtUtc = [DateTime]::UtcNow
 
 . $contextProjectionScriptPath
@@ -839,42 +828,25 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
   if ([string]::IsNullOrWhiteSpace($interventionId) -or [string]::IsNullOrWhiteSpace($draft)) {
     return $null
   }
+  Assert-BifrostBridgeAvailable
 
   $contentPath = Join-Path $statusDir ("moderation-rumination-speech-{0}.txt" -f ([Guid]::NewGuid().ToString("n")))
   $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
   [System.IO.File]::WriteAllText($contentPath, $draft, $utf8NoBom)
 
   $mode = Get-ObjectPropertyString -Value $deliveryTarget -Name "mode"
-  $arguments = @()
-  if ($discordTransportMode -eq "bifrost") {
-    if ($mode -eq "owner_dm") {
-      throw "Candidate intervention '$interventionId' targets owner_dm. Bifrost is the default public transport; use VOID_DISCORD_TRANSPORT=direct only for standalone owner-private installs."
-    }
-    $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
-    if ([string]::IsNullOrWhiteSpace($channelId)) {
-      throw "Candidate intervention '$interventionId' has deliveryTarget without channelId."
-    }
-    $arguments = @($bifrostBridgeScriptPath, "discord-post", "--channel-id", $channelId, "--content-file", $contentPath)
-  } else {
-    $arguments = @($sendMessageScriptPath, "--content-file", $contentPath)
-    if ($mode -eq "owner_dm") {
-      $arguments += "--owner-dm"
-    } else {
-      $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
-      if ([string]::IsNullOrWhiteSpace($channelId)) {
-        throw "Candidate intervention '$interventionId' has deliveryTarget without channelId."
-      }
-      $arguments += @("--channel-id", $channelId)
-    }
+  if ($mode -eq "owner_dm") {
+    throw "Candidate intervention '$interventionId' targets owner_dm, but VoidBot moderation delivery now requires Bifrost Discord transport."
   }
+  $channelId = Get-ObjectPropertyString -Value $deliveryTarget -Name "channelId"
+  if ([string]::IsNullOrWhiteSpace($channelId)) {
+    throw "Candidate intervention '$interventionId' has deliveryTarget without channelId."
+  }
+  $arguments = @($bifrostBridgeScriptPath, "discord-post", "--channel-id", $channelId, "--content-file", $contentPath)
 
   $replyToMessageId = Get-ObjectPropertyString -Value $deliveryTarget -Name "replyToMessageId"
   if (-not [string]::IsNullOrWhiteSpace($replyToMessageId)) {
-    if ($discordTransportMode -eq "bifrost") {
-      $arguments += @("--reply-to-message-id", $replyToMessageId)
-    } else {
-      $arguments += @("--reply-to", $replyToMessageId)
-    }
+    $arguments += @("--reply-to-message-id", $replyToMessageId)
   }
 
   $personaName = Get-ObjectPropertyString -Value $deliveryTarget -Name "personaName"
@@ -904,17 +876,8 @@ function Invoke-CandidateInterventionDeliveryFromIntervention {
     Remove-Item -LiteralPath $contentPath -Force -ErrorAction SilentlyContinue
   }
 
-  if ($discordTransportMode -eq "bifrost") {
-    $bridgeReceiptText = [string]($sendOutput -join [Environment]::NewLine)
-    $speech = Convert-BifrostBridgeReceiptToSpeechStatus -Receipt ($bridgeReceiptText | ConvertFrom-Json) -Preview $draft
-    return Convert-LastSpeechToSpokenCandidateOperation -InterventionId $interventionId -Speech $speech
-  }
-
-  $lastSpeechPath = Join-Path $statusDir "void-last-speech.json"
-  if (-not (Test-Path $lastSpeechPath)) {
-    throw "Candidate intervention delivery did not write last speech status."
-  }
-  $speech = Read-JsonFile -Path $lastSpeechPath
+  $bridgeReceiptText = [string]($sendOutput -join [Environment]::NewLine)
+  $speech = Convert-BifrostBridgeReceiptToSpeechStatus -Receipt ($bridgeReceiptText | ConvertFrom-Json) -Preview $draft
   return Convert-LastSpeechToSpokenCandidateOperation -InterventionId $interventionId -Speech $speech
 }
 
@@ -928,14 +891,32 @@ function Convert-BifrostBridgeReceiptToSpeechStatus {
     return $null
   }
 
+  $action = Get-ObjectPropertyString -Value $Receipt -Name "action"
+  $mode = switch ($action) {
+    "discord-post" { "channel" }
+    "discord-dm" { "user_dm" }
+    default { $action }
+  }
+
   return [pscustomobject]@{
     sentAt = [DateTime]::UtcNow.ToString("o")
-    mode = Get-ObjectPropertyString -Value $Receipt -Name "action"
+    mode = $mode
     transport = Get-ObjectPropertyString -Value $Receipt -Name "transport"
     channelId = Get-ObjectPropertyString -Value $Receipt -Name "channelId"
     messageId = Get-ObjectPropertyString -Value $Receipt -Name "messageId"
     recipientId = Get-ObjectPropertyString -Value $Receipt -Name "recipientId"
+    replyToMessageId = Get-ObjectPropertyString -Value $Receipt -Name "replyToMessageId"
+    personaName = Get-ObjectPropertyString -Value $Receipt -Name "personaName"
+    personaAvatarUrl = Get-ObjectPropertyString -Value $Receipt -Name "personaAvatarUrl"
+    contentLength = if ($null -ne $Preview) { [int]$Preview.Length } else { $null }
+    chunkCount = 1
     preview = if ([string]::IsNullOrWhiteSpace($Preview)) { $null } else { $Preview.Substring(0, [Math]::Min(280, $Preview.Length)) }
+  }
+}
+
+function Assert-BifrostBridgeAvailable {
+  if (-not (Test-Path $bifrostBridgeScriptPath)) {
+    throw "Bifrost bridge helper is required for VoidBot moderation delivery but is missing at $bifrostBridgeScriptPath"
   }
 }
 
@@ -1012,16 +993,13 @@ function Invoke-ModerationStatusNoticeDelivery {
   ) {
     return $null
   }
+  Assert-BifrostBridgeAvailable
 
   $contentPath = Join-Path $statusDir ("moderation-status-dm-{0}.txt" -f ([Guid]::NewGuid().ToString("n")))
   $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
   [System.IO.File]::WriteAllText($contentPath, $body, $utf8NoBom)
 
-  $arguments = if ($discordTransportMode -eq "bifrost") {
-    @($bifrostBridgeScriptPath, "discord-dm", "--recipient-id", $userId, "--content-file", $contentPath)
-  } else {
-    @($sendMessageScriptPath, "--content-file", $contentPath, "--user-dm", $userId)
-  }
+  $arguments = @($bifrostBridgeScriptPath, "discord-dm", "--recipient-id", $userId, "--content-file", $contentPath)
   $previousVoidStatusDir = $env:VOID_STATUS_DIR
   try {
     $env:VOID_STATUS_DIR = $statusDir
@@ -1039,17 +1017,8 @@ function Invoke-ModerationStatusNoticeDelivery {
     Remove-Item -LiteralPath $contentPath -Force -ErrorAction SilentlyContinue
   }
 
-  if ($discordTransportMode -eq "bifrost") {
-    $bridgeReceiptText = [string]($sendOutput -join [Environment]::NewLine)
-    $speech = Convert-BifrostBridgeReceiptToSpeechStatus -Receipt ($bridgeReceiptText | ConvertFrom-Json) -Preview $body
-    return Convert-LastSpeechToModerationStatusNoticeSentOperation -UserId $userId -NoticeId $noticeId -Speech $speech
-  }
-
-  $lastSpeechPath = Join-Path $statusDir "void-last-speech.json"
-  if (-not (Test-Path $lastSpeechPath)) {
-    throw "Moderation status DM '$noticeId' did not write last speech status."
-  }
-  $speech = Read-JsonFile -Path $lastSpeechPath
+  $bridgeReceiptText = [string]($sendOutput -join [Environment]::NewLine)
+  $speech = Convert-BifrostBridgeReceiptToSpeechStatus -Receipt ($bridgeReceiptText | ConvertFrom-Json) -Preview $body
   return Convert-LastSpeechToModerationStatusNoticeSentOperation -UserId $userId -NoticeId $noticeId -Speech $speech
 }
 
@@ -1212,16 +1181,8 @@ foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPa
     throw "Missing required helper at $requiredPath"
   }
 }
-if ($discordTransportMode -eq "bifrost") {
-  if (-not (Test-Path $bifrostBridgeScriptPath)) {
-    throw "VOID_DISCORD_TRANSPORT=bifrost but Bifrost bridge helper is missing at $bifrostBridgeScriptPath"
-  }
-} elseif ($discordTransportMode -eq "direct") {
-  if (-not (Test-Path $sendMessageScriptPath)) {
-    throw "VOID_DISCORD_TRANSPORT=direct but direct Discord helper is missing at $sendMessageScriptPath"
-  }
-} else {
-  throw "Unsupported VOID_DISCORD_TRANSPORT '$discordTransportMode'. Use bifrost or direct."
+if (-not [string]::IsNullOrWhiteSpace($env:VOID_DISCORD_TRANSPORT) -and $env:VOID_DISCORD_TRANSPORT.Trim().ToLowerInvariant() -ne "bifrost") {
+  throw "VOID_DISCORD_TRANSPORT=$($env:VOID_DISCORD_TRANSPORT) is no longer supported. VoidBot moderation delivery requires Bifrost."
 }
 if (-not (Test-Path $promptTemplatePath)) {
   throw "Missing rumination prompt template at $promptTemplatePath"

@@ -8,7 +8,7 @@ Set-Location -LiteralPath $repoRoot
 $tempRoot = Join-Path $env:TEMP ("void-moderation-status-fixture-" + [guid]::NewGuid().ToString("n"))
 $stateFilePath = Join-Path $tempRoot "void-self-state.cc"
 $operationPath = Join-Path $tempRoot "operation.json"
-$fakeSendPath = Join-Path $tempRoot "fake-send-discord-message.mjs"
+$fakeBridgePath = Join-Path $tempRoot "fake-bifrost-bridge.mjs"
 $fixtureStatusDir = Join-Path $tempRoot "status"
 $fixtureLogDir = Join-Path $tempRoot "logs"
 $statusPath = Join-Path $fixtureStatusDir "moderation-rumination.json"
@@ -17,38 +17,34 @@ $checkPath = Join-Path $tempRoot "check-moderation-status.mjs"
 New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
 
 try {
-  $fakeSendSource = @'
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+  $fakeBridgeSource = @'
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const statusDir = resolve(process.env.VOID_STATUS_DIR);
+const command = process.argv[2];
 const contentFileIndex = process.argv.indexOf("--content-file");
-const userDmIndex = process.argv.indexOf("--user-dm");
+const recipientIndex = process.argv.indexOf("--recipient-id");
 
-if (contentFileIndex < 0 || userDmIndex < 0) {
-  console.error("fake sender expected --content-file and --user-dm");
+if (command !== "discord-dm" || contentFileIndex < 0 || recipientIndex < 0) {
+  console.error("fake Bifrost bridge expected discord-dm, --content-file, and --recipient-id");
   process.exit(2);
 }
 
 const content = readFileSync(resolve(process.argv[contentFileIndex + 1]), "utf8");
-const recipientId = process.argv[userDmIndex + 1];
+const recipientId = process.argv[recipientIndex + 1];
 const payload = {
-  sentAt: "2026-06-04T12:00:00.000Z",
-  mode: "user_dm",
+  action: "discord-dm",
+  ok: true,
   transport: "bot",
   channelId: "fixture-dm-channel",
+  messageId: "fixture-dm-message",
   recipientId,
-  contentLength: content.trim().length,
-  chunkCount: 1,
   preview: content.trim().slice(0, 280),
 };
 
-mkdirSync(statusDir, { recursive: true });
-writeFileSync(resolve(statusDir, "void-last-speech.json"), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-writeFileSync(resolve(statusDir, "void-speech-log.jsonl"), `${JSON.stringify(payload)}\n`, { encoding: "utf8", flag: "a" });
-process.stdout.write(JSON.stringify({ ok: true, mode: "user_dm", channelId: payload.channelId, recipientId }) + "\n");
+process.stdout.write(JSON.stringify(payload) + "\n");
 '@
-  [System.IO.File]::WriteAllText($fakeSendPath, $fakeSendSource, [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText($fakeBridgePath, $fakeBridgeSource, [System.Text.UTF8Encoding]::new($false))
 
   $expiredStrikeOperation = @{
     operation = "upsert_moderation_user_status"
@@ -88,22 +84,22 @@ process.stdout.write(JSON.stringify({ ok: true, mode: "user_dm", channelId: payl
 
   $previousStatusDir = $env:VOID_RUMINATION_STATUS_DIR
   $previousLogDir = $env:VOID_RUMINATION_LOG_DIR
-  $previousSendScript = $env:VOID_SEND_DISCORD_SCRIPT
+  $previousBridgeScript = $env:VOID_BIFROST_BRIDGE_SCRIPT
   $previousDiscordTransport = $env:VOID_DISCORD_TRANSPORT
   $previousDisableRepoCursorAdvance = $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE
 
   try {
     $env:VOID_RUMINATION_STATUS_DIR = $fixtureStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $fixtureLogDir
-    $env:VOID_SEND_DISCORD_SCRIPT = $fakeSendPath
-    $env:VOID_DISCORD_TRANSPORT = "direct"
+    $env:VOID_BIFROST_BRIDGE_SCRIPT = $fakeBridgePath
+    $env:VOID_DISCORD_TRANSPORT = "bifrost"
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = "1"
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-void-moderator-rumination.ps1 -StateFilePath $stateFilePath -SkipModel | Out-Null
   } finally {
     $env:VOID_RUMINATION_STATUS_DIR = $previousStatusDir
     $env:VOID_RUMINATION_LOG_DIR = $previousLogDir
-    $env:VOID_SEND_DISCORD_SCRIPT = $previousSendScript
+    $env:VOID_BIFROST_BRIDGE_SCRIPT = $previousBridgeScript
     $env:VOID_DISCORD_TRANSPORT = $previousDiscordTransport
     $env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE = $previousDisableRepoCursorAdvance
   }
