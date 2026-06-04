@@ -87,7 +87,8 @@ function Get-LatestBackupDirectory {
   )
 
   $latest = Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending |
+    Where-Object { $_.Name -match '^\d{8}-\d{6}(?:-.+)?$' } |
+    Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
 
   if ($null -eq $latest) {

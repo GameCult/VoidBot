@@ -373,7 +373,8 @@ function Get-LatestCompleteBackupDirectory {
   )
 
   $directories = @(Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending)
+    Where-Object { $_.Name -match '^\d{8}-\d{6}(?:-.+)?$' } |
+    Sort-Object LastWriteTimeUtc -Descending)
 
   $latestDirectory = $directories | Select-Object -First 1
   $latestCompleteDirectory = $directories |
