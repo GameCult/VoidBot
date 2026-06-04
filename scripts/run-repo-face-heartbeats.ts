@@ -490,8 +490,8 @@ async function queueRepoFaceTurn(input: {
     input.config.repoFaceHeartbeats.defaultChannelId,
     preferredChannelId,
   );
-  const channelId = channelPlan.primaryChannelId;
-  if (!channelId) {
+  const fallbackChannelId = channelPlan.primaryChannelId;
+  if (!fallbackChannelId) {
     input.participant.status = "blocked";
     input.participant.constraints = mergeStrings(
       input.participant.constraints,
@@ -512,19 +512,27 @@ async function queueRepoFaceTurn(input: {
       birthExecutor: input.config.repoFaceBirthExecutor,
     });
   }
-  const recentMessages = await fetchRecentDiscordMessages({
-    botToken: input.config.botToken,
-    channelId,
-    limit: 15,
-    ignoreBotMessages: channelId === input.config.bifrostDiscordChannelId,
-  });
-  const channelSnapshots = await fetchChannelSnapshots({
+  const fetchedChannelSnapshots = await fetchChannelSnapshots({
     botToken: input.config.botToken,
     channelIds: channelPlan.snapshotChannelIds,
-    primaryChannelId: channelId,
-    limit: 6,
+    limit: 15,
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
+  const turnTarget = selectRepoFaceTurnTarget({
+    channelPlan,
+    fetchedChannelSnapshots,
+    pendingMentions: input.pendingMentions,
+    fallbackChannelId,
+  });
+  const channelId = turnTarget.channelId;
+  const activeChannelPlan: RepoFaceChannelPlan = {
+    ...channelPlan,
+    primaryChannelId: channelId,
+  };
+  const recentMessages = messagesForChannel(fetchedChannelSnapshots, channelId);
+  const channelSnapshots = fetchedChannelSnapshots
+    .filter((snapshot) => snapshot.channelId !== channelId)
+    .slice(0, 5);
   const bifrostDigest = input.config.repoFaceBifrostEnabled && identity.identityKind !== "native_persona"
     ? await fetchBifrostGovernanceDigest({
         bifrostRoot: input.config.bifrostRoot,
@@ -553,12 +561,12 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     channelSnapshots,
     pendingMentions: input.pendingMentions,
-    channelPlan,
+    channelPlan: activeChannelPlan,
   });
   const prompt = buildHeartbeatPrompt({
     identity,
     channelId,
-    channelPlan,
+    channelPlan: activeChannelPlan,
     channelSnapshots,
     recentMessages,
     memorySurface,
@@ -586,6 +594,7 @@ async function queueRepoFaceTurn(input: {
     },
     guildContext: {
       channelId,
+      ...(turnTarget.replyToMessageId ? { replyToMessageId: turnTarget.replyToMessageId } : {}),
     },
     recentMessages,
     imageAttachments,
@@ -962,12 +971,12 @@ async function fetchRecentDiscordMessages(input: {
 async function fetchChannelSnapshots(input: {
   botToken?: string;
   channelIds: string[];
-  primaryChannelId: string;
+  primaryChannelId?: string;
   limit: number;
   bifrostDiscordChannelId?: string;
 }): Promise<ChannelSnapshot[]> {
   const snapshots: ChannelSnapshot[] = [];
-  for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId).slice(0, 5)) {
+  for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId).slice(0, 6)) {
     try {
       snapshots.push({
         channelId,
@@ -994,6 +1003,63 @@ async function fetchChannelSnapshots(input: {
     }
   }
   return snapshots;
+}
+
+function selectRepoFaceTurnTarget(input: {
+  channelPlan: RepoFaceChannelPlan;
+  fetchedChannelSnapshots: ChannelSnapshot[];
+  pendingMentions: RepoFacePendingMention[];
+  fallbackChannelId: string;
+}): { channelId: string; replyToMessageId?: string } {
+  const pendingChannelId = newestPendingMentionChannel(input.pendingMentions);
+  if (pendingChannelId && input.channelPlan.snapshotChannelIds.includes(pendingChannelId)) {
+    const pendingMention = newestPendingMention(input.pendingMentions);
+    return {
+      channelId: pendingChannelId,
+      replyToMessageId: pendingMention?.messageId ??
+        newestHumanMessage(messagesForChannel(input.fetchedChannelSnapshots, pendingChannelId))?.id,
+    };
+  }
+
+  const newestHuman = input.fetchedChannelSnapshots
+    .flatMap((snapshot) =>
+      snapshot.messages.map((message) => ({
+        channelId: snapshot.channelId,
+        message,
+        timestampMs: Date.parse(message.timestamp),
+      }))
+    )
+    .filter((entry) =>
+      !entry.message.isBot &&
+      Number.isFinite(entry.timestampMs) &&
+      input.channelPlan.snapshotChannelIds.includes(entry.channelId)
+    )
+    .sort((left, right) => right.timestampMs - left.timestampMs)[0];
+
+  if (newestHuman) {
+    return {
+      channelId: newestHuman.channelId,
+      replyToMessageId: newestHuman.message.id,
+    };
+  }
+
+  return { channelId: input.fallbackChannelId };
+}
+
+function messagesForChannel(snapshots: ChannelSnapshot[], channelId: string): SourceMessage[] {
+  return snapshots.find((snapshot) => snapshot.channelId === channelId)?.messages ?? [];
+}
+
+function newestHumanMessage(messages: SourceMessage[]): SourceMessage | undefined {
+  return messages
+    .filter((message) => !message.isBot && Number.isFinite(Date.parse(message.timestamp)))
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0];
+}
+
+function newestPendingMention(pendingMentions: RepoFacePendingMention[]): RepoFacePendingMention | undefined {
+  return pendingMentions
+    .slice()
+    .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))[0];
 }
 
 async function materializeDiscordAttachments(input: {
@@ -1840,23 +1906,16 @@ async function assembleRepoFaceTurnPrompt(input: {
   }
 
   const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
-  const channelId = channelPlan.primaryChannelId;
-  if (!channelId) {
+  const fallbackChannelId = channelPlan.primaryChannelId;
+  if (!fallbackChannelId) {
     throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
   }
 
-  const [recentMessages, channelSnapshots, bifrostDigest] = await Promise.all([
-    fetchRecentDiscordMessages({
-      botToken: input.config.botToken,
-      channelId,
-      limit: 15,
-      ignoreBotMessages: channelId === input.config.bifrostDiscordChannelId,
-    }),
+  const [fetchedChannelSnapshots, bifrostDigest] = await Promise.all([
     fetchChannelSnapshots({
       botToken: input.config.botToken,
       channelIds: channelPlan.snapshotChannelIds,
-      primaryChannelId: channelId,
-      limit: 6,
+      limit: 15,
       bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
     }),
     input.config.repoFaceBifrostEnabled
@@ -1867,6 +1926,21 @@ async function assembleRepoFaceTurnPrompt(input: {
         })
       : Promise.resolve(undefined),
   ]);
+  const turnTarget = selectRepoFaceTurnTarget({
+    channelPlan,
+    fetchedChannelSnapshots,
+    pendingMentions: [],
+    fallbackChannelId,
+  });
+  const channelId = turnTarget.channelId;
+  const activeChannelPlan: RepoFaceChannelPlan = {
+    ...channelPlan,
+    primaryChannelId: channelId,
+  };
+  const recentMessages = messagesForChannel(fetchedChannelSnapshots, channelId);
+  const channelSnapshots = fetchedChannelSnapshots
+    .filter((snapshot) => snapshot.channelId !== channelId)
+    .slice(0, 5);
   const roomContext = {
     recentMessages,
     channelSnapshots,
@@ -1890,7 +1964,7 @@ async function assembleRepoFaceTurnPrompt(input: {
         recentMessages,
         channelSnapshots,
         pendingMentions: [],
-        channelPlan,
+        channelPlan: activeChannelPlan,
       });
   const participant = buildInspectionParticipant(
     identity,
@@ -1899,7 +1973,7 @@ async function assembleRepoFaceTurnPrompt(input: {
   const prompt = buildHeartbeatPrompt({
     identity,
     channelId,
-    channelPlan,
+    channelPlan: activeChannelPlan,
     channelSnapshots,
     recentMessages,
     memorySurface,

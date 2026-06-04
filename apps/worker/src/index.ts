@@ -1208,6 +1208,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
       `Coerced repo identity ${identity.id} speech for job ${job.id} from "${requestedChannelId}" to conversation channel ${channelId}.`,
     );
   }
+  const replyToMessageId = intent.replyToMessageId ?? repoIdentityDefaultReplyToMessageId(job, channelId);
   const rawContent = intent.content.trim();
   if (isNonPublicRepoIdentitySpeech(rawContent)) {
     throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
@@ -1267,7 +1268,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     "--persona-name",
     identity.displayName,
     ...(identity.avatarUrl ? ["--persona-avatar-url", identity.avatarUrl] : []),
-    ...(intent.replyToMessageId ? ["--reply-to-message-id", intent.replyToMessageId] : []),
+    ...(replyToMessageId ? ["--reply-to-message-id", replyToMessageId] : []),
   ], { retries: 1 });
   if (!posted.messageId || !posted.transport) {
     throw new Error(`Bifrost Discord bridge returned no message receipt for job ${job.id}.`);
@@ -1276,7 +1277,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     identity,
     channelId,
     content,
-    replyToMessageId: intent.replyToMessageId,
+    replyToMessageId,
     messageId: posted.messageId,
     transport: posted.transport,
   }).catch((error: unknown) => {
@@ -2880,6 +2881,14 @@ function repoIdentityDefaultSpeechChannel(job: JobRecord): string | undefined {
   return job.guildContext?.channelId && !isOwnerDmChannelAlias(job.guildContext.channelId)
     ? job.guildContext.channelId
     : job.outputChannelId;
+}
+
+function repoIdentityDefaultReplyToMessageId(job: JobRecord, channelId: string): string | undefined {
+  const replyToMessageId = job.guildContext?.replyToMessageId?.trim();
+  if (!replyToMessageId || job.guildContext?.channelId !== channelId) {
+    return undefined;
+  }
+  return replyToMessageId;
 }
 
 function normalizeRepoIdentitySpeechChannel(

@@ -69,6 +69,7 @@ export interface GuildContext {
   channelId: string;
   channelName?: string;
   threadId?: string;
+  replyToMessageId?: string;
 }
 
 export interface SourceMessage {
