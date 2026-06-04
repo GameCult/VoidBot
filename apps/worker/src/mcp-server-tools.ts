@@ -139,7 +139,7 @@ export function registerVoidbotTools(
     {
       title: "List Odin Providers",
       description:
-        "List Eve/CultUI providers currently advertised through Odin. This is read-only Verse discovery; use it to learn which provider-owned surfaces Odin can see.",
+        "Compatibility relay: list Eve/CultUI providers currently advertised through Odin's transitional HTTP surface. Native GameCult agents should prefer CultNet/CultMesh Verse discovery when available.",
       inputSchema: odinEndpointInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
@@ -172,7 +172,7 @@ export function registerVoidbotTools(
     {
       title: "List Odin Verses",
       description:
-        "Read Odin's current all-seer surface and list the Verse/service nodes it publishes. This is read-only; Odin remains the registry owner.",
+        "Compatibility relay: read Odin's current all-seer lowering and list the Verse/service nodes it publishes. This is read-only; native discovery belongs on CultNet/CultMesh.",
       inputSchema: odinEndpointInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
@@ -214,7 +214,7 @@ export function registerVoidbotTools(
     {
       title: "Get Odin Surface",
       description:
-        "Read Odin's current all-seer Eve/CultUI surface, or ask Odin for one provider surface by providerId. Use this for read-only interface inspection, not command execution.",
+        "Compatibility relay: read Odin's current all-seer Eve/CultUI lowering, or ask Odin for one provider surface by providerId. Use this for read-only inspection only; native agents should use CultMesh/CultNet surfaces directly.",
       inputSchema: odinSurfaceInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
@@ -256,7 +256,7 @@ export function registerVoidbotTools(
     {
       title: "Load Odin Interface Context",
       description:
-        "Load one provider-owned CultMesh/Eve interface visible through Odin and lower it into compact text, tree, and command context for an agent. This is token-efficient TUI access, not raw dashboard dumping.",
+        "Compatibility relay: load one provider-owned CultMesh/Eve interface visible through Odin and lower it into compact text, tree, and command context. This is token-efficient inspection over a transitional lowering, not native CultNet/CultMesh access.",
       inputSchema: odinInterfaceContextInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
@@ -291,7 +291,7 @@ export function registerVoidbotTools(
     {
       title: "Invoke Odin Interface Command",
       description:
-        "Send an explicit command through a provider-owned Eve/CultUI command boundary discovered via Odin. The command must be advertised by the provider interface. Odin is not the side-effect owner; this relays to the provider endpoint when the interface exposes a WebSocket command transport.",
+        "Compatibility relay: send an explicit command through a provider-owned Eve/CultUI command boundary discovered via Odin. Native commands belong on CultNet/CultMesh; this only relays to transitional provider endpoints when advertised.",
       inputSchema: odinInterfaceCommandInputSchema,
       annotations: {
         readOnlyHint: false,
@@ -329,7 +329,7 @@ export function registerVoidbotTools(
           content: [
             {
               type: "text",
-              text: `Provider ${input.providerId} is visible through ${loaded.source || "an unknown source"}, but this MCP relay only supports provider WebSocket command endpoints right now.`,
+              text: `Provider ${input.providerId} is visible through ${loaded.source || "an unknown source"}, but this MCP compatibility relay only supports provider WebSocket command endpoints. Native commands belong on CultNet/CultMesh.`,
             },
           ],
           structuredContent: {

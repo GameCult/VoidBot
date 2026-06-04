@@ -76,12 +76,12 @@ function buildCatalog() {
         witness("voidbot.operations_health", ".voidbot/status/operations-health.json", "VoidBot watchdog", ["debug status only"]),
       ],
       commands: [
-        command("archive.search_history", "read-only", "Search archived Discord history through VoidBot MCP/retrieval surfaces."),
+        command("archive.search_history", "read-only", "Search archived Discord history through native CultMesh/CultNet service commands; MCP is external-agent compatibility."),
         command("archive.get_message_context", "read-only", "Fetch a bounded context window around an archived Discord message."),
       ],
       owners: {
         state: "VoidBot archive and retrieval stack",
-        inspection: "VoidBot MCP/retrieval tools",
+        inspection: "VoidBot native CultMesh/CultNet retrieval surface; MCP compatibility bridge for external agents",
         presentation: "Eve/CultUI lowerings",
       },
     }),
@@ -101,13 +101,13 @@ function buildCatalog() {
         witness("voidbot.source_hooks_status", ".voidbot/status/source-hooks/", "VoidBot source hook scripts", ["debug status only"]),
       ],
       commands: [
-        command("source.search_sources", "read-only", "Search indexed source and lore repositories."),
+        command("source.search_sources", "read-only", "Search indexed source and lore repositories through native CultMesh/CultNet service commands."),
         command("source.get_source_context", "read-only", "Fetch a bounded source chunk window from an indexed document."),
         command("source.list_indexed_repos", "read-only", "List indexed source/lore repositories visible to VoidBot."),
       ],
       owners: {
         state: "VoidBot RAG/source archive stack",
-        inspection: "VoidBot MCP/retrieval tools",
+        inspection: "VoidBot native CultMesh/CultNet retrieval surface; MCP compatibility bridge for external agents",
         presentation: "Eve/CultUI lowerings",
       },
     }),
@@ -137,7 +137,7 @@ function buildCatalog() {
         presentation: "Eve/CultUI lowerings",
       },
       demotions: [
-        "VoidBot repo Face MCP state reads are diagnostics, not canonical Persona inspection.",
+        "VoidBot repo Face MCP state reads are diagnostics for external agents, not canonical Persona inspection or native swarm access.",
         "VoidBot registry data is a Discord compatibility projection, not portable Persona authority.",
         "Persona publication and .cc inspection readiness belong to Huginn once the handoff path exists.",
       ],

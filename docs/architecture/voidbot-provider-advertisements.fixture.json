@@ -280,7 +280,7 @@
         {
           "id": "archive.search_history",
           "mode": "read-only",
-          "purpose": "Search archived Discord history through VoidBot MCP/retrieval surfaces.",
+          "purpose": "Search archived Discord history through native CultMesh/CultNet service commands; MCP is external-agent compatibility.",
           "advertisedOnly": true
         },
         {
@@ -319,7 +319,7 @@
       ],
       "owners": {
         "state": "VoidBot archive and retrieval stack",
-        "inspection": "VoidBot MCP/retrieval tools",
+        "inspection": "VoidBot native CultMesh/CultNet retrieval surface; MCP compatibility bridge for external agents",
         "presentation": "Eve/CultUI lowerings"
       },
       "demotions": []
@@ -367,7 +367,7 @@
         {
           "id": "source.search_sources",
           "mode": "read-only",
-          "purpose": "Search indexed source and lore repositories.",
+          "purpose": "Search indexed source and lore repositories through native CultMesh/CultNet service commands.",
           "advertisedOnly": true
         },
         {
@@ -419,7 +419,7 @@
       ],
       "owners": {
         "state": "VoidBot RAG/source archive stack",
-        "inspection": "VoidBot MCP/retrieval tools",
+        "inspection": "VoidBot native CultMesh/CultNet retrieval surface; MCP compatibility bridge for external agents",
         "presentation": "Eve/CultUI lowerings"
       },
       "demotions": []
@@ -523,7 +523,7 @@
         "presentation": "Eve/CultUI lowerings"
       },
       "demotions": [
-        "VoidBot repo Face MCP state reads are diagnostics, not canonical Persona inspection.",
+        "VoidBot repo Face MCP state reads are diagnostics for external agents, not canonical Persona inspection or native swarm access.",
         "VoidBot registry data is a Discord compatibility projection, not portable Persona authority.",
         "Persona publication and .cc inspection readiness belong to Huginn once the handoff path exists."
       ]
