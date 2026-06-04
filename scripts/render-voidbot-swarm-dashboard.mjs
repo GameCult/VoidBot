@@ -12,6 +12,7 @@ const defaultSnapshotPath = resolve(defaultStatusDir, "swarm-state.json");
 const defaultDashboardPath = resolve(defaultStatusDir, "swarm-dashboard.html");
 const defaultCultMeshStorePath = resolve(defaultStatusDir, "cultmesh", "voidbot-swarm-state.cc");
 const providerId = "voidbot.swarm";
+const operatorDmProviderId = "voidbot.operator-dm";
 const verseId = "voidbot.local";
 const snapshotDocumentType = "voidbot.swarm_state_snapshot";
 const snapshotSchemaId = "voidbot.swarm_state_snapshot.v1";
@@ -745,10 +746,16 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
     });
     const providerAdvertisement = buildProviderAdvertisement(snapshot);
     const eveBinding = buildEveInterfaceBinding(snapshot, eveState);
+    const operatorDmState = buildOperatorDmProviderState(snapshot);
+    const operatorDmAdvertisement = buildOperatorDmProviderAdvertisement(snapshot);
+    const operatorDmBinding = buildOperatorDmInterfaceBinding(snapshot, operatorDmState);
     await node.put(snapshotDefinition, "voidbot-swarm", snapshot);
     await node.put(providerDefinition, providerId, providerAdvertisement);
+    await node.put(providerDefinition, operatorDmProviderId, operatorDmAdvertisement);
     await node.put(surfaceDefinition, providerId, eveState);
+    await node.put(surfaceDefinition, operatorDmProviderId, operatorDmState);
     await node.put(eveBindingDefinition, providerId, eveBinding);
+    await node.put(eveBindingDefinition, operatorDmProviderId, operatorDmBinding);
     await node.flush?.(true);
     return {
       writeStatus: "ok",
@@ -935,6 +942,207 @@ function providerManifest() {
     usesCultMesh: true,
     transport: "CultMesh Eve interface binding.",
   };
+}
+
+function buildOperatorDmProviderAdvertisement(snapshot) {
+  return {
+    schemaVersion: providerAdvertisementSchemaId,
+    providerId: operatorDmProviderId,
+    verseId,
+    title: "VoidBot Operator DM",
+    description: "VoidBot-owned operator notification boundary for service alerts that need an owner DM.",
+    version: String(snapshot.summary?.initiativeClock ?? Date.now()),
+    status: ownerDmStatus(snapshot),
+    updatedAt: snapshot.generatedAt,
+    endpoints: [operatorDmCultMeshEndpoint()],
+    provider: operatorDmProviderManifest(snapshot),
+    commandSurface: {
+      primary: operatorDmCultMeshEndpoint(),
+      transport: "cultmesh-interface-binding",
+      commands: [ownerDmCommandDescriptor()],
+      executionOwner: "VoidBot Discord owner-DM helper",
+      executionNote: "Command delivery must be drained by VoidBot; Odin only discovers and lowers this provider-owned interface.",
+    },
+    documents: [{
+      type: providerAdvertisementDocumentType,
+      schemaId: providerAdvertisementSchemaId,
+      key: operatorDmProviderId,
+    }, {
+      type: surfaceDocumentType,
+      schemaId: surfaceSchemaId,
+      key: operatorDmProviderId,
+    }, {
+      type: eveBindingDocumentType,
+      schemaId: eveBindingSchemaId,
+      key: operatorDmProviderId,
+    }],
+  };
+}
+
+function buildOperatorDmInterfaceBinding(snapshot, eveState) {
+  return {
+    schemaVersion: eveBindingSchemaId,
+    bindingId: operatorDmProviderId,
+    providerId: operatorDmProviderId,
+    verseId,
+    title: "VoidBot Operator DM",
+    kind: "eve-cultui-command-surface",
+    updatedAt: snapshot.generatedAt,
+    authority: {
+      owner: "VoidBot Discord owner-DM helper",
+      commandOwner: "VoidBot worker notify_owner path",
+      sourceDocuments: [{
+        type: providerAdvertisementDocumentType,
+        schemaId: providerAdvertisementSchemaId,
+        key: operatorDmProviderId,
+      }],
+      surfaceDocument: {
+        type: surfaceDocumentType,
+        schemaId: surfaceSchemaId,
+        key: operatorDmProviderId,
+      },
+      forbiddenWriters: ["Mimir Well", "Odin", "Eve renderers"],
+    },
+    surface: eveState.surface,
+    stateSummary: {
+      state: ownerDmStatus(snapshot),
+      botTokenConfigured: Boolean(env.DISCORD_BOT_TOKEN),
+      ownerConfigured: Boolean(env.DISCORD_OWNER_ID),
+      command: "owner.dm.send",
+    },
+    controls: [ownerDmCommandDescriptor()],
+    commands: [ownerDmCommandDescriptor()],
+    rendererHints: {
+      preferredLowerings: ["nightwing-tui", "eve-native"],
+      viewportMode: "operator-alerts",
+      tileId: "voidbot-operator-dm",
+      minWidth: 44,
+      minHeight: 8,
+      preferredWidth: 72,
+      preferredHeight: 14,
+      priority: -80,
+      density: "compact",
+    },
+  };
+}
+
+function buildOperatorDmProviderState(snapshot) {
+  const state = ownerDmStatus(snapshot);
+  return {
+    schema: surfaceSchemaId,
+    providerId: operatorDmProviderId,
+    title: "VoidBot Operator DM",
+    version: Number(snapshot.summary?.initiativeClock ?? Date.now()),
+    updatedAt: snapshot.generatedAt,
+    surface: {
+      schema: "gamecult.eve.surface.v1",
+      id: "voidbot.operator-dm.surface",
+      title: "VoidBot Operator DM",
+      commands: [ownerDmCommandDescriptor()],
+      root: {
+        id: "voidbot-operator-dm-root",
+        kind: "pane",
+        props: {
+          title: "Operator DM",
+          providerId: operatorDmProviderId,
+          status: state,
+          summary: state === "active"
+            ? "owner.dm.send is advertised; VoidBot owns delivery."
+            : "owner.dm.send is advertised but Discord credentials are incomplete.",
+          command: "owner.dm.send",
+        },
+        children: [{
+          id: "voidbot-operator-dm-status",
+          kind: "metric",
+          props: {
+            label: "Owner DM",
+            value: state,
+            tone: state === "active" ? "ok" : "warn",
+          },
+          children: [],
+        }, {
+          id: "voidbot-operator-dm-command",
+          kind: "button",
+          props: {
+            label: "Send owner DM",
+            command: "owner.dm.send",
+            action: ownerDmCommandAction(),
+            status: state,
+          },
+          children: [],
+        }, {
+          id: "voidbot-operator-dm-contract",
+          kind: "text",
+          props: {
+            text: "Mimir may request operator intervention through gamecult.operator_dm_request.v1; VoidBot owns Discord delivery.",
+          },
+          children: [],
+        }],
+      },
+      assets: [],
+    },
+    commands: [ownerDmCommandDescriptor()],
+  };
+}
+
+function ownerDmCommandDescriptor() {
+  return {
+    id: "owner.dm.send",
+    label: "Send owner DM",
+    command: "owner.dm.send",
+    transport: "cultmesh-command",
+    payloadSchema: {
+      schemaId: "gamecult.operator_dm_request.v1",
+      type: "object",
+      required: ["message"],
+      properties: {
+        message: { type: "string", maxLength: 1800 },
+        severity: { type: "string" },
+        service: { type: "string" },
+        sourceId: { type: "string" },
+        reason: { type: "string" },
+      },
+    },
+    writes: {
+      documentType: "gamecult.operator_dm_request",
+      schemaId: "gamecult.operator_dm_request.v1",
+      owner: operatorDmProviderId,
+    },
+    action: ownerDmCommandAction(),
+  };
+}
+
+function ownerDmCommandAction() {
+  return {
+    type: "owner.dm.send",
+    command: "owner.dm.send",
+    transport: "cultmesh-command",
+    providerId: operatorDmProviderId,
+    payloadSchemaId: "gamecult.operator_dm_request.v1",
+  };
+}
+
+function operatorDmProviderManifest(snapshot) {
+  return {
+    id: operatorDmProviderId,
+    title: "VoidBot Operator DM",
+    description: "Provider-owned owner-DM command boundary for service intervention alerts.",
+    version: "1",
+    endpoint: operatorDmCultMeshEndpoint(),
+    capabilities: ["operator-alerts", "owner-dm", "cultmesh-command"],
+    usesCultMesh: true,
+    status: ownerDmStatus(snapshot),
+    transport: "CultMesh Eve interface binding.",
+    commands: [ownerDmCommandDescriptor()],
+  };
+}
+
+function ownerDmStatus() {
+  return env.DISCORD_BOT_TOKEN && env.DISCORD_OWNER_ID ? "active" : "degraded";
+}
+
+function operatorDmCultMeshEndpoint() {
+  return `cultmesh://${verseId}/eve/providers/${operatorDmProviderId}`;
 }
 
 function buildEveProviderState(snapshot) {
