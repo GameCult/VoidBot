@@ -177,7 +177,7 @@ async function processPendingJobs(): Promise<void> {
       resolve("config/system-messages.json"),
     );
     providerRegistry = await buildProviderRegistry(systemMessages);
-    const jobs = await jobQueue.claimRunnableJobs();
+    const jobs = await jobQueue.claimRunnableJobs(1);
 
     for (const job of jobs) {
       await processJob(job);
