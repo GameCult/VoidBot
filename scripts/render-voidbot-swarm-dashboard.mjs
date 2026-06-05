@@ -1173,8 +1173,8 @@ function buildEveProviderState(snapshot) {
         }, upcoming.slice(0, 14).map((turn, index) =>
           eveNode(`turn-${stableId(turn.identityId)}-${index}`, "text", {
             role: "mono",
-            text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(9, " ")} ${minutesText(turn.nextTurnInMinutes).padStart(6, " ")} ${mentionText(turn).padEnd(5, " ")} s${formatNumber(turn.effectiveSpeed, 3)} h${formatNumber(turn.heat, 2)}`,
-            status: turnState(turn),
+            text: formatTurnText(turn, index),
+            status: turnStatus(turn),
             detail: `${turn.repoName ?? "repo"} / due ${minutesText(turn.nextTurnInMinutes)} / ${mentionDetail(turn)}`,
           }),
         )),
@@ -1195,11 +1195,20 @@ function stableId(value) {
     .replace(/^-+|-+$/g, "") || "id";
 }
 
-function turnState(turn) {
+function formatTurnText(turn, index) {
+  const rank = String(index + 1).padStart(2, " ");
+  const name = String(turn?.displayName ?? turn?.identityId ?? "face").padEnd(10, " ");
+  const status = turnStatus(turn).padEnd(7, " ");
+  const due = minutesText(turn?.nextTurnInMinutes).padStart(6, " ");
+  const mention = mentionText(turn).padEnd(5, " ");
+  return `${rank}. ${name} ${status} ${due} ${mention} s${formatNumber(turn?.effectiveSpeed, 3)} h${formatNumber(turn?.heat, 2)}`;
+}
+
+function turnStatus(turn) {
   if (turn?.activeJobId) return "active";
   if (turn?.restState?.isNapping) return "nap";
   if ((turn?.pendingMentionCount ?? 0) > 0) return "mention";
-  return minutesText(turn?.nextTurnInMinutes);
+  return "idle";
 }
 
 function minutesText(value) {
