@@ -143,6 +143,7 @@ export function createEmptyVoidSelfState(
       statusReads: [],
       moodDimensions: [],
       socialBiases: [],
+      stressResponses: [],
       doctrineStances: [],
       updatedAt: createdAt,
     }),
@@ -323,8 +324,12 @@ function renderPersonaAffectSummary(
     .slice()
     .sort((left, right) => right.value - left.value)
     .slice(0, 8);
+  const stressResponses = affect.stressResponses
+    .filter((response) => response.status !== "retired")
+    .sort((left, right) => right.intensity - left.intensity)
+    .slice(0, 4);
 
-  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0) {
+  if (needs.length === 0 && bonds.length === 0 && reads.length === 0 && dimensions.length === 0 && stressResponses.length === 0) {
     return `- What ${identityName} feels and wants: no explicit affect state yet.`;
   }
 
@@ -358,6 +363,17 @@ function renderPersonaAffectSummary(
     dimensions.length > 0
       ? `- Mood dimensions: ${dimensions.map((dimension) => `${dimension.name}=${dimension.value.toFixed(2)}`).join(", ")}`
       : undefined,
+    ...stressResponses.map((response) =>
+      [
+        `- Stress response/${response.responseId} (${response.intensity.toFixed(2)}, threshold ${response.threshold.toFixed(2)}): ${response.summary}`,
+        `  Trigger: ${response.trigger}`,
+        `  Cognition under pressure: ${response.cognitiveDegradation}`,
+        `  Affective signature: ${response.affectiveSignature}`,
+        `  Constraint loss: ${response.constraintLoss}`,
+        `  Behavioral leak: ${response.behavioralLeak}`,
+        `  Recovery path: ${response.recoveryPath}`,
+      ].join("\n"),
+    ),
   ]
     .filter((line): line is string => typeof line === "string")
     .join("\n");
@@ -428,6 +444,16 @@ export function buildVoidSelfStateProjection(
           name: dimension.name,
           value: dimension.value,
           source: dimension.source,
+        })),
+      stressResponses: typedState.personaAffect.stressResponses
+        .filter((response) => response.status !== "retired")
+        .slice(0, 8)
+        .map((response) => ({
+          id: response.responseId,
+          trigger: response.trigger,
+          summary: response.summary,
+          intensity: response.intensity,
+          threshold: response.threshold,
         })),
     },
   };

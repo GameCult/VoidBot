@@ -66,7 +66,7 @@ try {
     throw new Error(`read_repo_persona_state did not expose typedState.personaAffect for ${identity}.`);
   }
 
-  for (const field of ["needs", "socialBonds", "statusReads", "moodDimensions"]) {
+  for (const field of ["needs", "socialBonds", "statusReads", "moodDimensions", "stressResponses"]) {
     if (!Array.isArray(personaAffect[field])) {
       throw new Error(`typedState.personaAffect.${field} is not an array for ${identity}.`);
     }
@@ -86,6 +86,7 @@ try {
       socialBonds: personaAffect.socialBonds.length,
       statusReads: personaAffect.statusReads.length,
       moodDimensions: personaAffect.moodDimensions.length,
+      stressResponses: personaAffect.stressResponses.length,
     },
   }, null, 2)}\n`);
 } finally {

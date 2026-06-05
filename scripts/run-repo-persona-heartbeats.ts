@@ -2261,6 +2261,9 @@ function renderRepoPersonaStatePacket(
     .sort(sortAffectByStatusAndIntensity);
   const moodDimensions = [...state.personaAffect.moodDimensions]
     .sort((left, right) => right.value - left.value);
+  const stressResponses = [...state.personaAffect.stressResponses]
+    .filter((response) => response.status !== "retired")
+    .sort((left, right) => right.intensity - left.intensity);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => pressure.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
@@ -2364,6 +2367,24 @@ function renderRepoPersonaStatePacket(
       ...moodDimensions.map((dimension) =>
         `- ${dimension.name}=${dimension.value.toFixed(2)}${dimension.source ? ` from ${cleanCharacterFacingSentence(dimension.source)}` : ""}`,
       ),
+    ].join("\n"));
+  }
+
+  if (stressResponses.length > 0) {
+    lines.push([
+      "Stress responses that can degrade cognition under pressure:",
+      ...stressResponses.map((response) =>
+        [
+          `- ${response.responseId} [${response.status}, intensity ${response.intensity.toFixed(2)}, threshold ${response.threshold.toFixed(2)}]: ${asSentence(response.summary)}`,
+          `Trigger: ${asSentence(response.trigger)}`,
+          `Cognition degrades toward: ${asSentence(response.cognitiveDegradation)}`,
+          `Affect feels like: ${asSentence(response.affectiveSignature)}`,
+          `Constraint loss: ${asSentence(response.constraintLoss)}`,
+          `Behavioral leak: ${asSentence(response.behavioralLeak)}`,
+          `Recovery path: ${asSentence(response.recoveryPath)}`,
+        ].join(" "),
+      ),
+      "When the live room matches a trigger strongly enough, do not project the Persona's calm best self; project the pressured self that is actually online.",
     ].join("\n"));
   }
 

@@ -201,6 +201,40 @@ function stance({
   };
 }
 
+function stressResponse({
+  id,
+  trigger,
+  summary,
+  cognitiveDegradation,
+  affectiveSignature,
+  constraintLoss,
+  behavioralLeak,
+  recoveryPath,
+  anchors,
+  tags,
+  createdAt = now,
+  intensity = 0.78,
+  threshold = 0.7,
+}) {
+  return {
+    id,
+    status: "active",
+    trigger,
+    summary,
+    cognitiveDegradation,
+    affectiveSignature,
+    constraintLoss,
+    behavioralLeak,
+    recoveryPath,
+    intensity,
+    threshold,
+    createdAt,
+    updatedAt: now,
+    tags,
+    extensions: { anchors: anchor(anchors) },
+  };
+}
+
 doc.provenance.exportedAt = now;
 doc.updatedAt = now;
 doc.privateNotes = Array.from(new Set([
@@ -1653,6 +1687,29 @@ doc.affect.moodDimensions = [
   })),
 ];
 
+const stressResponses = [
+  stressResponse({
+    id: "metacrat-stress-shame-status-threat-associative-spray",
+    trigger: "A trusted or admired person unexpectedly implies Metacrat has caused social harm, reproduced a bigoted trope, or failed a moral/status test in public.",
+    summary: "When shame and status threat spike together, Metacrat may not become calmer or more morally integrated; cognition can fragment into self-exonerating associative spray before repair capacity comes back online.",
+    cognitiveDegradation: "Working memory floods with intent, context, counterexamples, identity-adjacent fascination, historical nuance, and the need to prove she is not the condemned thing; prioritization collapses and the next utterance may chase several defenses at once.",
+    affectiveSignature: "Blindsided hurt, fear of being socially flattened, affection for the critic, panic at being misread, and a frantic wish to preserve dignity without surrendering the self.",
+    constraintLoss: "Impact-first repair, concise acknowledgement, and audience-legibility degrade first; nuance and inside-frame explanation try to speak before the other person feels heard.",
+    behavioralLeak: "Overexplaining, factualizing, flirty or affectionate deflection, identity-theater side channels, topic pivots, and too-clever phrasing can leak out as if they were clarification.",
+    recoveryPath: "Time, explicit naming of the affect spike, trusted correction, and a simple impact-first repair path restore coherence; only after that should nuance, intent, or cultural frame be discussed.",
+    anchors: ["project:lifelong-pattern-anchor-missing"],
+    tags: ["stress-response", "panic", "shame", "status-threat", "repair", "anchor:missing", "sensitivity:high"],
+    createdAt: "2018-09-18T00:00:00.000Z",
+    intensity: 0.94,
+    threshold: 0.62,
+  }),
+];
+
+doc.affect.stressResponses = [
+  ...(doc.affect.stressResponses || []).filter((entry) => !stressResponses.some((response) => response.id === entry.id)),
+  ...stressResponses,
+];
+
 correctStaleMetacratPronouns(doc);
 
 fs.writeFileSync(importPath, JSON.stringify(doc, null, 2) + "\n");
@@ -1661,6 +1718,7 @@ console.log(JSON.stringify({
   needs: doc.affect.needs.length,
   socialBonds: doc.affect.socialBonds.length,
   statusReads: doc.affect.statusReads.length,
+  stressResponses: doc.affect.stressResponses.length,
   doctrineStances: doc.affect.doctrineStances.length,
 }, null, 2));
 

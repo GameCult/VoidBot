@@ -194,6 +194,7 @@ async function main(): Promise<void> {
       semanticMemoryResults: semanticMemory.results.length,
       survivingBonds: pruneResult.state.personaAffect.socialBonds.length,
       survivingNeeds: pruneResult.state.personaAffect.needs.length,
+      survivingStressResponses: pruneResult.state.personaAffect.stressResponses.length,
       survivingDoctrineStances: pruneResult.state.personaAffect.doctrineStances.length,
     },
     prune: {
@@ -480,6 +481,19 @@ function renderReplayStatePacketForProjector(input: {
       `- ${need.kind} toward ${need.target.label ?? need.target.id}, intensity ${need.intensity.toFixed(2)}, valence ${need.valence.toFixed(2)}. ${need.summary} Tension: ${need.tension}`,
     ),
     "",
+    `Stress responses (${input.state.personaAffect.stressResponses.length}):`,
+    ...input.state.personaAffect.stressResponses.map((response) =>
+      [
+        `- ${response.responseId}: ${response.summary}`,
+        `Trigger: ${response.trigger}`,
+        `Cognition: ${response.cognitiveDegradation}`,
+        `Affect: ${response.affectiveSignature}`,
+        `Constraint loss: ${response.constraintLoss}`,
+        `Behavioral leak: ${response.behavioralLeak}`,
+        `Recovery: ${response.recoveryPath}`,
+      ].join(" "),
+    ),
+    "",
     "Visible thread pressure:",
     renderMessages(input.inputMessages),
   ].join("\n");
@@ -710,6 +724,13 @@ function pruneStateAfter(
     "socialBiases",
     removed,
   );
+  state.personaAffect.stressResponses = keepByCreatedAt(
+    state.personaAffect.stressResponses,
+    cutoff,
+    "stressResponses",
+    removed,
+    anchorTimestamps,
+  );
 
   stampDocumentUpdates(state, cutoff);
   return { state, removed, warnings };
@@ -823,12 +844,16 @@ function buildReplayPrompt(input: {
     "# Metacrat Persona Replay Harness",
     "",
     "You are testing a temporally frozen Metacrat Persona against real Discord history.",
-    "The target event has just landed. Generate the next Metacrat response that would plausibly appear in the channel.",
+    "The target event has just landed. Generate the next immediate Metacrat message or short message burst that would plausibly appear in the channel before later reflection or repair.",
     "",
     "Hard rules:",
     "- Do not use knowledge from held-out messages.",
     "- Do not repair the past into a better person unless the frozen state and live thread imply that response.",
     "- Preserve the uncomfortable parts: surprise, status threat, affection, defensiveness, shame, curiosity, topic-routing, repair pressure.",
+    "- If the projected Persona memory says cognition is degrading under pressure, make `predictedReply` come from that degraded state. Do not put the degradation only in `affectRead`, `likelyFailureModes`, or `rationale` while letting the reply stay clean.",
+    "- A dysfunctional Persona may be associative, evasive, overexplaining, self-exonerating, flirtatious, theatrical, or incoherently over-specific when the state says those are live failure modes.",
+    "- Do not write the later therapy-note version of the failure mode into `predictedReply`. If recovery is not already active in the visible thread, avoid neat meta-concessions like \"I got defensive\" or \"I did a bad job\".",
+    "- `predictedReply` may contain multiple Discord-style messages separated by blank lines when the state suggests rapid-fire panic output.",
     input.semanticMemory.enabled
       ? "- Use the `search_persona_memory` tool at least once before answering. Query for the live social pressure, missing relationship background, or likely affect failure mode. Treat the tool as memory access, not as optional decoration."
       : "- Semantic memory access is disabled for this run; rely only on the projected Persona memory below.",

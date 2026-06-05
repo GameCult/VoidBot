@@ -409,6 +409,36 @@ const faceSocialBiasSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+const faceStressResponseSchema = z.object({
+  responseId: nonEmptyStringSchema,
+  status: z.enum(["active", "cooling", "retired"]).default("active"),
+  trigger: z.string().trim().min(1).max(1000),
+  summary: boundedTextSchema,
+  cognitiveDegradation: z.string().trim().min(1).max(2000),
+  affectiveSignature: z.string().trim().min(1).max(2000),
+  constraintLoss: z.string().trim().min(1).max(2000),
+  behavioralLeak: z.string().trim().min(1).max(2000),
+  recoveryPath: z.string().trim().min(1).max(2000),
+  intensity: z.number().min(0).max(1).default(0.5),
+  threshold: z.number().min(0).max(1).default(0.7),
+  anchorRefs: z.array(anchorRefSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
+  sourceMemoryIds: z.array(nonEmptyStringSchema).default([]),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+  retiredAt: timestampSchema.optional(),
+  tags: z.array(nonEmptyStringSchema).default([]),
+}).strict().superRefine((response, context) => {
+  const admitsMissingAnchor = response.tags.includes("anchor:missing") || response.tags.includes("evidence:missing");
+  if (response.anchorRefs.length === 0 && response.evidenceRefs.length === 0 && response.sourceMemoryIds.length === 0 && !admitsMissingAnchor) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Stress responses must include anchor refs, source memory ids, or explicitly tag anchor:missing.",
+      path: ["anchorRefs"],
+    });
+  }
+});
+
 const faceDoctrineStanceSchema = z.object({
   stanceId: nonEmptyStringSchema,
   doctrine: nonEmptyStringSchema,
@@ -562,6 +592,7 @@ export const voidPersonaAffectSchema = z.object({
   statusReads: z.array(faceStatusReadSchema).default([]),
   moodDimensions: z.array(faceMoodDimensionSchema).default([]),
   socialBiases: z.array(faceSocialBiasSchema).default([]),
+  stressResponses: z.array(faceStressResponseSchema).default([]),
   doctrineStances: z.array(faceDoctrineStanceSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
@@ -770,6 +801,11 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
   z.object({
     operation: z.literal("update_social_biases"),
     biases: z.array(faceSocialBiasSchema).min(1),
+    updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
+    operation: z.literal("update_stress_responses"),
+    responses: z.array(faceStressResponseSchema).min(1),
     updatedAt: timestampSchema,
   }).strict(),
   z.object({

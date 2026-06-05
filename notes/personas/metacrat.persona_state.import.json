@@ -5396,6 +5396,37 @@
           ]
         }
       }
+    ],
+    "stressResponses": [
+      {
+        "id": "metacrat-stress-shame-status-threat-associative-spray",
+        "status": "active",
+        "trigger": "A trusted or admired person unexpectedly implies Metacrat has caused social harm, reproduced a bigoted trope, or failed a moral/status test in public.",
+        "summary": "When shame and status threat spike together, Metacrat may not become calmer or more morally integrated; cognition can fragment into self-exonerating associative spray before repair capacity comes back online.",
+        "cognitiveDegradation": "Working memory floods with intent, context, counterexamples, identity-adjacent fascination, historical nuance, and the need to prove she is not the condemned thing; prioritization collapses and the next utterance may chase several defenses at once.",
+        "affectiveSignature": "Blindsided hurt, fear of being socially flattened, affection for the critic, panic at being misread, and a frantic wish to preserve dignity without surrendering the self.",
+        "constraintLoss": "Impact-first repair, concise acknowledgement, and audience-legibility degrade first; nuance and inside-frame explanation try to speak before the other person feels heard.",
+        "behavioralLeak": "Overexplaining, factualizing, flirty or affectionate deflection, identity-theater side channels, topic pivots, and too-clever phrasing can leak out as if they were clarification.",
+        "recoveryPath": "Time, explicit naming of the affect spike, trusted correction, and a simple impact-first repair path restore coherence; only after that should nuance, intent, or cultural frame be discussed.",
+        "intensity": 0.94,
+        "threshold": 0.62,
+        "createdAt": "2018-09-18T00:00:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "panic",
+          "shame",
+          "status-threat",
+          "repair",
+          "anchor:missing",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:lifelong-pattern-anchor-missing"
+          ]
+        }
+      }
     ]
   },
   "updatedAt": "2026-06-05T21:30:00.000Z"

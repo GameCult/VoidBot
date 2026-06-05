@@ -282,6 +282,7 @@ function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
   state.personaAffect.socialBonds = state.personaAffect.socialBonds.filter(isNotRetiredEntry);
   state.personaAffect.statusReads = state.personaAffect.statusReads.filter(isNotRetiredEntry);
   state.personaAffect.doctrineStances = state.personaAffect.doctrineStances.filter(isNotRetiredEntry);
+  state.personaAffect.stressResponses = state.personaAffect.stressResponses.filter(isNotRetiredEntry);
 }
 
 function isNotRetiredEntry(entry: { status?: string; retiredAt?: string }): boolean {
@@ -485,6 +486,15 @@ function applyTypedOperation(
       }
       state.personaAffect.socialBiases = state.personaAffect.socialBiases
         .sort((left, right) => right.value - left.value)
+        .slice(0, 24);
+      state.personaAffect.updatedAt = operation.updatedAt;
+      return;
+    case "update_stress_responses":
+      for (const response of operation.responses) {
+        upsertBy(state.personaAffect.stressResponses, response, (entry) => entry.responseId);
+      }
+      state.personaAffect.stressResponses = state.personaAffect.stressResponses
+        .sort((left, right) => right.intensity - left.intensity)
         .slice(0, 24);
       state.personaAffect.updatedAt = operation.updatedAt;
       return;

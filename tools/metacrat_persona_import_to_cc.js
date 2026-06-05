@@ -280,6 +280,28 @@ function socialBiasOf(entry) {
   };
 }
 
+function stressResponseOf(entry) {
+  return compact({
+    responseId: entry.id || entry.responseId,
+    status: entry.status || "active",
+    trigger: entry.trigger,
+    summary: entry.summary,
+    cognitiveDegradation: entry.cognitiveDegradation,
+    affectiveSignature: entry.affectiveSignature,
+    constraintLoss: entry.constraintLoss,
+    behavioralLeak: entry.behavioralLeak,
+    recoveryPath: entry.recoveryPath,
+    intensity: entry.intensity ?? 0.5,
+    threshold: entry.threshold ?? 0.7,
+    anchorRefs: anchorRefs(entry),
+    evidenceRefs: [],
+    sourceMemoryIds: entry.sourceMemoryIds || [],
+    createdAt: entry.createdAt || timestampOf({}),
+    updatedAt: entry.updatedAt || timestampOf({}),
+    tags: entry.tags || entry.extensions?.tags || [],
+  });
+}
+
 async function main() {
   const doc = readImport();
   const updatedAt = timestampOf(doc);
@@ -320,6 +342,7 @@ async function main() {
   state.personaAffect.statusReads = (doc.affect?.statusReads || []).map(statusReadOf);
   state.personaAffect.moodDimensions = doc.affect?.moodDimensions || [];
   state.personaAffect.socialBiases = (doc.affect?.socialBiases || []).map(socialBiasOf);
+  state.personaAffect.stressResponses = (doc.affect?.stressResponses || []).map(stressResponseOf);
   state.personaAffect.doctrineStances = (doc.affect?.doctrineStances || []).map(doctrineStanceOf);
   state.personaAffect.updatedAt = updatedAt;
 
@@ -348,6 +371,7 @@ async function main() {
     affectNeeds: state.personaAffect.needs.length,
     socialBonds: state.personaAffect.socialBonds.length,
     statusReads: state.personaAffect.statusReads.length,
+    stressResponses: state.personaAffect.stressResponses.length,
     doctrineStances: state.personaAffect.doctrineStances.length,
   }, null, 2));
 }

@@ -174,6 +174,13 @@ export interface VoidSelfStateProjection {
       value: number;
       source?: string;
     }>;
+    stressResponses: Array<{
+      id: string;
+      trigger: string;
+      summary: string;
+      intensity: number;
+      threshold: number;
+    }>;
   };
 }
 
