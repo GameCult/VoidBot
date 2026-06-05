@@ -240,6 +240,8 @@ function buildUpcomingTurns(participants) {
     activeJobId: participant.activeJobId,
     restState: participant.restState,
     pendingMentionCount: participant.pendingMentionCount,
+    anchoredMentionCount: participant.anchoredMentionCount,
+    unanchoredMentionCount: participant.unanchoredMentionCount,
     shuffleReason: participant.pendingMentionCount > 0
       ? "mention"
       : participant.activeJobId
@@ -288,7 +290,12 @@ function projectParticipant(participant, pendingMentions, initiativeClock, ident
   const channelCount = Array.isArray(participant.groups)
     ? participant.groups.filter((entry) => typeof entry === "string" && entry.startsWith("channel:")).length
     : 0;
-  const mentionCount = pendingMentions.filter((mention) => mention?.identityId === identityId).length;
+  const participantMentions = pendingMentions.filter((mention) => mention?.identityId === identityId);
+  const mentionCount = participantMentions.length;
+  const anchoredMentionCount = participantMentions.filter((mention) =>
+    !isBlankString(mention?.sourceMessageId ?? mention?.messageId) &&
+    !isBlankString(mention?.sourceChannelId ?? mention?.channelId)
+  ).length;
   const nextTurnInMinutes =
     typeof nextTurnAt === "number" && typeof initiativeClock === "number"
       ? round(nextTurnAt - initiativeClock, 3)
@@ -327,6 +334,8 @@ function projectParticipant(participant, pendingMentions, initiativeClock, ident
     lastQueuedAt: stringOrNull(participant.lastQueuedAt),
     queuedCount: numberOrNull(participant.queuedCount),
     pendingMentionCount: mentionCount,
+    anchoredMentionCount,
+    unanchoredMentionCount: Math.max(0, mentionCount - anchoredMentionCount),
     channelCount,
     constraintCount: Array.isArray(participant.constraints) ? participant.constraints.length : 0,
     constraints: Array.isArray(participant.constraints) ? participant.constraints.slice(0, 4).map(String) : [],
@@ -665,9 +674,9 @@ function renderValueDetail(value) {
 function projectPendingMention(mention) {
   return {
     identityId: stringOrNull(mention?.identityId),
-    sourceChannelId: stringOrNull(mention?.sourceChannelId),
-    sourceMessageId: stringOrNull(mention?.sourceMessageId),
-    createdAt: stringOrNull(mention?.createdAt),
+    sourceChannelId: stringOrNull(mention?.sourceChannelId ?? mention?.channelId),
+    sourceMessageId: stringOrNull(mention?.sourceMessageId ?? mention?.messageId),
+    createdAt: stringOrNull(mention?.createdAt ?? mention?.queuedAt),
     prompt: truncate(String(mention?.prompt ?? mention?.content ?? ""), 220),
   };
 }
@@ -814,8 +823,8 @@ function loadCultPackages() {
     }
     try {
       const requireCult = createRequire(packageJson);
-      const { CultMesh } = requireCult("cultmesh-ts/dist/index.js");
-      const { defineDocumentType } = requireCult("cultcache-ts/dist/index.js");
+      const { CultMesh } = requireCult("cultmesh-ts");
+      const { defineDocumentType } = requireCult("cultcache-ts");
       if (CultMesh && defineDocumentType) {
         return { CultMesh, defineDocumentType };
       }
@@ -1164,9 +1173,9 @@ function buildEveProviderState(snapshot) {
         }, upcoming.slice(0, 14).map((turn, index) =>
           eveNode(`turn-${stableId(turn.identityId)}-${index}`, "text", {
             role: "mono",
-            text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(7, " ")} s${formatNumber(turn.effectiveSpeed, 3)} h${formatNumber(turn.heat, 2)}`,
+            text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(9, " ")} ${minutesText(turn.nextTurnInMinutes).padStart(6, " ")} ${mentionText(turn).padEnd(5, " ")} s${formatNumber(turn.effectiveSpeed, 3)} h${formatNumber(turn.heat, 2)}`,
             status: turnState(turn),
-            detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
+            detail: `${turn.repoName ?? "repo"} / due ${minutesText(turn.nextTurnInMinutes)} / ${mentionDetail(turn)}`,
           }),
         )),
       ]),
@@ -1188,15 +1197,35 @@ function stableId(value) {
 
 function turnState(turn) {
   if (turn?.activeJobId) return "active";
-  if ((turn?.pendingMentionCount ?? 0) > 0) return "mention";
   if (turn?.restState?.isNapping) return "nap";
+  if ((turn?.pendingMentionCount ?? 0) > 0) return "mention";
   return minutesText(turn?.nextTurnInMinutes);
 }
 
 function minutesText(value) {
   return typeof value === "number"
-    ? value <= 0 ? "ready" : `${value.toFixed(value < 10 ? 1 : 0)}m`
+    ? value <= 0 ? `${value.toFixed(1)}m` : `${value.toFixed(value < 10 ? 1 : 0)}m`
     : "unknown";
+}
+
+function mentionText(turn) {
+  const count = turn?.pendingMentionCount ?? 0;
+  if (count <= 0) return "-";
+  const unanchored = turn?.unanchoredMentionCount ?? 0;
+  const anchored = turn?.anchoredMentionCount ?? Math.max(0, count - unanchored);
+  if (unanchored > 0 && anchored <= 0) return `m?${count}`;
+  if (unanchored > 0) return `m${anchored}?${unanchored}`;
+  return `m${count}`;
+}
+
+function mentionDetail(turn) {
+  const count = turn?.pendingMentionCount ?? 0;
+  if (count <= 0) return "no pending mention";
+  const unanchored = turn?.unanchoredMentionCount ?? 0;
+  if (unanchored > 0) {
+    return `${count} pending mention(s), ${unanchored} missing source channel/message provenance`;
+  }
+  return `${count} pending anchored mention(s)`;
 }
 
 function formatNumber(value, decimals) {
@@ -2371,6 +2400,10 @@ function numberOrNull(value) {
 
 function stringOrNull(value) {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function isBlankString(value) {
+  return typeof value !== "string" || value.trim().length === 0;
 }
 
 function round(value, places) {

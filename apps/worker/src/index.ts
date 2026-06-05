@@ -2792,8 +2792,8 @@ function loadCultMeshRuntime(): { CultMesh: any; defineDocumentType: any } | nul
   for (const packageJson of candidates) {
     try {
       const requireCult = createRequire(packageJson);
-      const { CultMesh } = requireCult("cultmesh-ts/dist/index.js");
-      const { defineDocumentType } = requireCult("cultcache-ts/dist/index.js");
+      const { CultMesh } = requireCult("cultmesh-ts");
+      const { defineDocumentType } = requireCult("cultcache-ts");
       if (CultMesh && defineDocumentType) {
         return { CultMesh, defineDocumentType };
       }
