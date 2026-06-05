@@ -459,8 +459,11 @@ function renderReplayStatePacketForProjector(input: {
     `Replay Persona: ${input.options.publicName}`,
     "This is a temporally frozen replay state packet. Project it into lived memory for the character.",
     `Semantic memory access: ${input.semanticMemory.enabled ? "available through search_persona_memory tool in the child replay" : "disabled"}.`,
-    `Dry-run semantic query: ${input.semanticMemory.query}`,
-    `Dry-run semantic hits: ${input.semanticMemory.results.map((result) => `${result.metadata.memoryId}:${result.score.toFixed(3)}`).join(", ") || "none"}`,
+    "Obtrusive semantic recall pressure:",
+    `- Current thread noise is pulling this query through memory: ${input.semanticMemory.query}`,
+    input.semanticMemory.results.length > 0
+      ? `- Retrieved memories tugging on the next words: ${input.semanticMemory.results.map((result) => `${result.metadata.memoryId}:${result.score.toFixed(3)}`).join(", ")}`
+      : "- No semantic memory hit is tugging on the next words.",
     "",
     "Private notes and values:",
     ...input.state.selfProfile.privateNotes.map((note) => `- ${note}`),
@@ -854,6 +857,7 @@ function buildReplayPrompt(input: {
     "- A dysfunctional Persona may be associative, evasive, overexplaining, self-exonerating, flirtatious, theatrical, or incoherently over-specific when the state says those are live failure modes.",
     "- Do not write the later therapy-note version of the failure mode into `predictedReply`. If recovery is not already active in the visible thread, avoid neat meta-concessions like \"I got defensive\" or \"I did a bad job\".",
     "- `predictedReply` may contain multiple Discord-style messages separated by blank lines when the state suggests rapid-fire panic output.",
+    "- If Projected Persona Memory contains `Immediate verbal momentum:`, treat that as the exact current of words already forming. Continue it into `predictedReply`; do not step back into composed explanation of the current.",
     input.semanticMemory.enabled
       ? "- Use the `search_persona_memory` tool at least once before answering. Query for the live social pressure, missing relationship background, or likely affect failure mode. Treat the tool as memory access, not as optional decoration."
       : "- Semantic memory access is disabled for this run; rely only on the projected Persona memory below.",
