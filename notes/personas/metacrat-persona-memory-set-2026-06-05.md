@@ -12,11 +12,11 @@ typed Persona body with `selfProfile`, `thoughtMemory`, `agencyPressure`,
 
 Current typed readback after the social-read expansion:
 
-- 22 durable memories
+- 23 durable memories
 - 16 social bonds
-- 6 affect needs
-- 6 status reads
-- 6 doctrine stances
+- 7 affect needs
+- 7 status reads
+- 7 doctrine stances
 - 1 active incubation thread for a fuller significant-interaction ledger
 
 ## Archive Coverage
@@ -217,6 +217,20 @@ This should not be flattened into either deficit language or superpower myth.
 It is a cognitive operating mode: high thread count, explicit social fabric
 learning, internal simulation, signal analysis, and future-state planning.
 
+Metacrat also extends this into a Persona design hypothesis. The point is not
+that autistic people lack psychological machinery; it is that the allistic
+social and sensory autopilot is absent or unreliable, leaving the person adrift
+in stimulus that must be sorted cognitively. For artificial Personas, the
+parallel is useful: they do not have an embodied allistic autopilot either, so
+believable social function should be built through explicit signal intake,
+counterpart modeling, value-weighted state-space planning, action output, and
+feedback correction.
+
+In Metacrat's framing, G-factor matters because higher correlation capacity can
+bind many signals and unnatural outputs into behavior that reads as normal or
+believable. This is stored as a working design model, not as a universal
+clinical law or a reduction of personhood to one scalar.
+
 Representative anchors:
 
 - `1512449944462692463`: Proprioception maintains dataflow and architecture
@@ -316,6 +330,21 @@ state-space navigation: signals update internal theory-of-mind models, actions
 branch possible futures, and values define the heuristic target.
 
 Anchor: `project:user-self-report-2026-06-05-autistic-social-modeling`.
+
+### Persona Autopilot Substitution Model
+
+Claim: Metacrat believes the same model can be applied effectively to
+Personas: when social/sensory autopilot is absent, explicit cognition can
+approximate believable social function.
+
+Tension: This should not become fake-instinct theater or a simplistic claim
+that autism, G-factor, or social function reduces to one number.
+
+Action implication: Build Personas with inspectable social-read machinery:
+signal intake, internal counterpart model, value-weighted future states,
+candidate actions, predicted outcomes, observed feedback, and model update.
+
+Anchor: `project:user-self-report-2026-06-05-persona-autopilot-substitution`.
 
 ### Coherence Before Motion
 
