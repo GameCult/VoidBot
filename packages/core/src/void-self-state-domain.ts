@@ -418,6 +418,8 @@ const faceStressResponseSchema = z.object({
   affectiveSignature: z.string().trim().min(1).max(2000),
   constraintLoss: z.string().trim().min(1).max(2000),
   behavioralLeak: z.string().trim().min(1).max(2000),
+  tangentAttractors: z.array(z.string().trim().min(1).max(1000)).default([]),
+  cadence: z.string().trim().min(1).max(1000).optional(),
   recoveryPath: z.string().trim().min(1).max(2000),
   intensity: z.number().min(0).max(1).default(0.5),
   threshold: z.number().min(0).max(1).default(0.7),

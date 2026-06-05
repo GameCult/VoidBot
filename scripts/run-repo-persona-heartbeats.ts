@@ -2381,8 +2381,10 @@ function renderRepoPersonaStatePacket(
           `Affect feels like: ${asSentence(response.affectiveSignature)}`,
           `Constraint loss: ${asSentence(response.constraintLoss)}`,
           `Behavioral leak: ${asSentence(response.behavioralLeak)}`,
+          response.tangentAttractors.length > 0 ? `Tangent attractors: ${response.tangentAttractors.map(asSentence).join(" ")}` : "",
+          response.cadence ? `Cadence: ${asSentence(response.cadence)}` : "",
           `Recovery path: ${asSentence(response.recoveryPath)}`,
-        ].join(" "),
+        ].filter(Boolean).join(" "),
       ),
       "When the live room matches a trigger strongly enough, do not project the Persona's calm best self; project the pressured self that is actually online.",
     ].join("\n"));

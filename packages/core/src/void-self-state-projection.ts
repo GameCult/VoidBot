@@ -371,8 +371,10 @@ function renderPersonaAffectSummary(
         `  Affective signature: ${response.affectiveSignature}`,
         `  Constraint loss: ${response.constraintLoss}`,
         `  Behavioral leak: ${response.behavioralLeak}`,
+        response.tangentAttractors.length > 0 ? `  Tangent attractors: ${response.tangentAttractors.join(" | ")}` : "",
+        response.cadence ? `  Cadence: ${response.cadence}` : "",
         `  Recovery path: ${response.recoveryPath}`,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     ),
   ]
     .filter((line): line is string => typeof line === "string")

@@ -37,6 +37,7 @@ interface CliOptions {
   before: number;
   after: number;
   heldoutMinutes: number;
+  contextMaxAgeMinutes: number;
   semanticMemory: boolean;
   semanticMemoryLimit: number;
   outRoot: string;
@@ -110,7 +111,11 @@ async function main(): Promise<void> {
     },
   }, pruneResult.state);
 
-  const inputMessages = messages.filter((message) => message.timestamp <= target.timestamp);
+  const inputMessages = filterInputMessagesByMaxAge(
+    messages.filter((message) => message.timestamp <= target.timestamp),
+    target.timestamp,
+    options.contextMaxAgeMinutes,
+  );
   const heldOutMessages = messages.filter((message) =>
     message.timestamp > target.timestamp &&
     isWithinHeldoutWindow(message.timestamp, target.timestamp, options.heldoutMinutes)
@@ -261,6 +266,7 @@ function parseArgs(args: string[]): CliOptions {
     before: 18,
     after: 18,
     heldoutMinutes: 30,
+    contextMaxAgeMinutes: 0,
     semanticMemory: true,
     semanticMemoryLimit: 6,
     outRoot: ".voidbot/artifacts/persona-replay",
@@ -296,6 +302,9 @@ function parseArgs(args: string[]): CliOptions {
     } else if (arg === "--heldout-minutes" && next) {
       options.heldoutMinutes = parsePositiveInt(next, "--heldout-minutes");
       index += 1;
+    } else if (arg === "--context-max-age-minutes" && next) {
+      options.contextMaxAgeMinutes = parsePositiveInt(next, "--context-max-age-minutes");
+      index += 1;
     } else if (arg === "--semantic-memory-limit" && next) {
       options.semanticMemoryLimit = parsePositiveInt(next, "--semantic-memory-limit");
       index += 1;
@@ -329,6 +338,7 @@ function parseArgs(args: string[]): CliOptions {
     before: options.before ?? 18,
     after: options.after ?? 18,
     heldoutMinutes: options.heldoutMinutes ?? 30,
+    contextMaxAgeMinutes: options.contextMaxAgeMinutes ?? 0,
     semanticMemory: options.semanticMemory ?? true,
     semanticMemoryLimit: options.semanticMemoryLimit ?? 6,
     outRoot: resolve(options.outRoot ?? ".voidbot/artifacts/persona-replay"),
@@ -350,6 +360,7 @@ function printHelpAndExit(): never {
     "  --before <n>                Context messages before target. Defaults to 18",
     "  --after <n>                 Held-out messages after target. Defaults to 18",
     "  --heldout-minutes <n>       Limit held-out truth to n minutes after target. Defaults to 30; 0 disables the time limit",
+    "  --context-max-age-minutes <n> Drop input messages older than n minutes before target. Defaults to 0, disabled",
     "  --semantic-memory-limit <n> Max replay memory tool results. Defaults to 6",
     "  --no-semantic-memory        Disable replay-scoped Qdrant/MCP memory access",
     "  --out <dir>                 Artifact root. Defaults to .voidbot/artifacts/persona-replay",
@@ -372,6 +383,18 @@ function isWithinHeldoutWindow(timestamp: string, targetTimestamp: string, minut
     return true;
   }
   return Date.parse(timestamp) <= Date.parse(targetTimestamp) + minutes * 60_000;
+}
+
+function filterInputMessagesByMaxAge(
+  messages: ArchivedMessageRecord[],
+  targetTimestamp: string,
+  maxAgeMinutes: number,
+): ArchivedMessageRecord[] {
+  if (maxAgeMinutes === 0) {
+    return messages;
+  }
+  const cutoff = Date.parse(targetTimestamp) - maxAgeMinutes * 60_000;
+  return messages.filter((message) => Date.parse(message.timestamp) >= cutoff);
 }
 
 async function prepareReplaySemanticMemory(input: {
@@ -493,8 +516,10 @@ function renderReplayStatePacketForProjector(input: {
         `Affect: ${response.affectiveSignature}`,
         `Constraint loss: ${response.constraintLoss}`,
         `Behavioral leak: ${response.behavioralLeak}`,
+        response.tangentAttractors.length > 0 ? `Tangent attractors: ${response.tangentAttractors.join(" | ")}` : "",
+        response.cadence ? `Cadence: ${response.cadence}` : "",
         `Recovery: ${response.recoveryPath}`,
-      ].join(" "),
+      ].filter(Boolean).join(" "),
     ),
     "",
     "Visible thread pressure:",

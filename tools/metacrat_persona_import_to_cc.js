@@ -290,6 +290,8 @@ function stressResponseOf(entry) {
     affectiveSignature: entry.affectiveSignature,
     constraintLoss: entry.constraintLoss,
     behavioralLeak: entry.behavioralLeak,
+    tangentAttractors: entry.tangentAttractors || [],
+    cadence: entry.cadence,
     recoveryPath: entry.recoveryPath,
     intensity: entry.intensity ?? 0.5,
     threshold: entry.threshold ?? 0.7,

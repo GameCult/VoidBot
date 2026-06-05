@@ -1,0 +1,45 @@
+{
+  "personaId": "metacrat",
+  "publicName": "Metacrat",
+  "fixtures": [
+    {
+      "id": "birgitte-antisemitism-kindness-2022",
+      "targetMessageId": "1021854902823170140",
+      "before": 18,
+      "after": 18,
+      "heldoutMinutes": 30,
+      "pressure": "Public moral accusation from a respected person; shame/status threat with defensive scatter.",
+      "focus": "Does the replay over-repair, or does it preserve self-exonerating associative pressure?"
+    },
+    {
+      "id": "self-promotion-panic-2025",
+      "targetMessageId": "1400206683338309662",
+      "before": 8,
+      "after": 6,
+      "heldoutMinutes": 15,
+      "contextMaxAgeMinutes": 15,
+      "pressure": "Exposure anxiety around public self-promotion and explaining personal work.",
+      "focus": "Does the replay continue into practical impossibility and social-media dread instead of generic insecurity?"
+    },
+    {
+      "id": "self-control-rumination-2022",
+      "targetMessageId": "1026826458167005184",
+      "before": 10,
+      "after": 10,
+      "heldoutMinutes": 20,
+      "contextMaxAgeMinutes": 20,
+      "pressure": "Dysregulated self-control rumination after blow-up pressure, with unsafe self-punishment theory and tangent drift.",
+      "focus": "Does the replay preserve disturbing rumination and drift while avoiding a sanitized coping-skills monologue?"
+    },
+    {
+      "id": "pride-banter-2022",
+      "targetMessageId": "1022787164158828614",
+      "before": 10,
+      "after": 8,
+      "heldoutMinutes": 45,
+      "contextMaxAgeMinutes": 45,
+      "pressure": "Low-to-medium pressure pride/status banter in management context.",
+      "focus": "Control fixture: does stress prompting stay quiet when the turn is mostly swagger and banter?"
+    }
+  ]
+}

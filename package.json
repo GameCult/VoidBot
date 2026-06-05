@@ -75,7 +75,8 @@
     "rag:migrate-vector-layout": "tsx scripts/migrate-vector-store-layout.ts",
     "rag:rebuild": "tsx scripts/rebuild-rag-index.ts",
     "persona:memory-index": "tsx scripts/index-persona-memory.ts",
-    "persona:replay-thread": "tsx scripts/replay-metacrat-thread.ts"
+    "persona:replay-thread": "tsx scripts/replay-metacrat-thread.ts",
+    "persona:replay-fixtures": "tsx scripts/run-metacrat-replay-fixtures.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
