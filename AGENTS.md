@@ -89,3 +89,19 @@ Do not inspect `.voidbot/rag/messages.json`, `.voidbot/rag/source-documents.json
 - If the diff grows while understanding shrinks, stop implementation and switch to diagnosis.
 - Keep maps and prose together; do not replace useful maps with prose-only explanations.
 - Before handoff, compaction, or phase boundaries, sync `state/map.yaml`, add distilled evidence when the lesson changes future belief, refresh `notes/fresh-workspace-handoff.md`, and make the next action explicit.
+
+## GitHub Repo Creation
+
+When creating a new GameCult repo, do not make the operator create the upstream
+manually. If `gh` is authenticated and the requested repo does not already
+exist, create the GitHub repository, add `origin`, push the initial branch, and
+set upstream tracking in one pass:
+
+```powershell
+git init -b main
+git add .
+git commit -m "Initial commit"
+gh repo create GameCult/RepoName --public --source . --remote origin --push
+```
+
+Use `--private` instead of `--public` when the repo should not be public.
