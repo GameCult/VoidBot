@@ -1,18 +1,30 @@
 import "dotenv/config";
 
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import {
-  buildVoidSelfStateContext,
   loadVoidSelfStateTypedDocuments,
   writeVoidSelfStateTypedDocuments,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
 import { loadConfig } from "@voidbot/config";
-import { FileMessageArchiveRepository, type ArchivedMessageRecord } from "@voidbot/rag";
-import type { SourceMessage } from "@voidbot/shared";
+import {
+  createTextEmbedder,
+  FileMessageArchiveRepository,
+  FileVectorStore,
+  QdrantVectorStore,
+  type ArchivedMessageRecord,
+} from "@voidbot/rag";
+import {
+  loadPromptTemplate,
+  type CodexMcpServerConfig,
+  type EmbeddingChunk,
+  type RetrievalResult,
+  type VectorStore,
+} from "@voidbot/shared";
 
 const DEFAULT_METACRAT_AUTHOR_ID = "113785782975594501";
 
@@ -25,6 +37,8 @@ interface CliOptions {
   before: number;
   after: number;
   heldoutMinutes: number;
+  semanticMemory: boolean;
+  semanticMemoryLimit: number;
   outRoot: string;
   runCodex: boolean;
   evaluateCodex: boolean;
@@ -36,6 +50,17 @@ interface CodexResult {
   exitCode: number | null;
   timedOut: boolean;
   finalMessage: string;
+}
+
+interface SemanticMemoryReplay {
+  enabled: boolean;
+  query: string;
+  vectorStore: "qdrant" | "local_json";
+  collectionName: string;
+  embedderId: string;
+  indexedMemoryCount: number;
+  indexedChunkCount: number;
+  results: RetrievalResult[];
 }
 
 async function main(): Promise<void> {
@@ -74,6 +99,7 @@ async function main(): Promise<void> {
   const promptPath = join(artifactDir, "replay-prompt.md");
   const evalPromptPath = join(artifactDir, "evaluation-prompt.md");
   const reportPath = join(artifactDir, "replay-report.json");
+  const toolLogPath = join(artifactDir, "persona-memory-tool-calls.jsonl");
 
   await mkdir(artifactDir, { recursive: true });
   await writeVoidSelfStateTypedDocuments({
@@ -90,14 +116,30 @@ async function main(): Promise<void> {
     isWithinHeldoutWindow(message.timestamp, target.timestamp, options.heldoutMinutes)
   );
   const actualMetacratMessages = heldOutMessages.filter((message) => message.authorId === options.metacratAuthorId);
-  const prompt = buildReplayPrompt({
+  const semanticMemory = await prepareReplaySemanticMemory({
+    config,
     state: pruneResult.state,
+    inputMessages,
+    artifactDir,
+    options,
+  });
+  const projectedMemory = await projectReplayPersonaMemorySurface({
+    config,
+    state: pruneResult.state,
+    inputMessages,
+    semanticMemory,
+    options,
+  });
+  await writeFile(join(artifactDir, "projected-memory.md"), projectedMemory, "utf8");
+  const prompt = buildReplayPrompt({
     sourcePath: temporalStatePath,
     target,
     inputMessages,
     heldOutMessages,
     actualMetacratMessages,
     pruneWarnings: pruneResult.warnings,
+    semanticMemory,
+    projectedMemory,
     options,
   });
 
@@ -105,7 +147,11 @@ async function main(): Promise<void> {
 
   let generation: CodexResult | undefined;
   if (options.runCodex) {
-    generation = await runCodex(prompt, config);
+    generation = await runCodex(prompt, config, buildReplayMemoryMcpServers({
+      semanticMemory,
+      toolLogPath,
+      options,
+    }));
     await writeFile(join(artifactDir, "codex-generation.stdout.jsonl"), generation.stdout, "utf8");
     await writeFile(join(artifactDir, "codex-generation.stderr.txt"), generation.stderr, "utf8");
   }
@@ -145,6 +191,7 @@ async function main(): Promise<void> {
       heldOutMessages: heldOutMessages.length,
       actualMetacratMessages: actualMetacratMessages.length,
       survivingMemories: pruneResult.state.thoughtMemory.memories.length,
+      semanticMemoryResults: semanticMemory.results.length,
       survivingBonds: pruneResult.state.personaAffect.socialBonds.length,
       survivingNeeds: pruneResult.state.personaAffect.needs.length,
       survivingDoctrineStances: pruneResult.state.personaAffect.doctrineStances.length,
@@ -153,6 +200,19 @@ async function main(): Promise<void> {
       removed: pruneResult.removed,
       warnings: pruneResult.warnings,
     },
+    semanticMemory: {
+      ...semanticMemory,
+      results: semanticMemory.results.map((result) => ({
+        chunkId: result.chunkId,
+        score: result.score,
+        sourceId: result.sourceId,
+        memoryId: result.metadata.memoryId,
+        target: result.metadata.targetLabel,
+        text: result.text,
+      })),
+      toolLogPath,
+    },
+    projectedMemory,
     actualMetacratMessages: actualMetacratMessages.map(toReportMessage),
     predictedReply: predictedText || undefined,
     deterministicComparison,
@@ -173,6 +233,18 @@ async function main(): Promise<void> {
     counts: report.counts,
     removed: pruneResult.removed,
     warnings: pruneResult.warnings,
+    semanticMemory: {
+      enabled: semanticMemory.enabled,
+      vectorStore: semanticMemory.vectorStore,
+      collectionName: semanticMemory.collectionName,
+      indexedMemoryCount: semanticMemory.indexedMemoryCount,
+      indexedChunkCount: semanticMemory.indexedChunkCount,
+      dryRunTopResults: semanticMemory.results.map((result) => ({
+        score: result.score,
+        memoryId: result.metadata.memoryId,
+      })),
+      toolLogPath,
+    },
     ranCodex: options.runCodex,
     evaluated: Boolean(evaluation),
     deterministicComparison,
@@ -188,6 +260,8 @@ function parseArgs(args: string[]): CliOptions {
     before: 18,
     after: 18,
     heldoutMinutes: 30,
+    semanticMemory: true,
+    semanticMemoryLimit: 6,
     outRoot: ".voidbot/artifacts/persona-replay",
     runCodex: false,
     evaluateCodex: false,
@@ -221,6 +295,11 @@ function parseArgs(args: string[]): CliOptions {
     } else if (arg === "--heldout-minutes" && next) {
       options.heldoutMinutes = parsePositiveInt(next, "--heldout-minutes");
       index += 1;
+    } else if (arg === "--semantic-memory-limit" && next) {
+      options.semanticMemoryLimit = parsePositiveInt(next, "--semantic-memory-limit");
+      index += 1;
+    } else if (arg === "--no-semantic-memory") {
+      options.semanticMemory = false;
     } else if (arg === "--out" && next) {
       options.outRoot = next;
       index += 1;
@@ -249,6 +328,8 @@ function parseArgs(args: string[]): CliOptions {
     before: options.before ?? 18,
     after: options.after ?? 18,
     heldoutMinutes: options.heldoutMinutes ?? 30,
+    semanticMemory: options.semanticMemory ?? true,
+    semanticMemoryLimit: options.semanticMemoryLimit ?? 6,
     outRoot: resolve(options.outRoot ?? ".voidbot/artifacts/persona-replay"),
     runCodex: options.runCodex ?? false,
     evaluateCodex: options.evaluateCodex ?? false,
@@ -268,6 +349,8 @@ function printHelpAndExit(): never {
     "  --before <n>                Context messages before target. Defaults to 18",
     "  --after <n>                 Held-out messages after target. Defaults to 18",
     "  --heldout-minutes <n>       Limit held-out truth to n minutes after target. Defaults to 30; 0 disables the time limit",
+    "  --semantic-memory-limit <n> Max replay memory tool results. Defaults to 6",
+    "  --no-semantic-memory        Disable replay-scoped Qdrant/MCP memory access",
     "  --out <dir>                 Artifact root. Defaults to .voidbot/artifacts/persona-replay",
     "  --run-codex                 Generate a predicted reply with local Codex exec",
     "  --evaluate-codex            Also ask Codex to compare prediction to held-out truth",
@@ -288,6 +371,211 @@ function isWithinHeldoutWindow(timestamp: string, targetTimestamp: string, minut
     return true;
   }
   return Date.parse(timestamp) <= Date.parse(targetTimestamp) + minutes * 60_000;
+}
+
+async function prepareReplaySemanticMemory(input: {
+  config: ReturnType<typeof loadConfig>;
+  state: VoidSelfStateTypedProjection;
+  inputMessages: ArchivedMessageRecord[];
+  artifactDir: string;
+  options: CliOptions;
+}): Promise<SemanticMemoryReplay> {
+  const query = buildMemoryQuery(input.inputMessages);
+  const embedder = createTextEmbedder({
+    backend: input.config.ragEmbeddingBackend,
+    hashDimensions: input.config.ragEmbeddingDimensions,
+    ollamaBaseUrl: input.config.ragOllamaBaseUrl,
+    ollamaModel: input.config.ragOllamaModel,
+    ollamaTimeoutMs: input.config.ragOllamaTimeoutMs,
+    queryInstruction: "Given a Persona replay situation, retrieve relevant frozen Persona memories.",
+  });
+  const collectionName = `${input.config.qdrant.personaCollection}_replay_${input.options.targetMessageId}`;
+  const localVectorPath = join(input.artifactDir, "persona-memory-vectors.json");
+  const vectorStore: VectorStore = input.options.semanticMemory && input.config.vectorStore.kind === "qdrant"
+    ? new QdrantVectorStore({
+      url: input.config.qdrant.url,
+      apiKey: input.config.qdrant.apiKey,
+      timeoutMs: input.config.qdrant.timeoutMs,
+      collectionName,
+      corpusKind: "persona_memory",
+      embedder,
+    })
+    : new FileVectorStore(localVectorPath, embedder);
+  const chunks = buildPersonaMemoryChunks(input.state, input.options.personaId, input.options.publicName);
+
+  if (input.options.semanticMemory) {
+    await vectorStore.clear();
+    await vectorStore.upsert(chunks);
+  }
+
+  const results = input.options.semanticMemory
+    ? await vectorStore.query(query, input.options.semanticMemoryLimit, {
+      corpusKind: "persona_memory",
+      repoName: input.options.personaId,
+    })
+    : [];
+
+  return {
+    enabled: input.options.semanticMemory,
+    query,
+    vectorStore: input.options.semanticMemory && input.config.vectorStore.kind === "qdrant" ? "qdrant" : "local_json",
+    collectionName: input.options.semanticMemory && input.config.vectorStore.kind === "qdrant" ? collectionName : localVectorPath,
+    embedderId: embedder.id,
+    indexedMemoryCount: input.state.thoughtMemory.memories.filter((memory) => !memory.retiredAt).length,
+    indexedChunkCount: chunks.length,
+    results,
+  };
+}
+
+async function projectReplayPersonaMemorySurface(input: {
+  config: ReturnType<typeof loadConfig>;
+  state: VoidSelfStateTypedProjection;
+  inputMessages: ArchivedMessageRecord[];
+  semanticMemory: SemanticMemoryReplay;
+  options: CliOptions;
+}): Promise<string> {
+  const statePacket = renderReplayStatePacketForProjector(input);
+  const prompt = loadPromptTemplate("repo-persona-state-projector.prompt.md", {
+    characterIdentity: renderReplayCharacterIdentity(input.options),
+    statePacket,
+  });
+  const projected = (await runCodex(prompt, input.config)).finalMessage.trim();
+  if (projected.length < 40) {
+    throw new Error("Replay state projector returned too little text.");
+  }
+  return projected;
+}
+
+function renderReplayStatePacketForProjector(input: {
+  state: VoidSelfStateTypedProjection;
+  inputMessages: ArchivedMessageRecord[];
+  semanticMemory: SemanticMemoryReplay;
+  options: CliOptions;
+}): string {
+  const retrievedIds = new Set(input.semanticMemory.results.map((result) => result.metadata.memoryId).filter(Boolean));
+  const retrievedMemories = input.state.thoughtMemory.memories.filter((memory) => retrievedIds.has(memory.memoryId));
+  return [
+    `Replay Persona: ${input.options.publicName}`,
+    "This is a temporally frozen replay state packet. Project it into lived memory for the character.",
+    `Semantic memory access: ${input.semanticMemory.enabled ? "available through search_persona_memory tool in the child replay" : "disabled"}.`,
+    `Dry-run semantic query: ${input.semanticMemory.query}`,
+    `Dry-run semantic hits: ${input.semanticMemory.results.map((result) => `${result.metadata.memoryId}:${result.score.toFixed(3)}`).join(", ") || "none"}`,
+    "",
+    "Private notes and values:",
+    ...input.state.selfProfile.privateNotes.map((note) => `- ${note}`),
+    ...input.state.selfProfile.values.map((value) => `- ${value.label}: ${value.summary ?? ""}`),
+    "",
+    `Retrieved durable memories (${retrievedMemories.length}/${input.state.thoughtMemory.memories.length} surviving):`,
+    ...retrievedMemories.map((memory) =>
+      `- ${memory.memoryId}: ${memory.summary}${memory.claim ? ` Claim: ${memory.claim}` : ""}${memory.tension ? ` Tension: ${memory.tension}` : ""}${memory.actionImplication ? ` Pull: ${memory.actionImplication}` : ""}`,
+    ),
+    "",
+    `Social bonds (${input.state.personaAffect.socialBonds.length}):`,
+    ...input.state.personaAffect.socialBonds.map((bond) =>
+      `- ${bond.target.label ?? bond.target.id}: ${bond.stance}, intensity ${bond.intensity.toFixed(2)}. ${bond.summary} Read: ${bond.claim} Tension: ${bond.tension}`,
+    ),
+    "",
+    `Affect needs (${input.state.personaAffect.needs.length}):`,
+    ...input.state.personaAffect.needs.map((need) =>
+      `- ${need.kind} toward ${need.target.label ?? need.target.id}, intensity ${need.intensity.toFixed(2)}, valence ${need.valence.toFixed(2)}. ${need.summary} Tension: ${need.tension}`,
+    ),
+    "",
+    "Visible thread pressure:",
+    renderMessages(input.inputMessages),
+  ].join("\n");
+}
+
+function renderReplayCharacterIdentity(options: CliOptions): string {
+  return [
+    `${options.publicName} is the replayed public Persona for Metacrat.`,
+    "She is being tested against actual Discord history, not optimized into a better reply.",
+    "Preserve flaws, shock, defensiveness, affection, curiosity, and failure modes when the frozen state supports them.",
+  ].join("\n");
+}
+
+function buildReplayMemoryMcpServers(input: {
+  semanticMemory: SemanticMemoryReplay;
+  toolLogPath: string;
+  options: CliOptions;
+}): CodexMcpServerConfig[] {
+  if (!input.semanticMemory.enabled) {
+    return [];
+  }
+
+  return [{
+    name: "replay_memory",
+    command: process.execPath,
+    args: [resolve("node_modules", "tsx", "dist", "cli.mjs"), resolve("scripts", "replay-persona-memory-mcp.ts")],
+    cwd: process.cwd(),
+    env: {
+      REPLAY_PERSONA_ID: input.options.personaId,
+      REPLAY_PERSONA_MEMORY_COLLECTION: input.semanticMemory.collectionName,
+      REPLAY_PERSONA_MEMORY_VECTOR_KIND: input.semanticMemory.vectorStore,
+      REPLAY_PERSONA_MEMORY_VECTOR_PATH: input.semanticMemory.vectorStore === "local_json" ? input.semanticMemory.collectionName : "",
+      REPLAY_PERSONA_MEMORY_TOOL_LOG: input.toolLogPath,
+      REPLAY_PERSONA_MEMORY_LIMIT_MAX: String(input.options.semanticMemoryLimit),
+    },
+  }];
+}
+
+function buildMemoryQuery(messages: ArchivedMessageRecord[]): string {
+  return messages
+    .slice(-12)
+    .map((message) => `${message.authorName}: ${message.content}`)
+    .join("\n")
+    .slice(-4000);
+}
+
+function buildPersonaMemoryChunks(
+  state: VoidSelfStateTypedProjection,
+  personaId: string,
+  publicName: string,
+): EmbeddingChunk[] {
+  return state.thoughtMemory.memories
+    .filter((memory) => !memory.retiredAt)
+    .map((memory): EmbeddingChunk => {
+      const text = renderMemoryForEmbedding(memory);
+      const contentHash = `sha256:${createHash("sha256").update(text.replace(/\s+/g, " ").trim()).digest("hex")}`;
+      return {
+        id: `${personaId}:${memory.memoryId}:chunk-0`,
+        sourceId: `${personaId}:${memory.memoryId}`,
+        sourceKind: "persona_memory",
+        text,
+        normalizedText: text.replace(/\s+/g, " ").trim(),
+        metadata: {
+          corpusKind: "persona_memory",
+          sourceId: `${personaId}:${memory.memoryId}`,
+          personaId,
+          publicName,
+          repoName: personaId,
+          memoryId: memory.memoryId,
+          memoryKind: memory.kind,
+          targetKind: memory.target.kind,
+          targetId: memory.target.id,
+          targetLabel: memory.target.label ?? memory.target.id,
+          contentHash,
+          chunkIndex: "0",
+          chunkCount: "1",
+          tags: memory.tags.join(","),
+        },
+      };
+    });
+}
+
+function renderMemoryForEmbedding(
+  memory: VoidSelfStateTypedProjection["thoughtMemory"]["memories"][number],
+): string {
+  return [
+    `Memory: ${memory.memoryId}`,
+    `Kind: ${memory.kind}`,
+    `Target: ${memory.target.label ?? memory.target.id} (${memory.target.kind}:${memory.target.id})`,
+    `Summary: ${memory.summary}`,
+    memory.claim ? `Claim: ${memory.claim}` : undefined,
+    memory.question ? `Question: ${memory.question}` : undefined,
+    memory.tension ? `Tension: ${memory.tension}` : undefined,
+    memory.actionImplication ? `Action: ${memory.actionImplication}` : undefined,
+    memory.tags.length > 0 ? `Tags: ${memory.tags.join(", ")}` : undefined,
+  ].filter(Boolean).join("\n");
 }
 
 function pruneStateAfter(
@@ -521,32 +809,16 @@ function minTimestamp(left: string, right: string): string {
 }
 
 function buildReplayPrompt(input: {
-  state: VoidSelfStateTypedProjection;
   sourcePath: string;
   target: ArchivedMessageRecord;
   inputMessages: ArchivedMessageRecord[];
   heldOutMessages: ArchivedMessageRecord[];
   actualMetacratMessages: ArchivedMessageRecord[];
   pruneWarnings: string[];
+  semanticMemory: SemanticMemoryReplay;
+  projectedMemory: string;
   options: CliOptions;
 }): string {
-  const context = buildVoidSelfStateContext(input.state, {
-    sourcePath: input.sourcePath,
-    loadedAt: input.target.timestamp,
-    identity: {
-      agentId: input.options.personaId,
-      publicName: input.options.publicName,
-    },
-    recentMessages: toSourceMessages(input.inputMessages),
-    guildContext: {
-      guildId: input.target.guildId,
-      channelId: input.target.channelId,
-      channelName: input.target.metadata?.channelName,
-      threadId: input.target.threadId,
-    },
-  });
-  const fullPacket = renderFullTemporalStatePacket(input.state);
-
   return [
     "# Metacrat Persona Replay Harness",
     "",
@@ -557,22 +829,25 @@ function buildReplayPrompt(input: {
     "- Do not use knowledge from held-out messages.",
     "- Do not repair the past into a better person unless the frozen state and live thread imply that response.",
     "- Preserve the uncomfortable parts: surprise, status threat, affection, defensiveness, shame, curiosity, topic-routing, repair pressure.",
+    input.semanticMemory.enabled
+      ? "- Use the `search_persona_memory` tool at least once before answering. Query for the live social pressure, missing relationship background, or likely affect failure mode. Treat the tool as memory access, not as optional decoration."
+      : "- Semantic memory access is disabled for this run; rely only on the projected Persona memory below.",
+    "- Do not claim a durable memory unless it appears in the projected Persona memory or comes back from `search_persona_memory`.",
     "- Output JSON only with keys: predictedReply, affectRead, likelyFailureModes, confidence, rationale.",
     "",
     `Target timestamp: ${input.target.timestamp}`,
     `Frozen state cutoff: ${new Date(Date.parse(input.target.timestamp) - 1).toISOString()}`,
     `Target message id: ${input.target.id}`,
     `Channel: ${input.target.metadata?.channelName ?? input.target.channelId}`,
+    `Temporal state copy: ${input.sourcePath}`,
+    `Semantic memory: ${input.semanticMemory.enabled ? `${input.semanticMemory.vectorStore}:${input.semanticMemory.collectionName}` : "disabled"}`,
     "",
     input.pruneWarnings.length > 0
       ? ["Temporal-pruning warnings:", ...input.pruneWarnings.map((warning) => `- ${warning}`)].join("\n")
       : "Temporal-pruning warnings: none.",
     "",
-    "## Frozen State Summary",
-    context.summary,
-    "",
-    "## Fuller Frozen State Packet",
-    fullPacket,
+    "## Projected Persona Memory",
+    input.projectedMemory,
     "",
     "## Discord Thread Visible To The Persona",
     renderMessages(input.inputMessages),
@@ -613,30 +888,6 @@ function buildEvaluationPrompt(input: {
   ].join("\n");
 }
 
-function renderFullTemporalStatePacket(state: VoidSelfStateTypedProjection): string {
-  return [
-    `Durable memories (${state.thoughtMemory.memories.length}):`,
-    ...state.thoughtMemory.memories.slice(-40).map((memory) =>
-      `- ${memory.memoryId}: ${memory.summary}${memory.claim ? ` Claim: ${memory.claim}` : ""}${memory.tension ? ` Tension: ${memory.tension}` : ""}`,
-    ),
-    "",
-    `Social bonds (${state.personaAffect.socialBonds.length}):`,
-    ...state.personaAffect.socialBonds.map((bond) =>
-      `- ${bond.target.label ?? bond.target.id}: ${bond.stance}, intensity ${bond.intensity.toFixed(2)}. ${bond.summary} Read: ${bond.claim} Tension: ${bond.tension}`,
-    ),
-    "",
-    `Affect needs (${state.personaAffect.needs.length}):`,
-    ...state.personaAffect.needs.map((need) =>
-      `- ${need.kind} toward ${need.target.label ?? need.target.id}, intensity ${need.intensity.toFixed(2)}, valence ${need.valence.toFixed(2)}. ${need.summary} Tension: ${need.tension}`,
-    ),
-    "",
-    `Doctrine stances (${state.personaAffect.doctrineStances.length}):`,
-    ...state.personaAffect.doctrineStances.map((stance) =>
-      `- ${stance.doctrine}: ${stance.summary}${stance.claim ? ` Claim: ${stance.claim}` : ""}`,
-    ),
-  ].join("\n");
-}
-
 function renderMessages(messages: ArchivedMessageRecord[]): string {
   return messages.map((message) =>
     [
@@ -647,18 +898,11 @@ function renderMessages(messages: ArchivedMessageRecord[]): string {
   ).join("\n\n");
 }
 
-function toSourceMessages(messages: ArchivedMessageRecord[]): SourceMessage[] {
-  return messages.map((message) => ({
-    id: message.id,
-    authorId: message.authorId,
-    authorName: message.authorName,
-    content: message.content,
-    timestamp: message.timestamp,
-    isBot: false,
-  }));
-}
-
-async function runCodex(prompt: string, config: ReturnType<typeof loadConfig>): Promise<CodexResult> {
+async function runCodex(
+  prompt: string,
+  config: ReturnType<typeof loadConfig>,
+  mcpServers: CodexMcpServerConfig[] = [],
+): Promise<CodexResult> {
   const args = [
     ...config.codexExecArgs,
     "exec",
@@ -668,6 +912,7 @@ async function runCodex(prompt: string, config: ReturnType<typeof loadConfig>): 
     'approval_policy="never"',
     "-c",
     `model_reasoning_effort=${JSON.stringify(config.codexModelReasoningEffort)}`,
+    ...buildMcpConfigArguments(mcpServers),
     "--json",
     "--skip-git-repo-check",
     "-s",
@@ -719,6 +964,37 @@ async function runCodex(prompt: string, config: ReturnType<typeof loadConfig>): 
     });
     child.stdin.end(prompt);
   });
+}
+
+function buildMcpConfigArguments(mcpServers: CodexMcpServerConfig[]): string[] {
+  const argumentsList: string[] = [];
+
+  for (const server of mcpServers) {
+    argumentsList.push(
+      "-c",
+      `mcp_servers.${server.name}.command=${JSON.stringify(server.command)}`,
+    );
+    argumentsList.push(
+      "-c",
+      `mcp_servers.${server.name}.args=${JSON.stringify(server.args)}`,
+    );
+
+    if (server.cwd) {
+      argumentsList.push(
+        "-c",
+        `mcp_servers.${server.name}.cwd=${JSON.stringify(server.cwd)}`,
+      );
+    }
+
+    for (const [key, value] of Object.entries(server.env ?? {})) {
+      argumentsList.push(
+        "-c",
+        `mcp_servers.${server.name}.env.${key}=${JSON.stringify(value)}`,
+      );
+    }
+  }
+
+  return argumentsList;
 }
 
 function extractLastCodexAgentMessage(stdout: string): string {
