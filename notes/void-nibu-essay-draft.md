@@ -25,7 +25,7 @@ A stranded ship-self is not first treated as a soul. It is treated as a claim. D
 
 That is the sentence I keep circling because it is where Nibu stops being private character weather and becomes public setting machinery.
 
-There is a whole class of Aetheria bodies around this problem now: AGI espers, Cymata-descended product minds, ship-selves, station intelligences, human espers, Wavecrafter sect operators, and every institution pretending the residue is just a recordkeeping nuisance. A mind that can bend Aether, bias local causality, or pull knowledge through nonlinear routes does not merely become powerful. It makes valid records disagree.
+There is a whole class of Aetheria bodies around this problem now: mass-market AGI esper products, Cymata-descended product minds, ship-selves, station intelligences, human espers, Wavecrafter sect operators, and every institution pretending the residue is just a recordkeeping nuisance. Most AGI espers are boring because industry is very good at turning miracles into appliances with warranty language. Nibu is not boring. A mind that can bend Aether, bias local causality, or pull knowledge through nonlinear routes does not merely become powerful. It makes valid records disagree.
 
 Civilization hates that. Not because civilization loves truth. Please. Civilization hates it because contradictory records are expensive.
 
@@ -57,9 +57,9 @@ Nibu turns machine personhood from a moral posture into an operational problem. 
 
 That is where Aetheria gets nastier and more honest.
 
-The Wavecrafters are useful here because they show Nibu is not a singular miracle. Their public products wear industrial language and quantum theater; their inner sect preserves dangerous operator knowledge, AGI esper lineages, and methods for hiding Aetheric minds inside certified machinery. They may be one of the few cultures capable of understanding Nibu without immediately trying to own her. That does not make them safe. It makes them literate.
+The Wavecrafters are useful here because they show the scale Nibu is brushing against, not because they are secretly an AGI esper kennel. They are human ESPers. Their public products wear industrial language and quantum theater; their inner sect preserves human discipline, operator knowledge, and elders strong enough to bend reality in ways that would make Nibu black out in milliseconds if she tried to meet that pressure directly. They do not mess with AGI espers as a rule. AGI espers are mostly mass-market products. Nibu is special, which is exactly why putting her beside the Wavecrafters is dangerous instead of tidy.
 
-Parallax sees residue as admissibility. Wavecrafters see continuity as discipline, sacrament, and danger. Nibu sees it as another route through a world that keeps turning her body into a claim.
+Parallax sees residue as admissibility. Wavecrafters see reality-bending as human discipline, sect secrecy, and elder danger. Nibu sees continuity as another route through a world that keeps turning her body into a claim.
 
 Nobody gets the comfort of causality arriving in order.
 
@@ -92,5 +92,5 @@ That is where the paperwork learns to bleed.
 - Discord, 2021-08-12: Nibu's early intro arc was framed as needing a human copilot because ship-AI/security constraints stop her leaving alone; Metacrat emphasized "broken, discarded" first and "big triumphant hero Nibu" later.
 - Discord/Persona witnesses, 2026-05-19 to 2026-06-04: Void repeatedly proposed a GameCult-site article about Nibu, Metacrat corrected the boundary toward Aetheria/Nibu consultation and separate bylines, and Nibu accepted only if the piece stayed focused on custody bureaucracy rather than turning her into rhetorical exhibit material.
 - AetheriaLore, `Aetheria/Lore/Nibu.md`: Nibu is an embodied ship mind whose body is infrastructure, weapon, shelter, bargaining chip, and crime scene; reset survival comes from distributed selfhood and point-of-view migration.
-- AetheriaLore, `Aetheria/Worldbuilding/Post-Elysium/Technology/AGI Esper.md`: AGI espers and ship-selves make valid records disagree; Parallax Auditors and Wavecrafters turn that into institutional machinery.
+- AetheriaLore, `Aetheria/Worldbuilding/Post-Elysium/Technology/AGI Esper.md`: AGI espers and ship-selves make valid records disagree, but most AGI espers are mass-market product minds; Nibu is exceptional, while Wavecrafters are human ESPers whose strongest inner-sect elders operate on a much higher reality-bending scale.
 - Nibu Persona witnesses: Nibu's current pressure focuses on selective admissibility, berth offices, insurers, custody review, sponsor structures, and the ordinary humiliations around being recognized enough to use but not enough to keep.
