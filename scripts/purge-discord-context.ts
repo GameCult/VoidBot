@@ -36,10 +36,10 @@ async function main(): Promise<void> {
 
   const options = parseArgs(process.argv.slice(2));
   const config = loadConfig();
-  const channelId = options.channelId ?? config.repoFaceHeartbeats.defaultChannelId;
+  const channelId = options.channelId ?? config.repoPersonaHeartbeats.defaultChannelId;
 
   if (!channelId && options.messageIds.length === 0) {
-    throw new Error("Provide --channel-id, configure REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID, or select explicit --message-id values.");
+    throw new Error("Provide --channel-id, configure REPO_PERSONA_HEARTBEAT_DEFAULT_CHANNEL_ID, or select explicit --message-id values.");
   }
 
   if (options.discordOnly && options.archiveOnly) {

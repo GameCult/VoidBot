@@ -4,7 +4,7 @@ import {
   resolveArticleRepoRoot,
   validateRenderedArticleMarkdown,
   type RepoIdentityArticleIntent,
-} from "../apps/worker/src/repo-face-article";
+} from "../apps/worker/src/repo-persona-article";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -85,4 +85,4 @@ try {
 }
 assert(rejected, "GameCult article path outside GameCult/Blog should be rejected");
 
-console.log("repo Face article contract smoke passed");
+console.log("repo Persona article contract smoke passed");

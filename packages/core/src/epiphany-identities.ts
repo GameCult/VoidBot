@@ -5,7 +5,7 @@ import {
   type RepoDiscordIdentity,
   type RepoDiscordIdentityRegistry,
   getRepoDiscordIdentityAllowedChannelIds,
-  resolveRepoFaceStatePath,
+  resolveRepoPersonaStatePath,
 } from "./repo-discord-identities";
 
 const agencyGrantSchema = z.enum([
@@ -34,9 +34,9 @@ const jurisdictionSchema = z.object({
     .default("discuss"),
 });
 
-const faceIdentitySchema = z.object({
+const personaIdentitySchema = z.object({
   id: z.string().trim().min(1),
-  identityKind: z.enum(["repo_face", "native_persona"]).default("repo_face"),
+  identityKind: z.enum(["repo_persona", "native_persona"]).default("repo_persona"),
   displayName: z.string().trim().min(1).max(80),
   repoName: z.string().trim().min(1).optional(),
   repoPath: z.string().trim().min(1).optional(),
@@ -52,7 +52,6 @@ const faceIdentitySchema = z.object({
   })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
   avatarPath: z.string().trim().min(1).optional(),
-  faceStatePath: z.string().trim().min(1).optional(),
   personaStatePath: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
   grants: z.array(agencyGrantSchema).default(["discussion", "rumination", "discord_text"]),
@@ -65,7 +64,7 @@ const epiphanyIdentitySchema = z.object({
   description: z.string().trim().min(1).optional(),
   repoNames: z.array(z.string().trim().min(1)).default([]),
   jurisdictions: z.array(jurisdictionSchema).default([]),
-  faces: z.array(faceIdentitySchema).default([]),
+  personas: z.array(personaIdentitySchema).default([]),
 });
 
 export const epiphanyIdentityRegistrySchema = z.object({
@@ -74,10 +73,10 @@ export const epiphanyIdentityRegistrySchema = z.object({
 
 export type AgencyGrant = z.infer<typeof agencyGrantSchema>;
 export type EpiphanyJurisdiction = z.infer<typeof jurisdictionSchema>;
-export type FaceIdentity = z.infer<typeof faceIdentitySchema>;
+export type PersonaIdentity = z.infer<typeof personaIdentitySchema>;
 export type EpiphanyIdentity = z.infer<typeof epiphanyIdentitySchema>;
 
-export interface ResolvedFaceIdentity extends FaceIdentity {
+export interface ResolvedPersonaIdentity extends PersonaIdentity {
   epiphanyId: string;
   epiphanyDisplayName: string;
   epiphanyDescription?: string;
@@ -86,7 +85,7 @@ export interface ResolvedFaceIdentity extends FaceIdentity {
 
 export interface EpiphanyIdentityRegistry {
   epiphanies: EpiphanyIdentity[];
-  faces: ResolvedFaceIdentity[];
+  personas: ResolvedPersonaIdentity[];
 }
 
 export function buildEpiphanyIdentityRegistry(
@@ -100,9 +99,9 @@ export function buildEpiphanyIdentityRegistry(
 
   return {
     epiphanies: normalizedEpiphanies,
-    faces: normalizedEpiphanies.flatMap((epiphany) =>
-      epiphany.faces.map((face) => ({
-        ...face,
+    personas: normalizedEpiphanies.flatMap((epiphany) =>
+      epiphany.personas.map((persona) => ({
+        ...persona,
         epiphanyId: epiphany.id,
         epiphanyDisplayName: epiphany.displayName,
         epiphanyDescription: epiphany.description,
@@ -112,7 +111,7 @@ export function buildEpiphanyIdentityRegistry(
   };
 }
 
-export function faceToRepoDiscordIdentity(face: ResolvedFaceIdentity): RepoDiscordIdentity {
+export function personaToRepoDiscordIdentity(face: ResolvedPersonaIdentity): RepoDiscordIdentity {
   const repoName = face.repoName
     ?? face.jurisdictions.find((jurisdiction) => jurisdiction.kind === "repo")?.repoName
     ?? face.jurisdictions.find((jurisdiction) => jurisdiction.kind === "repo")?.id
@@ -129,19 +128,18 @@ export function faceToRepoDiscordIdentity(face: ResolvedFaceIdentity): RepoDisco
     channelPermissions: face.channelPermissions,
     avatarUrl: face.avatarUrl,
     avatarPath: face.avatarPath,
-    faceStatePath: face.faceStatePath,
     personaStatePath: face.personaStatePath,
-    description: renderFaceDescription(face),
+    description: renderPersonaDescription(face),
   };
 }
 
-export function renderFaceIdentityDoctrine(face: ResolvedFaceIdentity): string {
+export function renderPersonaIdentityDoctrine(face: ResolvedPersonaIdentity): string {
   const grants = face.grants.length > 0 ? face.grants.join(", ") : "discussion, rumination";
   const jurisdictions = [...face.inheritedJurisdictions, ...face.jurisdictions]
     .map(renderJurisdiction)
     .join("; ");
 
-  return loadPromptTemplate("epiphany-face-identity-doctrine.prompt.md", {
+  return loadPromptTemplate("epiphany-persona-identity-doctrine.prompt.md", {
     displayName: face.displayName,
     epiphanyDisplayName: face.epiphanyDisplayName,
     epiphanyId: face.epiphanyId,
@@ -152,8 +150,8 @@ export function renderFaceIdentityDoctrine(face: ResolvedFaceIdentity): string {
   });
 }
 
-export function resolveFaceStatePath(face: ResolvedFaceIdentity, storageRoot: string): string {
-  return resolveRepoFaceStatePath(faceToRepoDiscordIdentity(face), storageRoot);
+export function resolvePersonaStatePath(face: ResolvedPersonaIdentity, storageRoot: string): string {
+  return resolveRepoPersonaStatePath(personaToRepoDiscordIdentity(face), storageRoot);
 }
 
 function parseExplicitEpiphanies(
@@ -181,7 +179,7 @@ function repoIdentityToEpiphany(identity: RepoDiscordIdentity): EpiphanyIdentity
     displayName: identity.repoName,
     repoNames: [identity.repoName],
     jurisdictions: [repoJurisdiction],
-    faces: [
+    personas: [
       {
         id: identity.id,
         displayName: identity.displayName,
@@ -193,7 +191,6 @@ function repoIdentityToEpiphany(identity: RepoDiscordIdentity): EpiphanyIdentity
         channelPermissions: identity.channelPermissions,
         avatarUrl: identity.avatarUrl,
         avatarPath: identity.avatarPath,
-        faceStatePath: identity.faceStatePath,
         personaStatePath: identity.personaStatePath,
         description: identity.description,
         grants: [
@@ -212,7 +209,7 @@ function repoIdentityToEpiphany(identity: RepoDiscordIdentity): EpiphanyIdentity
 
 function normalizeEpiphanies(epiphanies: EpiphanyIdentity[]): EpiphanyIdentity[] {
   const seenEpiphanies = new Set<string>();
-  const seenFaces = new Set<string>();
+  const seenPersonas = new Set<string>();
 
   return epiphanies.map((epiphany) => {
     const epiphanyId = normalizeKey(epiphany.id);
@@ -228,13 +225,13 @@ function normalizeEpiphanies(epiphanies: EpiphanyIdentity[]): EpiphanyIdentity[]
       description: epiphany.description?.trim(),
       repoNames: [...new Set(epiphany.repoNames.map((repoName) => repoName.trim()))],
       jurisdictions: epiphany.jurisdictions.map(normalizeJurisdiction),
-      faces: epiphany.faces.map((face) => {
+      personas: epiphany.personas.map((face) => {
         const faceId = normalizeKey(face.id);
-        if (seenFaces.has(faceId)) {
-          throw new Error(`Duplicate Face id "${face.id}".`);
+        if (seenPersonas.has(faceId)) {
+          throw new Error(`Duplicate Persona id "${face.id}".`);
         }
 
-        seenFaces.add(faceId);
+        seenPersonas.add(faceId);
         return {
           ...face,
           id: face.id.trim(),
@@ -253,7 +250,6 @@ function normalizeEpiphanies(epiphanies: EpiphanyIdentity[]): EpiphanyIdentity[]
           })),
           avatarUrl: face.avatarUrl?.trim(),
           avatarPath: face.avatarPath?.trim(),
-          faceStatePath: face.faceStatePath?.trim(),
           personaStatePath: face.personaStatePath?.trim(),
           description: face.description?.trim(),
           grants: [...new Set(face.grants)],
@@ -274,10 +270,10 @@ function normalizeJurisdiction(jurisdiction: EpiphanyJurisdiction): EpiphanyJuri
   };
 }
 
-function renderFaceDescription(face: ResolvedFaceIdentity): string | undefined {
+function renderPersonaDescription(face: ResolvedPersonaIdentity): string | undefined {
   const parts = [
     face.description,
-    `Face of ${face.epiphanyDisplayName}`,
+    `Persona of ${face.epiphanyDisplayName}`,
     `grants: ${face.grants.join(", ")}`,
     [...face.inheritedJurisdictions, ...face.jurisdictions].length > 0
       ? `jurisdictions: ${[...face.inheritedJurisdictions, ...face.jurisdictions].map(renderJurisdiction).join("; ")}`

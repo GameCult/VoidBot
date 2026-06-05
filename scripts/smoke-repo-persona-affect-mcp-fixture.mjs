@@ -12,7 +12,7 @@ const requiredSelfStateDocumentTypes = [
   "void.scheduled_runtime",
   "void.agency_pressure",
   "void.candidate_interventions",
-  "void.face_affect",
+  "void.persona_affect",
 ];
 const requiredSelfStateSchemaFingerprint =
   `void-self-state.v1:${requiredSelfStateDocumentTypes.join("|")}`;
@@ -37,7 +37,7 @@ const transport = new StdioClientTransport({
 });
 
 const client = new Client({
-  name: "voidbot-repo-face-affect-smoke",
+  name: "voidbot-repo-persona-affect-smoke",
   version: "0.0.0",
 });
 
@@ -50,42 +50,42 @@ try {
   assertRuntimeInfo(runtimeResult);
 
   const result = await client.callTool({
-    name: "read_repo_face_state",
+    name: "read_repo_persona_state",
     arguments: { identity },
   });
 
   if (result.isError) {
-    throw new Error(renderToolText(result) || `read_repo_face_state returned isError for ${identity}.`);
+    throw new Error(renderToolText(result) || `read_repo_persona_state returned isError for ${identity}.`);
   }
 
   const structured = result.structuredContent;
   const typedState = structured?.typedState;
-  const faceAffect = typedState?.faceAffect;
+  const personaAffect = typedState?.personaAffect;
 
-  if (!faceAffect || typeof faceAffect !== "object") {
-    throw new Error(`read_repo_face_state did not expose typedState.faceAffect for ${identity}.`);
+  if (!personaAffect || typeof personaAffect !== "object") {
+    throw new Error(`read_repo_persona_state did not expose typedState.personaAffect for ${identity}.`);
   }
 
   for (const field of ["needs", "socialBonds", "statusReads", "moodDimensions"]) {
-    if (!Array.isArray(faceAffect[field])) {
-      throw new Error(`typedState.faceAffect.${field} is not an array for ${identity}.`);
+    if (!Array.isArray(personaAffect[field])) {
+      throw new Error(`typedState.personaAffect.${field} is not an array for ${identity}.`);
     }
   }
 
   const renderedText = renderToolText(result);
   if (/No schema is registered for persisted document type "void\.face_affect"/i.test(renderedText)) {
-    throw new Error("MCP Face-state read still lacks the void.face_affect document schema.");
+    throw new Error("MCP Persona-state read still lacks the void.persona_affect document schema.");
   }
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
     identity,
-    faceStatePath: structured?.faceStatePath,
+    personaStatePath: structured?.personaStatePath,
     affect: {
-      needs: faceAffect.needs.length,
-      socialBonds: faceAffect.socialBonds.length,
-      statusReads: faceAffect.statusReads.length,
-      moodDimensions: faceAffect.moodDimensions.length,
+      needs: personaAffect.needs.length,
+      socialBonds: personaAffect.socialBonds.length,
+      statusReads: personaAffect.statusReads.length,
+      moodDimensions: personaAffect.moodDimensions.length,
     },
   }, null, 2)}\n`);
 } finally {

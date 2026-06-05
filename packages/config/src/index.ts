@@ -102,46 +102,46 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default(".voidbot/private/repo-discord-identities.json"),
-  REPO_FACE_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
-  REPO_FACE_BIRTH_EXECUTOR: z.enum(["model-runtime", "openai-runtime"]).default("model-runtime"),
-  REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
-  REPO_FACE_BIFROST_ENABLED: booleanFromEnv.default(false),
+  REPO_PERSONA_BIRTH_MODE: z.enum(["plan", "run"]).default("plan"),
+  REPO_PERSONA_BIRTH_EXECUTOR: z.enum(["model-runtime", "openai-runtime"]).default("model-runtime"),
+  REPO_PERSONA_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
+  REPO_PERSONA_BIFROST_ENABLED: booleanFromEnv.default(false),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
   BIFROST_DISCORD_CHANNEL_ID: optionalNonEmptyString,
-  REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
-  REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
-  REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
-  REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
-  REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(3),
-  REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID: optionalNonEmptyString,
-  REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES: z.coerce.number().positive().default(10),
-  REPO_FACE_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
-  REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED: booleanFromEnv.default(true),
-  REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(180),
-  REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(120),
-  REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES: z.coerce.number().positive().default(360),
-  REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
-  REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
-  REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
-  REPO_FACE_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.4"),
-  REPO_FACE_IMAGINATION_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
-  REPO_FACE_IMAGINATION_CODEX_MODELS: z.string().default("gpt-5.4"),
-  REPO_FACE_MIND_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
-  REPO_FACE_MIND_CODEX_MODELS: z.string().default("gpt-5.4"),
-  REPO_FACE_TURN_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
-  REPO_FACE_TURN_CODEX_REASONING_EFFORT: z
+  REPO_PERSONA_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
+  REPO_PERSONA_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-persona-heartbeats.json"),
+  REPO_PERSONA_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Persona Heartbeats"),
+  REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
+  REPO_PERSONA_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(3),
+  REPO_PERSONA_HEARTBEAT_DEFAULT_CHANNEL_ID: optionalNonEmptyString,
+  REPO_PERSONA_HEARTBEAT_BASE_RECOVERY_MINUTES: z.coerce.number().positive().default(10),
+  REPO_PERSONA_HEARTBEAT_GLOBAL_HEAT: z.coerce.number().positive().default(1),
+  REPO_PERSONA_HEARTBEAT_IDLE_COOLING_ENABLED: booleanFromEnv.default(true),
+  REPO_PERSONA_HEARTBEAT_IDLE_AFTER_MINUTES: z.coerce.number().positive().default(180),
+  REPO_PERSONA_HEARTBEAT_IDLE_RECOVERY_MINUTES: z.coerce.number().positive().default(120),
+  REPO_PERSONA_HEARTBEAT_IDLE_NAP_AFTER_MINUTES: z.coerce.number().positive().default(360),
+  REPO_PERSONA_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
+  REPO_PERSONA_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
+  REPO_PERSONA_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_PERSONA_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.4"),
+  REPO_PERSONA_IMAGINATION_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_PERSONA_IMAGINATION_CODEX_MODELS: z.string().default("gpt-5.4"),
+  REPO_PERSONA_MIND_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_PERSONA_MIND_CODEX_MODELS: z.string().default("gpt-5.4"),
+  REPO_PERSONA_TURN_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
+  REPO_PERSONA_TURN_CODEX_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh"])
     .default("low"),
-  REPO_FACE_IMAGINATION_CODEX_REASONING_EFFORT: z
+  REPO_PERSONA_IMAGINATION_CODEX_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh"])
     .default("none"),
-  REPO_FACE_MIND_CODEX_REASONING_EFFORT: z
+  REPO_PERSONA_MIND_CODEX_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh"])
     .default("none"),
-  REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT: z
+  REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh"])
     .default("none"),
-  REPO_FACE_STATE_PROJECTOR_ENABLED: booleanFromEnv.default(true),
+  REPO_PERSONA_STATE_PROJECTOR_ENABLED: booleanFromEnv.default(true),
   EPIPHANY_AGENT_ROOT: z.string().min(1).default("E:/Projects/EpiphanyAgent"),
   INDEX_ALL_CHANNELS: booleanFromEnv.default(false),
   INDEXED_CHANNEL_IDS: z.string().default(""),
@@ -177,13 +177,13 @@ export interface AppConfig {
   systemMessagesPath: string;
   moderationAgentStatePath: string;
   repoDiscordIdentitiesPath: string;
-  repoFaceBirthMode: "plan" | "run";
-  repoFaceBirthExecutor: "model-runtime" | "openai-runtime";
-  repoFaceGithubActionsEnabled: boolean;
-  repoFaceBifrostEnabled: boolean;
+  repoPersonaBirthMode: "plan" | "run";
+  repoPersonaBirthExecutor: "model-runtime" | "openai-runtime";
+  repoPersonaGithubActionsEnabled: boolean;
+  repoPersonaBifrostEnabled: boolean;
   bifrostRoot: string;
   bifrostDiscordChannelId?: string;
-  repoFaceHeartbeats: {
+  repoPersonaHeartbeats: {
     enabled: boolean;
     statePath: string;
     taskName: string;
@@ -416,47 +416,47 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     systemMessagesPath: resolve(parsed.SYSTEM_MESSAGES_PATH),
     moderationAgentStatePath: resolve(parsed.MODERATION_AGENT_STATE_PATH),
     repoDiscordIdentitiesPath: resolve(parsed.REPO_DISCORD_IDENTITIES_PATH),
-    repoFaceBirthMode: parsed.REPO_FACE_BIRTH_MODE,
-    repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
-    repoFaceGithubActionsEnabled: parsed.REPO_FACE_GITHUB_ACTIONS_ENABLED,
-    repoFaceBifrostEnabled: parsed.REPO_FACE_BIFROST_ENABLED,
+    repoPersonaBirthMode: parsed.REPO_PERSONA_BIRTH_MODE,
+    repoPersonaBirthExecutor: parsed.REPO_PERSONA_BIRTH_EXECUTOR,
+    repoPersonaGithubActionsEnabled: parsed.REPO_PERSONA_GITHUB_ACTIONS_ENABLED,
+    repoPersonaBifrostEnabled: parsed.REPO_PERSONA_BIFROST_ENABLED,
     bifrostRoot: resolve(parsed.BIFROST_ROOT),
     bifrostDiscordChannelId: parsed.BIFROST_DISCORD_CHANNEL_ID,
-    repoFaceHeartbeats: {
-      enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
-      statePath: resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH),
-      taskName: parsed.REPO_FACE_HEARTBEAT_TASK_NAME,
-      intervalMinutes: parsed.REPO_FACE_HEARTBEAT_INTERVAL_MINUTES,
-      maxJobsPerTick: parsed.REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK,
-      defaultChannelId: parsed.REPO_FACE_HEARTBEAT_DEFAULT_CHANNEL_ID,
-      baseRecoveryMinutes: parsed.REPO_FACE_HEARTBEAT_BASE_RECOVERY_MINUTES,
-      globalHeat: parsed.REPO_FACE_HEARTBEAT_GLOBAL_HEAT,
+    repoPersonaHeartbeats: {
+      enabled: parsed.REPO_PERSONA_HEARTBEATS_ENABLED,
+      statePath: resolve(parsed.REPO_PERSONA_HEARTBEAT_STATE_PATH),
+      taskName: parsed.REPO_PERSONA_HEARTBEAT_TASK_NAME,
+      intervalMinutes: parsed.REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES,
+      maxJobsPerTick: parsed.REPO_PERSONA_HEARTBEAT_MAX_JOBS_PER_TICK,
+      defaultChannelId: parsed.REPO_PERSONA_HEARTBEAT_DEFAULT_CHANNEL_ID,
+      baseRecoveryMinutes: parsed.REPO_PERSONA_HEARTBEAT_BASE_RECOVERY_MINUTES,
+      globalHeat: parsed.REPO_PERSONA_HEARTBEAT_GLOBAL_HEAT,
       idleCooling: {
-        enabled: parsed.REPO_FACE_HEARTBEAT_IDLE_COOLING_ENABLED,
-        idleAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_AFTER_MINUTES,
-        recoveryMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_RECOVERY_MINUTES,
-        napAfterMinutes: parsed.REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES,
+        enabled: parsed.REPO_PERSONA_HEARTBEAT_IDLE_COOLING_ENABLED,
+        idleAfterMinutes: parsed.REPO_PERSONA_HEARTBEAT_IDLE_AFTER_MINUTES,
+        recoveryMinutes: parsed.REPO_PERSONA_HEARTBEAT_IDLE_RECOVERY_MINUTES,
+        napAfterMinutes: parsed.REPO_PERSONA_HEARTBEAT_IDLE_NAP_AFTER_MINUTES,
       },
-      speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
-      heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
-      codexModel: parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL,
-      codexModels: parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS).length > 0
-        ? parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS)
-        : [parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL],
-      imaginationCodexModel: parsed.REPO_FACE_IMAGINATION_CODEX_MODEL,
-      imaginationCodexModels: parseList(parsed.REPO_FACE_IMAGINATION_CODEX_MODELS).length > 0
-        ? parseList(parsed.REPO_FACE_IMAGINATION_CODEX_MODELS)
-        : [parsed.REPO_FACE_IMAGINATION_CODEX_MODEL],
-      mindCodexModel: parsed.REPO_FACE_MIND_CODEX_MODEL,
-      mindCodexModels: parseList(parsed.REPO_FACE_MIND_CODEX_MODELS).length > 0
-        ? parseList(parsed.REPO_FACE_MIND_CODEX_MODELS)
-        : [parsed.REPO_FACE_MIND_CODEX_MODEL],
-      turnCodexModel: parsed.REPO_FACE_TURN_CODEX_MODEL,
-      turnCodexModelReasoningEffort: parsed.REPO_FACE_TURN_CODEX_REASONING_EFFORT,
-      imaginationCodexModelReasoningEffort: parsed.REPO_FACE_IMAGINATION_CODEX_REASONING_EFFORT,
-      mindCodexModelReasoningEffort: parsed.REPO_FACE_MIND_CODEX_REASONING_EFFORT,
-      codexModelReasoningEffort: parsed.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT,
-      stateProjectorEnabled: parsed.REPO_FACE_STATE_PROJECTOR_ENABLED,
+      speedOverrides: parseNumericMap(parsed.REPO_PERSONA_HEARTBEAT_SPEED_OVERRIDES),
+      heatOverrides: parseNumericMap(parsed.REPO_PERSONA_HEARTBEAT_HEAT_OVERRIDES),
+      codexModel: parsed.REPO_PERSONA_HEARTBEAT_CODEX_MODEL,
+      codexModels: parseList(parsed.REPO_PERSONA_HEARTBEAT_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_PERSONA_HEARTBEAT_CODEX_MODELS)
+        : [parsed.REPO_PERSONA_HEARTBEAT_CODEX_MODEL],
+      imaginationCodexModel: parsed.REPO_PERSONA_IMAGINATION_CODEX_MODEL,
+      imaginationCodexModels: parseList(parsed.REPO_PERSONA_IMAGINATION_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_PERSONA_IMAGINATION_CODEX_MODELS)
+        : [parsed.REPO_PERSONA_IMAGINATION_CODEX_MODEL],
+      mindCodexModel: parsed.REPO_PERSONA_MIND_CODEX_MODEL,
+      mindCodexModels: parseList(parsed.REPO_PERSONA_MIND_CODEX_MODELS).length > 0
+        ? parseList(parsed.REPO_PERSONA_MIND_CODEX_MODELS)
+        : [parsed.REPO_PERSONA_MIND_CODEX_MODEL],
+      turnCodexModel: parsed.REPO_PERSONA_TURN_CODEX_MODEL,
+      turnCodexModelReasoningEffort: parsed.REPO_PERSONA_TURN_CODEX_REASONING_EFFORT,
+      imaginationCodexModelReasoningEffort: parsed.REPO_PERSONA_IMAGINATION_CODEX_REASONING_EFFORT,
+      mindCodexModelReasoningEffort: parsed.REPO_PERSONA_MIND_CODEX_REASONING_EFFORT,
+      codexModelReasoningEffort: parsed.REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT,
+      stateProjectorEnabled: parsed.REPO_PERSONA_STATE_PROJECTOR_ENABLED,
     },
     epiphanyAgentRoot: resolve(parsed.EPIPHANY_AGENT_ROOT),
     indexAllChannels: parsed.INDEX_ALL_CHANNELS,

@@ -8,18 +8,18 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
-  applyRepoFacePostFatigueAfterSpeech,
+  applyRepoPersonaPostFatigueAfterSpeech,
   type AuditLog,
   buildVoidMcpServerConfig,
   createStateStorage,
   applyVoidSelfStateOperation,
   findRepoDiscordIdentity,
-  faceRegistryAsRepoDiscordRegistry,
+  personaRegistryAsRepoDiscordRegistry,
   isRepoDiscordIdentityAllowedInChannel,
   type JobQueue,
-  loadFaceIdentityRegistry,
+  loadPersonaIdentityRegistry,
   loadSystemMessageCatalog,
-  resolveRepoFaceStatePath,
+  resolveRepoPersonaStatePath,
   type SystemMessageCatalog,
 } from "@voidbot/core";
 import {
@@ -55,25 +55,25 @@ import {
   renderRepoIdentityArticleMarkdown,
   resolveArticleRepoRoot,
   validateRenderedArticleMarkdown,
-} from "./repo-face-article.js";
+} from "./repo-persona-article.js";
 import {
   REPO_IDENTITY_POST_SENTINEL,
   isNonPublicRepoIdentitySpeech,
   normalizePublicRepoIdentitySpeech,
   parseRepoIdentityPostIntents,
   type RepoIdentityPostIntent,
-} from "./repo-face-speech.js";
+} from "./repo-persona-speech.js";
 
 const config = loadConfig();
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
 const REPO_IDENTITY_BIFROST_TOPIC_SENTINEL = "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC:";
-const CURRENT_REPO_FACE_IDENTITY_SELECTORS = new Set([
+const CURRENT_REPO_PERSONA_IDENTITY_SELECTORS = new Set([
   "face_id",
   "faceid",
   "current_face",
-  "current_face_id",
+  "current_persona_id",
   "currentface",
   "currentfaceid",
   "current_identity",
@@ -85,12 +85,12 @@ const CURRENT_REPO_FACE_IDENTITY_SELECTORS = new Set([
   "jobidentity",
   "jobidentityid",
 ]);
-const REPO_FACE_FORBIDDEN_CHILD_TOOLS = new Set([
-  "read_repo_face_state",
+const REPO_PERSONA_FORBIDDEN_CHILD_TOOLS = new Set([
+  "read_repo_persona_state",
   "list_mcp_resources",
   "read_mcp_resource",
   "post_repo_identity_message",
-  "apply_repo_face_state_operation",
+  "apply_repo_persona_state_operation",
   "notify_owner",
 ]);
 
@@ -348,8 +348,8 @@ async function processJob(job: JobRecord): Promise<void> {
   }
 
   try {
-    const response = job.command === "repo-face-rumination"
-      ? await executeRepoFaceJobWithInterpreter(provider, job)
+    const response = job.command === "repo-persona-rumination"
+      ? await executeRepoPersonaJobWithInterpreter(provider, job)
       : await executeProviderForJob(provider, job, job.contextBundle);
     const artifactPaths = await writeArtifacts(job.id, response.artifacts ?? []);
 
@@ -388,40 +388,40 @@ async function processJob(job: JobRecord): Promise<void> {
       return;
     }
 
-    if (job.command === "repo-face-rumination") {
-      const repoFaceOutput = rawFinalResponse;
-      const repoIdentityPosts = parseRepoIdentityPostIntents(repoFaceOutput);
-      const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(repoFaceOutput);
-      const repoIdentityBifrostTopics = config.repoFaceBifrostEnabled
-        ? parseRepoIdentityBifrostTopicIntents(repoFaceOutput)
+    if (job.command === "repo-persona-rumination") {
+      const repoPersonaOutput = rawFinalResponse;
+      const repoIdentityPosts = parseRepoIdentityPostIntents(repoPersonaOutput);
+      const repoIdentityStateNotes = parseRepoIdentityStateNoteIntents(repoPersonaOutput);
+      const repoIdentityBifrostTopics = config.repoPersonaBifrostEnabled
+        ? parseRepoIdentityBifrostTopicIntents(repoPersonaOutput)
         : [];
-      const repoIdentityUpdateRequests = config.repoFaceBifrostEnabled
-        ? parseRepoIdentityUpdateRequestIntents(repoFaceOutput)
+      const repoIdentityUpdateRequests = config.repoPersonaBifrostEnabled
+        ? parseRepoIdentityUpdateRequestIntents(repoPersonaOutput)
         : [];
-      const repoIdentityArticles = config.repoFaceGithubActionsEnabled
-        ? parseRepoFaceArticleIntents(repoFaceOutput)
+      const repoIdentityArticles = config.repoPersonaGithubActionsEnabled
+        ? parseRepoPersonaArticleIntents(repoPersonaOutput)
         : [];
-      const repoIdentityProposals = config.repoFaceGithubActionsEnabled
-        ? parseRepoIdentityProposalPrIntents(repoFaceOutput)
+      const repoIdentityProposals = config.repoPersonaGithubActionsEnabled
+        ? parseRepoIdentityProposalPrIntents(repoPersonaOutput)
         : [];
-      const repoIdentityPrComments = config.repoFaceGithubActionsEnabled
-        ? parseRepoIdentityPrCommentIntents(repoFaceOutput)
+      const repoIdentityPrComments = config.repoPersonaGithubActionsEnabled
+        ? parseRepoIdentityPrCommentIntents(repoPersonaOutput)
         : [];
-      const ignoredGithubActionIntents = config.repoFaceGithubActionsEnabled
+      const ignoredGithubActionIntents = config.repoPersonaGithubActionsEnabled
         ? 0
-        : countRepoIdentityGithubActionIntents(repoFaceOutput);
+        : countRepoIdentityGithubActionIntents(repoPersonaOutput);
       const proposalPrSubmitted = repoIdentityProposals.length > 0;
       const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
       const articlePrSubmitted =
         !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
       const bifrostTopicSubmitted =
-        config.repoFaceBifrostEnabled &&
+        config.repoPersonaBifrostEnabled &&
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
         repoIdentityBifrostTopics.length > 0;
       const updateRequestRoutedToBifrostTopic =
-        config.repoFaceBifrostEnabled &&
+        config.repoPersonaBifrostEnabled &&
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
@@ -455,8 +455,8 @@ async function processJob(job: JobRecord): Promise<void> {
           }
         }
       }
-      const cleanedFinalResponse = stripRepoIdentityPostIntents(repoFaceOutput);
-      await jobQueue.completeJobDirect(job.id, cleanedFinalResponse || repoFaceOutput);
+      const cleanedFinalResponse = stripRepoIdentityPostIntents(repoPersonaOutput);
+      await jobQueue.completeJobDirect(job.id, cleanedFinalResponse || repoPersonaOutput);
       await deliverOwnerNotifications(job, response.notifications ?? []);
       await auditLog.record({
         type: "provider.completed",
@@ -480,19 +480,19 @@ async function processJob(job: JobRecord): Promise<void> {
           ignoredGithubActionIntents,
           reason:
             proposalPrSubmitted
-              ? "repo_face_rumination_submitted_registered_identity_proposal_pr"
+              ? "repo_persona_rumination_submitted_registered_identity_proposal_pr"
               : prCommentSubmitted
-                ? "repo_face_rumination_commented_on_pr_as_registered_identity"
+                ? "repo_persona_rumination_commented_on_pr_as_registered_identity"
               : articlePrSubmitted
-                ? "repo_face_rumination_submitted_registered_identity_article_pr"
+                ? "repo_persona_rumination_submitted_registered_identity_article_pr"
               : bifrostTopicSubmitted
-                ? "repo_face_rumination_submitted_bifrost_topic"
+                ? "repo_persona_rumination_submitted_bifrost_topic"
               : updateRequestRoutedToBifrostTopic
-                ? "repo_face_rumination_routed_legacy_update_request_to_bifrost_topic"
+                ? "repo_persona_rumination_routed_legacy_update_request_to_bifrost_topic"
               : repoIdentityPostDelivered > 0
-                ? "repo_face_rumination_posted_as_registered_identity"
+                ? "repo_persona_rumination_posted_as_registered_identity"
               : repoIdentityPosts.length > 0
-                ? "repo_face_rumination_speech_rejected_by_parent_interpreter"
+                ? "repo_persona_rumination_speech_rejected_by_parent_interpreter"
               : `${job.command}_private_summary`,
         },
       });
@@ -540,12 +540,12 @@ async function executeProviderForJob(
   const request = provider.buildRequest(contextBundle, {
     jobId: job.id,
     command: job.command,
-    ...repoFaceHeartbeatCodexOptions(job, role),
+    ...repoPersonaHeartbeatCodexOptions(job, role),
   });
   return provider.execute(request);
 }
 
-async function executeRepoFaceJobWithInterpreter(
+async function executeRepoPersonaJobWithInterpreter(
   provider: ProviderAdapter,
   job: JobRecord,
 ): Promise<ProviderResponse> {
@@ -555,20 +555,20 @@ async function executeRepoFaceJobWithInterpreter(
   }
 
   const firstText = normalizeModelText(firstResponse.outputText ?? firstResponse.summary);
-  const firstForbiddenTools = collectForbiddenRepoFaceChildTools(firstResponse.artifacts ?? []);
+  const firstForbiddenTools = collectForbiddenRepoPersonaChildTools(firstResponse.artifacts ?? []);
   const firstInterpretation = firstForbiddenTools.length > 0
     ? {
         decision: "retry" as const,
         reasons: [
-          `Face used forbidden substrate/tool-discovery tool(s): ${firstForbiddenTools.join(", ")}`,
-          "Face turns may use retrieval tools only; state and substrate inventory belong to the parent/interpreter.",
+          `Persona used forbidden substrate/tool-discovery tool(s): ${firstForbiddenTools.join(", ")}`,
+          "Persona turns may use retrieval tools only; state and substrate inventory belong to the parent/interpreter.",
         ],
       }
-    : await interpretRepoFaceTurnOutput(provider, job, firstText, {
+    : await interpretRepoPersonaTurnOutput(provider, job, firstText, {
         attempt: 1,
       });
   if (firstInterpretation.decision === "route") {
-    return routeRepoFaceInterpretedOutput(firstResponse, firstInterpretation, {
+    return routeRepoPersonaInterpretedOutput(firstResponse, firstInterpretation, {
       job,
       faceOutputText: firstText,
     });
@@ -583,11 +583,11 @@ async function executeRepoFaceJobWithInterpreter(
   }
 
   if (firstInterpretation.decision === "drop") {
-    return dropRepoFaceActionBlocks(firstResponse, firstInterpretation);
+    return dropRepoPersonaActionBlocks(firstResponse, firstInterpretation);
   }
 
   await auditLog.record({
-    type: "repo_face.parent_interpreter_retry",
+    type: "repo_persona.parent_interpreter_retry",
     actorId: job.requester.id,
     jobId: job.id,
     provider: job.provider,
@@ -597,10 +597,10 @@ async function executeRepoFaceJobWithInterpreter(
     },
   });
   console.warn(
-    `Repo Face parent interpreter retrying job ${job.id}: ${firstInterpretation.reasons.join("; ")}`,
+    `Repo Persona parent interpreter retrying job ${job.id}: ${firstInterpretation.reasons.join("; ")}`,
   );
 
-  const retryPrompt = loadPromptTemplate("repo-face-turn-interpreter-retry.prompt.md", {
+  const retryPrompt = loadPromptTemplate("repo-persona-turn-interpreter-retry.prompt.md", {
     originalPrompt: job.contextBundle.prompt,
     reasons: firstInterpretation.reasons,
   });
@@ -616,20 +616,20 @@ async function executeRepoFaceJobWithInterpreter(
   }
 
   const retryText = normalizeModelText(retryResponse.outputText ?? retryResponse.summary);
-  const retryForbiddenTools = collectForbiddenRepoFaceChildTools(retryResponse.artifacts ?? []);
+  const retryForbiddenTools = collectForbiddenRepoPersonaChildTools(retryResponse.artifacts ?? []);
   const retryInterpretation = retryForbiddenTools.length > 0
     ? {
         decision: "drop" as const,
         reasons: [
-          `Face used forbidden substrate/tool-discovery tool(s) on retry: ${retryForbiddenTools.join(", ")}`,
+          `Persona used forbidden substrate/tool-discovery tool(s) on retry: ${retryForbiddenTools.join(", ")}`,
           "Dropping action blocks rather than routing a turn that crossed the child/tool boundary.",
         ],
       }
-    : await interpretRepoFaceTurnOutput(provider, job, retryText, {
+    : await interpretRepoPersonaTurnOutput(provider, job, retryText, {
         attempt: 2,
       });
   if (retryInterpretation.decision === "route") {
-    return routeRepoFaceInterpretedOutput(retryResponse, retryInterpretation, {
+    return routeRepoPersonaInterpretedOutput(retryResponse, retryInterpretation, {
       job,
       faceOutputText: retryText,
     });
@@ -644,7 +644,7 @@ async function executeRepoFaceJobWithInterpreter(
   }
 
   await auditLog.record({
-    type: "repo_face.parent_interpreter_drop",
+    type: "repo_persona.parent_interpreter_drop",
     actorId: job.requester.id,
     jobId: job.id,
     provider: job.provider,
@@ -654,26 +654,26 @@ async function executeRepoFaceJobWithInterpreter(
     },
   });
   console.warn(
-    `Repo Face parent interpreter dropped job ${job.id} action blocks: ${retryInterpretation.reasons.join("; ")}`,
+    `Repo Persona parent interpreter dropped job ${job.id} action blocks: ${retryInterpretation.reasons.join("; ")}`,
   );
-  return dropRepoFaceActionBlocks(retryResponse, retryInterpretation);
+  return dropRepoPersonaActionBlocks(retryResponse, retryInterpretation);
 }
 
-interface RepoFaceParentInterpretation {
+interface RepoPersonaParentInterpretation {
   decision: "route" | "retry" | "drop";
   reasons: string[];
   routedOutput?: string;
 }
 
-async function interpretRepoFaceTurnOutput(
+async function interpretRepoPersonaTurnOutput(
   provider: ProviderAdapter,
   job: JobRecord,
   outputText: string,
   input: { attempt: 1 | 2 },
-): Promise<RepoFaceParentInterpretation> {
-  const interpreterPrompt = loadPromptTemplate("repo-face-turn-interpreter.prompt.md", {
+): Promise<RepoPersonaParentInterpretation> {
+  const interpreterPrompt = loadPromptTemplate("repo-persona-turn-interpreter.prompt.md", {
     attempt: input.attempt,
-    facePrompt: renderRepoFaceInterpreterPromptContext(job.contextBundle.prompt),
+    personaPrompt: renderRepoPersonaInterpreterPromptContext(job.contextBundle.prompt),
     faceOutput: outputText.slice(0, 8000),
   });
   const interpreterContext = {
@@ -685,29 +685,29 @@ async function interpretRepoFaceTurnOutput(
   };
   const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
-  return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
+  return parseRepoPersonaParentInterpretation(interpretationText, input.attempt);
 }
 
 function normalizeModelText(content: string): string {
   return content.trim();
 }
 
-function renderRepoFaceInterpreterPromptContext(prompt: string): string {
+function renderRepoPersonaInterpreterPromptContext(prompt: string): string {
   if (prompt.length <= 28000) {
     return prompt;
   }
 
   return [
     prompt.slice(0, 6000),
-    "\n\n[... middle of Face prompt omitted for Interpreter context budget ...]\n\n",
+    "\n\n[... middle of Persona prompt omitted for Interpreter context budget ...]\n\n",
     prompt.slice(-22000),
   ].join("");
 }
 
-function parseRepoFaceParentInterpretation(
+function parseRepoPersonaParentInterpretation(
   interpretationText: string,
   attempt: 1 | 2,
-): RepoFaceParentInterpretation {
+): RepoPersonaParentInterpretation {
   const block = parseInterpretationBlock(interpretationText);
   const decision = block.decision?.trim().toLowerCase();
   const parsedDecision =
@@ -725,11 +725,11 @@ function parseRepoFaceParentInterpretation(
   return {
     decision: parsedDecision,
     reasons: reasons.length > 0 ? reasons : ["parent interpreter did not provide a parseable reason"],
-    routedOutput: extractRoutedRepoFaceOutput(interpretationText),
+    routedOutput: extractRoutedRepoPersonaOutput(interpretationText),
   };
 }
 
-function collectForbiddenRepoFaceChildTools(artifacts: ProviderArtifact[]): string[] {
+function collectForbiddenRepoPersonaChildTools(artifacts: ProviderArtifact[]): string[] {
   const forbidden = new Set<string>();
   for (const artifact of artifacts) {
     if (!/^codex-turn-\d+-trace\.json$/.test(artifact.name)) {
@@ -743,7 +743,7 @@ function collectForbiddenRepoFaceChildTools(artifacts: ProviderArtifact[]): stri
         if (
           event.kind === "mcp_tool_started" &&
           typeof event.tool === "string" &&
-          REPO_FACE_FORBIDDEN_CHILD_TOOLS.has(event.tool)
+          REPO_PERSONA_FORBIDDEN_CHILD_TOOLS.has(event.tool)
         ) {
           forbidden.add(event.tool);
         }
@@ -755,7 +755,7 @@ function collectForbiddenRepoFaceChildTools(artifacts: ProviderArtifact[]): stri
   return [...forbidden].sort();
 }
 
-function extractRoutedRepoFaceOutput(reviewText: string): string | undefined {
+function extractRoutedRepoPersonaOutput(reviewText: string): string | undefined {
   const lines = reviewText.split(/\r?\n/);
   const end = lines.findIndex((line) => line.trim().toUpperCase() === "END");
   if (end < 0) {
@@ -765,33 +765,33 @@ function extractRoutedRepoFaceOutput(reviewText: string): string | undefined {
   return routed.length > 0 ? routed : undefined;
 }
 
-function routeRepoFaceInterpretedOutput(
+function routeRepoPersonaInterpretedOutput(
   response: ProviderResponse,
-  interpretation: RepoFaceParentInterpretation,
+  interpretation: RepoPersonaParentInterpretation,
   input: { job: JobRecord; faceOutputText: string },
 ): ProviderResponse {
   const rawOutputText = interpretation.routedOutput?.trim() ?? "";
-  const outputText = normalizeInterpretedRepoFaceSpeechDestinations(rawOutputText, input);
-  const summary = outputText || "Repo Face parent interpreter routed no public or governed action.";
+  const outputText = normalizeInterpretedRepoPersonaSpeechDestinations(rawOutputText, input);
+  const summary = outputText || "Repo Persona parent interpreter routed no public or governed action.";
   return {
     ...response,
     outputText: summary,
     summary,
     metadata: {
       ...(response.metadata ?? {}),
-      repoFaceParentInterpreterDecision: interpretation.decision,
-      repoFaceParentInterpreterReasons: interpretation.reasons.join(" | "),
-      repoFaceParentInterpretedOutput: interpretation.routedOutput ? "true" : "false",
+      repoPersonaParentInterpreterDecision: interpretation.decision,
+      repoPersonaParentInterpreterReasons: interpretation.reasons.join(" | "),
+      repoPersonaParentInterpretedOutput: interpretation.routedOutput ? "true" : "false",
     },
   };
 }
 
 function routeUnparsedWouldSay(
   response: ProviderResponse,
-  interpretation: RepoFaceParentInterpretation,
+  interpretation: RepoPersonaParentInterpretation,
   input: { job: JobRecord; faceOutputText: string },
 ): ProviderResponse | undefined {
-  if (input.job.command !== "repo-face-rumination") {
+  if (input.job.command !== "repo-persona-rumination") {
     return undefined;
   }
   if (!interpretation.reasons.some((reason) => /parseable reason|did not provide/i.test(reason))) {
@@ -803,18 +803,18 @@ function routeUnparsedWouldSay(
     return undefined;
   }
 
-  return routeRepoFaceInterpretedOutput(
+  return routeRepoPersonaInterpretedOutput(
     response,
     {
       decision: "route",
       reasons: [
-        "Face produced an unconditional Would say and the parent interpreter failed to parse a routing reason.",
+        "Persona produced an unconditional Would say and the parent interpreter failed to parse a routing reason.",
       ],
       routedOutput: [
-        "Parent interpreter fallback: routed unconditional Face Would say.",
+        "Parent interpreter fallback: routed unconditional Persona Would say.",
         "",
         "SAY",
-        "identity: current_face_id",
+        "identity: current_persona_id",
         "channel: current_room",
         "reply_to:",
         "content:",
@@ -839,31 +839,31 @@ function extractUnconditionalWouldSay(outputText: string): string | undefined {
   return content;
 }
 
-function normalizeInterpretedRepoFaceSpeechDestinations(
+function normalizeInterpretedRepoPersonaSpeechDestinations(
   outputText: string,
   input: { job: JobRecord; faceOutputText: string },
 ): string {
-  if (input.job.command !== "repo-face-rumination") {
+  if (input.job.command !== "repo-persona-rumination") {
     return outputText;
   }
-  if (repoFaceOutputHasExplicitSayChannel(input.faceOutputText)) {
+  if (repoPersonaOutputHasExplicitSayChannel(input.faceOutputText)) {
     return outputText;
   }
   if (!input.job.guildContext?.channelId) {
     return outputText;
   }
 
-  return rewriteRepoFaceSayChannels(outputText, "current_room");
+  return rewriteRepoPersonaSayChannels(outputText, "current_room");
 }
 
-function repoFaceOutputHasExplicitSayChannel(outputText: string): boolean {
-  return parseRepoFaceActionBlocks(outputText).some((block) =>
+function repoPersonaOutputHasExplicitSayChannel(outputText: string): boolean {
+  return parseRepoPersonaActionBlocks(outputText).some((block) =>
     block.kind === "say" &&
     Boolean(optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId))
   );
 }
 
-function rewriteRepoFaceSayChannels(outputText: string, channelSelector: string): string {
+function rewriteRepoPersonaSayChannels(outputText: string, channelSelector: string): string {
   const lines = outputText.split(/\r?\n/);
   const rewritten: string[] = [];
   let insideSay = false;
@@ -877,7 +877,7 @@ function rewriteRepoFaceSayChannels(outputText: string, channelSelector: string)
   };
 
   for (const line of lines) {
-    const kind = parseRepoFaceActionKind(line);
+    const kind = parseRepoPersonaActionKind(line);
     if (kind) {
       insertChannelIfNeeded();
       insideSay = kind === "say";
@@ -925,49 +925,49 @@ function parseInterpretationBlock(interpretationText: string): Record<string, st
     }
     body.push(lines[index]);
   }
-  return parseRepoFaceActionFields(body);
+  return parseRepoPersonaActionFields(body);
 }
 
-function dropRepoFaceActionBlocks(
+function dropRepoPersonaActionBlocks(
   response: ProviderResponse,
-  interpretation: RepoFaceParentInterpretation,
+  interpretation: RepoPersonaParentInterpretation,
 ): ProviderResponse {
   const text = fitDiscordMessage(response.outputText ?? response.summary);
   const privateSummary = stripRepoIdentityPostIntents(text) ||
-    `Parent interpreter dropped repo Face action blocks: ${interpretation.reasons.join("; ")}`;
+    `Parent interpreter dropped repo Persona action blocks: ${interpretation.reasons.join("; ")}`;
   return {
     ...response,
     outputText: privateSummary,
     summary: privateSummary,
     metadata: {
       ...(response.metadata ?? {}),
-      repoFaceParentInterpreterDecision: interpretation.decision,
-      repoFaceParentInterpreterReasons: interpretation.reasons.join(" | "),
+      repoPersonaParentInterpreterDecision: interpretation.decision,
+      repoPersonaParentInterpreterReasons: interpretation.reasons.join(" | "),
     },
   };
 }
 
-function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpreter"): Record<string, string> {
-  if (job.command !== "repo-face-rumination") {
+function repoPersonaHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpreter"): Record<string, string> {
+  if (job.command !== "repo-persona-rumination") {
     return {};
   }
 
   if (role === "face") {
     return {
-      model: config.repoFaceHeartbeats.turnCodexModel,
-      ...(config.repoFaceHeartbeats.codexModelReasoningEffort
-        ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
+      model: config.repoPersonaHeartbeats.turnCodexModel,
+      ...(config.repoPersonaHeartbeats.codexModelReasoningEffort
+        ? { reasoningEffort: config.repoPersonaHeartbeats.codexModelReasoningEffort }
         : {}),
     };
   }
 
   return {
-    ...(config.repoFaceHeartbeats.codexModel ? { model: config.repoFaceHeartbeats.codexModel } : {}),
-    ...(config.repoFaceHeartbeats.codexModels.length > 0
-      ? { models: config.repoFaceHeartbeats.codexModels.join(",") }
+    ...(config.repoPersonaHeartbeats.codexModel ? { model: config.repoPersonaHeartbeats.codexModel } : {}),
+    ...(config.repoPersonaHeartbeats.codexModels.length > 0
+      ? { models: config.repoPersonaHeartbeats.codexModels.join(",") }
       : {}),
-    ...(config.repoFaceHeartbeats.codexModelReasoningEffort
-      ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
+    ...(config.repoPersonaHeartbeats.codexModelReasoningEffort
+      ? { reasoningEffort: config.repoPersonaHeartbeats.codexModelReasoningEffort }
       : {}),
   };
 }
@@ -1093,8 +1093,8 @@ function parseRepoIdentityIdFromPrompt(prompt: string): string | undefined {
   const match = prompt.match(/repo identity\s+.+?\(([^)]+)\)\s+for repo/i);
   return (
     match?.[1]?.trim() ??
-    prompt.match(/repo Face turn for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
-    prompt.match(/repo Face heartbeat for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
+    prompt.match(/repo Persona turn for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
+    prompt.match(/repo Persona heartbeat for .+?\(([^)]+)\) over repo/i)?.[1]?.trim() ??
     prompt.match(/identity "([^"]+)"/i)?.[1]?.trim()
   );
 }
@@ -1299,10 +1299,10 @@ async function resolveRepoIdentityForJobIntent(
   job: JobRecord,
   identitySelector?: string,
 ): Promise<NonNullable<ReturnType<typeof findRepoDiscordIdentity>> | undefined> {
-  const jobIdentityId = job.command === "repo-face-rumination"
+  const jobIdentityId = job.command === "repo-persona-rumination"
     ? parseRepoIdentityIdFromRequestMessageId(job.requestMessageId) ?? parseRepoIdentityIdFromPrompt(job.prompt)
     : undefined;
-  const identitySelectorIsCurrentFaceAlias = isCurrentRepoFaceIdentitySelector(identitySelector);
+  const identitySelectorIsCurrentFaceAlias = isCurrentRepoPersonaIdentitySelector(identitySelector);
   if (
     jobIdentityId &&
     identitySelector &&
@@ -1310,7 +1310,7 @@ async function resolveRepoIdentityForJobIntent(
     normalizeChannelSelector(jobIdentityId) !== normalizeChannelSelector(identitySelector)
   ) {
     console.warn(
-      `Ignoring mismatched repo identity selector "${identitySelector}" for repo-face job ${job.id}; job identity is "${jobIdentityId}".`,
+      `Ignoring mismatched repo identity selector "${identitySelector}" for repo-persona job ${job.id}; job identity is "${jobIdentityId}".`,
     );
   }
   const identityId =
@@ -1322,13 +1322,13 @@ async function resolveRepoIdentityForJobIntent(
     return undefined;
   }
 
-  const registry = await loadRegisteredFaceRepoRegistry();
+  const registry = await loadRegisteredPersonaRepoRegistry();
   return findRepoDiscordIdentity(registry, identityId);
 }
 
-async function loadRegisteredFaceRepoRegistry() {
-  return faceRegistryAsRepoDiscordRegistry(
-    await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath),
+async function loadRegisteredPersonaRepoRegistry() {
+  return personaRegistryAsRepoDiscordRegistry(
+    await loadPersonaIdentityRegistry(config.repoDiscordIdentitiesPath),
   );
 }
 
@@ -1338,7 +1338,7 @@ function parseRepoIdentityIdFromRequestMessageId(requestMessageId: string | unde
 }
 
 function parseRepoIdentityStateNoteIntents(finalResponse: string): RepoIdentityStateNoteIntent[] {
-  return parseRepoFaceActionBlocks(finalResponse)
+  return parseRepoPersonaActionBlocks(finalResponse)
     .filter((block) => block.kind === "state_note")
     .flatMap((block): RepoIdentityStateNoteIntent[] => {
       const kind = normalizeStateNoteKind(block.fields.kind);
@@ -1364,8 +1364,8 @@ function parseRepoIdentityStateNoteIntents(finalResponse: string): RepoIdentityS
     });
 }
 
-function parseRepoFaceArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
-  return parseRepoFaceActionBlocks(finalResponse)
+function parseRepoPersonaArticleIntents(finalResponse: string): RepoIdentityArticleIntent[] {
+  return parseRepoPersonaActionBlocks(finalResponse)
     .filter((block) => block.kind === "article")
     .flatMap((block): RepoIdentityArticleIntent[] => {
       const title = requiredDslString(block.fields.title);
@@ -1416,7 +1416,7 @@ async function applyRepoIdentityStateNoteIntent(
     `repo:${identity.repoName}`,
   ];
 
-  const canonicalPath = resolveRepoFaceStatePath(identity, config.storageRoot);
+  const canonicalPath = resolveRepoPersonaStatePath(identity, config.storageRoot);
   const operation = (() => {
     switch (intent.kind) {
       case "need":
@@ -1430,7 +1430,7 @@ async function applyRepoIdentityStateNoteIntent(
             summary: intent.summary,
             claim: intent.claim ?? intent.question ?? intent.summary,
             question: intent.question,
-            tension: intent.tension ?? "The Face felt this strongly enough to preserve it.",
+            tension: intent.tension ?? "The Persona felt this strongly enough to preserve it.",
             actionImplication: intent.action ?? "Let this need bend future attention and speech pressure.",
             intensity,
             valence: clampSigned(intent.valence ?? 0),
@@ -1472,7 +1472,7 @@ async function applyRepoIdentityStateNoteIntent(
             summary: intent.summary,
             claim: intent.claim ?? intent.summary,
             tension: intent.tension ?? "The status read may be partial.",
-            actionImplication: intent.action ?? "Let this change how the Face reads the room.",
+            actionImplication: intent.action ?? "Let this change how the Persona reads the room.",
             intensity,
             anchorRefs,
             evidenceRefs: [],
@@ -1503,7 +1503,7 @@ async function applyRepoIdentityStateNoteIntent(
             summary: intent.summary,
             claim: intent.claim ?? intent.question ?? intent.summary,
             question: intent.question,
-            tension: intent.tension ?? "The Face wants this acted on but has not resolved the path.",
+            tension: intent.tension ?? "The Persona wants this acted on but has not resolved the path.",
             actionImplication: intent.action ?? "Use future turns to sharpen this into speech, Bifrost work, or a proposal.",
             intensity,
             anchorRefs,
@@ -1525,7 +1525,7 @@ async function applyRepoIdentityStateNoteIntent(
             summary: intent.summary,
             claim: intent.claim ?? intent.question ?? intent.summary,
             question: intent.question,
-            tension: intent.tension ?? "The Face chose to remember this because it may matter later.",
+            tension: intent.tension ?? "The Persona chose to remember this because it may matter later.",
             actionImplication: intent.action ?? "Let this memory influence future speech and investigation.",
             anchorRefs,
             evidenceRefs: [],
@@ -1556,7 +1556,7 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     throw new Error(`Could not resolve repo identity for article intent on job ${job.id}.`);
   }
 
-  const registry = await loadRegisteredFaceRepoRegistry();
+  const registry = await loadRegisteredPersonaRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for article intent on job ${job.id}.`);
@@ -1588,7 +1588,7 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     "--content-file",
     contentFile,
     "--body",
-    `Draft bylined article submitted by repo Face ${identity.id}.\n\nPath: ${relativePath}`,
+    `Draft bylined article submitted by repo Persona ${identity.id}.\n\nPath: ${relativePath}`,
     "--commit-message",
     `${identity.id}: draft article ${intent.title}`,
   ]);
@@ -1616,7 +1616,7 @@ async function writeRepoIdentityProposalPrIntent(
     throw new Error(`Could not resolve repo identity for proposal PR intent on job ${job.id}.`);
   }
 
-  const registry = await loadRegisteredFaceRepoRegistry();
+  const registry = await loadRegisteredPersonaRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for proposal PR intent on job ${job.id}.`);
@@ -1643,7 +1643,7 @@ async function writeRepoIdentityProposalPrIntent(
     "--content-file",
     contentFile,
     "--body",
-    `Draft change proposal submitted by repo Face ${identity.id}.\n\nPath: ${relativePath}`,
+    `Draft change proposal submitted by repo Persona ${identity.id}.\n\nPath: ${relativePath}`,
     "--commit-message",
     `${identity.id}: draft proposal ${intent.title}`,
   ]);
@@ -1671,7 +1671,7 @@ async function commentRepoIdentityPullRequestIntent(
     throw new Error(`Could not resolve repo identity for PR comment intent on job ${job.id}.`);
   }
 
-  const registry = await loadRegisteredFaceRepoRegistry();
+  const registry = await loadRegisteredPersonaRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for PR comment intent on job ${job.id}.`);
@@ -1740,7 +1740,7 @@ async function submitRepoIdentityBifrostTopicIntent(
     throw new Error(`Could not resolve repo identity for Bifrost topic intent on job ${job.id}.`);
   }
 
-  const registry = await loadRegisteredFaceRepoRegistry();
+  const registry = await loadRegisteredPersonaRepoRegistry();
   const identity = findRepoDiscordIdentity(registry, identityId);
   if (!identity) {
     throw new Error(`No registered repo identity matched "${identityId}" for Bifrost topic intent on job ${job.id}.`);
@@ -1791,7 +1791,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       "--priority",
       String(normalizeBifrostPriority(intent.priority)),
       "--source-kind",
-      "repo_face_turn",
+      "repo_persona_turn",
       "--created-by",
       identity.id,
       ...(sourceChannelId ? ["--source-channel-id", sourceChannelId] : []),
@@ -1966,7 +1966,7 @@ function renderBridgeFailure(
 }
 
 function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdentityUpdateRequestIntent[] {
-  const intents: RepoIdentityUpdateRequestIntent[] = parseRepoFaceActionBlocks(finalResponse)
+  const intents: RepoIdentityUpdateRequestIntent[] = parseRepoPersonaActionBlocks(finalResponse)
     .filter((block) => block.kind === "update_request")
     .flatMap((block): RepoIdentityUpdateRequestIntent[] => {
       const title = requiredDslString(block.fields.title);
@@ -2022,7 +2022,7 @@ function parseRepoIdentityUpdateRequestIntents(finalResponse: string): RepoIdent
 }
 
 function parseRepoIdentityBifrostTopicIntents(finalResponse: string): RepoIdentityBifrostTopicIntent[] {
-  const intents: RepoIdentityBifrostTopicIntent[] = parseRepoFaceActionBlocks(finalResponse)
+  const intents: RepoIdentityBifrostTopicIntent[] = parseRepoPersonaActionBlocks(finalResponse)
     .filter((block) => block.kind === "bifrost_topic")
     .flatMap((block): RepoIdentityBifrostTopicIntent[] => {
       const topicId = optionalDslString(block.fields.topic_id) ?? optionalDslString(block.fields.topicId);
@@ -2159,7 +2159,7 @@ function parseRepoIdentityPrCommentIntents(finalResponse: string): RepoIdentityP
 }
 
 function countRepoIdentityGithubActionIntents(finalResponse: string): number {
-  let count = parseRepoFaceActionBlocks(finalResponse).filter((block) => block.kind === "article").length;
+  let count = parseRepoPersonaActionBlocks(finalResponse).filter((block) => block.kind === "article").length;
 
   for (const line of finalResponse.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -2174,16 +2174,16 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
   return count;
 }
 
-interface RepoFaceActionBlock {
+interface RepoPersonaActionBlock {
   kind: "say" | "state_note" | "article" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 }
 
-function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[] {
+function parseRepoPersonaActionBlocks(finalResponse: string): RepoPersonaActionBlock[] {
   const lines = finalResponse.split(/\r?\n/);
-  const blocks: RepoFaceActionBlock[] = [];
+  const blocks: RepoPersonaActionBlock[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const kind = parseRepoFaceActionKind(lines[index]);
+    const kind = parseRepoPersonaActionKind(lines[index]);
     if (!kind) {
       continue;
     }
@@ -2191,7 +2191,7 @@ function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[]
     const bodyLines: string[] = [];
     index += 1;
     while (index < lines.length && lines[index].trim() !== "END") {
-      if (parseRepoFaceActionKind(lines[index])) {
+      if (parseRepoPersonaActionKind(lines[index])) {
         index -= 1;
         break;
       }
@@ -2200,18 +2200,18 @@ function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[]
     }
     blocks.push({
       kind,
-      fields: parseRepoFaceActionFields(bodyLines),
+      fields: parseRepoPersonaActionFields(bodyLines),
     });
   }
   return blocks;
 }
 
-function isCurrentRepoFaceIdentitySelector(identitySelector: string | undefined): boolean {
+function isCurrentRepoPersonaIdentitySelector(identitySelector: string | undefined): boolean {
   const normalized = identitySelector ? normalizeChannelSelector(identitySelector) : "";
-  return normalized.length > 0 && CURRENT_REPO_FACE_IDENTITY_SELECTORS.has(normalized);
+  return normalized.length > 0 && CURRENT_REPO_PERSONA_IDENTITY_SELECTORS.has(normalized);
 }
 
-function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | undefined {
+function parseRepoPersonaActionKind(line: string): RepoPersonaActionBlock["kind"] | undefined {
   switch (line.trim().toUpperCase()) {
     case "SAY":
       return "say";
@@ -2228,7 +2228,7 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
   }
 }
 
-function parseRepoFaceActionFields(lines: string[]): Record<string, string> {
+function parseRepoPersonaActionFields(lines: string[]): Record<string, string> {
   const fields: Record<string, string> = {};
   let currentKey: string | undefined;
   let currentValue: string[] = [];
@@ -2461,7 +2461,7 @@ function normalizeProposalPath(
 }
 
 function stripRepoIdentityPostIntents(finalResponse: string): string {
-  return stripRepoFaceActionBlocks(finalResponse)
+  return stripRepoPersonaActionBlocks(finalResponse)
     .split(/\r?\n/)
     .filter((line) => {
       const trimmed = line.trim();
@@ -2477,11 +2477,11 @@ function stripRepoIdentityPostIntents(finalResponse: string): string {
     .trim();
 }
 
-function stripRepoFaceActionBlocks(finalResponse: string): string {
+function stripRepoPersonaActionBlocks(finalResponse: string): string {
   const lines = finalResponse.split(/\r?\n/);
   const kept: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (parseRepoFaceActionKind(lines[index])) {
+    if (parseRepoPersonaActionKind(lines[index])) {
       index += 1;
       while (index < lines.length && lines[index].trim() !== "END") {
         index += 1;
@@ -2531,7 +2531,7 @@ async function recordRepoIdentityDeliveryReceipt(input: {
 
   await applyVoidSelfStateOperation(
     {
-      canonicalPath: resolveRepoFaceStatePath(input.identity, config.storageRoot),
+      canonicalPath: resolveRepoPersonaStatePath(input.identity, config.storageRoot),
       identity: {
         agentId: input.identity.id,
         publicName: input.identity.displayName,
@@ -2557,14 +2557,14 @@ async function recordRepoIdentityDeliveryReceipt(input: {
   );
 
   try {
-    await applyRepoFacePostFatigueAfterSpeech({
+    await applyRepoPersonaPostFatigueAfterSpeech({
       identity: input.identity,
       storageRoot: config.storageRoot,
-      heartbeatStatePath: config.repoFaceHeartbeats.statePath,
+      heartbeatStatePath: config.repoPersonaHeartbeats.statePath,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`Could not apply repo Face post fatigue for ${input.identity.id}: ${message}`);
+    console.warn(`Could not apply repo Persona post fatigue for ${input.identity.id}: ${message}`);
   }
 }
 
@@ -2939,7 +2939,7 @@ function normalizeChannelSelector(selector: string | undefined): string {
 }
 
 function repoIdentityOwnerDmExplicitlyAllowed(job: JobRecord): boolean {
-  if (job.command !== "repo-face-rumination") {
+  if (job.command !== "repo-persona-rumination") {
     return true;
   }
 

@@ -2,7 +2,7 @@ import {
   isNonPublicRepoIdentitySpeech,
   normalizePublicRepoIdentitySpeech,
   parseRepoIdentityPostIntents,
-} from "../apps/worker/src/repo-face-speech.js";
+} from "../apps/worker/src/repo-persona-speech.js";
 
 type Case = {
   name: string;
@@ -18,7 +18,7 @@ const cases: Case[] = [
       "Would say: `nothing right now.`",
       "What should stick: silence is correct.",
     ].join("\n")).length === 0,
-    detail: "A silence marker in a child Face draft must not create public speech.",
+    detail: "A silence marker in a child Persona draft must not create public speech.",
   },
   {
     name: "structured silence SAY rejected",
@@ -28,19 +28,19 @@ const cases: Case[] = [
   {
     name: "single-line markdown fence rejected",
     run: () => isNonPublicRepoIdentitySpeech("`the whole message is a code span`"),
-    detail: "A whole Face message wrapped as code is transport-shaped, not public speech.",
+    detail: "A whole Persona message wrapped as code is transport-shaped, not public speech.",
   },
   {
     name: "block markdown fence rejected",
     run: () => isNonPublicRepoIdentitySpeech("```text\nnothing right now\n```"),
-    detail: "A whole Face message wrapped in a code block is not public speech.",
+    detail: "A whole Persona message wrapped in a code block is not public speech.",
   },
   {
     name: "legitimate SAY normalizes inline code",
     run: () => {
       const posts = parseRepoIdentityPostIntents([
         "SAY",
-        "identity: current_face_id",
+        "identity: current_persona_id",
         "channel: current_room",
         "content:",
         "  `Wavecrafter` needs owners, costs, and a leash before it earns the noun.",
@@ -60,7 +60,7 @@ const cases: Case[] = [
       "show `rear pair drifting 38 ms`, `geometry confidence low`, `world model provisional`."
     ) ===
       "show \"rear pair drifting 38 ms\", \"geometry confidence low\", \"world model provisional\".",
-    detail: "Repo Faces can mention technical labels without speaking in code spans.",
+    detail: "Repo Personas can mention technical labels without speaking in code spans.",
   },
   {
     name: "older side-thread route requires explicit reply anchor",
@@ -75,7 +75,7 @@ const cases: Case[] = [
         "END",
         "",
         "SAY",
-        "identity: current_face_id",
+        "identity: current_persona_id",
         "channel: current_room",
         "reply_to:",
         "content:",

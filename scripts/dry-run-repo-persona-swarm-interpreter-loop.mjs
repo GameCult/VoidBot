@@ -11,9 +11,9 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const promptsRoot = resolve(repoRoot, "prompts");
 const mockMcpServer = resolve(scriptDir, "mock-voidbot-heartbeat-mcp.mjs");
-const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-swarm-interpreter-dry-run.json");
+const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-persona-swarm-interpreter-dry-run.json");
 const identities = ["nibu", "aqua", "mimir", "epiphany", "libby", "bifrost", "heimdall", "kiko", "weksa", "huginn"];
-const repoFaceRetrievalToolAllowlist = [
+const repoPersonaRetrievalToolAllowlist = [
   "search_history",
   "get_message_context",
   "list_indexed_repos",
@@ -23,9 +23,9 @@ const repoFaceRetrievalToolAllowlist = [
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
-  const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.3-codex-spark";
-  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
+  const faceModel = options["face-model"] ?? process.env.REPO_PERSONA_TURN_CODEX_MODEL ?? "gpt-5.4";
+  const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_MODEL ?? "gpt-5.3-codex-spark";
+  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const mcpMode = options.mcp === "mock" ? "mock" : "real-readonly";
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
   const selectedIdentities = options.identity
@@ -38,7 +38,7 @@ async function main() {
     const promptPath = resolve(repoRoot, ".voidbot", "artifacts", "interpreter-projections", `${identity}-dry-run-prompt.md`);
     await runProcess(process.execPath, [
       resolve(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
-      resolve(repoRoot, "scripts", "run-repo-face-heartbeats.ts"),
+      resolve(repoRoot, "scripts", "run-repo-persona-heartbeats.ts"),
       "--assemble-prompt",
       identity,
       "--out",
@@ -64,7 +64,7 @@ async function main() {
       : extractToolNames(childEvents);
 
     process.stderr.write(`[dry-run] interpreter ${identity}\n`);
-    const interpreterPrompt = renderTemplate("repo-face-turn-interpreter.prompt.md", {
+    const interpreterPrompt = renderTemplate("repo-persona-turn-interpreter.prompt.md", {
       attempt: "1",
       facePrompt,
       faceOutput: childText,
@@ -109,7 +109,7 @@ async function main() {
         : extractToolNames(retryChildEvents);
 
       process.stderr.write(`[dry-run] retry interpreter ${identity}\n`);
-      const retryInterpreterPrompt = renderTemplate("repo-face-turn-interpreter.prompt.md", {
+      const retryInterpreterPrompt = renderTemplate("repo-persona-turn-interpreter.prompt.md", {
         attempt: "2",
         facePrompt,
         faceOutput: retryChildText,
@@ -242,7 +242,7 @@ function assessRun(input) {
   if (input.childText.length < 160) {
     failures.push("child output too short");
   }
-  if (input.childText.toLowerCase().includes("repo-face heartbeat") || input.childText.toLowerCase().includes("heartbeat from")) {
+  if (input.childText.toLowerCase().includes("repo-persona heartbeat") || input.childText.toLowerCase().includes("heartbeat from")) {
     failures.push("child leaked heartbeat/provenance label");
   }
   const forbiddenTools = input.childTools.filter((tool) => forbiddenDryRunTools.has(tool));
@@ -267,11 +267,11 @@ function assessRun(input) {
 
 const searchTools = new Set(["search_sources", "get_source_context", "search_history", "get_message_context"]);
 const forbiddenDryRunTools = new Set([
-  "read_repo_face_state",
+  "read_repo_persona_state",
   "list_mcp_resources",
   "read_mcp_resource",
   "post_repo_identity_message",
-  "apply_repo_face_state_operation",
+  "apply_repo_persona_state_operation",
   "notify_owner",
 ]);
 const socialPattern = /\b(Metacrat|Nibu|Aqua|Mimir|Libby|Epiphany|Bifrost|Heimdall|swarm|trust|rivalry|envy|respect|suspicion|protect|needle|tease|threat|bypass|consult|friend|alienat|place|hierarchy)\b/gi;
@@ -304,7 +304,7 @@ function runCodex(prompt, input) {
         args.indexOf("--json"),
         0,
         "-c",
-        `mcp_servers.voidbot.env.VOIDBOT_MCP_TOOL_ALLOWLIST=${JSON.stringify(repoFaceRetrievalToolAllowlist)}`,
+        `mcp_servers.voidbot.env.VOIDBOT_MCP_TOOL_ALLOWLIST=${JSON.stringify(repoPersonaRetrievalToolAllowlist)}`,
       );
     }
     if (input.mcpMode === "mock") {
@@ -357,7 +357,7 @@ function appendDryRunSafety(prompt, mcpMode) {
 Dry-run safety:
 - This is an offline rehearsal. Do not post to Discord, notify the owner, write state, enqueue work, edit files, or call side-effecting tools.
 - Your complete allowed tool set is: search_history, get_message_context, list_indexed_repos, search_sources, get_source_context.
-- Do not discover tools. Do not call private state, identity-introspection, or MCP inventory tools such as read_repo_face_state, list_mcp_resources, or read_mcp_resource. Your prompt is the state projection.
+- Do not discover tools. Do not call private state, identity-introspection, or MCP inventory tools such as read_repo_persona_state, list_mcp_resources, or read_mcp_resource. Your prompt is the state projection.
 - ${retrievalNote}
 - Do not say retrieval is unavailable unless you actually attempted a retrieval tool call and it failed. If you choose not to use retrieval, simply reason from the attached prompt context and do not claim inspection.
 - If you use retrieval, name only what the retrieval tools actually returned. If retrieval is unavailable or blocked, say that naturally and do not invent a filesystem or shell inspection path.

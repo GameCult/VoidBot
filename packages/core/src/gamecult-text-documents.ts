@@ -230,7 +230,7 @@ function createLoveColossusPoemDocument(updatedAt: string): GameCultStructuredTe
       ["fire he needed,", "and words well aimed,"],
       ["not hands that tore", "the helm from him."],
       ["[stanza]"],
-      ["False are the Faces", "that never unfasten,"],
+      ["False are the Personas", "that never unfasten,"],
       ["fair in the feast", "yet famine within;"],
       ["wide is the room", "where wounds may speak,"],
       ["and no wound sits", "as lord on the bench."],

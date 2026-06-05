@@ -10,8 +10,8 @@ $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env"
-$runnerScript = Join-Path $PSScriptRoot "run-repo-face-heartbeats.ts"
-$runnerWrapper = Join-Path $PSScriptRoot "run-repo-face-heartbeats.ps1"
+$runnerScript = Join-Path $PSScriptRoot "run-repo-persona-heartbeats.ts"
+$runnerWrapper = Join-Path $PSScriptRoot "run-repo-persona-heartbeats.ps1"
 $hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 
 function Read-DotEnv {
@@ -36,21 +36,21 @@ function Read-DotEnv {
 $config = Read-DotEnv -Path $envFile
 $taskNameValue = if (-not [string]::IsNullOrWhiteSpace($TaskName)) {
   $TaskName
-} elseif ($config.ContainsKey("REPO_FACE_HEARTBEAT_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["REPO_FACE_HEARTBEAT_TASK_NAME"])) {
-  $config["REPO_FACE_HEARTBEAT_TASK_NAME"]
+} elseif ($config.ContainsKey("REPO_PERSONA_HEARTBEAT_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["REPO_PERSONA_HEARTBEAT_TASK_NAME"])) {
+  $config["REPO_PERSONA_HEARTBEAT_TASK_NAME"]
 } else {
-  "VoidBot Repo Face Heartbeats"
+  "VoidBot Repo Persona Heartbeats"
 }
 $intervalMinutesValue = if ($PSBoundParameters.ContainsKey("IntervalMinutes")) {
   $IntervalMinutes
-} elseif ($config.ContainsKey("REPO_FACE_HEARTBEAT_INTERVAL_MINUTES") -and -not [string]::IsNullOrWhiteSpace($config["REPO_FACE_HEARTBEAT_INTERVAL_MINUTES"])) {
-  [int]$config["REPO_FACE_HEARTBEAT_INTERVAL_MINUTES"]
+} elseif ($config.ContainsKey("REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES") -and -not [string]::IsNullOrWhiteSpace($config["REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES"])) {
+  [int]$config["REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES"]
 } else {
   15
 }
 
 if ($intervalMinutesValue -lt 1) {
-  throw "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES must be at least 1."
+  throw "REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES must be at least 1."
 }
 
 $tsxCliPath = Join-Path $repoRoot "node_modules\tsx\dist\cli.mjs"
@@ -58,7 +58,7 @@ if (-not (Test-Path -LiteralPath $tsxCliPath)) {
   throw "Missing tsx CLI at $tsxCliPath. Run npm install first."
 }
 if (-not (Test-Path -LiteralPath $runnerWrapper)) {
-  throw "Missing repo Face heartbeat PowerShell wrapper at $runnerWrapper."
+  throw "Missing repo Persona heartbeat PowerShell wrapper at $runnerWrapper."
 }
 if (-not (Test-Path -LiteralPath $hiddenLauncher)) {
   throw "Missing hidden PowerShell launcher at $hiddenLauncher."
@@ -72,7 +72,7 @@ $action = New-ScheduledTaskAction `
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutesValue) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
-$description = "Runs VoidBot's repo Face initiative scheduler every $intervalMinutesValue minute(s)."
+$description = "Runs VoidBot's repo Persona initiative scheduler every $intervalMinutesValue minute(s)."
 
 Register-ScheduledTask -TaskName $taskNameValue -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $description -Force | Out-Null
 

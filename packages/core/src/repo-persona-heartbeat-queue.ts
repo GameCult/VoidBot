@@ -7,9 +7,9 @@ import {
   type RepoDiscordIdentityRegistry,
 } from "./repo-discord-identities";
 
-export const REPO_FACE_HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_face_heartbeat_state.v1";
+export const REPO_PERSONA_HEARTBEAT_SCHEMA_VERSION = "voidbot.repo_persona_heartbeat_state.v1";
 
-export interface RepoFacePendingMention {
+export interface RepoPersonaPendingMention {
   id: string;
   identityId: string;
   channelId: string;
@@ -21,7 +21,7 @@ export interface RepoFacePendingMention {
   queuedAt: string;
 }
 
-export async function queueRepoFaceMention(input: {
+export async function queueRepoPersonaMention(input: {
   statePath: string;
   identity: RepoDiscordIdentity;
   channelId: string;
@@ -135,7 +135,7 @@ interface HeartbeatQueueState {
   lastTickAt?: string;
   participants: unknown[];
   history: Array<Record<string, unknown>>;
-  pendingMentions: RepoFacePendingMention[];
+  pendingMentions: RepoPersonaPendingMention[];
 }
 
 async function readHeartbeatQueueState(path: string): Promise<HeartbeatQueueState> {
@@ -144,7 +144,7 @@ async function readHeartbeatQueueState(path: string): Promise<HeartbeatQueueStat
     return {
       schemaVersion: typeof parsed.schemaVersion === "string"
         ? parsed.schemaVersion
-        : REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
+        : REPO_PERSONA_HEARTBEAT_SCHEMA_VERSION,
       initiativeClock: Number.isFinite(parsed.initiativeClock) ? parsed.initiativeClock as number : 0,
       baseRecoveryMinutes: Number.isFinite(parsed.baseRecoveryMinutes) ? parsed.baseRecoveryMinutes as number : 4,
       globalHeat: Number.isFinite(parsed.globalHeat) ? parsed.globalHeat as number : 1,
@@ -157,7 +157,7 @@ async function readHeartbeatQueueState(path: string): Promise<HeartbeatQueueStat
     };
   } catch {
     return {
-      schemaVersion: REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
+      schemaVersion: REPO_PERSONA_HEARTBEAT_SCHEMA_VERSION,
       initiativeClock: 0,
       baseRecoveryMinutes: 4,
       globalHeat: 1,
@@ -188,7 +188,7 @@ function textContainsIdentityMention(content: string, identity: RepoDiscordIdent
     .some((candidate) => containsStandaloneToken(content, candidate));
 }
 
-function isPendingMention(value: unknown): value is RepoFacePendingMention {
+function isPendingMention(value: unknown): value is RepoPersonaPendingMention {
   if (!value || typeof value !== "object") {
     return false;
   }

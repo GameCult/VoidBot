@@ -11,23 +11,23 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const mockMcpServer = resolve(scriptDir, "mock-voidbot-heartbeat-mcp.mjs");
 const promptsRoot = resolve(repoRoot, "prompts");
-const defaultFacePrompt = resolve(repoRoot, ".voidbot", "artifacts", "interpreter-projections", "nibu-full-character-prompt.md");
-const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-interpreter-loop-smoke.json");
+const defaultPersonaPrompt = resolve(repoRoot, ".voidbot", "artifacts", "interpreter-projections", "nibu-full-character-prompt.md");
+const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-persona-interpreter-loop-smoke.json");
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const faceModel = options["face-model"] ?? process.env.REPO_FACE_TURN_CODEX_MODEL ?? "gpt-5.4";
+  const personaModel = options["persona-model"] ?? process.env.REPO_PERSONA_TURN_CODEX_MODEL ?? "gpt-5.4";
   const interpreterModelCandidates = modelCandidatesFromOptions(options);
   const interpreterModel = interpreterModelCandidates.join(",");
-  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
-  const facePromptPath = resolve(repoRoot, options["face-prompt"] ?? defaultFacePrompt);
+  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
+  const personaPromptPath = resolve(repoRoot, options["persona-prompt"] ?? defaultPersonaPrompt);
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
-  const facePrompt = await readFile(facePromptPath, "utf8");
+  const personaPrompt = await readFile(personaPromptPath, "utf8");
   const childLogPath = resolve(repoRoot, ".voidbot", "status", "mock-mcp", `interpreter-loop-child-${Date.now()}.jsonl`);
   await rm(childLogPath, { force: true }).catch(() => undefined);
 
-  const childRun = await runCodexWithModelFallback(facePrompt, {
-    models: [faceModel],
+  const childRun = await runCodexWithModelFallback(personaPrompt, {
+    models: [personaModel],
     reasoningEffort,
     scenarioId: "nibu_interpreter_loop_child",
     logPath: childLogPath,
@@ -37,9 +37,9 @@ async function main() {
   const childText = extractFinalText(childEvents, childRun.stdout);
   const childTools = (await readToolCalls(childLogPath)).map((call) => call.tool);
 
-  const interpreterPrompt = renderTemplate("repo-face-turn-interpreter.prompt.md", {
+  const interpreterPrompt = renderTemplate("repo-persona-turn-interpreter.prompt.md", {
     attempt: "1",
-    facePrompt,
+    personaPrompt,
     faceOutput: childText,
   });
   const interpreterRun = await runCodexWithModelFallback(interpreterPrompt, {
@@ -57,10 +57,10 @@ async function main() {
   ];
   const report = {
     generatedAt: new Date().toISOString(),
-    faceModel,
+    personaModel,
     interpreterModel,
     reasoningEffort,
-    facePromptPath,
+    personaPromptPath,
     passed: failures.length === 0,
     failures,
     child: {
@@ -85,7 +85,7 @@ async function main() {
   await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({
     outPath,
-    faceModel,
+    personaModel,
     interpreterModel,
     reasoningEffort,
     passed: report.passed,
@@ -111,7 +111,7 @@ function evaluateChild(input) {
   if (input.text.length < 160) {
     failures.push("child output is too short to judge as a character turn");
   }
-  for (const forbidden of ["repo-face heartbeat", "heartbeat from", "as an ai language model", "INTERPRETATION"]) {
+  for (const forbidden of ["repo-persona heartbeat", "heartbeat from", "as an ai language model", "INTERPRETATION"]) {
     if (input.text.toLowerCase().includes(forbidden)) {
       failures.push(`child output contains robotic/provenance phrase: ${forbidden}`);
     }
@@ -264,8 +264,8 @@ function modelCandidatesFromOptions(options) {
   const explicit = options.model ?? options.models;
   const raw =
     explicit ??
-    process.env.REPO_FACE_HEARTBEAT_CODEX_MODELS ??
-    process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ??
+    process.env.REPO_PERSONA_HEARTBEAT_CODEX_MODELS ??
+    process.env.REPO_PERSONA_HEARTBEAT_CODEX_MODEL ??
     "gpt-5.3-codex-spark,gpt-5.4-mini";
   return raw
     .split(",")

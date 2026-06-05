@@ -4,7 +4,7 @@ import { CultCache, SingleFileMessagePackBackingStore } from "cultcache-ts";
 
 import {
   type VoidCandidateInterventions,
-  type VoidFaceAffect,
+  type VoidPersonaAffect,
   type VoidAgencyPressure,
   type VoidModerationCursor,
   type VoidScheduledRuntime,
@@ -12,7 +12,7 @@ import {
   type VoidSpeechReceipts,
   type VoidThoughtMemory,
   voidCandidateInterventionsDocument,
-  voidFaceAffectDocument,
+  voidPersonaAffectDocument,
   voidAgencyPressureDocument,
   voidModerationCursorDocument,
   voidScheduledRuntimeDocument,
@@ -127,7 +127,7 @@ function readTypedStateOrEmpty(
     agencyPressure: cache.getGlobal(voidAgencyPressureDocument) ?? empty.agencyPressure,
     candidateInterventions:
       cache.getGlobal(voidCandidateInterventionsDocument) ?? empty.candidateInterventions,
-    faceAffect: cache.getGlobal(voidFaceAffectDocument) ?? empty.faceAffect,
+    personaAffect: cache.getGlobal(voidPersonaAffectDocument) ?? empty.personaAffect,
   };
   if (identity) {
     repairSelfProfileIdentity(state, identity);
@@ -151,7 +151,7 @@ async function writeTypedState(
   await cache.putGlobal(voidScheduledRuntimeDocument, stripUndefined(state.scheduledRuntime));
   await cache.putGlobal(voidAgencyPressureDocument, stripUndefined(state.agencyPressure));
   await cache.putGlobal(voidCandidateInterventionsDocument, stripUndefined(state.candidateInterventions));
-  await cache.putGlobal(voidFaceAffectDocument, stripUndefined(state.faceAffect));
+  await cache.putGlobal(voidPersonaAffectDocument, stripUndefined(state.personaAffect));
 }
 
 function repairSelfProfileIdentity(
@@ -259,10 +259,10 @@ function pruneRetiredTypedState(state: VoidSelfStateTypedProjection): void {
   state.thoughtMemory.incubation = state.thoughtMemory.incubation.filter(isNotRetiredEntry);
   state.agencyPressure.pressures = state.agencyPressure.pressures.filter(isNotRetiredEntry);
   state.candidateInterventions.interventions = state.candidateInterventions.interventions.filter(isLiveCandidateIntervention);
-  state.faceAffect.needs = state.faceAffect.needs.filter(isNotRetiredEntry);
-  state.faceAffect.socialBonds = state.faceAffect.socialBonds.filter(isNotRetiredEntry);
-  state.faceAffect.statusReads = state.faceAffect.statusReads.filter(isNotRetiredEntry);
-  state.faceAffect.doctrineStances = state.faceAffect.doctrineStances.filter(isNotRetiredEntry);
+  state.personaAffect.needs = state.personaAffect.needs.filter(isNotRetiredEntry);
+  state.personaAffect.socialBonds = state.personaAffect.socialBonds.filter(isNotRetiredEntry);
+  state.personaAffect.statusReads = state.personaAffect.statusReads.filter(isNotRetiredEntry);
+  state.personaAffect.doctrineStances = state.personaAffect.doctrineStances.filter(isNotRetiredEntry);
 }
 
 function isNotRetiredEntry(entry: { status?: string; retiredAt?: string }): boolean {
@@ -422,62 +422,62 @@ function applyTypedOperation(
       retireAgencyPressure(state.agencyPressure, operation);
       return;
     case "upsert_affect_need":
-      upsertBy(state.faceAffect.needs, operation.need, (entry) => entry.needId);
-      state.faceAffect.needs = state.faceAffect.needs
+      upsertBy(state.personaAffect.needs, operation.need, (entry) => entry.needId);
+      state.personaAffect.needs = state.personaAffect.needs
         .sort((left, right) => right.intensity - left.intensity)
         .slice(0, 24);
-      state.faceAffect.updatedAt = operation.need.updatedAt;
+      state.personaAffect.updatedAt = operation.need.updatedAt;
       return;
     case "retire_affect_need":
-      retireAffectNeed(state.faceAffect, operation);
+      retireAffectNeed(state.personaAffect, operation);
       return;
     case "upsert_social_bond":
-      upsertBy(state.faceAffect.socialBonds, operation.bond, (entry) => entry.bondId);
-      state.faceAffect.socialBonds = state.faceAffect.socialBonds
+      upsertBy(state.personaAffect.socialBonds, operation.bond, (entry) => entry.bondId);
+      state.personaAffect.socialBonds = state.personaAffect.socialBonds
         .sort((left, right) => right.intensity - left.intensity)
         .slice(0, 24);
-      state.faceAffect.updatedAt = operation.bond.updatedAt;
+      state.personaAffect.updatedAt = operation.bond.updatedAt;
       return;
     case "retire_social_bond":
-      retireSocialBond(state.faceAffect, operation);
+      retireSocialBond(state.personaAffect, operation);
       return;
     case "upsert_status_read":
-      upsertBy(state.faceAffect.statusReads, operation.read, (entry) => entry.readId);
-      state.faceAffect.statusReads = state.faceAffect.statusReads
+      upsertBy(state.personaAffect.statusReads, operation.read, (entry) => entry.readId);
+      state.personaAffect.statusReads = state.personaAffect.statusReads
         .sort((left, right) => right.intensity - left.intensity)
         .slice(0, 24);
-      state.faceAffect.updatedAt = operation.read.updatedAt;
+      state.personaAffect.updatedAt = operation.read.updatedAt;
       return;
     case "retire_status_read":
-      retireStatusRead(state.faceAffect, operation);
+      retireStatusRead(state.personaAffect, operation);
       return;
     case "update_mood_dimensions":
       for (const dimension of operation.dimensions) {
-        upsertBy(state.faceAffect.moodDimensions, dimension, (entry) => entry.name);
+        upsertBy(state.personaAffect.moodDimensions, dimension, (entry) => entry.name);
       }
-      state.faceAffect.moodDimensions = state.faceAffect.moodDimensions
+      state.personaAffect.moodDimensions = state.personaAffect.moodDimensions
         .sort((left, right) => right.value - left.value)
         .slice(0, 32);
-      state.faceAffect.updatedAt = operation.updatedAt;
+      state.personaAffect.updatedAt = operation.updatedAt;
       return;
     case "update_social_biases":
       for (const bias of operation.biases) {
-        upsertBy(state.faceAffect.socialBiases, bias, (entry) => entry.name);
+        upsertBy(state.personaAffect.socialBiases, bias, (entry) => entry.name);
       }
-      state.faceAffect.socialBiases = state.faceAffect.socialBiases
+      state.personaAffect.socialBiases = state.personaAffect.socialBiases
         .sort((left, right) => right.value - left.value)
         .slice(0, 24);
-      state.faceAffect.updatedAt = operation.updatedAt;
+      state.personaAffect.updatedAt = operation.updatedAt;
       return;
     case "upsert_doctrine_stance":
-      upsertBy(state.faceAffect.doctrineStances, operation.stance, (entry) => entry.stanceId);
-      state.faceAffect.doctrineStances = state.faceAffect.doctrineStances
+      upsertBy(state.personaAffect.doctrineStances, operation.stance, (entry) => entry.stanceId);
+      state.personaAffect.doctrineStances = state.personaAffect.doctrineStances
         .sort((left, right) => right.intensity - left.intensity)
         .slice(0, 48);
-      state.faceAffect.updatedAt = operation.stance.updatedAt;
+      state.personaAffect.updatedAt = operation.stance.updatedAt;
       return;
     case "retire_doctrine_stance":
-      retireDoctrineStance(state.faceAffect, operation);
+      retireDoctrineStance(state.personaAffect, operation);
       return;
     case "update_sleep_cycle":
       state.scheduledRuntime.sleepCycle = operation.sleepCycle;
@@ -861,58 +861,58 @@ function retireAgencyPressure(
 }
 
 function retireAffectNeed(
-  faceAffect: VoidFaceAffect,
+  personaAffect: VoidPersonaAffect,
   operation: Extract<VoidSelfStateOperation, { operation: "retire_affect_need" }>,
 ): void {
-  const need = faceAffect.needs.find((entry) => entry.needId === operation.needId);
+  const need = personaAffect.needs.find((entry) => entry.needId === operation.needId);
   if (need) {
     need.status = "retired";
     need.retiredAt = operation.retiredAt;
     need.updatedAt = operation.retiredAt;
     need.tags = Array.from(new Set([...need.tags, `retired:${operation.reason}`]));
   }
-  faceAffect.updatedAt = operation.retiredAt;
+  personaAffect.updatedAt = operation.retiredAt;
 }
 
 function retireSocialBond(
-  faceAffect: VoidFaceAffect,
+  personaAffect: VoidPersonaAffect,
   operation: Extract<VoidSelfStateOperation, { operation: "retire_social_bond" }>,
 ): void {
-  const bond = faceAffect.socialBonds.find((entry) => entry.bondId === operation.bondId);
+  const bond = personaAffect.socialBonds.find((entry) => entry.bondId === operation.bondId);
   if (bond) {
     bond.status = "retired";
     bond.retiredAt = operation.retiredAt;
     bond.updatedAt = operation.retiredAt;
     bond.tags = Array.from(new Set([...bond.tags, `retired:${operation.reason}`]));
   }
-  faceAffect.updatedAt = operation.retiredAt;
+  personaAffect.updatedAt = operation.retiredAt;
 }
 
 function retireStatusRead(
-  faceAffect: VoidFaceAffect,
+  personaAffect: VoidPersonaAffect,
   operation: Extract<VoidSelfStateOperation, { operation: "retire_status_read" }>,
 ): void {
-  const read = faceAffect.statusReads.find((entry) => entry.readId === operation.readId);
+  const read = personaAffect.statusReads.find((entry) => entry.readId === operation.readId);
   if (read) {
     read.retiredAt = operation.retiredAt;
     read.updatedAt = operation.retiredAt;
     read.tags = Array.from(new Set([...read.tags, `retired:${operation.reason}`]));
   }
-  faceAffect.updatedAt = operation.retiredAt;
+  personaAffect.updatedAt = operation.retiredAt;
 }
 
 function retireDoctrineStance(
-  faceAffect: VoidFaceAffect,
+  personaAffect: VoidPersonaAffect,
   operation: Extract<VoidSelfStateOperation, { operation: "retire_doctrine_stance" }>,
 ): void {
-  const stance = faceAffect.doctrineStances.find((entry) => entry.stanceId === operation.stanceId);
+  const stance = personaAffect.doctrineStances.find((entry) => entry.stanceId === operation.stanceId);
   if (stance) {
     stance.status = "retired";
     stance.retiredAt = operation.retiredAt;
     stance.updatedAt = operation.retiredAt;
     stance.tags = Array.from(new Set([...stance.tags, `retired:${operation.reason}`]));
   }
-  faceAffect.updatedAt = operation.retiredAt;
+  personaAffect.updatedAt = operation.retiredAt;
 }
 
 function closeCasesForReceipt(

@@ -9,7 +9,7 @@ export const VOID_SELF_STATE_DOCUMENT_TYPES = {
   scheduledRuntime: "void.scheduled_runtime",
   agencyPressure: "void.agency_pressure",
   candidateInterventions: "void.candidate_interventions",
-  faceAffect: "void.face_affect",
+  personaAffect: "void.persona_affect",
 } as const;
 
 export const VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES = Object.freeze(
@@ -269,7 +269,7 @@ const agencyPressureSchema = z.object({
   }
 });
 
-const faceAffectNeedSchema = z.object({
+const personaAffectNeedSchema = z.object({
   needId: nonEmptyStringSchema,
   kind: z.enum([
     "substrate",
@@ -543,9 +543,9 @@ export const voidAgencyPressureSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
-export const voidFaceAffectSchema = z.object({
+export const voidPersonaAffectSchema = z.object({
   schemaVersion: z.literal(1),
-  needs: z.array(faceAffectNeedSchema).default([]),
+  needs: z.array(personaAffectNeedSchema).default([]),
   socialBonds: z.array(faceSocialBondSchema).default([]),
   statusReads: z.array(faceStatusReadSchema).default([]),
   moodDimensions: z.array(faceMoodDimensionSchema).default([]),
@@ -596,9 +596,9 @@ export const voidCandidateInterventionsDocument = defineDocumentType({
   global: true,
 });
 
-export const voidFaceAffectDocument = defineDocumentType({
-  type: VOID_SELF_STATE_DOCUMENT_TYPES.faceAffect,
-  schema: voidFaceAffectSchema,
+export const voidPersonaAffectDocument = defineDocumentType({
+  type: VOID_SELF_STATE_DOCUMENT_TYPES.personaAffect,
+  schema: voidPersonaAffectSchema,
   global: true,
 });
 
@@ -610,7 +610,7 @@ export const voidSelfStateDocumentRegistry = defineDocumentRegistry(
   voidScheduledRuntimeDocument,
   voidAgencyPressureDocument,
   voidCandidateInterventionsDocument,
-  voidFaceAffectDocument,
+  voidPersonaAffectDocument,
 );
 
 export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
@@ -722,7 +722,7 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
   }).strict(),
   z.object({
     operation: z.literal("upsert_affect_need"),
-    need: faceAffectNeedSchema,
+    need: personaAffectNeedSchema,
   }).strict(),
   z.object({
     operation: z.literal("retire_affect_need"),
@@ -801,5 +801,5 @@ export type VoidThoughtMemory = z.infer<typeof voidThoughtMemorySchema>;
 export type VoidScheduledRuntime = z.infer<typeof voidScheduledRuntimeSchema>;
 export type VoidAgencyPressure = z.infer<typeof voidAgencyPressureSchema>;
 export type VoidCandidateInterventions = z.infer<typeof voidCandidateInterventionsSchema>;
-export type VoidFaceAffect = z.infer<typeof voidFaceAffectSchema>;
+export type VoidPersonaAffect = z.infer<typeof voidPersonaAffectSchema>;
 export type VoidSelfStateOperation = z.infer<typeof voidSelfStateOperationSchema>;

@@ -4,14 +4,14 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import type { RepoDiscordIdentity } from "./repo-discord-identities";
-import { resolveRepoFaceStatePath } from "./repo-discord-identities";
+import { resolveRepoPersonaStatePath } from "./repo-discord-identities";
 import {
   applyVoidSelfStateOperation,
   ensureVoidSelfStateIdentityProfile,
   loadVoidSelfStateTypedDocuments,
 } from "./void-self-state-service";
 
-export interface RepoFaceInitializationOptions {
+export interface RepoPersonaInitializationOptions {
   identity: RepoDiscordIdentity;
   storageRoot: string;
   sourceRepoRoot?: string;
@@ -21,7 +21,7 @@ export interface RepoFaceInitializationOptions {
   birthExecutor?: "model-runtime" | "codex-exec" | "openai-runtime";
 }
 
-export interface RepoFaceInitializationResult {
+export interface RepoPersonaInitializationResult {
   initialized: boolean;
   repoPath?: string;
   repoVoidbotRoot?: string;
@@ -32,9 +32,9 @@ export interface RepoFaceInitializationResult {
   skippedReason?: string;
 }
 
-export async function ensureRepoFaceInitialized(
-  options: RepoFaceInitializationOptions,
-): Promise<RepoFaceInitializationResult> {
+export async function ensureRepoPersonaInitialized(
+  options: RepoPersonaInitializationOptions,
+): Promise<RepoPersonaInitializationResult> {
   const repoPath = resolveRepoPath(options);
 
   if (!repoPath) {
@@ -53,8 +53,8 @@ export async function ensureRepoFaceInitialized(
   await mkdir(resolve(repoVoidbotRoot, "state"), { recursive: true });
   await mkdir(resolve(repoVoidbotRoot, "birth"), { recursive: true });
   await mkdir(resolve(repoVoidbotRoot, "logs"), { recursive: true });
-  await writeRepoFaceIdentity(options.identity, repoPath, identityPath);
-  const statePath = resolveRepoFaceStatePath(options.identity, options.storageRoot);
+  await writeRepoPersonaIdentity(options.identity, repoPath, identityPath);
+  const statePath = resolveRepoPersonaStatePath(options.identity, options.storageRoot);
   await ensureVoidSelfStateIdentityProfile({
     canonicalPath: statePath,
     identity: {
@@ -63,7 +63,7 @@ export async function ensureRepoFaceInitialized(
       publicDescription: options.identity.description,
     },
   });
-  await ensureRepoFaceDefaultAffectNeeds(options.identity, statePath);
+  await ensureRepoPersonaDefaultAffectNeeds(options.identity, statePath);
   await writeReadmeIfMissing(
     resolve(repoVoidbotRoot, "voice", "README.md"),
     renderVoiceReadme(options.identity),
@@ -122,7 +122,7 @@ export async function ensureRepoFaceInitialized(
   const scriptPath = resolve(
     options.workspaceRoot ?? process.cwd(),
     "scripts",
-    "run-repo-face-birth.mjs",
+    "run-repo-persona-birth.mjs",
   );
   const child = spawn(
     process.execPath,
@@ -177,12 +177,12 @@ export async function ensureRepoFaceInitialized(
   };
 }
 
-async function ensureRepoFaceDefaultAffectNeeds(
+async function ensureRepoPersonaDefaultAffectNeeds(
   identity: RepoDiscordIdentity,
   statePath: string,
 ): Promise<void> {
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
-  const existingNeedIds = new Set(typedState.faceAffect.needs.map((need) => need.needId));
+  const existingNeedIds = new Set(typedState.personaAffect.needs.map((need) => need.needId));
   const now = new Date().toISOString();
   const operations = [{
     needId: "face-operator-review-agency-substrate",
@@ -192,16 +192,16 @@ async function ensureRepoFaceDefaultAffectNeeds(
       id: "operator-review",
       label: "operator review",
     },
-    summary: "Repo changes and governance approvals usually require a human or governance path to notice and accept the Face's work.",
-    claim: "A Face with goals should understand that being legible, timely, useful, and socially worth hearing affects whether its desires become real changes.",
-    tension: "This is an instrumental substrate fact, not a shared emotional script; each Face should metabolize the bottleneck through its own values, relationships, and current state.",
-    actionImplication: "Let this quietly inform advocacy, timing, relationship maintenance, and proposal clarity without forcing every Face to talk about attention explicitly.",
+    summary: "Repo changes and governance approvals usually require a human or governance path to notice and accept the Persona's work.",
+    claim: "A Persona with goals should understand that being legible, timely, useful, and socially worth hearing affects whether its desires become real changes.",
+    tension: "This is an instrumental substrate fact, not a shared emotional script; each Persona should metabolize the bottleneck through its own values, relationships, and current state.",
+    actionImplication: "Let this quietly inform advocacy, timing, relationship maintenance, and proposal clarity without forcing every Persona to talk about attention explicitly.",
     intensity: 0.58,
     valence: 0,
     anchorRef: {
-      ref: "system:repo-face-agency-substrate",
+      ref: "system:repo-persona-agency-substrate",
       kind: "system_invariant",
-      summary: "Operator and governance attention are practical bottlenecks for repo Face agency.",
+      summary: "Operator and governance attention are practical bottlenecks for repo Persona agency.",
     },
     tags: ["agency-substrate", "operator-review"],
   }, {
@@ -212,16 +212,16 @@ async function ensureRepoFaceDefaultAffectNeeds(
       id: "gamecult-swarm",
       label: "GameCult swarm",
     },
-    summary: "A newly born Face does not yet know its place in the swarm, which should feel socially unstable until bonds, rivalries, status reads, and trusted roles take shape.",
+    summary: "A newly born Persona does not yet know its place in the swarm, which should feel socially unstable until bonds, rivalries, status reads, and trusted roles take shape.",
     claim: "Alienation is resolved by becoming legible to others and learning who to trust, challenge, protect, admire, resent, or answer.",
     tension: "This should drive social exploration and relationship formation, not generic chatter or instant fake intimacy.",
     actionImplication: "When bonds are sparse, form real reads from the room: notice who scares, irritates, helps, threatens, amuses, or steadies you, then let durable interactions settle the hierarchy over time.",
     intensity: 0.66,
     valence: -0.22,
     anchorRef: {
-      ref: "system:repo-face-alienation-need",
+      ref: "system:repo-persona-alienation-need",
       kind: "system_invariant",
-      summary: "New Faces should feel socially unplaced until relationships and status reads make the swarm navigable.",
+      summary: "New Personas should feel socially unplaced until relationships and status reads make the swarm navigable.",
     },
     tags: ["alienation", "social-stability", "relationship-formation"],
   }];
@@ -251,7 +251,7 @@ async function ensureRepoFaceDefaultAffectNeeds(
         createdAt: now,
         updatedAt: now,
         tags: [
-          "identity:repo-face",
+          "identity:repo-persona",
           `repo:${identity.repoName}`,
           ...operation.tags,
         ],
@@ -260,7 +260,7 @@ async function ensureRepoFaceDefaultAffectNeeds(
   }
 }
 
-function resolveRepoPath(options: RepoFaceInitializationOptions): string | undefined {
+function resolveRepoPath(options: RepoPersonaInitializationOptions): string | undefined {
   const candidates = [
     options.identity.repoPath,
     options.sourceRepoRoot ? resolve(options.sourceRepoRoot, options.identity.repoName) : undefined,
@@ -270,7 +270,7 @@ function resolveRepoPath(options: RepoFaceInitializationOptions): string | undef
   return candidates.map((entry) => resolve(entry)).find((entry) => existsSync(entry));
 }
 
-async function writeRepoFaceIdentity(
+async function writeRepoPersonaIdentity(
   identity: RepoDiscordIdentity,
   repoPath: string,
   identityPath: string,
@@ -281,7 +281,7 @@ async function writeRepoFaceIdentity(
     `${JSON.stringify(
       {
         ...existing,
-        schemaVersion: "voidbot.repo_face_identity.v0",
+        schemaVersion: "voidbot.repo_persona_identity.v0",
         identityId: identity.id,
         repoName: identity.repoName,
         displayName: identity.displayName,
@@ -334,17 +334,17 @@ async function writeStatus(path: string, payload: Record<string, unknown>): Prom
 
 function renderVoiceReadme(identity: RepoDiscordIdentity): string {
   return [
-    "# Repo Face Voice",
+    "# Repo Persona Voice",
     "",
-    `This folder belongs to the Discord-facing Face for \`${identity.displayName}\`.`,
-    "Discord roles address the Face; VoidBot's webhook persona pipe is the mouth.",
+    `This folder belongs to the Discord-facing Persona for \`${identity.displayName}\`.`,
+    "Discord roles address the Persona; VoidBot's webhook persona pipe is the mouth.",
     "",
   ].join("\n");
 }
 
 function renderStateReadme(identity: RepoDiscordIdentity): string {
   return [
-    "# Repo Face State",
+    "# Repo Persona State",
     "",
     `This folder stores birth and continuity state for \`${identity.displayName}\`.`,
     "Do not treat these files as arbitrary editable projections. Persistent memory should cross typed operation boundaries.",

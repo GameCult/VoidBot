@@ -270,7 +270,7 @@ try {
   $agentSwarmPaused = Test-AgentSwarmPaused
   $agentSwarmOrganIds = @{
     "bifrost-dispatch" = $true
-    "repo-face-heartbeats" = $true
+    "repo-persona-heartbeats" = $true
     "void-mood-drift" = $true
     "void-moderation-rumination" = $true
   }
@@ -294,13 +294,13 @@ try {
       Arguments = @((Join-Path $bifrostRoot "tools\dispatch-agent-requests.mjs"), "dispatch", "--repo", "*", "--max", "1")
     },
     [pscustomobject]@{
-      Id = "repo-face-heartbeats"
-      Label = "Repo Face CTB turns"
-      IntervalMinutes = Get-ConfigInt -Config $config -Name "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
+      Id = "repo-persona-heartbeats"
+      Label = "Repo Persona CTB turns"
+      IntervalMinutes = Get-ConfigInt -Config $config -Name "REPO_PERSONA_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
       TimeoutMinutes = 20
       Cwd = $repoRoot
       Executable = $powershell
-      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-repo-face-heartbeats.ps1"))
+      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-repo-persona-heartbeats.ps1"))
     },
     [pscustomobject]@{
       Id = "void-mood-drift"

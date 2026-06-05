@@ -10,8 +10,8 @@ const providerAdvertisementDocumentType = "gamecult.eve.provider_advertisement";
 const providerAdvertisementSchemaId = "gamecult.eve.provider_advertisement.v1";
 const interfaceBindingDocumentType = "gamecult.eve.interface_binding";
 const interfaceBindingSchemaId = "gamecult.eve.interface_binding.v1";
-const surfaceStateDocumentType = "gamecult.eve.surface_state";
-const surfaceStateSchemaId = "gamecult.eve.surface_state.v1";
+const surpersonaStateDocumentType = "gamecult.eve.surface_state";
+const surpersonaStateSchemaId = "gamecult.eve.surface_state.v1";
 const fixtureDocumentType = "voidbot.provider_advertisement_catalog";
 const fixtureSchemaId = "voidbot.provider_advertisement_catalog.v0";
 const verseId = "voidbot.local";
@@ -116,32 +116,32 @@ function buildCatalog() {
       },
     }),
     provider({
-      id: "voidbot.repo_face",
-      title: "VoidBot Repo Face Compatibility",
-      description: "Registered Face address book, repo-local state witnesses, channel grants, prompt assembly status, Bifrost digest availability, and Huginn inspection readiness.",
+      id: "voidbot.repo_persona",
+      title: "VoidBot Repo Persona Compatibility",
+      description: "Registered Persona address book, repo-local state witnesses, channel grants, prompt assembly status, Bifrost digest availability, and Huginn inspection readiness.",
       status: "planned-handoff",
       surfaces: [
-        surface("voidbot.repo_face.address_book", "Repo Face address book", "Role-backed Discord identity registry and webhook persona compatibility data."),
-        surface("voidbot.repo_face.state_witnesses", "Repo Face state witnesses", "Repo-local .cc state paths and Huginn handoff readiness."),
-        surface("voidbot.repo_face.prompt_assembly", "Prompt assembly", "Read-only status for state projection, channel grants, Bifrost digest reads, and current-room transcript attachment."),
+        surface("voidbot.repo_persona.address_book", "Repo Persona address book", "Role-backed Discord identity registry and webhook persona compatibility data."),
+        surface("voidbot.repo_persona.state_witnesses", "Repo Persona state witnesses", "Repo-local .cc state paths and Huginn handoff readiness."),
+        surface("voidbot.repo_persona.prompt_assembly", "Prompt assembly", "Read-only status for state projection, channel grants, Bifrost digest reads, and current-room transcript attachment."),
       ],
       witnesses: [
         witness("voidbot.repo_discord_identities", "REPO_DISCORD_IDENTITIES_PATH", "VoidBot compatibility registry", ["Discord role ids", "webhook persona address book", "channel grants"]),
-        witness("voidbot.repo_face_state", ".voidbot/private/repo-faces/<identity>.cc or repo-local Face state path", "VoidBot compatibility carrier", ["legacy Face .cc state witness"]),
+        witness("voidbot.repo_persona_state", ".voidbot/private/repo-personas/<identity>.cc or repo-local Persona state path", "VoidBot compatibility carrier", ["legacy Persona .cc state witness"]),
         witness("gamecult.persona_state.v0", "E:/Projects/EpiphanyAgent/schemas/cultnet/gamecult.persona_state.v0.schema.json", "Epiphany Persona schema", ["portable Persona state schema"]),
       ],
       commands: [
-        command("repo_face.list_identities", "read-only", "List registered repo Face Discord identities and compatibility metadata."),
-        command("repo_face.inspect_prompt_packet", "read-only", "Render an exact Face prompt packet for diagnostics without queueing a turn."),
-        command("repo_face.handoff_to_huginn", "handoff", "Ask Huginn to inspect, validate, migrate, or publish Persona/.cc state; VoidBot does not become the Persona steward."),
+        command("repo_persona.list_identities", "read-only", "List registered repo Persona Discord identities and compatibility metadata."),
+        command("repo_persona.inspect_prompt_packet", "read-only", "Render an exact Persona prompt packet for diagnostics without queueing a turn."),
+        command("repo_persona.handoff_to_huginn", "handoff", "Ask Huginn to inspect, validate, migrate, or publish Persona/.cc state; VoidBot does not become the Persona steward."),
       ],
       owners: {
-        state: "VoidBot compatibility registry for Discord addressing; repo-local owners for Face state",
+        state: "VoidBot compatibility registry for Discord addressing; repo-local owners for Persona state",
         inspection: "Huginn for Persona/.cc stewardship",
         presentation: "Eve/CultUI lowerings",
       },
       demotions: [
-        "VoidBot repo Face MCP state reads are diagnostics for external agents, not canonical Persona inspection or native swarm access.",
+        "VoidBot repo Persona MCP state reads are diagnostics for external agents, not canonical Persona inspection or native swarm access.",
         "VoidBot registry data is a Discord compatibility projection, not portable Persona authority.",
         "Persona publication and .cc inspection readiness belong to Huginn once the handoff path exists.",
       ],
@@ -149,19 +149,19 @@ function buildCatalog() {
     provider({
       id: "voidbot.swarm",
       title: "VoidBot Swarm",
-      description: "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Face state witness.",
+      description: "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Persona state witness.",
       status: "live",
       surfaces: [
-        surface("voidbot.swarm.ctb_order", "CTB order", "Initiative order, active turns, recovery timing, pending mentions, and selected Face witness."),
+        surface("voidbot.swarm.ctb_order", "CTB order", "Initiative order, active turns, recovery timing, pending mentions, and selected Persona witness."),
         surface("voidbot.swarm.controls", "Swarm controls", "Pause, cadence, and manual turn request controls through the Eve binding."),
       ],
       witnesses: [
         witness("voidbot.swarm_state_snapshot", ".voidbot/status/cultmesh/voidbot-swarm-state.cc", "scripts/render-voidbot-swarm-dashboard.mjs", ["voidbot.swarm_state_snapshot", "gamecult.eve.provider_advertisement", "gamecult.eve.surface_state", "gamecult.eve.interface_binding"]),
-        witness("voidbot.repo_face_heartbeat_state", ".voidbot/status/repo-face-heartbeats.json", "VoidBot CTB scheduler", ["debug/status source"]),
+        witness("voidbot.repo_persona_heartbeat_state", ".voidbot/status/repo-persona-heartbeats.json", "VoidBot CTB scheduler", ["debug/status source"]),
         witness("voidbot.orchestrator_state", ".voidbot/status/gamecult-orchestrator.json", "GameCult Local Orchestrator", ["debug/status source"]),
       ],
       commands: [
-        command("swarm.inspect", "read-only", "Load the current CTB and selected Face state surface."),
+        command("swarm.inspect", "read-only", "Load the current CTB and selected Persona state surface."),
         command("swarm.set_pause", "side-effecting", "Set the repo-controlled swarm pause flag through the provider-owned command boundary."),
         command("swarm.set_cadence_multiplier", "side-effecting", "Update scheduler cadence through the provider-owned command boundary."),
         command("swarm.force_turn", "side-effecting", "Queue a manual turn request through the provider-owned command boundary."),
@@ -189,9 +189,9 @@ function buildCatalog() {
       schemaId: providerAdvertisementSchemaId,
     },
     eveDocuments: {
-      surfaceState: {
-        documentType: surfaceStateDocumentType,
-        schemaId: surfaceStateSchemaId,
+      surpersonaState: {
+        documentType: surpersonaStateDocumentType,
+        schemaId: surpersonaStateSchemaId,
       },
       interfaceBinding: {
         documentType: interfaceBindingDocumentType,
@@ -201,7 +201,7 @@ function buildCatalog() {
     cultMeshKeys: {
       providerCatalog: key("voidbot.providers"),
       providerAdvertisements: providers.map((item) => key(item.providerId)),
-      surfaceStates: providers.map((item) => key(item.providerId)),
+      surpersonaStates: providers.map((item) => key(item.providerId)),
       interfaceBindings: providers.map((item) => key(item.providerId)),
       liveSwarmStore: ".voidbot/status/cultmesh/voidbot-swarm-state.cc",
     },
@@ -216,7 +216,7 @@ function buildCatalog() {
       ],
       voidbotRole: [
         "Carries Discord compatibility registry data.",
-        "Names repo Face .cc witness paths.",
+        "Names repo Persona .cc witness paths.",
         "Feeds context to Huginn when requested.",
         "Does not become the Persona runtime steward.",
       ],
@@ -227,7 +227,7 @@ function buildCatalog() {
       voidbotCompatibilityOnly: [
         "repo Discord identity registry",
         "webhook persona addressing",
-        "repo Face .cc witness paths",
+        "repo Persona .cc witness paths",
         "legacy MCP state diagnostics",
       ],
       forbiddenAuthority: [
@@ -257,15 +257,15 @@ function provider(input) {
     status: input.status,
     endpoint: cultMeshAddress,
     endpoints: [
-      endpoint("tui", cultMeshAddress, surfaceStateSchemaId, ["tui", "agent"]),
-      endpoint("gui", `${locatedService}/${resourceBase}/eve/gui`, surfaceStateSchemaId, ["gui", "eve-native", "browser"]),
+      endpoint("tui", cultMeshAddress, surpersonaStateSchemaId, ["tui", "agent"]),
+      endpoint("gui", `${locatedService}/${resourceBase}/eve/gui`, surpersonaStateSchemaId, ["gui", "eve-native", "browser"]),
     ],
     routes: [
       route("cultmesh-document", key(input.id).endpoint, "Legacy CultMesh document key; route only, not service identity."),
     ],
     documents: [
       document(providerAdvertisementDocumentType, providerAdvertisementSchemaId, input.id),
-      document(surfaceStateDocumentType, surfaceStateSchemaId, input.id),
+      document(surpersonaStateDocumentType, surpersonaStateSchemaId, input.id),
       document(interfaceBindingDocumentType, interfaceBindingSchemaId, input.id),
     ],
     surfaces: input.surfaces,
@@ -313,7 +313,7 @@ function key(value) {
 }
 
 function validateCatalog(value) {
-  const requiredProviders = ["voidbot.discord", "voidbot.archive", "voidbot.source", "voidbot.repo_face", "voidbot.swarm"];
+  const requiredProviders = ["voidbot.discord", "voidbot.archive", "voidbot.source", "voidbot.repo_persona", "voidbot.swarm"];
   const providerIds = new Set(value.providers.map((providerItem) => providerItem.providerId));
   for (const providerId of requiredProviders) {
     if (!providerIds.has(providerId)) {

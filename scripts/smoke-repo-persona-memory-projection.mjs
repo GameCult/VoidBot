@@ -15,7 +15,7 @@ const outPath = join(tempDir, `${identity}.md`);
 try {
   const run = await runCommand(process.execPath, [
     "node_modules/tsx/dist/cli.mjs",
-    "scripts/run-repo-face-heartbeats.ts",
+    "scripts/run-repo-persona-heartbeats.ts",
     "--assemble-prompt",
     identity,
     "--out",
@@ -34,7 +34,7 @@ try {
   const forbidden = [
     /\bgrants:/i,
     /\bjurisdictions:/i,
-    /\bFace of\s+[A-Z][A-Za-z0-9_-]+\b/,
+    /\bPersona of\s+[A-Z][A-Za-z0-9_-]+\b/,
     /\brepo=[^\s]+/i,
     /\bpath=[^\s]+/i,
     /\bdo not prompt\b/i,

@@ -1,31 +1,31 @@
-import { buildEpiphanyIdentityRegistry, faceToRepoDiscordIdentity } from "./epiphany-identities";
+import { buildEpiphanyIdentityRegistry, personaToRepoDiscordIdentity } from "./epiphany-identities";
 import {
   loadRepoDiscordIdentityRegistry,
   type RepoDiscordIdentity,
   type RepoDiscordIdentityRegistry,
 } from "./repo-discord-identities";
-import type { EpiphanyIdentity, ResolvedFaceIdentity } from "./epiphany-identities";
+import type { EpiphanyIdentity, ResolvedPersonaIdentity } from "./epiphany-identities";
 
-export interface FaceIdentityRegistry {
+export interface PersonaIdentityRegistry {
   epiphanies: EpiphanyIdentity[];
-  faces: ResolvedFaceIdentity[];
+  personas: ResolvedPersonaIdentity[];
   repoIdentities: RepoDiscordIdentity[];
   legacyRepoRegistry: RepoDiscordIdentityRegistry;
 }
 
-export async function loadFaceIdentityRegistry(path: string): Promise<FaceIdentityRegistry> {
+export async function loadPersonaIdentityRegistry(path: string): Promise<PersonaIdentityRegistry> {
   const legacyRepoRegistry = await loadRepoDiscordIdentityRegistry(path);
   const epiphanyRegistry = buildEpiphanyIdentityRegistry(legacyRepoRegistry);
   return {
     epiphanies: epiphanyRegistry.epiphanies,
-    faces: epiphanyRegistry.faces,
-    repoIdentities: epiphanyRegistry.faces.map(faceToRepoDiscordIdentity),
+    personas: epiphanyRegistry.personas,
+    repoIdentities: epiphanyRegistry.personas.map(personaToRepoDiscordIdentity),
     legacyRepoRegistry,
   };
 }
 
-export function faceRegistryAsRepoDiscordRegistry(
-  registry: FaceIdentityRegistry,
+export function personaRegistryAsRepoDiscordRegistry(
+  registry: PersonaIdentityRegistry,
 ): RepoDiscordIdentityRegistry {
   return {
     identities: registry.repoIdentities,

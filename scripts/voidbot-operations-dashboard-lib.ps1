@@ -580,7 +580,7 @@ function Get-VoidBotDashboardQdrantDiagnostics {
   try {
     $historyInfo = Invoke-VoidBotDashboardJsonRequest -Url "$baseUrl/collections/$HistoryCollection"
     $sourceInfo = Invoke-VoidBotDashboardJsonRequest -Url "$baseUrl/collections/$SourceCollection"
-    $repoFacet = Invoke-VoidBotDashboardJsonRequest -Method Post -Url "$baseUrl/collections/$SourceCollection/facet" -Body @{
+    $repoPersonat = Invoke-VoidBotDashboardJsonRequest -Method Post -Url "$baseUrl/collections/$SourceCollection/facet" -Body @{
       key = "repoName"
       limit = 8
     }
@@ -605,7 +605,7 @@ function Get-VoidBotDashboardQdrantDiagnostics {
       status = Get-VoidBotDashboardProperty -InputObject (Get-VoidBotDashboardProperty -InputObject $sourceInfo -PropertyName "result") -PropertyName "status"
       segmentsCount = Get-VoidBotDashboardProperty -InputObject (Get-VoidBotDashboardProperty -InputObject $sourceInfo -PropertyName "result") -PropertyName "segments_count"
     }
-    $result.topRepos = @((Get-VoidBotDashboardProperty -InputObject (Get-VoidBotDashboardProperty -InputObject $repoFacet -PropertyName "result") -PropertyName "hits"))
+    $result.topRepos = @((Get-VoidBotDashboardProperty -InputObject (Get-VoidBotDashboardProperty -InputObject $repoPersonat -PropertyName "result") -PropertyName "hits"))
     $result.topLanguages = @((Get-VoidBotDashboardProperty -InputObject (Get-VoidBotDashboardProperty -InputObject $languageFacet -PropertyName "result") -PropertyName "hits"))
   } catch {
     $result.state = "warning"

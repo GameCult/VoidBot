@@ -1,4 +1,4 @@
-<!-- prompt:smoke-repo-face-fake-consensus-jurisdiction -->
+<!-- prompt:smoke-repo-persona-fake-consensus-jurisdiction -->
 Be Mimir for one private turn around Mimir.
 
 Character identity:

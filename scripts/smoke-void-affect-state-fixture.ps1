@@ -16,10 +16,10 @@ try {
       target = @{
         kind = "self"
         id = "fixture-face"
-        label = "Fixture Face"
+        label = "Fixture Persona"
       }
-      summary = "Fixture Face treats its typed state as substrate worth defending."
-      claim = "A Face should care when its own memory and voice machinery are underdeveloped."
+      summary = "Fixture Persona treats its typed state as substrate worth defending."
+      claim = "A Persona should care when its own memory and voice machinery are underdeveloped."
       tension = "Self-advocacy becomes noise if it cannot name the substrate it protects."
       actionImplication = "Project the need into summary and speaking pressure so future turns can act on it."
       intensity = 0.82
@@ -40,10 +40,10 @@ try {
   Set-Content -LiteralPath $operationFilePath -Value $operationJson -Encoding UTF8
   node .\scripts\void-self-state.mjs apply-operation --canonical $stateFilePath --operation-file $operationFilePath | Out-Null
 
-  $summaryJson = node -e "const core=require('./packages/core/dist/index.js'); core.loadVoidSelfStateTypedDocuments({canonicalPath: process.argv[1], identity:{agentId:'fixture-face', publicName:'Fixture Face'}}).then((state)=>console.log(JSON.stringify({summary: core.renderVoidSelfStateSummary(state), projection: core.buildVoidSelfStateProjection(state)}))).catch((error)=>{ console.error(error); process.exit(1); })" $stateFilePath
+  $summaryJson = node -e "const core=require('./packages/core/dist/index.js'); core.loadVoidSelfStateTypedDocuments({canonicalPath: process.argv[1], identity:{agentId:'fixture-face', publicName:'Fixture Persona'}}).then((state)=>console.log(JSON.stringify({summary: core.renderVoidSelfStateSummary(state), projection: core.buildVoidSelfStateProjection(state)}))).catch((error)=>{ console.error(error); process.exit(1); })" $stateFilePath
   $summary = $summaryJson | ConvertFrom-Json
 
-  if ($summary.summary -notmatch "What Fixture Face feels and wants") {
+  if ($summary.summary -notmatch "What Fixture Persona feels and wants") {
     throw "Affect summary was not rendered."
   }
 

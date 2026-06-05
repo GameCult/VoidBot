@@ -7,7 +7,7 @@ import { loadConfig } from "@voidbot/config";
 import {
   loadRepoDiscordIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
-  resolveRepoFaceStatePath,
+  resolveRepoPersonaStatePath,
 } from "@voidbot/core";
 
 type Target = {
@@ -114,7 +114,7 @@ async function loadAgentSummaries(config: ReturnType<typeof loadConfig>): Promis
       agentId: identity.id,
       displayName: identity.displayName,
       repoName: identity.repoName,
-      statePath: resolveRepoFaceStatePath(identity, config.storageRoot),
+      statePath: resolveRepoPersonaStatePath(identity, config.storageRoot),
       identity,
     })),
   ];

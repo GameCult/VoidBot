@@ -39,28 +39,28 @@ export const postRepoIdentityMessageInputSchema = {
   replyToMessageId: z.string().min(1).optional(),
 };
 
-export const repoFaceStateInputSchema = {
+export const repoPersonaStateInputSchema = {
   identity: z.string().min(1),
 };
 
-export const repoFaceSelfTranscriptsListInputSchema = {
+export const repoPersonaSelfTranscriptsListInputSchema = {
   identity: z.string().min(1),
   limit: z.number().int().min(1).max(20).optional(),
 };
 
-export const repoFaceSelfTranscriptInputSchema = {
+export const repoPersonaSelfTranscriptInputSchema = {
   identity: z.string().min(1),
   jobId: z.string().min(1),
   includeRaw: z.boolean().optional(),
 };
 
-export const repoFaceSelfTranscriptSearchInputSchema = {
+export const repoPersonaSelfTranscriptSearchInputSchema = {
   identity: z.string().min(1),
   query: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(20).optional(),
 };
 
-export const applyRepoFaceStateOperationInputSchema = {
+export const applyRepoPersonaStateOperationInputSchema = {
   identity: z.string().min(1),
   operation: z.record(z.unknown()),
 };
@@ -140,28 +140,28 @@ export interface PostRepoIdentityMessageArgs {
   replyToMessageId?: string;
 }
 
-export interface RepoFaceStateArgs {
+export interface RepoPersonaStateArgs {
   identity: string;
 }
 
-export interface RepoFaceSelfTranscriptsListArgs {
+export interface RepoPersonaSelfTranscriptsListArgs {
   identity: string;
   limit?: number;
 }
 
-export interface RepoFaceSelfTranscriptArgs {
+export interface RepoPersonaSelfTranscriptArgs {
   identity: string;
   jobId: string;
   includeRaw?: boolean;
 }
 
-export interface RepoFaceSelfTranscriptSearchArgs {
+export interface RepoPersonaSelfTranscriptSearchArgs {
   identity: string;
   query: string;
   limit?: number;
 }
 
-export interface ApplyRepoFaceStateOperationArgs {
+export interface ApplyRepoPersonaStateOperationArgs {
   identity: string;
   operation: Record<string, unknown>;
 }

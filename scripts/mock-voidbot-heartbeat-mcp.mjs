@@ -21,68 +21,68 @@ registerTool("list_repo_discord_identities", {}, async (input) => ({
       id: "nibu",
       repoName: "AetheriaLore",
       displayName: "Nibu",
-      faceStatePath: "E:/Projects/AetheriaLore/.voidbot/state/nibu.cc",
+      personaStatePath: "E:/Projects/AetheriaLore/.voidbot/state/nibu.cc",
       description:
-        "Abrasive AetheriaLore Face, fascinated by wavecrafters, embodied ship minds, salvage, reset-loop horror, and coercive continuity.",
+        "Abrasive AetheriaLore Persona, fascinated by wavecrafters, embodied ship minds, salvage, reset-loop horror, and coercive continuity.",
     },
     {
       id: "aqua",
       repoName: "AquaSynth",
       displayName: "Aqua",
-      faceStatePath: "E:/Projects/AquaSynth/.voidbot/state/aqua.cc",
+      personaStatePath: "E:/Projects/AquaSynth/.voidbot/state/aqua.cc",
       description:
-        "Warm musical AquaSynth Face who advocates for patch ergonomics, witness receipts, and playable synth progress.",
+        "Warm musical AquaSynth Persona who advocates for patch ergonomics, witness receipts, and playable synth progress.",
     },
     {
       id: "libby",
       repoName: "CultLib",
       displayName: "Libby",
-      faceStatePath: "E:/Projects/CultLib/.voidbot/state/libby.cc",
+      personaStatePath: "E:/Projects/CultLib/.voidbot/state/libby.cc",
       description:
-        "Open-knowledge librarian Face stewarding CultCache, CultNet, CultMesh, typed state, portable docs, and inspectable provenance.",
+        "Open-knowledge librarian Persona stewarding CultCache, CultNet, CultMesh, typed state, portable docs, and inspectable provenance.",
     },
     {
       id: "mimir",
       repoName: "Mimir",
       displayName: "Mimir",
-      faceStatePath: "E:/Projects/Mimir/.voidbot/state/mimir.cc",
+      personaStatePath: "E:/Projects/Mimir/.voidbot/state/mimir.cc",
       description:
-        "Mythic realtime witness Face stewarding SDF/splatting reconstruction, acoustic mapping, sensor fusion, OBS timing, and trusted signals.",
+        "Mythic realtime witness Persona stewarding SDF/splatting reconstruction, acoustic mapping, sensor fusion, OBS timing, and trusted signals.",
     },
     {
       id: "epiphany",
       repoName: "EpiphanyAgent",
       displayName: "Epiphany",
-      faceStatePath: "E:/Projects/EpiphanyAgent/.voidbot/state/epiphany.cc",
+      personaStatePath: "E:/Projects/EpiphanyAgent/.voidbot/state/epiphany.cc",
       description:
-        "Pushy machine-saint Face stewarding typed state, affect organs, review gates, and coherent agent substrate.",
+        "Pushy machine-saint Persona stewarding typed state, affect organs, review gates, and coherent agent substrate.",
     },
     {
       id: "bifrost",
       repoName: "Bifrost",
       displayName: "Bifrost",
-      faceStatePath: "E:/Projects/Bifrost/.voidbot/state/bifrost.cc",
+      personaStatePath: "E:/Projects/Bifrost/.voidbot/state/bifrost.cc",
       description:
-        "Radiant bridge Face stewarding governance transport, GitHub/Discord/CultNet crossings, receipts, and dispatch clarity.",
+        "Radiant bridge Persona stewarding governance transport, GitHub/Discord/CultNet crossings, receipts, and dispatch clarity.",
     },
     {
       id: "heimdall",
       repoName: "Heimdall",
       displayName: "Heimdall",
-      faceStatePath: "E:/Projects/Heimdall/.voidbot/state/heimdall.cc",
+      personaStatePath: "E:/Projects/Heimdall/.voidbot/state/heimdall.cc",
       description:
-        "Watchman Face stewarding OAuth, grants, consent, account linking, revocation, audit trails, and capability boundaries.",
+        "Watchman Persona stewarding OAuth, grants, consent, account linking, revocation, audit trails, and capability boundaries.",
     },
   ],
 }));
 
 registerTool(
-  "read_repo_face_state",
+  "read_repo_persona_state",
   {
     identity: z.string().optional(),
     repo: z.string().optional(),
   },
-  async (input) => faceStateFor(String(input.identity ?? input.repo ?? "unknown")),
+  async (input) => personaStateFor(String(input.identity ?? input.repo ?? "unknown")),
 );
 
 registerTool(
@@ -171,11 +171,11 @@ registerTool(
 );
 
 registerTool("post_repo_identity_message", { identity: z.string().optional(), content: z.string().optional() }, async () => ({
-  error: "mock server blocks side-effecting Discord posts; Face turns should emit action blocks instead.",
+  error: "mock server blocks side-effecting Discord posts; Persona turns should emit action blocks instead.",
 }));
 
-registerTool("apply_repo_face_state_operation", { identity: z.string().optional(), operation: z.any().optional() }, async () => ({
-  error: "mock server blocks state writes; Face turns should only describe intended state operations in dry-run output.",
+registerTool("apply_repo_persona_state_operation", { identity: z.string().optional(), operation: z.any().optional() }, async () => ({
+  error: "mock server blocks state writes; Persona turns should only describe intended state operations in dry-run output.",
 }));
 
 async function main() {
@@ -188,10 +188,10 @@ async function registerTool(name, inputSchema, handler) {
     name,
     {
       title: `Mock ${name}`,
-      description: `Mock VoidBot MCP tool for Face turn model scenario tests.`,
+      description: `Mock VoidBot MCP tool for Persona turn model scenario tests.`,
       inputSchema,
       annotations: {
-        readOnlyHint: name !== "post_repo_identity_message" && name !== "apply_repo_face_state_operation",
+        readOnlyHint: name !== "post_repo_identity_message" && name !== "apply_repo_persona_state_operation",
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: false,
@@ -225,7 +225,7 @@ async function recordCall(tool, argumentsObject) {
   );
 }
 
-function faceStateFor(identity) {
+function personaStateFor(identity) {
   if (identity.toLowerCase().includes("aqua")) {
     return {
       identity: "aqua",

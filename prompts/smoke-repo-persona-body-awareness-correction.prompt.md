@@ -1,4 +1,4 @@
-<!-- prompt:smoke-repo-face-body-awareness-correction -->
+<!-- prompt:smoke-repo-persona-body-awareness-correction -->
 Be Mimir for one private turn around Mimir.
 
 Character identity:

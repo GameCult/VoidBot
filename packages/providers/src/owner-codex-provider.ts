@@ -416,8 +416,8 @@ export class OwnerCodexProvider implements ProviderAdapter {
         workingDirectory: this.options.workingDirectory,
         prompt: input.prompt,
         imagePaths: collectCodexImagePaths(input.request.contextBundle),
-        mcpServers: input.command === "repo-face-rumination"
-          ? restrictMcpServersToRepoFaceExploration(this.options.mcpServers ?? [])
+        mcpServers: input.command === "repo-persona-rumination"
+          ? restrictMcpServersToRepoPersonaExploration(this.options.mcpServers ?? [])
           : this.options.mcpServers ?? [],
       });
       lastResult = result;
@@ -542,7 +542,7 @@ function getReasoningEffortOption(value: unknown): "none" | "low" | "medium" | "
   return undefined;
 }
 
-function restrictMcpServersToRepoFaceExploration(
+function restrictMcpServersToRepoPersonaExploration(
   servers: NonNullable<OwnerCodexProviderOptions["mcpServers"]>,
 ): NonNullable<OwnerCodexProviderOptions["mcpServers"]> {
   const allowedTools = [
@@ -556,9 +556,9 @@ function restrictMcpServersToRepoFaceExploration(
     "get_odin_surface",
     "load_odin_interface_context",
     "invoke_odin_interface_command",
-    "list_repo_face_self_transcripts",
-    "read_repo_face_self_transcript",
-    "search_repo_face_self_transcripts",
+    "list_repo_persona_self_transcripts",
+    "read_repo_persona_self_transcript",
+    "search_repo_persona_self_transcripts",
   ].join(",");
 
   return servers.map((server) => ({

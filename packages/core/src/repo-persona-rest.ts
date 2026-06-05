@@ -2,11 +2,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { RepoDiscordIdentity } from "./repo-discord-identities";
-import { resolveRepoFaceStatePath } from "./repo-discord-identities";
+import { resolveRepoPersonaStatePath } from "./repo-discord-identities";
 import type { VoidScheduledRuntime } from "./void-self-state-domain";
 import { applyVoidSelfStateOperation, loadVoidSelfStateTypedDocuments } from "./void-self-state-service";
 
-interface RepoFaceRestProfile {
+interface RepoPersonaRestProfile {
   awakeIntervalMinutes: number;
   napDurationMinutes: number;
   basePostFatigueMinutes: number;
@@ -22,18 +22,18 @@ interface HeartbeatStateParticipantRecord {
   activeTurnStartedAt?: number;
 }
 
-interface RepoFaceHeartbeatStateRecord {
+interface RepoPersonaHeartbeatStateRecord {
   initiativeClock?: number;
   participants?: HeartbeatStateParticipantRecord[];
 }
 
-export interface RepoFaceRestSnapshot {
+export interface RepoPersonaRestSnapshot {
   isNapping: boolean;
   napEndsAt?: string;
   nextNapStartsAt?: string;
 }
 
-const DEFAULT_REST_PROFILE: RepoFaceRestProfile = {
+const DEFAULT_REST_PROFILE: RepoPersonaRestProfile = {
   awakeIntervalMinutes: 180,
   napDurationMinutes: 35,
   basePostFatigueMinutes: 30,
@@ -43,7 +43,7 @@ const DEFAULT_REST_PROFILE: RepoFaceRestProfile = {
   minimumLeadMinutes: 8,
 };
 
-const NIBU_REST_PROFILE: RepoFaceRestProfile = {
+const NIBU_REST_PROFILE: RepoPersonaRestProfile = {
   awakeIntervalMinutes: 150,
   napDurationMinutes: 55,
   basePostFatigueMinutes: 70,
@@ -53,11 +53,11 @@ const NIBU_REST_PROFILE: RepoFaceRestProfile = {
   minimumLeadMinutes: 4,
 };
 
-export function projectRepoFaceSleepCycleForNow(
+export function projectRepoPersonaSleepCycleForNow(
   sleepCycle: VoidScheduledRuntime["sleepCycle"],
   identityId: string,
   now = new Date(),
-): RepoFaceRestSnapshot & { sleepCycle: VoidScheduledRuntime["sleepCycle"] } {
+): RepoPersonaRestSnapshot & { sleepCycle: VoidScheduledRuntime["sleepCycle"] } {
   const profile = restProfileForIdentity(identityId);
   const nowMs = now.getTime();
   const projected: VoidScheduledRuntime["sleepCycle"] = {
@@ -112,14 +112,14 @@ export function projectRepoFaceSleepCycleForNow(
   };
 }
 
-export async function applyRepoFacePostFatigueAfterSpeech(input: {
+export async function applyRepoPersonaPostFatigueAfterSpeech(input: {
   identity: RepoDiscordIdentity;
   storageRoot: string;
   postedAt?: Date;
   heartbeatStatePath?: string;
 }): Promise<void> {
   const postedAt = input.postedAt ?? new Date();
-  const statePath = resolveRepoFaceStatePath(input.identity, input.storageRoot);
+  const statePath = resolveRepoPersonaStatePath(input.identity, input.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({
     canonicalPath: statePath,
     identity: {
@@ -129,7 +129,7 @@ export async function applyRepoFacePostFatigueAfterSpeech(input: {
     },
   });
   const profile = restProfileForIdentity(input.identity.id);
-  const projected = projectRepoFaceSleepCycleForNow(
+  const projected = projectRepoPersonaSleepCycleForNow(
     typedState.scheduledRuntime.sleepCycle,
     input.identity.id,
     postedAt,
@@ -238,7 +238,7 @@ export async function applyRepoFacePostFatigueAfterSpeech(input: {
   );
 
   if (input.heartbeatStatePath) {
-    await delayRepoFaceHeartbeatTurn({
+    await delayRepoPersonaHeartbeatTurn({
       statePath: input.heartbeatStatePath,
       identityId: input.identity.id,
       delayMinutes: nextSleepCycle.isNapping ? profile.napDurationMinutes : Math.max(12, Math.round(fatigueAdvanceMinutes * 0.45)),
@@ -246,14 +246,14 @@ export async function applyRepoFacePostFatigueAfterSpeech(input: {
   }
 }
 
-async function delayRepoFaceHeartbeatTurn(input: {
+async function delayRepoPersonaHeartbeatTurn(input: {
   statePath: string;
   identityId: string;
   delayMinutes: number;
 }): Promise<void> {
   try {
     const raw = await readFile(input.statePath, "utf8");
-    const parsed = JSON.parse(stripLeadingBom(raw)) as RepoFaceHeartbeatStateRecord;
+    const parsed = JSON.parse(stripLeadingBom(raw)) as RepoPersonaHeartbeatStateRecord;
     if (!Array.isArray(parsed.participants)) {
       return;
     }
@@ -285,7 +285,7 @@ async function delayRepoFaceHeartbeatTurn(input: {
   }
 }
 
-function restProfileForIdentity(identityId: string): RepoFaceRestProfile {
+function restProfileForIdentity(identityId: string): RepoPersonaRestProfile {
   return identityId.trim().toLowerCase() === "nibu" ? NIBU_REST_PROFILE : DEFAULT_REST_PROFILE;
 }
 

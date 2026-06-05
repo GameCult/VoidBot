@@ -4,7 +4,7 @@ Guild context:
 - Guild: {{guild}}
 - Channel: {{channel}}
 
-{{#unless repoFaceTurn}}
+{{#unless repoPersonaTurn}}
 Recent channel messages:
 {{recentMessages}}
 

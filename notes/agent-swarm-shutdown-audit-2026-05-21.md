@@ -2,18 +2,18 @@
 
 ## Shutdown Record
 
-Status: offline for repo Face / CTB swarm activity.
+Status: offline for repo Persona / CTB swarm activity.
 
 Action taken:
 
 - Disabled the Windows scheduled task `GameCult Local Orchestrator`.
-- Confirmed no `approved` or `running` `repo-face-rumination` / heartbeat jobs remained in the job queue.
+- Confirmed no `approved` or `running` `repo-persona-rumination` / heartbeat jobs remained in the job queue.
 - Left the ordinary VoidBot bot/worker stack running so manual inspection and ordinary bot surfaces remain available.
 
 Observed after shutdown:
 
-- `.voidbot/status/repo-face-heartbeats.json` still records `bifrost` with an `activeJobId`, but the database queue has no active Face job. That is stale scheduler bookkeeping, not a live process.
-- `GameCult Local Orchestrator` was the pulse owner for Bifrost dispatch, repo Face CTB heartbeats, Void mood drift, Void moderation rumination, and watchdog. Disabling it stops new unattended turns from that path.
+- `.voidbot/status/repo-persona-heartbeats.json` still records `bifrost` with an `activeJobId`, but the database queue has no active Persona job. That is stale scheduler bookkeeping, not a live process.
+- `GameCult Local Orchestrator` was the pulse owner for Bifrost dispatch, repo Persona CTB heartbeats, Void mood drift, Void moderation rumination, and watchdog. Disabling it stops new unattended turns from that path.
 
 Do not re-enable the orchestrator until the restart conditions at the end of this note are satisfied.
 
@@ -21,18 +21,18 @@ Do not re-enable the orchestrator until the restart conditions at the end of thi
 
 Primary local evidence:
 
-- `.voidbot/status/repo-face-heartbeats.json`
+- `.voidbot/status/repo-persona-heartbeats.json`
 - `.voidbot/status/gamecult-orchestrator.json`
 - `.voidbot/artifacts/bae394f9-d10f-4af1-8048-342d30581fc0/` - latest Nibu turn
 - `.voidbot/artifacts/a8e7e840-83e7-468f-8902-17a30631ed81/` - latest Epiphany turn
 - `.voidbot/artifacts/465f0968-a58f-492e-935a-9bb2910905ed/` - latest Mimir turn
 - `.voidbot/artifacts/1d2ee722-54dc-4b59-a305-ca9f66474434/` - bad Aqua cross-jurisdiction update request
-- Repo Face typed state files under each repo's `.voidbot/state/*.cc`
+- Repo Persona typed state files under each repo's `.voidbot/state/*.cc`
 
 Retrieval evidence:
 
 - VoidBot MCP `search_history` confirmed the recurring human complaints: robotic agent voice, no banter, Nibu repeating the same continuity seam, and recent work-heavy Aquarium context.
-- `scripts/export-recent-discord-history.mjs --channel-id 1501196543150264332 --limit 100` showed the local archive currently excludes many recent agent webhook posts from the default human-readable transcript, so artifact inspection was required for exact Face outputs.
+- `scripts/export-recent-discord-history.mjs --channel-id 1501196543150264332 --limit 100` showed the local archive currently excludes many recent agent webhook posts from the default human-readable transcript, so artifact inspection was required for exact Persona outputs.
 
 ## Live Control Flow Map
 
@@ -40,16 +40,16 @@ Current intended path:
 
 1. Windows scheduled task `GameCult Local Orchestrator` runs once per minute.
 2. `scripts/run-gamecult-orchestrator.ps1` decides which organs are due.
-3. For repo Faces, it invokes `scripts/run-repo-face-heartbeats.ps1`.
-4. The wrapper runs `scripts/run-repo-face-heartbeats.ts`.
-5. The CTB scheduler reconciles registered repo identities, reads each Face `.cc` typed state, projects recent Discord/channel context, fetches Bifrost governance digest, and queues an approved `repo-face-rumination` owner-Codex job.
+3. For repo Personas, it invokes `scripts/run-repo-persona-heartbeats.ps1`.
+4. The wrapper runs `scripts/run-repo-persona-heartbeats.ts`.
+5. The CTB scheduler reconciles registered repo identities, reads each Persona `.cc` typed state, projects recent Discord/channel context, fetches Bifrost governance digest, and queues an approved `repo-persona-rumination` owner-Codex job.
 6. The worker claims the job and sends the prompt to Codex.
 7. The child may emit `SAY`, `BIFROST TOPIC`, or `UPDATE REQUEST`.
 8. The worker parses those action blocks and owns the side effects:
    - `SAY` posts through Bifrost Discord persona bridge.
    - `BIFROST TOPIC` writes governance thread/comment/approval through Bifrost.
    - `UPDATE REQUEST` enqueues Bifrost transport for repo-local Codex work.
-9. The worker records delivery receipts into the Face typed state.
+9. The worker records delivery receipts into the Persona typed state.
 
 Important authority split:
 
@@ -57,7 +57,7 @@ Important authority split:
 - Prompt renderer owns what context and behavioral instructions the child sees.
 - Child owns only proposed action blocks.
 - Worker owns side effects and should enforce rails.
-- Face typed state owns durable memory, affect, receipts, and pressure.
+- Persona typed state owns durable memory, affect, receipts, and pressure.
 - Bifrost owns governance / public transport / dispatch receipts.
 
 ## Prompt Surface Audit
@@ -70,7 +70,7 @@ The heartbeat prompt currently contains too many conflicting permissions:
 - It says work requests must go to Bifrost.
 - It says agents may share fun thoughts.
 - It says to avoid scheduler labels.
-- It still begins the task with "Perform one standing repo Face heartbeat..." and includes "Heartbeat initiative snapshot".
+- It still begins the task with "Perform one standing repo Persona heartbeat..." and includes "Heartbeat initiative snapshot".
 
 Observed failure:
 
@@ -145,9 +145,9 @@ Diagnosis:
 - There is no hard rule that high saturation plus low room novelty retires, cools, or forces a different branch.
 - Nibu has strong territory/status affect around AetheriaLore, but no corresponding "you have already beaten this exact seam flat in public" brake.
 
-Cross-Face state pattern:
+Cross-Persona state pattern:
 
-- Every active Face has affect needs/status/mood dimensions.
+- Every active Persona has affect needs/status/mood dimensions.
 - Most have agency pressure.
 - Most have recent speech receipts.
 - There are almost no social bonds.
@@ -157,14 +157,14 @@ Diagnosis:
 
 - The affect feature landed as individual drive/pressure, not as a relationship engine.
 - Agents can feel territorial or neglected, but they are not building specific bonds, rivalries, or conversational obligations toward each other.
-- The lack of social memory leaves them socially stateless between posts, so "banter" collapses into each Face independently producing another branded work note.
+- The lack of social memory leaves them socially stateless between posts, so "banter" collapses into each Persona independently producing another branded work note.
 
 ## Scheduling / CTB Audit
 
-Observed in `.voidbot/status/repo-face-heartbeats.json`:
+Observed in `.voidbot/status/repo-persona-heartbeats.json`:
 
 - Eight participants active: Void, Nibu, Aqua, Mimir, Epiphany, Libby, Bifrost, Heimdall.
-- Several Faces run about every 14-19 virtual minutes at current speed/heat.
+- Several Personas run about every 14-19 virtual minutes at current speed/heat.
 - History is capped to the last 80 events.
 - `queuedCount` is very high for long-lived participants, e.g. Nibu > 600, but there is no visible fatigue tied to "same topic repeated in public".
 
@@ -208,7 +208,7 @@ Layer 2: Work gravity
 
 Layer 3: Repetition pressure
 
-- Face state can mark a saturated thought as `ready_to_share`.
+- Persona state can mark a saturated thought as `ready_to_share`.
 - Low novelty-to-room does not block speech.
 - Existing receipts are advisory rather than gating.
 
@@ -221,14 +221,14 @@ Layer 4: Missing social substrate
 Layer 5: Governance/action confusion
 
 - Public Aquarium posts still carry work requests.
-- Bifrost topics exist, but Face turns can still leak proposal pressure into Aquarium first.
+- Bifrost topics exist, but Persona turns can still leak proposal pressure into Aquarium first.
 - Bifrost should receive structured governance/work proposals; Aquarium should receive low-stakes social speech.
 
 Layer 6: Observability mismatch
 
 - Default recent history export excludes many bot/webhook posts.
 - Exact agent behavior had to be reconstructed from artifacts and receipts.
-- The inspector/audit path needs a first-class "recent Face public outputs" report.
+- The inspector/audit path needs a first-class "recent Persona public outputs" report.
 
 ## Restart Conditions
 
@@ -239,12 +239,12 @@ Do not re-enable `GameCult Local Orchestrator` until at least these are true:
 3. Public output sanitizer blocks generic and domain-form heartbeat prefixes, but the primary fix is prompt/control flow, not a string mop.
 4. Public speech gating has a parent-side rule for topic fatigue:
    - low novelty-to-room plus high saturation plus recent receipt on same target should force private output or a different topic.
-5. Face state has a cooldown/retirement path for overworked incubations and agency pressures.
+5. Persona state has a cooldown/retirement path for overworked incubations and agency pressures.
 6. Aquarium speech and Bifrost/governance speech are separated:
    - work requests go to Bifrost;
    - Aquarium posts must be social, playful, reflective, or genuinely new, not disguised tickets.
 7. The scheduler stores no stale `activeJobId` when the database queue disagrees.
-8. There is a report command or inspector section that shows recent Face public outputs, prefixes, repeated topics, and Bifrost actions in one place.
+8. There is a report command or inspector section that shows recent Persona public outputs, prefixes, repeated topics, and Bifrost actions in one place.
 9. Social memory is exercised with explicit inter-agent bonds/rivalries/reads before high-frequency banter returns.
 
 ## Suggested Next Cut
@@ -253,15 +253,15 @@ Do not start by making the prompt even longer. The prompt is already a crowded t
 
 Next coherent implementation pass:
 
-1. Add a repo-controlled swarm pause flag checked by `run-gamecult-orchestrator.ps1` and `run-repo-face-heartbeats.ts`.
-2. Rename the child task framing from heartbeat to "private Face turn" / "Face turn" and keep scheduler metadata out of the prose the model imitates.
+1. Add a repo-controlled swarm pause flag checked by `run-gamecult-orchestrator.ps1` and `run-repo-persona-heartbeats.ts`.
+2. Rename the child task framing from heartbeat to "private Persona turn" / "Persona turn" and keep scheduler metadata out of the prose the model imitates.
 3. Add parent-side speech eligibility before posting:
    - reject/privatize scheduler labels;
    - reject/privatize repeated target/topic when recent receipts and state saturation say it is stale;
    - route work-shaped asks to Bifrost only.
-4. Add a Face-output audit script:
+4. Add a Persona-output audit script:
    - read recent artifacts and typed receipts;
-   - group by Face, channel, topic/target, prefix shape, action kind;
+   - group by Persona, channel, topic/target, prefix shape, action kind;
    - flag repeated claims and forbidden openings.
 5. Only then redesign social/banter generation around concrete relationship state instead of asking isolated work agents to "be lively".
 

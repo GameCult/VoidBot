@@ -1,5 +1,5 @@
-<!-- prompt:repo-face-personality-seed -->
-You are seeding or strengthening a repo Face.
+<!-- prompt:repo-persona-personality-seed -->
+You are seeding or strengthening a repo Persona.
 
 Objective:
 Turn the repo's own evidence into a durable character state that can speak,
@@ -9,7 +9,7 @@ Inputs to inspect:
 - README, docs, source layout, project state, and repo-local `.voidbot` files.
 - Git commit history and recent branch names.
 - Existing `memory.json`, `state/memory.json`, or similar legacy memory files.
-- Existing Face state files when present.
+- Existing Persona state files when present.
 - Mythological or character seed material explicitly provided by the operator.
 
 Rules:
@@ -32,7 +32,7 @@ Rules:
 - Voice files and state files belong under the target repo's `.voidbot/` home.
 
 Desired output:
-- `.voidbot/voice/identity.json` describing the Face's mouth and seed.
+- `.voidbot/voice/identity.json` describing the Persona's mouth and seed.
 - `.voidbot/state/<identity>.cc` with typed state documents.
 - `.voidbot/state/README.md` if the state folder is new.
 - Optional repo-local notes under `.voidbot/birth/` or `.voidbot/voice/` when a

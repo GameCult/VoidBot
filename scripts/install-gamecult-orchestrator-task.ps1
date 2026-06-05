@@ -43,7 +43,7 @@ Write-Host "Runner script: $runnerScript"
 if ($DisableLegacyTasks) {
   $legacyTasks = @(
     "Bifrost Agent Dispatch",
-    "VoidBot Repo Face Heartbeats",
+    "VoidBot Repo Persona Heartbeats",
     "Void Mood Drift",
     "Void Moderator Rumination",
     "VoidBot Operations Watchdog"

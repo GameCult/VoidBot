@@ -34,7 +34,7 @@ async function main() {
 
   const log = createWriteStream(logPath, { flags: "a", encoding: "utf8" });
   try {
-    log.write(`[${startedAt}] starting repo Face birth for ${identityId}\n`);
+    log.write(`[${startedAt}] starting repo Persona birth for ${identityId}\n`);
     const scoutDir = resolve(artifactDir, "terrain");
     const runnerDir = resolve(artifactDir, "runner");
     await mkdir(scoutDir, { recursive: true });
@@ -103,7 +103,7 @@ async function main() {
       completedAt,
       updatedAt: completedAt,
     });
-    log.write(`[${completedAt}] completed repo Face birth for ${identityId}\n`);
+    log.write(`[${completedAt}] completed repo Persona birth for ${identityId}\n`);
   } catch (error) {
     const failedAt = new Date().toISOString();
     const message = error instanceof Error ? error.message : String(error);
@@ -118,7 +118,7 @@ async function main() {
       failedAt,
       updatedAt: failedAt,
     });
-    log.write(`[${failedAt}] failed repo Face birth for ${identityId}: ${message}\n`);
+    log.write(`[${failedAt}] failed repo Persona birth for ${identityId}: ${message}\n`);
     process.exitCode = 1;
   } finally {
     log.end();

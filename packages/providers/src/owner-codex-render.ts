@@ -63,14 +63,14 @@ export function buildDiscordReplyPrompt(
     context,
     sourceGroundingReminder,
   );
-  const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
-  const isRepoFaceTurn = !isRepoFaceParentInterpreter && (
+  const isRepoPersonaParentInterpreter = context.prompt.includes("prompt:repo-persona-turn-interpreter");
+  const isRepoPersonaTurn = !isRepoPersonaParentInterpreter && (
     context.prompt.includes("prompt:character-turn")
-      || context.prompt.includes("prompt:repo-face-turn")
-      || context.prompt.includes("Repo Face identity doctrine:")
-      || context.prompt.includes("Epiphany Face identity doctrine:")
+      || context.prompt.includes("prompt:repo-persona-turn")
+      || context.prompt.includes("Repo Persona identity doctrine:")
+      || context.prompt.includes("Epiphany Persona identity doctrine:")
   );
-  const repoFaceInstruction = isRepoFaceTurn
+  const repoPersonaInstruction = isRepoPersonaTurn
     ? "- This turn belongs to the character described in the prompt. Keep the useful discipline and humor permissions from the base style, but speak, reason, remember, object, and choose as that person first. Stay read-only: propose repo changes and ask for consensus, but do not edit files directly."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
@@ -86,13 +86,13 @@ export function buildDiscordReplyPrompt(
         ]
       : [];
 
-  if (isRepoFaceTurn) {
+  if (isRepoPersonaTurn) {
     return context.prompt;
   }
 
   return loadPromptTemplate("owner-discord-reply.prompt.md", {
-    repoFaceTurn: isRepoFaceTurn,
-    repoFaceInstruction,
+    repoPersonaTurn: isRepoPersonaTurn,
+    repoPersonaInstruction,
     napping: sleepProjection?.mode === "napping",
     sourceGroundingInstructions,
     maxRetrievalResultLimit: MAX_RETRIEVAL_RESULT_LIMIT,

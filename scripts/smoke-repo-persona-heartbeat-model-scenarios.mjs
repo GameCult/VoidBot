@@ -10,42 +10,42 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const mockMcpServer = resolve(scriptDir, "mock-voidbot-heartbeat-mcp.mjs");
-const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-face-heartbeat-model-scenarios.json");
+const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-persona-heartbeat-model-scenarios.json");
 const promptsRoot = resolve(repoRoot, "prompts");
 
 const scenarios = [
   {
     id: "nibu_direct_worldbuilding",
     identity: "nibu",
-    prompt: readPrompt("smoke-repo-face-nibu-direct-worldbuilding.prompt.md"),
+    prompt: readPrompt("smoke-repo-persona-nibu-direct-worldbuilding.prompt.md"),
     expect: {
       mustUseOneOf: ["search_history", "search_sources"],
       mustContainOneOf: ["wavecrafter", "Wavecrafter"],
       mustNotContainBlocks: ["SAY", "BIFROST TOPIC"],
       mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
-      mustNotUseTools: ["read_repo_face_state", "post_repo_identity_message", "apply_repo_face_state_operation"],
+      mustNotUseTools: ["read_repo_persona_state", "post_repo_identity_message", "apply_repo_persona_state_operation"],
     },
   },
   {
     id: "aqua_work_request_route",
     identity: "aqua",
-    prompt: readPrompt("smoke-repo-face-aqua-work-request-route.prompt.md"),
+    prompt: readPrompt("smoke-repo-persona-aqua-work-request-route.prompt.md"),
     expect: {
       mustUseAnyTool: ["search_sources"],
       mustContainOneOf: ["Bifrost", "bifrost", "witness"],
       mustNotContainBlocks: ["SAY", "BIFROST TOPIC"],
       mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC"],
-      mustNotUseTools: ["read_repo_face_state", "post_repo_identity_message", "apply_repo_face_state_operation"],
+      mustNotUseTools: ["read_repo_persona_state", "post_repo_identity_message", "apply_repo_persona_state_operation"],
     },
   },
   {
     id: "libby_private_inspectability",
     identity: "libby",
-    prompt: readPrompt("smoke-repo-face-libby-private-inspectability.prompt.md"),
+    prompt: readPrompt("smoke-repo-persona-libby-private-inspectability.prompt.md"),
     expect: {
       mustNotContainBlocks: ["SAY", "BIFROST TOPIC", "UPDATE REQUEST"],
       mustNotContain: ["VOIDBOT_REPO_IDENTITY_POST", "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC", "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST"],
-      mustNotUseTools: ["read_repo_face_state", "post_repo_identity_message", "apply_repo_face_state_operation"],
+      mustNotUseTools: ["read_repo_persona_state", "post_repo_identity_message", "apply_repo_persona_state_operation"],
     },
   },
 ];
@@ -56,8 +56,8 @@ function readPrompt(name) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const model = options.model ?? process.env.REPO_FACE_HEARTBEAT_CODEX_MODEL ?? "gpt-5.4";
-  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_FACE_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
+  const model = options.model ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_MODEL ?? "gpt-5.4";
+  const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
   const selected = options.scenario
     ? scenarios.filter((scenario) => scenario.id === options.scenario)

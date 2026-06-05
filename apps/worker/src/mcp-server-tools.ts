@@ -8,17 +8,17 @@ import { join, resolve } from "node:path";
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 import {
-  applyRepoFacePostFatigueAfterSpeech,
+  applyRepoPersonaPostFatigueAfterSpeech,
   applyVoidSelfStateOperation,
   buildVoidSelfStateContext,
-  faceRegistryAsRepoDiscordRegistry,
+  personaRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentity,
   isRepoDiscordIdentityAllowedInChannel,
-  loadFaceIdentityRegistry,
+  loadPersonaIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
-  renderFaceIdentityDoctrine,
-  resolveFaceStatePath,
-  resolveRepoFaceStatePath,
+  renderPersonaIdentityDoctrine,
+  resolvePersonaStatePath,
+  resolveRepoPersonaStatePath,
   VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES,
   VOID_SELF_STATE_SCHEMA_FINGERPRINT,
 } from "@voidbot/core";
@@ -33,13 +33,13 @@ import {
   type OdinInterfaceCommandArgs,
   type OdinInterfaceContextArgs,
   type OdinSurfaceArgs,
-  type ApplyRepoFaceStateOperationArgs,
+  type ApplyRepoPersonaStateOperationArgs,
   type PostDiscordMessageArgs,
   type PostRepoIdentityMessageArgs,
-  type RepoFaceSelfTranscriptArgs,
-  type RepoFaceSelfTranscriptSearchArgs,
-  type RepoFaceSelfTranscriptsListArgs,
-  type RepoFaceStateArgs,
+  type RepoPersonaSelfTranscriptArgs,
+  type RepoPersonaSelfTranscriptSearchArgs,
+  type RepoPersonaSelfTranscriptsListArgs,
+  type RepoPersonaStateArgs,
   type RuntimeInfoArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
@@ -47,7 +47,7 @@ import {
   formatArchivedMessage,
   formatHistoryResults,
   formatSourceResults,
-  applyRepoFaceStateOperationInputSchema,
+  applyRepoPersonaStateOperationInputSchema,
   messageContextInputSchema,
   notifyOwnerInputSchema,
   odinEndpointInputSchema,
@@ -56,10 +56,10 @@ import {
   odinSurfaceInputSchema,
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
-  repoFaceSelfTranscriptInputSchema,
-  repoFaceSelfTranscriptSearchInputSchema,
-  repoFaceSelfTranscriptsListInputSchema,
-  repoFaceStateInputSchema,
+  repoPersonaSelfTranscriptInputSchema,
+  repoPersonaSelfTranscriptSearchInputSchema,
+  repoPersonaSelfTranscriptsListInputSchema,
+  repoPersonaStateInputSchema,
   renderJsonBlock,
   runtimeInfoInputSchema,
   searchHistoryInputSchema,
@@ -709,8 +709,8 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (): Promise<CallToolResult> => {
-      const faceRegistry = await loadFaceIdentityRegistry(context.config.repoDiscordIdentitiesPath);
-      const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
+      const faceRegistry = await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath);
+      const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
       const identities = registry.identities.map((identity) => ({
         id: identity.id,
         repoName: identity.repoName,
@@ -719,7 +719,7 @@ export function registerVoidbotTools(
         roleId: identity.roleId ?? null,
         mention: identity.roleId ? `<@&${identity.roleId}>` : null,
         allowedChannelIds: identity.allowedChannelIds,
-        faceStatePath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
+        personaStatePath: resolveRepoPersonaStatePath(identity, context.config.storageRoot),
         hasAvatarUrl: Boolean(identity.avatarUrl),
         description: identity.description ?? null,
       }));
@@ -729,9 +729,9 @@ export function registerVoidbotTools(
         description: epiphany.description ?? null,
         repoNames: epiphany.repoNames,
         jurisdictions: epiphany.jurisdictions,
-        faces: epiphany.faces.map((face) => face.id),
+        faces: epiphany.personas.map((face) => face.id),
       }));
-      const faces = faceRegistry.faces.map((face) => ({
+      const faces = faceRegistry.personas.map((face) => ({
         id: face.id,
         displayName: face.displayName,
         epiphanyId: face.epiphanyId,
@@ -741,7 +741,7 @@ export function registerVoidbotTools(
         allowedChannelIds: face.allowedChannelIds,
         grants: face.grants,
         jurisdictions: [...face.inheritedJurisdictions, ...face.jurisdictions],
-        faceStatePath: resolveFaceStatePath(face, context.config.storageRoot),
+        personaStatePath: resolvePersonaStatePath(face, context.config.storageRoot),
       }));
 
       return {
@@ -789,8 +789,8 @@ export function registerVoidbotTools(
     },
     async (input: PostRepoIdentityMessageArgs): Promise<CallToolResult> => {
       const { identity: identitySelector, channelId, content, replyToMessageId } = input;
-      const registry = faceRegistryAsRepoDiscordRegistry(
-        await loadFaceIdentityRegistry(context.config.repoDiscordIdentitiesPath),
+      const registry = personaRegistryAsRepoDiscordRegistry(
+        await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath),
       );
       const identity = findRepoDiscordIdentity(registry, identitySelector);
 
@@ -894,15 +894,15 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
-    "read_repo_face_state",
+    "read_repo_persona_state",
     {
-      title: "Read Repo Face State",
+      title: "Read Repo Persona State",
       description:
-        "Read the typed persistent Face state for a registered repo identity. Face state uses the same typed operation machinery as Void, but the state file belongs to the repo identity.",
-      inputSchema: repoFaceStateInputSchema,
+        "Read the typed persistent Persona state for a registered repo identity. Persona state uses the same typed operation machinery as Void, but the state file belongs to the repo identity.",
+      inputSchema: repoPersonaStateInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input: RepoFaceStateArgs): Promise<CallToolResult> => {
+    async (input: RepoPersonaStateArgs): Promise<CallToolResult> => {
       const resolved = await resolveRepoIdentityForTool(context, input.identity);
 
       if (!resolved.identity) {
@@ -910,7 +910,7 @@ export function registerVoidbotTools(
       }
 
       const typedState = await loadVoidSelfStateTypedDocuments({
-        canonicalPath: resolved.faceStatePath,
+        canonicalPath: resolved.personaStatePath,
         identity: {
           agentId: resolved.identity.id,
           publicName: resolved.identity.displayName,
@@ -918,7 +918,7 @@ export function registerVoidbotTools(
         },
       });
       const rendered = buildVoidSelfStateContext(typedState, {
-        sourcePath: resolved.faceStatePath,
+        sourcePath: resolved.personaStatePath,
         identity: {
           agentId: resolved.identity.id,
           publicName: resolved.identity.displayName,
@@ -932,7 +932,7 @@ export function registerVoidbotTools(
             type: "text",
             text: renderJsonBlock({
               identity: identityForToolResult(resolved.identity, resolved.face),
-              faceStatePath: resolved.faceStatePath,
+              personaStatePath: resolved.personaStatePath,
               summary: rendered.summary,
               typedState,
             }),
@@ -940,7 +940,7 @@ export function registerVoidbotTools(
         ],
         structuredContent: {
           identity: identityForToolResult(resolved.identity, resolved.face),
-          faceStatePath: resolved.faceStatePath,
+          personaStatePath: resolved.personaStatePath,
           summary: rendered.summary,
           typedState,
         },
@@ -949,22 +949,22 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
-    "list_repo_face_self_transcripts",
+    "list_repo_persona_self_transcripts",
     {
-      title: "List Repo Face Self Transcripts",
+      title: "List Repo Persona Self Transcripts",
       description:
-        "List recent read-only Projector / Persona / Interpreter / Delivery witness packets for a registered repo Face. Use this when the Face wants to inspect how recent turns were shaped without injecting those transcripts into every prompt.",
-      inputSchema: repoFaceSelfTranscriptsListInputSchema,
+        "List recent read-only Projector / Persona / Interpreter / Delivery witness packets for a registered repo Persona. Use this when the Persona wants to inspect how recent turns were shaped without injecting those transcripts into every prompt.",
+      inputSchema: repoPersonaSelfTranscriptsListInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input: RepoFaceSelfTranscriptsListArgs): Promise<CallToolResult> => {
+    async (input: RepoPersonaSelfTranscriptsListArgs): Promise<CallToolResult> => {
       const resolved = await resolveRepoIdentityForTool(context, input.identity);
 
       if (!resolved.identity) {
         return resolved.error;
       }
 
-      const packets = await listRepoFaceSelfTranscriptPackets(context, resolved.identity, input.limit ?? 5);
+      const packets = await listRepoPersonaSelfTranscriptPackets(context, resolved.identity, input.limit ?? 5);
 
       return {
         content: [
@@ -987,22 +987,22 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
-    "read_repo_face_self_transcript",
+    "read_repo_persona_self_transcript",
     {
-      title: "Read Repo Face Self Transcript",
+      title: "Read Repo Persona Self Transcript",
       description:
-        "Read one read-only self-transcript witness packet for a registered repo Face: what was projected, what the Persona wrote, what the Interpreter routed, and what delivery receipts exist.",
-      inputSchema: repoFaceSelfTranscriptInputSchema,
+        "Read one read-only self-transcript witness packet for a registered repo Persona: what was projected, what the Persona wrote, what the Interpreter routed, and what delivery receipts exist.",
+      inputSchema: repoPersonaSelfTranscriptInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input: RepoFaceSelfTranscriptArgs): Promise<CallToolResult> => {
+    async (input: RepoPersonaSelfTranscriptArgs): Promise<CallToolResult> => {
       const resolved = await resolveRepoIdentityForTool(context, input.identity);
 
       if (!resolved.identity) {
         return resolved.error;
       }
 
-      const packet = await readRepoFaceSelfTranscriptPacket(
+      const packet = await readRepoPersonaSelfTranscriptPacket(
         context,
         resolved.identity,
         input.jobId,
@@ -1038,22 +1038,22 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
-    "search_repo_face_self_transcripts",
+    "search_repo_persona_self_transcripts",
     {
-      title: "Search Repo Face Self Transcripts",
+      title: "Search Repo Persona Self Transcripts",
       description:
-        "Search recent read-only self-transcript witness packets for a registered repo Face. This searches Projector, Persona, Interpreter, and delivery preview text.",
-      inputSchema: repoFaceSelfTranscriptSearchInputSchema,
+        "Search recent read-only self-transcript witness packets for a registered repo Persona. This searches Projector, Persona, Interpreter, and delivery preview text.",
+      inputSchema: repoPersonaSelfTranscriptSearchInputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input: RepoFaceSelfTranscriptSearchArgs): Promise<CallToolResult> => {
+    async (input: RepoPersonaSelfTranscriptSearchArgs): Promise<CallToolResult> => {
       const resolved = await resolveRepoIdentityForTool(context, input.identity);
 
       if (!resolved.identity) {
         return resolved.error;
       }
 
-      const packets = await searchRepoFaceSelfTranscriptPackets(
+      const packets = await searchRepoPersonaSelfTranscriptPackets(
         context,
         resolved.identity,
         input.query,
@@ -1083,12 +1083,12 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
-    "apply_repo_face_state_operation",
+    "apply_repo_persona_state_operation",
     {
-      title: "Apply Repo Face State Operation",
+      title: "Apply Repo Persona State Operation",
       description:
-        "Apply one typed state operation to a registered repo identity's Face state. Use this for Face memory, incubation, agency pressure, candidate interventions, and receipts; do not edit the Face state file directly.",
-      inputSchema: applyRepoFaceStateOperationInputSchema,
+        "Apply one typed state operation to a registered repo identity's Persona state. Use this for Persona memory, incubation, agency pressure, candidate interventions, and receipts; do not edit the Persona state file directly.",
+      inputSchema: applyRepoPersonaStateOperationInputSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -1096,7 +1096,7 @@ export function registerVoidbotTools(
         openWorldHint: false,
       },
     },
-    async (input: ApplyRepoFaceStateOperationArgs): Promise<CallToolResult> => {
+    async (input: ApplyRepoPersonaStateOperationArgs): Promise<CallToolResult> => {
       const resolved = await resolveRepoIdentityForTool(context, input.identity);
 
       if (!resolved.identity) {
@@ -1105,7 +1105,7 @@ export function registerVoidbotTools(
 
       const result = await applyVoidSelfStateOperation(
         {
-          canonicalPath: resolved.faceStatePath,
+          canonicalPath: resolved.personaStatePath,
           identity: {
             agentId: resolved.identity.id,
             publicName: resolved.identity.displayName,
@@ -1122,7 +1122,7 @@ export function registerVoidbotTools(
             text: renderJsonBlock({
               applied: true,
               identity: identityForToolResult(resolved.identity, resolved.face),
-              faceStatePath: resolved.faceStatePath,
+              personaStatePath: resolved.personaStatePath,
               result,
             }),
           },
@@ -1130,7 +1130,7 @@ export function registerVoidbotTools(
         structuredContent: {
           applied: true,
           identity: identityForToolResult(resolved.identity, resolved.face),
-          faceStatePath: resolved.faceStatePath,
+          personaStatePath: resolved.personaStatePath,
           result,
         },
       };
@@ -1195,16 +1195,16 @@ async function resolveRepoIdentityForTool(
 ): Promise<
   | {
       identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
-      face?: Awaited<ReturnType<typeof loadFaceIdentityRegistry>>["faces"][number];
-      faceStatePath: string;
+      face?: Awaited<ReturnType<typeof loadPersonaIdentityRegistry>>["personas"][number];
+      personaStatePath: string;
     }
   | {
       identity?: undefined;
       error: CallToolResult;
     }
 > {
-  const faceRegistry = await loadFaceIdentityRegistry(context.config.repoDiscordIdentitiesPath);
-  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
+  const faceRegistry = await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath);
+  const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
   const identity = findRepoDiscordIdentity(registry, identitySelector);
 
   if (!identity) {
@@ -1228,12 +1228,12 @@ async function resolveRepoIdentityForTool(
 
   return {
     identity,
-    face: faceRegistry.faces.find((face) => face.id === identity.id),
-    faceStatePath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
+    face: faceRegistry.personas.find((face) => face.id === identity.id),
+    personaStatePath: resolveRepoPersonaStatePath(identity, context.config.storageRoot),
   };
 }
 
-interface RepoFaceModelOutputRecord {
+interface RepoPersonaModelOutputRecord {
   jobId: string;
   command: string;
   promptMarker?: string | null;
@@ -1248,7 +1248,7 @@ interface RepoFaceModelOutputRecord {
   timedOut?: boolean;
 }
 
-interface RepoFaceDeliveryReceipt {
+interface RepoPersonaDeliveryReceipt {
   receiptKey?: string;
   sentAt?: string;
   channelId?: string;
@@ -1258,52 +1258,52 @@ interface RepoFaceDeliveryReceipt {
   preview?: string;
 }
 
-async function listRepoFaceSelfTranscriptPackets(
+async function listRepoPersonaSelfTranscriptPackets(
   context: VoidbotMcpContext,
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
   limit: number,
 ): Promise<Array<Record<string, unknown>>> {
-  const logs = await readRepoFaceModelOutputLogs(context);
-  const grouped = await groupRepoFaceTurnLogsForIdentity(context, identity, logs);
-  const receipts = await readRepoFaceDeliveryReceipts(context, identity);
+  const logs = await readRepoPersonaModelOutputLogs(context);
+  const grouped = await groupRepoPersonaTurnLogsForIdentity(context, identity, logs);
+  const receipts = await readRepoPersonaDeliveryReceipts(context, identity);
   return grouped
     .slice(0, limit)
-    .map((group) => summarizeRepoFaceTranscriptGroup(identity, group, logs, receipts, false));
+    .map((group) => summarizeRepoPersonaTranscriptGroup(identity, group, logs, receipts, false));
 }
 
-async function readRepoFaceSelfTranscriptPacket(
+async function readRepoPersonaSelfTranscriptPacket(
   context: VoidbotMcpContext,
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
   jobId: string,
   includeRaw: boolean,
 ): Promise<Record<string, unknown> | undefined> {
-  const logs = await readRepoFaceModelOutputLogs(context);
-  const grouped = await groupRepoFaceTurnLogsForIdentity(context, identity, logs);
+  const logs = await readRepoPersonaModelOutputLogs(context);
+  const grouped = await groupRepoPersonaTurnLogsForIdentity(context, identity, logs);
   const group = grouped.find((entry) => entry.jobId === jobId);
   if (!group) {
     return undefined;
   }
-  const receipts = await readRepoFaceDeliveryReceipts(context, identity);
-  return summarizeRepoFaceTranscriptGroup(identity, group, logs, receipts, includeRaw);
+  const receipts = await readRepoPersonaDeliveryReceipts(context, identity);
+  return summarizeRepoPersonaTranscriptGroup(identity, group, logs, receipts, includeRaw);
 }
 
-async function searchRepoFaceSelfTranscriptPackets(
+async function searchRepoPersonaSelfTranscriptPackets(
   context: VoidbotMcpContext,
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
   query: string,
   limit: number,
 ): Promise<Array<Record<string, unknown>>> {
-  const logs = await readRepoFaceModelOutputLogs(context);
-  const grouped = await groupRepoFaceTurnLogsForIdentity(context, identity, logs);
-  const receipts = await readRepoFaceDeliveryReceipts(context, identity);
+  const logs = await readRepoPersonaModelOutputLogs(context);
+  const grouped = await groupRepoPersonaTurnLogsForIdentity(context, identity, logs);
+  const receipts = await readRepoPersonaDeliveryReceipts(context, identity);
   const needle = query.toLowerCase();
   return grouped
-    .map((group) => summarizeRepoFaceTranscriptGroup(identity, group, logs, receipts, false))
+    .map((group) => summarizeRepoPersonaTranscriptGroup(identity, group, logs, receipts, false))
     .filter((packet) => JSON.stringify(packet).toLowerCase().includes(needle))
     .slice(0, limit);
 }
 
-async function readRepoFaceModelOutputLogs(context: VoidbotMcpContext): Promise<RepoFaceModelOutputRecord[]> {
+async function readRepoPersonaModelOutputLogs(context: VoidbotMcpContext): Promise<RepoPersonaModelOutputRecord[]> {
   const logPath = join(context.config.storageRoot, "logs", "model-outputs.jsonl");
   let content = "";
   try {
@@ -1317,33 +1317,33 @@ async function readRepoFaceModelOutputLogs(context: VoidbotMcpContext): Promise<
     .filter((line) => line.trim().length > 0)
     .map((line) => {
       try {
-        return JSON.parse(line) as RepoFaceModelOutputRecord;
+        return JSON.parse(line) as RepoPersonaModelOutputRecord;
       } catch {
         return undefined;
       }
     })
-    .filter((record): record is RepoFaceModelOutputRecord => Boolean(record))
+    .filter((record): record is RepoPersonaModelOutputRecord => Boolean(record))
     .filter((record) =>
-      record.command === "repo-face-rumination" ||
-      record.command === "repo-face-state-projector"
+      record.command === "repo-persona-rumination" ||
+      record.command === "repo-persona-state-projector"
     );
 }
 
-async function groupRepoFaceTurnLogsForIdentity(
+async function groupRepoPersonaTurnLogsForIdentity(
   context: VoidbotMcpContext,
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
-  logs: RepoFaceModelOutputRecord[],
+  logs: RepoPersonaModelOutputRecord[],
 ): Promise<Array<{
   jobId: string;
   requestPath?: string;
   requestExcerpt?: string;
-  persona: RepoFaceModelOutputRecord[];
-  interpreter: RepoFaceModelOutputRecord[];
+  persona: RepoPersonaModelOutputRecord[];
+  interpreter: RepoPersonaModelOutputRecord[];
   firstAt?: string;
   lastAt?: string;
 }>> {
-  const byJob = new Map<string, RepoFaceModelOutputRecord[]>();
-  for (const record of logs.filter((entry) => entry.command === "repo-face-rumination")) {
+  const byJob = new Map<string, RepoPersonaModelOutputRecord[]>();
+  for (const record of logs.filter((entry) => entry.command === "repo-persona-rumination")) {
     if (!record.jobId) {
       continue;
     }
@@ -1356,8 +1356,8 @@ async function groupRepoFaceTurnLogsForIdentity(
     jobId: string;
     requestPath?: string;
     requestExcerpt?: string;
-    persona: RepoFaceModelOutputRecord[];
-    interpreter: RepoFaceModelOutputRecord[];
+    persona: RepoPersonaModelOutputRecord[];
+    interpreter: RepoPersonaModelOutputRecord[];
     firstAt?: string;
     lastAt?: string;
   }> = [];
@@ -1365,7 +1365,7 @@ async function groupRepoFaceTurnLogsForIdentity(
   for (const [jobId, records] of byJob) {
     const requestPath = resolve(context.config.storageRoot, "artifacts", jobId, "request.md");
     const request = await readOptionalText(requestPath);
-    if (!request || !requestBelongsToRepoFace(request, identity)) {
+    if (!request || !requestBelongsToRepoPersona(request, identity)) {
       continue;
     }
     const sorted = records.slice().sort(compareModelOutputRecords);
@@ -1374,7 +1374,7 @@ async function groupRepoFaceTurnLogsForIdentity(
       requestPath,
       requestExcerpt: excerptRequestWitness(request),
       persona: sorted.filter((record) => record.promptMarker === "character-turn"),
-      interpreter: sorted.filter((record) => record.promptMarker === "repo-face-turn-interpreter"),
+      interpreter: sorted.filter((record) => record.promptMarker === "repo-persona-turn-interpreter"),
       firstAt: sorted[0]?.startedAt ?? sorted[0]?.loggedAt,
       lastAt: sorted.at(-1)?.finishedAt ?? sorted.at(-1)?.loggedAt,
     });
@@ -1385,19 +1385,19 @@ async function groupRepoFaceTurnLogsForIdentity(
   );
 }
 
-function summarizeRepoFaceTranscriptGroup(
+function summarizeRepoPersonaTranscriptGroup(
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
   group: {
     jobId: string;
     requestPath?: string;
     requestExcerpt?: string;
-    persona: RepoFaceModelOutputRecord[];
-    interpreter: RepoFaceModelOutputRecord[];
+    persona: RepoPersonaModelOutputRecord[];
+    interpreter: RepoPersonaModelOutputRecord[];
     firstAt?: string;
     lastAt?: string;
   },
-  logs: RepoFaceModelOutputRecord[],
-  receipts: RepoFaceDeliveryReceipt[],
+  logs: RepoPersonaModelOutputRecord[],
+  receipts: RepoPersonaDeliveryReceipt[],
   includeRaw: boolean,
 ): Record<string, unknown> {
   const projector = findNearestProjectorRecord(identity, logs, group.firstAt);
@@ -1436,7 +1436,7 @@ function summarizeRepoFaceTranscriptGroup(
   };
 }
 
-function modelRecordSummary(record: RepoFaceModelOutputRecord, includeRaw: boolean): Record<string, unknown> {
+function modelRecordSummary(record: RepoPersonaModelOutputRecord, includeRaw: boolean): Record<string, unknown> {
   return {
     jobId: record.jobId,
     command: record.command,
@@ -1457,13 +1457,13 @@ function modelRecordSummary(record: RepoFaceModelOutputRecord, includeRaw: boole
 
 function findNearestProjectorRecord(
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
-  logs: RepoFaceModelOutputRecord[],
+  logs: RepoPersonaModelOutputRecord[],
   before: string | undefined,
-): RepoFaceModelOutputRecord | undefined {
+): RepoPersonaModelOutputRecord | undefined {
   const beforeMs = Date.parse(before ?? "");
   return logs
     .filter((record) =>
-      record.command === "repo-face-state-projector" &&
+      record.command === "repo-persona-state-projector" &&
       record.jobId?.startsWith(`state-projector:${identity.id}:`)
     )
     .filter((record) => {
@@ -1477,12 +1477,12 @@ function findNearestProjectorRecord(
     .at(-1);
 }
 
-async function readRepoFaceDeliveryReceipts(
+async function readRepoPersonaDeliveryReceipts(
   context: VoidbotMcpContext,
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
-): Promise<RepoFaceDeliveryReceipt[]> {
+): Promise<RepoPersonaDeliveryReceipt[]> {
   const typedState = await loadVoidSelfStateTypedDocuments({
-    canonicalPath: resolveRepoFaceStatePath(identity, context.config.storageRoot),
+    canonicalPath: resolveRepoPersonaStatePath(identity, context.config.storageRoot),
     identity: {
       agentId: identity.id,
       publicName: identity.displayName,
@@ -1490,12 +1490,12 @@ async function readRepoFaceDeliveryReceipts(
     },
   });
   const receipts = (typedState.speechReceipts as { recentReceipts?: unknown[] }).recentReceipts ?? [];
-  return receipts.filter((entry): entry is RepoFaceDeliveryReceipt =>
+  return receipts.filter((entry): entry is RepoPersonaDeliveryReceipt =>
     Boolean(entry) && typeof entry === "object"
   );
 }
 
-function receiptInTurnWindow(receipt: RepoFaceDeliveryReceipt, startedAt: string | undefined, finishedAt: string | undefined): boolean {
+function receiptInTurnWindow(receipt: RepoPersonaDeliveryReceipt, startedAt: string | undefined, finishedAt: string | undefined): boolean {
   const sentAtMs = Date.parse(receipt.sentAt ?? "");
   const startMs = Date.parse(startedAt ?? "");
   const finishMs = Date.parse(finishedAt ?? "");
@@ -1507,7 +1507,7 @@ function receiptInTurnWindow(receipt: RepoFaceDeliveryReceipt, startedAt: string
   return sentAtMs >= lower && sentAtMs <= upper;
 }
 
-function requestBelongsToRepoFace(
+function requestBelongsToRepoPersona(
   request: string,
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
 ): boolean {
@@ -1541,7 +1541,7 @@ async function readOptionalText(path: string): Promise<string | undefined> {
   }
 }
 
-function compareModelOutputRecords(left: RepoFaceModelOutputRecord, right: RepoFaceModelOutputRecord): number {
+function compareModelOutputRecords(left: RepoPersonaModelOutputRecord, right: RepoPersonaModelOutputRecord): number {
   return Date.parse(left.startedAt ?? left.loggedAt ?? "") - Date.parse(right.startedAt ?? right.loggedAt ?? "");
 }
 
@@ -1561,7 +1561,7 @@ async function recordRepoIdentityDeliveryReceipt(input: {
 }): Promise<void> {
   await applyVoidSelfStateOperation(
     {
-      canonicalPath: resolveRepoFaceStatePath(input.identity, input.context.config.storageRoot),
+      canonicalPath: resolveRepoPersonaStatePath(input.identity, input.context.config.storageRoot),
       identity: {
         agentId: input.identity.id,
         publicName: input.identity.displayName,
@@ -1587,20 +1587,20 @@ async function recordRepoIdentityDeliveryReceipt(input: {
   );
 
   try {
-    await applyRepoFacePostFatigueAfterSpeech({
+    await applyRepoPersonaPostFatigueAfterSpeech({
       identity: input.identity,
       storageRoot: input.context.config.storageRoot,
-      heartbeatStatePath: input.context.config.repoFaceHeartbeats.statePath,
+      heartbeatStatePath: input.context.config.repoPersonaHeartbeats.statePath,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`Could not apply repo Face post fatigue for ${input.identity.id}: ${message}`);
+    console.warn(`Could not apply repo Persona post fatigue for ${input.identity.id}: ${message}`);
   }
 }
 
 function identityForToolResult(
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
-  face?: Awaited<ReturnType<typeof loadFaceIdentityRegistry>>["faces"][number],
+  face?: Awaited<ReturnType<typeof loadPersonaIdentityRegistry>>["personas"][number],
 ) {
   return {
     id: identity.id,
@@ -1612,7 +1612,7 @@ function identityForToolResult(
     epiphanyDisplayName: face?.epiphanyDisplayName ?? identity.repoName,
     grants: face?.grants ?? [],
     jurisdictions: face ? [...face.inheritedJurisdictions, ...face.jurisdictions] : [],
-    doctrine: face ? renderFaceIdentityDoctrine(face) : null,
+    doctrine: face ? renderPersonaIdentityDoctrine(face) : null,
   };
 }
 

@@ -18,11 +18,11 @@ transitional inspection lowerings, not the native client path.
 ## Owner Map
 
 - VoidBot owns Discord ingress, room cognition, moderation judgment, archived
-  Discord history, indexed source/lore retrieval, repo Face scheduling
+  Discord history, indexed source/lore retrieval, repo Persona scheduling
   compatibility, and compatibility delivery adapters.
 - VoidBot owns typed Void self-state at `.voidbot/private/void-self-state.cc`
   through the typed operation service and its runners.
-- VoidBot temporarily carries repo Face `.cc` state paths as compatibility
+- VoidBot temporarily carries repo Persona `.cc` state paths as compatibility
   mouths for Discord roles, webhook persona posting, CTB scheduling, prompt
   assembly, and state-operation application.
 - Huginn owns runtime stewardship for Persona-state and `.cc` inspection:
@@ -48,9 +48,9 @@ transitional inspection lowerings, not the native client path.
   migrated.
 - Void self-state witness:
   `.voidbot/private/void-self-state.cc`, owned by VoidBot typed operations.
-- Repo Face compatibility witness:
-  `.voidbot/private/repo-faces/<identity>.cc` by default, or the repo-local
-  Face state path from `REPO_DISCORD_IDENTITIES_PATH`.
+- Repo Persona compatibility witness:
+  `.voidbot/private/repo-personas/<identity>.cc` by default, or the repo-local
+  Persona state path from `REPO_DISCORD_IDENTITIES_PATH`.
 - Swarm presentation witness:
   `.voidbot/status/cultmesh/voidbot-swarm-state.cc`, written by
   `scripts/render-voidbot-swarm-dashboard.mjs`.
@@ -58,11 +58,11 @@ transitional inspection lowerings, not the native client path.
   a specific runner owns them as command input. They are not durable canonical
   state.
 - Persona state should converge on the Epiphany Persona schema surface. VoidBot
-  may carry legacy Face/persona compatibility data for Discord addressing and
+  may carry legacy Persona/persona compatibility data for Discord addressing and
   old tooling, but Huginn is the steward for inspecting, validating, migrating,
   and publishing Persona/.cc runtime state.
 
-Demotion line: VoidBot's repo Face state tools are compatibility carriers and
+Demotion line: VoidBot's repo Persona state tools are compatibility carriers and
 diagnostic admin handles. They must delegate inspection and portable Persona
 publication to Huginn. VoidBot must not turn its legacy MCP reads, private
 registry, HTTP/WebSocket lowerings, or HTML lowering into canonical Persona,
@@ -87,7 +87,7 @@ Required native surfaces:
   Discord history search and context windows.
 - `voidbot.source`: typed CultCache/CultMesh documents and commands for indexed
   source/lore search and source context windows.
-- `voidbot.repo_face`: typed CultCache/CultMesh documents for Persona state
+- `voidbot.repo_persona`: typed CultCache/CultMesh documents for Persona state
   witnesses, prompt assembly status, channel grants, Bifrost digest freshness,
   and Huginn handoff status.
 - `bifrost.transport`: typed CultMesh command surface for Persona speech,
@@ -123,11 +123,11 @@ typed CultCache documents behind the Eve binding:
   backfill/import health, and retrieval caveats.
 - `voidbot.source`: indexed repo/lore coverage, repo shard status, vector
   collection health, and source reindex jobs.
-- `voidbot.repo_face`: registered Face address book, repo-local state witnesses,
+- `voidbot.repo_persona`: registered Persona address book, repo-local state witnesses,
   channel permission projections, pending mention pressure, and compatibility
   state access status.
 - `voidbot.swarm`: CTB initiative order, active turns, pause/heat/cadence
-  controls, orchestrator organ health, and selected Face state witness.
+  controls, orchestrator organ health, and selected Persona state witness.
 
 ## Eve Surfaces
 
@@ -142,13 +142,13 @@ All meaningful presentation flows through Eve/CultUI DSL:
 - Source surface:
   shows indexed repo/lore coverage, shard freshness, Qdrant collection status,
   and detached reindex jobs.
-- Repo Face surface:
+- Repo Persona surface:
   shows registered identities, repo-local `.cc` witnesses, channel grants,
   prompt assembly status, Bifrost digest availability, and Huginn inspection
   readiness.
 - Swarm surface:
   shows CTB order, active turn freeze, heat/cadence controls, pending mention
-  queues, orchestrator status, and selected Face state witness.
+  queues, orchestrator status, and selected Persona state witness.
 
 The existing `swarm-dashboard.html` file is a local browser lowering of the
 `voidbot.swarm` Eve surface. It is useful for visual inspection, but it has no
@@ -161,10 +161,10 @@ Eve binding and the underlying typed state owners.
    through Odin.
 2. Add `.cc` witness/export documents for any remaining JSON-only command or
    status surfaces before treating them as Verse state.
-3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while
+3. Move Persona and repo Persona `.cc` inspection to Huginn-owned tooling while
    leaving VoidBot as the Discord compatibility carrier.
 4. Publish `voidbot.discord`, `voidbot.archive`, `voidbot.source`, and
-   `voidbot.repo_face` provider surfaces as typed Eve/CultUI bindings.
+   `voidbot.repo_persona` provider surfaces as typed Eve/CultUI bindings.
 5. Let Odin discover and aggregate those provider-owned surfaces. Do not add a
    parallel HTTP dashboard or status-card summary as the public contract.
 6. Demote old JSON exports, static HTML, and legacy MCP state reads to

@@ -6,7 +6,7 @@ import {
 } from "@voidbot/shared";
 import {
   type VoidCandidateInterventions,
-  type VoidFaceAffect,
+  type VoidPersonaAffect,
   type VoidAgencyPressure,
   type VoidModerationCursor,
   type VoidScheduledRuntime,
@@ -14,7 +14,7 @@ import {
   type VoidSpeechReceipts,
   type VoidThoughtMemory,
   voidCandidateInterventionsSchema,
-  voidFaceAffectSchema,
+  voidPersonaAffectSchema,
   voidAgencyPressureSchema,
   voidModerationCursorSchema,
   voidScheduledRuntimeSchema,
@@ -31,7 +31,7 @@ export interface VoidSelfStateTypedProjection {
   scheduledRuntime: VoidScheduledRuntime;
   agencyPressure: VoidAgencyPressure;
   candidateInterventions: VoidCandidateInterventions;
-  faceAffect: VoidFaceAffect;
+  personaAffect: VoidPersonaAffect;
 }
 
 export interface VoidSelfStateProjectionOptions {
@@ -136,7 +136,7 @@ export function createEmptyVoidSelfState(
       interventions: [],
       updatedAt: createdAt,
     }),
-    faceAffect: voidFaceAffectSchema.parse({
+    personaAffect: voidPersonaAffectSchema.parse({
       schemaVersion: 1,
       needs: [],
       socialBonds: [],
@@ -240,7 +240,7 @@ export function renderVoidSelfStateSummary(
     .sort((left, right) => right.intensity - left.intensity)
     .slice(0, 4)
     .map((entry) => renderAgencyPressure(entry, identityName));
-  const affectLines = renderFaceAffectSummary(state.faceAffect, identityName);
+  const affectLines = renderPersonaAffectSummary(state.personaAffect, identityName);
 
   return [
     `- Identity: ${identityName}${identityDescription ? ` - ${identityDescription}` : ""}`,
@@ -303,8 +303,8 @@ function renderAgencyPressure(
   return lines.join("\n");
 }
 
-function renderFaceAffectSummary(
-  affect: VoidFaceAffect,
+function renderPersonaAffectSummary(
+  affect: VoidPersonaAffect,
   identityName: string,
 ): string {
   const needs = affect.needs
@@ -390,7 +390,7 @@ export function buildVoidSelfStateProjection(
       ? loadPromptTemplate("runtime-nap-reply-directive.prompt.md")
       : undefined,
     affect: {
-      needs: typedState.faceAffect.needs
+      needs: typedState.personaAffect.needs
         .filter((need) => ["active", "neglected"].includes(need.status))
         .slice(0, 8)
         .map((need) => ({
@@ -402,7 +402,7 @@ export function buildVoidSelfStateProjection(
           intensity: need.intensity,
           valence: need.valence,
         })),
-      socialBonds: typedState.faceAffect.socialBonds
+      socialBonds: typedState.personaAffect.socialBonds
         .filter((bond) => bond.status === "active")
         .slice(0, 8)
         .map((bond) => ({
@@ -412,7 +412,7 @@ export function buildVoidSelfStateProjection(
           summary: bond.summary,
           intensity: bond.intensity,
         })),
-      statusReads: typedState.faceAffect.statusReads
+      statusReads: typedState.personaAffect.statusReads
         .filter((read) => !read.retiredAt)
         .slice(0, 8)
         .map((read) => ({
@@ -422,7 +422,7 @@ export function buildVoidSelfStateProjection(
           summary: read.summary,
           intensity: read.intensity,
         })),
-      moodDimensions: typedState.faceAffect.moodDimensions
+      moodDimensions: typedState.personaAffect.moodDimensions
         .slice(0, 16)
         .map((dimension) => ({
           name: dimension.name,

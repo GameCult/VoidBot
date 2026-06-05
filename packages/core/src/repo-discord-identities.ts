@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const repoDiscordIdentitySchema = z.object({
   id: z.string().trim().min(1),
-  identityKind: z.enum(["repo_face", "native_persona"]).default("repo_face"),
+  identityKind: z.enum(["repo_persona", "native_persona"]).default("repo_persona"),
   repoName: z.string().trim().min(1),
   displayName: z.string().trim().min(1).max(80),
   repoPath: z.string().trim().min(1).optional(),
@@ -21,7 +21,6 @@ const repoDiscordIdentitySchema = z.object({
   })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
   avatarPath: z.string().trim().min(1).optional(),
-  faceStatePath: z.string().trim().min(1).optional(),
   personaStatePath: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
 });
@@ -139,19 +138,15 @@ export function getRepoDiscordIdentityAllowedChannelIds(identity: RepoDiscordIde
   ];
 }
 
-export function resolveRepoFaceStatePath(
+export function resolveRepoPersonaStatePath(
   identity: RepoDiscordIdentity,
   storageRoot: string,
 ): string {
-  if (identity.faceStatePath) {
-    return resolve(identity.faceStatePath);
-  }
-
   if (identity.personaStatePath) {
     return resolve(identity.personaStatePath);
   }
 
-  return resolve(storageRoot, "private", "repo-faces", `${sanitizePathSegment(identity.id)}.cc`);
+  return resolve(storageRoot, "private", "repo-personas", `${sanitizePathSegment(identity.id)}.cc`);
 }
 
 export function findCrossRepoJurisdictionMentions(
@@ -215,7 +210,6 @@ function normalizeRepoDiscordIdentities(
       channelPermissions: normalizeChannelPermissions(identity.channelPermissions),
       avatarUrl: identity.avatarUrl?.trim(),
       avatarPath: identity.avatarPath?.trim(),
-      faceStatePath: identity.faceStatePath?.trim(),
       personaStatePath: identity.personaStatePath?.trim(),
       description: identity.description?.trim(),
     };
@@ -253,7 +247,7 @@ function sanitizePathSegment(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "repo-face";
+    .replace(/^-+|-+$/g, "") || "repo-persona";
 }
 
 function normalizeIdentityKey(value: string): string {

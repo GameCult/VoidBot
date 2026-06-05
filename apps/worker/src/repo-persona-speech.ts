@@ -8,14 +8,14 @@ export interface RepoIdentityPostIntent {
   requiresExplicitReplyTo?: boolean;
 }
 
-type RepoFaceActionBlock = {
+type RepoPersonaActionBlock = {
   kind: "say" | "state_note" | "article" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 };
 
 export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentityPostIntent[] {
-  const requiresExplicitReplyTo = repoFaceInterpretationRequiresExplicitReplyAnchor(finalResponse);
-  const intents: RepoIdentityPostIntent[] = parseRepoFaceActionBlocks(finalResponse)
+  const requiresExplicitReplyTo = repoPersonaInterpretationRequiresExplicitReplyAnchor(finalResponse);
+  const intents: RepoIdentityPostIntent[] = parseRepoPersonaActionBlocks(finalResponse)
     .filter((block) => block.kind === "say")
     .flatMap((block): RepoIdentityPostIntent[] => {
       const content = requiredDslString(block.fields.content);
@@ -62,7 +62,7 @@ export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentit
   return intents;
 }
 
-export function repoFaceInterpretationRequiresExplicitReplyAnchor(finalResponse: string): boolean {
+export function repoPersonaInterpretationRequiresExplicitReplyAnchor(finalResponse: string): boolean {
   const interpretation = finalResponse.match(/INTERPRETATION\s*([\s\S]*?)\s*END/i)?.[1] ?? "";
   if (!interpretation.trim()) {
     return false;
@@ -123,11 +123,11 @@ function isSingleMarkdownFence(value: string): boolean {
   return /^`[^`\r\n]+`$/.test(value) || /^```[A-Za-z0-9_-]*\s*\r?\n[\s\S]*?\r?\n```$/.test(value);
 }
 
-function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[] {
+function parseRepoPersonaActionBlocks(finalResponse: string): RepoPersonaActionBlock[] {
   const lines = finalResponse.split(/\r?\n/);
-  const blocks: RepoFaceActionBlock[] = [];
+  const blocks: RepoPersonaActionBlock[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const kind = parseRepoFaceActionKind(lines[index]);
+    const kind = parseRepoPersonaActionKind(lines[index]);
     if (!kind) {
       continue;
     }
@@ -135,7 +135,7 @@ function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[]
     const bodyLines: string[] = [];
     index += 1;
     while (index < lines.length && lines[index].trim() !== "END") {
-      if (parseRepoFaceActionKind(lines[index])) {
+      if (parseRepoPersonaActionKind(lines[index])) {
         index -= 1;
         break;
       }
@@ -144,13 +144,13 @@ function parseRepoFaceActionBlocks(finalResponse: string): RepoFaceActionBlock[]
     }
     blocks.push({
       kind,
-      fields: parseRepoFaceActionFields(bodyLines),
+      fields: parseRepoPersonaActionFields(bodyLines),
     });
   }
   return blocks;
 }
 
-function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | undefined {
+function parseRepoPersonaActionKind(line: string): RepoPersonaActionBlock["kind"] | undefined {
   switch (line.trim().toUpperCase()) {
     case "SAY":
       return "say";
@@ -167,7 +167,7 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
   }
 }
 
-function parseRepoFaceActionFields(lines: string[]): Record<string, string> {
+function parseRepoPersonaActionFields(lines: string[]): Record<string, string> {
   const fields: Record<string, string> = {};
   let currentKey: string | undefined;
   let currentValue: string[] = [];

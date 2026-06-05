@@ -170,7 +170,7 @@ function updateSpeakingPressure({ typedState, previous, sleepCycle, now }) {
     .sort((left, right) => (right.desireToSpeak ?? 0) - (left.desireToSpeak ?? 0))
     .slice(0, 4)
     .reduce((sum, thread) => sum + (thread.desireToSpeak ?? 0) * 0.12, 0);
-  const affectNeedPressure = (typedState.faceAffect?.needs ?? [])
+  const affectNeedPressure = (typedState.personaAffect?.needs ?? [])
     .filter((entry) => entry.status === "active" || entry.status === "neglected")
     .reduce((sum, entry) => {
       const neglectedWeight = entry.status === "neglected" ? 1.28 : 1;
@@ -178,7 +178,7 @@ function updateSpeakingPressure({ typedState, previous, sleepCycle, now }) {
         entry.kind === "substrate" || entry.kind === "agency" || entry.kind === "status" ? 0.18 : 0.12;
       return sum + entry.intensity * substrateWeight * neglectedWeight;
     }, 0);
-  const statusReadPressure = (typedState.faceAffect?.statusReads ?? [])
+  const statusReadPressure = (typedState.personaAffect?.statusReads ?? [])
     .filter((entry) => !entry.retiredAt)
     .reduce((sum, entry) => {
       const sharpStatusWeight = ["neglected", "bypassed", "blocked", "ignored", "threatened"].includes(entry.status)
@@ -186,7 +186,7 @@ function updateSpeakingPressure({ typedState, previous, sleepCycle, now }) {
         : 0.08;
       return sum + entry.intensity * sharpStatusWeight;
     }, 0);
-  const moodSpeechPressure = (typedState.faceAffect?.moodDimensions ?? [])
+  const moodSpeechPressure = (typedState.personaAffect?.moodDimensions ?? [])
     .reduce((sum, entry) => {
       const expressiveWeight = ["anger", "annoyance", "irritation", "envy", "pride", "smugness", "playfulness", "anxiety", "commandForce"].includes(entry.name)
         ? 0.06

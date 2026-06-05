@@ -58,11 +58,11 @@ function inspect(records) {
   const noFinalMessage = records.filter((record) => !String(record.finalMessage ?? "").trim());
   const forbiddenToolRecords = records.filter((record) =>
     (record.toolCalls ?? []).some((call) =>
-      ["read_repo_face_state", "list_mcp_resources", "read_mcp_resource", "post_repo_identity_message", "apply_repo_face_state_operation", "notify_owner"].includes(call.tool),
+      ["read_repo_persona_state", "list_mcp_resources", "read_mcp_resource", "post_repo_identity_message", "apply_repo_persona_state_operation", "notify_owner"].includes(call.tool),
     ),
   );
   const speechSmells = records.filter((record) =>
-    /repo-face heartbeat|heartbeat from|bright bridge note|tiny fish sorting note|librarian note|maintenance pass/i.test(String(record.finalMessage ?? "")),
+    /repo-persona heartbeat|heartbeat from|bright bridge note|tiny fish sorting note|librarian note|maintenance pass/i.test(String(record.finalMessage ?? "")),
   );
   const quotaSignals = records.filter((record) =>
     /quota|rate limit|rate-limit|usage limit|capacity|too many requests|(?:http|status|code|error)\s*429|429\s*(?:too many requests|rate)|insufficient_quota|model.*unavailable|model.*access|limit exceeded/i.test(
@@ -72,7 +72,7 @@ function inspect(records) {
 
   pushWarning(warnings, failures.length, "model run failures/timeouts/handoffs", failures);
   pushWarning(warnings, noFinalMessage.length, "model runs with no final message", noFinalMessage);
-  pushWarning(warnings, forbiddenToolRecords.length, "Face/model runs using forbidden substrate tools", forbiddenToolRecords);
+  pushWarning(warnings, forbiddenToolRecords.length, "Persona/model runs using forbidden substrate tools", forbiddenToolRecords);
   pushWarning(warnings, speechSmells.length, "robotic/provenance speech smells", speechSmells);
   pushWarning(warnings, quotaSignals.length, "quota/rate/capacity fallback signals", quotaSignals);
 

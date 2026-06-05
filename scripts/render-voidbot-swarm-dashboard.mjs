@@ -35,8 +35,8 @@ const env = await readDotEnv(resolve(repoRoot, ".env"));
 const storageRoot = resolveConfigPath(env.STORAGE_ROOT, defaultStorageRoot);
 const statusDir = resolve(storageRoot, "status");
 const heartbeatStatePath = resolveConfigPath(
-  env.REPO_FACE_HEARTBEAT_STATE_PATH,
-  resolve(statusDir, "repo-face-heartbeats.json"),
+  env.REPO_PERSONA_HEARTBEAT_STATE_PATH,
+  resolve(statusDir, "repo-persona-heartbeats.json"),
 );
 const orchestratorPath = resolve(statusDir, "gamecult-orchestrator.json");
 const pausePath = resolve(repoRoot, "state", "agent-swarm-paused.json");
@@ -110,15 +110,15 @@ async function buildSnapshot() {
   const participantSnapshots = participants.map((participant) =>
     projectParticipant(participant, pendingMentions, initiativeClock, identityMetadata),
   );
-  const faceStates = await readFaceStates(identityMetadata);
+  const personaStates = await readPersonaStates(identityMetadata);
   for (const participant of participantSnapshots) {
-    participant.faceState = faceStates.get(participant.identityId.toLowerCase()) ?? {
+    participant.personaState = personaStates.get(participant.identityId.toLowerCase()) ?? {
       readable: false,
-      path: participant.faceStatePath,
-      error: participant.faceStatePath ? "State file was not readable." : "No Face state path registered.",
+      path: participant.personaStatePath,
+      error: participant.personaStatePath ? "State file was not readable." : "No Persona state path registered.",
       tree: [],
     };
-    participant.restState = participant.faceState.restState ?? null;
+    participant.restState = participant.personaState.restState ?? null;
   }
   const activeTurns = participantSnapshots.filter((participant) => participant.activeJobId);
   const readyNow = participantSnapshots.filter((participant) =>
@@ -306,7 +306,7 @@ function projectParticipant(participant, pendingMentions, initiativeClock, ident
     displayName: String(participant.displayName ?? metadata.displayName ?? identityId),
     repoName: String(participant.repoName ?? metadata.repoName ?? "unknown"),
     repoPath: stringOrNull(metadata.repoPath),
-    faceStatePath: stringOrNull(metadata.faceStatePath),
+    personaStatePath: stringOrNull(metadata.personaStatePath),
     personaStatePath: stringOrNull(metadata.personaStatePath),
     description: stringOrNull(metadata.description),
     avatarUrl: metadata.avatarUrl ?? null,
@@ -319,8 +319,8 @@ function projectParticipant(participant, pendingMentions, initiativeClock, ident
         speedMultiplier: numberOrNull(entry?.speedMultiplier),
       }))
       : [],
-    participantKind: String(participant.participantKind ?? "repo_face"),
-    turnKind: String(participant.turnKind ?? "repo_face_rumination"),
+    participantKind: String(participant.participantKind ?? "repo_persona"),
+    turnKind: String(participant.turnKind ?? "repo_persona_rumination"),
     status: String(participant.status ?? "unknown"),
     currentLoad: numberOrNull(participant.currentLoad),
     heat: numberOrNull(participant.heat),
@@ -388,7 +388,7 @@ async function readIdentityMetadata(registryPathValue) {
         repoName: stringOrNull(identity?.repoName),
         repoPath: stringOrNull(identity?.repoPath),
         identityKind: stringOrNull(identity?.identityKind),
-        faceStatePath: stringOrNull(identity?.faceStatePath),
+        personaStatePath: stringOrNull(identity?.personaStatePath),
         personaStatePath: stringOrNull(identity?.personaStatePath),
         description: stringOrNull(identity?.description),
         avatarUrl: stringOrNull(identity?.avatarUrl),
@@ -400,7 +400,7 @@ async function readIdentityMetadata(registryPathValue) {
   return metadata;
 }
 
-async function readFaceStates(identityMetadata) {
+async function readPersonaStates(identityMetadata) {
   const states = new Map();
   let core = null;
   try {
@@ -410,7 +410,7 @@ async function readFaceStates(identityMetadata) {
     for (const [id, identity] of identityMetadata.entries()) {
       states.set(id, {
         readable: false,
-        path: identity.faceStatePath ?? null,
+        path: identity.personaStatePath ?? null,
         error: `Core typed-state loader unavailable: ${error instanceof Error ? error.message : String(error)}`,
         tree: [],
       });
@@ -424,18 +424,18 @@ async function readFaceStates(identityMetadata) {
       continue;
     }
 
-    if (!identity.faceStatePath) {
+    if (!identity.personaStatePath) {
       states.set(id, {
         readable: false,
         path: null,
-        error: "No Face state path registered.",
+        error: "No Persona state path registered.",
         tree: [],
       });
       continue;
     }
     try {
       const typedState = await core.loadVoidSelfStateTypedDocuments({
-        canonicalPath: identity.faceStatePath,
+        canonicalPath: identity.personaStatePath,
         identity: {
           agentId: id,
           publicName: identity.displayName ?? id,
@@ -444,7 +444,7 @@ async function readFaceStates(identityMetadata) {
       });
       const rendered = core.buildVoidSelfStateContext
         ? core.buildVoidSelfStateContext(typedState, {
-          sourcePath: identity.faceStatePath,
+          sourcePath: identity.personaStatePath,
           identity: {
             agentId: id,
             publicName: identity.displayName ?? id,
@@ -454,16 +454,16 @@ async function readFaceStates(identityMetadata) {
         : null;
       states.set(id, {
         readable: true,
-        path: identity.faceStatePath,
+        path: identity.personaStatePath,
         summary: truncate(rendered?.summary ?? "", 1200),
-        counts: countFaceState(typedState),
+        counts: countPersonaState(typedState),
         restState: projectRestState(typedState),
-        tree: buildFaceStateTree(typedState),
+        tree: buildPersonaStateTree(typedState),
       });
     } catch (error) {
       states.set(id, {
         readable: false,
-        path: identity.faceStatePath,
+        path: identity.personaStatePath,
         error: error instanceof Error ? error.message : String(error),
         tree: [],
       });
@@ -548,18 +548,18 @@ function projectRestState(typedState) {
   };
 }
 
-function countFaceState(typedState) {
+function countPersonaState(typedState) {
   return {
     shortTerm: typedState?.thoughtMemory?.shortTerm?.length ?? 0,
     memories: typedState?.thoughtMemory?.memories?.length ?? 0,
     incubation: typedState?.thoughtMemory?.incubation?.length ?? 0,
-    bonds: typedState?.faceAffect?.socialBonds?.length ?? 0,
+    bonds: typedState?.personaAffect?.socialBonds?.length ?? 0,
     pressures: typedState?.agencyPressure?.pressures?.length ?? 0,
     candidates: typedState?.candidateInterventions?.interventions?.length ?? 0,
   };
 }
 
-function buildFaceStateTree(typedState) {
+function buildPersonaStateTree(typedState) {
   return [
     node("Self Profile", "selfProfile", [
       leaf("Public Name", typedState?.selfProfile?.publicName),
@@ -573,12 +573,12 @@ function buildFaceStateTree(typedState) {
       collectionNode("Durable Memories", "thoughtMemory.memories", typedState?.thoughtMemory?.memories, memoryNode),
       collectionNode("Incubation", "thoughtMemory.incubation", typedState?.thoughtMemory?.incubation, memoryNode),
     ]),
-    node("Affect", "faceAffect", [
-      collectionNode("Needs", "faceAffect.needs", typedState?.faceAffect?.needs, valueNode),
-      collectionNode("Social Bonds", "faceAffect.socialBonds", typedState?.faceAffect?.socialBonds, memoryNode),
-      collectionNode("Status Reads", "faceAffect.statusReads", typedState?.faceAffect?.statusReads, memoryNode),
-      objectNode("Mood", "faceAffect.moodDimensions", typedState?.faceAffect?.moodDimensions),
-      collectionNode("Social Biases", "faceAffect.socialBiases", typedState?.faceAffect?.socialBiases, valueNode),
+    node("Affect", "personaAffect", [
+      collectionNode("Needs", "personaAffect.needs", typedState?.personaAffect?.needs, valueNode),
+      collectionNode("Social Bonds", "personaAffect.socialBonds", typedState?.personaAffect?.socialBonds, memoryNode),
+      collectionNode("Status Reads", "personaAffect.statusReads", typedState?.personaAffect?.statusReads, memoryNode),
+      objectNode("Mood", "personaAffect.moodDimensions", typedState?.personaAffect?.moodDimensions),
+      collectionNode("Social Biases", "personaAffect.socialBiases", typedState?.personaAffect?.socialBiases, valueNode),
     ]),
     node("Agency", "agencyPressure", [
       collectionNode("Pressures", "agencyPressure.pressures", typedState?.agencyPressure?.pressures, memoryNode),
@@ -684,7 +684,7 @@ function projectPendingMention(mention) {
 function deriveSwarmState({ heartbeat, orchestrator, paused, activeTurns }) {
   if (!heartbeat.ok) return "missing";
   if (paused) return "paused";
-  const organ = projectOrgans(orchestrator.value).find((entry) => entry.id === "repo-face-heartbeats");
+  const organ = projectOrgans(orchestrator.value).find((entry) => entry.id === "repo-persona-heartbeats");
   if (organ && organ.lastStatus && !["ok", "skipped_disabled"].includes(organ.lastStatus)) {
     return "warning";
   }
@@ -858,7 +858,7 @@ function buildProviderAdvertisement(snapshot) {
     locatedService,
     cultMeshAddress: primaryCultMeshAddress(),
     title: "VoidBot Swarm",
-    description: "VoidBot swarm status, CTB order, controls, and selected Face state as an Eve/CultUI surface.",
+    description: "VoidBot swarm status, CTB order, controls, and selected Persona state as an Eve/CultUI surface.",
     version: String(snapshot.summary?.initiativeClock ?? Date.now()),
     status: snapshot.summary?.state ?? "unknown",
     updatedAt: snapshot.generatedAt,
@@ -946,7 +946,7 @@ function buildEveInterfaceBinding(snapshot, eveState) {
       },
     }, {
       id: "swarm.force-turn",
-      label: "Pull Face forward",
+      label: "Pull Persona forward",
       command: "force-turn",
       writes: {
         documentType: eveBindingDocumentType,
@@ -1122,7 +1122,7 @@ function buildEveProviderState(snapshot) {
     ...participants.slice(0, 24).map((participant, index) => ({
       id: `face-${participant.identityId}`,
       label: `${participant.displayName}\n${participant.repoName}`,
-      kind: "repo-face",
+      kind: "repo-persona",
       visible: true,
       x: -0.9 + (index % 6) * 0.36,
       y: -0.3 + Math.floor(index / 6) * 0.22,
@@ -1727,7 +1727,7 @@ function renderHtml(snapshot) {
     .badge.running, .badge.info { background: var(--cyan); }
     .badge.paused, .badge.warning { background: var(--amber); }
     .badge.failed, .badge.missing, .badge.error { background: var(--coral); }
-    .badge.repo-face { background: var(--violet); }
+    .badge.repo-persona { background: var(--violet); }
 
     @media (orientation: landscape) {
       .ctb-rail {
@@ -1934,17 +1934,17 @@ function renderHtml(snapshot) {
     }
 
     function renderInspector(snapshot, participants, agent) {
-      if (!agent) return "<section class=\\"pane inspector-pane\\"><p class=\\"kicker\\">Face</p><p class=\\"muted\\">No selected Face.</p></section>";
-      const counts = agent.faceState?.counts || {};
+      if (!agent) return "<section class=\\"pane inspector-pane\\"><p class=\\"kicker\\">Persona</p><p class=\\"muted\\">No selected Persona.</p></section>";
+      const counts = agent.personaState?.counts || {};
       const memoryCount = (counts.shortTerm || 0) + (counts.memories || 0);
-      return "<section class=\\"pane inspector-pane\\">" + renderControls(snapshot, participants) + "<div class=\\"inspector-hero\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Face</p><h1>" + esc(agent.displayName) + "</h1><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div class=\\"agent-stats\\">" +
+      return "<section class=\\"pane inspector-pane\\">" + renderControls(snapshot, participants) + "<div class=\\"inspector-hero\\">" + avatarHtml(agent) + "<div><p class=\\"kicker\\">Selected Persona</p><h1>" + esc(agent.displayName) + "</h1><p class=\\"muted mono\\">" + esc(agent.identityId) + " / " + esc(agent.repoName) + "</p></div></div><div class=\\"agent-stats\\">" +
         statBar("Turn", minutes(agent.nextTurnInMinutes, agent.restState), turnPercent(agent.nextTurnInMinutes), agent.restState?.isNapping === true ? "warm" : "cool") +
         statBar("Memory", number(memoryCount), Math.min(100, memoryCount * 7), "cool") +
         statBar("Pressure", number(counts.pressures || 0), Math.min(100, (counts.pressures || 0) * 14), (counts.pressures || 0) > 4 ? "hot" : "") +
         statBar("Heat", number(agent.heat), Math.min(100, (agent.heat || 0) * 34), (agent.heat || 0) > 1.5 ? "hot" : "") +
         statBar("Load", number(agent.currentLoad), Math.min(100, (agent.currentLoad || 0) * 100), (agent.currentLoad || 0) > 0.7 ? "hot" : "") +
         statBar("Speed", number(agent.effectiveSpeed), Math.min(100, (agent.effectiveSpeed || 0) * 34), "") +
-      "</div><div class=\\"inspector-lore\\"><p>" + esc(agent.description || "No Face description registered.") + "</p><div class=\\"channel-list\\">" + (agent.channelPermissions || []).map((channel) => "<div class=\\"channel-chip\\"><strong>" + esc(channel.label || "channel") + "</strong><span>x" + esc(number(channel.speedMultiplier || 1)) + "</span><span class=\\"muted\\">" + esc(channel.topic || "no topic") + "</span><span class=\\"mono muted\\">" + esc(channel.speechThreshold || "threshold") + "</span></div>").join("") + "</div></div></section>";
+      "</div><div class=\\"inspector-lore\\"><p>" + esc(agent.description || "No Persona description registered.") + "</p><div class=\\"channel-list\\">" + (agent.channelPermissions || []).map((channel) => "<div class=\\"channel-chip\\"><strong>" + esc(channel.label || "channel") + "</strong><span>x" + esc(number(channel.speedMultiplier || 1)) + "</span><span class=\\"muted\\">" + esc(channel.topic || "no topic") + "</span><span class=\\"mono muted\\">" + esc(channel.speechThreshold || "threshold") + "</span></div>").join("") + "</div></div></section>";
     }
 
     function renderControls(snapshot, participants) {
@@ -1972,9 +1972,9 @@ function renderHtml(snapshot) {
     }
 
     function renderStateTree(agent) {
-      const state = agent?.faceState;
-      if (!agent) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">No Face selected.</p></section>";
-      if (!state?.readable) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">" + esc(state?.error || "Face state unreadable.") + "</p></section>";
+      const state = agent?.personaState;
+      if (!agent) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">No Persona selected.</p></section>";
+      if (!state?.readable) return "<section class=\\"pane tree-pane\\"><p class=\\"kicker\\">State Graph</p><p class=\\"muted\\">" + esc(state?.error || "Persona state unreadable.") + "</p></section>";
       return "<section class=\\"pane tree-pane\\"><div><p class=\\"kicker\\">State Graph</p><h2>" + esc(agent.displayName) + " memory tree</h2><p class=\\"muted mono\\">" + esc(state.path || "state path missing") + "</p></div><div class=\\"state-tree\\">" + renderTreeNodes(state.tree || [], 0) + "</div></section>";
     }
 
@@ -1990,16 +1990,16 @@ function renderHtml(snapshot) {
     }
 
     function renderStateDetail(agent, leaf) {
-      if (!agent) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">No selected Face.</p></section>";
-      if (!agent.faceState?.readable) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">" + esc(agent.faceState?.error || "Face state unreadable.") + "</p></section>";
-      const selected = leaf || firstLeaf(agent.faceState.tree || []);
+      if (!agent) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">No selected Persona.</p></section>";
+      if (!agent.personaState?.readable) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">" + esc(agent.personaState?.error || "Persona state unreadable.") + "</p></section>";
+      const selected = leaf || firstLeaf(agent.personaState.tree || []);
       if (!selected) return "<section class=\\"pane memory-pane\\"><p class=\\"kicker\\">State Detail</p><p class=\\"muted\\">No entries in this state file.</p></section>";
       selectedStatePath = selected.path;
       return "<section class=\\"pane memory-pane\\"><div><p class=\\"kicker\\">State Detail</p><h2>" + esc(selected.title || selected.label) + "</h2><p class=\\"muted mono\\">" + esc(selected.path) + "</p></div><div class=\\"detail-body\\"><div class=\\"detail-card\\"><pre>" + esc(selected.detail || selected.preview || "") + "</pre></div></div></section>";
     }
 
     function findSelectedLeaf(agent) {
-      const leaves = flattenLeaves(agent?.faceState?.tree || []);
+      const leaves = flattenLeaves(agent?.personaState?.tree || []);
       if (!leaves.length) return null;
       if (selectedStatePath) {
         const existing = leaves.find((leaf) => leaf.path === selectedStatePath);
@@ -2041,7 +2041,7 @@ function renderHtml(snapshot) {
       const summary = snapshot.summary || {};
       const organs = snapshot.orchestrator?.organs || [];
       const watchdog = findOrgan(organs, "watchdog");
-      const face = findOrgan(organs, "repo-face-heartbeats");
+      const face = findOrgan(organs, "repo-persona-heartbeats");
       const mood = findOrgan(organs, "mood");
       const rumination = findOrgan(organs, "rumination");
       const sourceFreshness = snapshot.sources?.heartbeatStateUpdatedAt ? Math.max(0, 100 - ((Date.now() - Date.parse(snapshot.sources.heartbeatStateUpdatedAt)) / 600)) : 0;
@@ -2280,11 +2280,11 @@ function redactSnapshot(snapshot) {
     constraints: [],
     constraintCount: participant.constraintCount,
     description: participant.description ? truncate(participant.description, 220) : null,
-    faceStatePath: null,
-    faceState: participant.faceState
+    personaStatePath: null,
+    personaState: participant.personaState
       ? {
-        readable: participant.faceState.readable,
-        counts: participant.faceState.counts,
+        readable: participant.personaState.readable,
+        counts: participant.personaState.counts,
         path: null,
         tree: [],
       }

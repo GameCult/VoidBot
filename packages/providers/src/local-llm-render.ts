@@ -11,20 +11,20 @@ export function buildSystemPrompt(context: ContextBundle): string {
     context.stylePack?.enabled && context.stylePack.instructions.trim().length > 0
       ? context.stylePack.instructions.trim()
       : "No extra persona instructions were supplied.";
-  const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
-  const isRepoFaceJob = !isRepoFaceParentInterpreter && (
+  const isRepoPersonaParentInterpreter = context.prompt.includes("prompt:repo-persona-turn-interpreter");
+  const isRepoPersonaJob = !isRepoPersonaParentInterpreter && (
     context.prompt.includes("prompt:character-turn")
-      || context.prompt.includes("prompt:repo-face-turn")
-      || context.prompt.includes("Repo Face identity doctrine:")
-      || context.prompt.includes("Epiphany Face identity doctrine:")
+      || context.prompt.includes("prompt:repo-persona-turn")
+      || context.prompt.includes("Repo Persona identity doctrine:")
+      || context.prompt.includes("Epiphany Persona identity doctrine:")
   );
-  const repoFaceInstruction = isRepoFaceJob
+  const repoPersonaInstruction = isRepoPersonaJob
     ? "This turn belongs to the character described in the prompt. Keep the useful discipline and humor permissions from the base style, but speak, reason, remember, object, and choose as that person first. Stay read-only: propose repo changes and ask for consensus, but do not edit files here."
     : undefined;
   const sleepProjection = context.voidSelfState?.projection;
 
   return loadPromptTemplate("local-llm-system.prompt.md", {
-    repoFaceInstruction,
+    repoPersonaInstruction,
     napping: sleepProjection?.mode === "napping",
     sourceGroundingInstructions: renderSourceGroundingInstructions(context, false),
     styleInstructions,
@@ -63,7 +63,7 @@ export function buildPrompt(context: ContextBundle): string {
   const voidSelfState = renderVoidSelfState(context);
 
   return loadPromptTemplate("local-llm-user.prompt.md", {
-    repoFaceTurn: isRepoFacePrompt(context),
+    repoPersonaTurn: isRepoPersonaPrompt(context),
     prompt: context.prompt,
     guild: context.guildContext.guildName ?? context.guildContext.guildId ?? "(direct/unknown)",
     channel: context.guildContext.channelName ?? context.guildContext.channelId,
@@ -76,13 +76,13 @@ export function buildPrompt(context: ContextBundle): string {
   });
 }
 
-function isRepoFacePrompt(context: ContextBundle): boolean {
-  const isRepoFaceParentInterpreter = context.prompt.includes("prompt:repo-face-turn-interpreter");
-  return !isRepoFaceParentInterpreter && (
+function isRepoPersonaPrompt(context: ContextBundle): boolean {
+  const isRepoPersonaParentInterpreter = context.prompt.includes("prompt:repo-persona-turn-interpreter");
+  return !isRepoPersonaParentInterpreter && (
     context.prompt.includes("prompt:character-turn")
-      || context.prompt.includes("prompt:repo-face-turn")
-      || context.prompt.includes("Repo Face identity doctrine:")
-      || context.prompt.includes("Epiphany Face identity doctrine:")
+      || context.prompt.includes("prompt:repo-persona-turn")
+      || context.prompt.includes("Repo Persona identity doctrine:")
+      || context.prompt.includes("Epiphany Persona identity doctrine:")
   );
 }
 

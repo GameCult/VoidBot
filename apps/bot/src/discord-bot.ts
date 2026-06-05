@@ -15,16 +15,16 @@ import {
   OllamaSituationalSocialReadInferer,
   PermissionEngine,
   createStateStorage,
-  ensureRepoFaceInitialized,
-  faceRegistryAsRepoDiscordRegistry,
+  ensureRepoPersonaInitialized,
+  personaRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentityByPersonaName,
   findRepoDiscordIdentityByRoleIds,
   findRepoDiscordIdentitiesByTextMentions,
   findRepoDiscordIdentityByTextAddress,
   isRepoDiscordIdentityAllowedInChannel,
-  loadFaceIdentityRegistry,
+  loadPersonaIdentityRegistry,
   queueAgentHeartbeatMention,
-  queueRepoFaceMention,
+  queueRepoPersonaMention,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
   loadStylePack,
@@ -95,8 +95,8 @@ export async function startBot(): Promise<void> {
       GatewayIntentBits.MessageContent,
     ],
   });
-  let repoDiscordIdentities = faceRegistryAsRepoDiscordRegistry(
-    await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath),
+  let repoDiscordIdentities = personaRegistryAsRepoDiscordRegistry(
+    await loadPersonaIdentityRegistry(config.repoDiscordIdentitiesPath),
   );
   repoDiscordIdentities = await ensureRepoIdentityRoles({
     botToken: config.botToken,
@@ -314,16 +314,16 @@ export async function startBot(): Promise<void> {
 
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) {
-      await queueRepoFaceCollaborationHooksFromBotMessage({
+      await queueRepoPersonaCollaborationHooksFromBotMessage({
         message,
         registry: repoDiscordIdentities,
-        statePath: config.repoFaceHeartbeats.statePath,
+        statePath: config.repoPersonaHeartbeats.statePath,
         storageRoot: config.storageRoot,
         sourceRepoRoot: config.sourceRepoRoot,
         epiphanyAgentRoot: config.epiphanyAgentRoot,
         workspaceRoot: process.cwd(),
-        birthMode: config.repoFaceBirthMode,
-        birthExecutor: config.repoFaceBirthExecutor,
+        birthMode: config.repoPersonaBirthMode,
+        birthExecutor: config.repoPersonaBirthExecutor,
       });
       return;
     }
@@ -377,7 +377,7 @@ export async function startBot(): Promise<void> {
       ...(repliedRepoIdentity ? [repliedRepoIdentity] : []),
     ]);
     const broadcastAddressedRepoIdentities = !isDirectMessage && addressedRepoIdentities.length === 0 &&
-      isRepoFaceBroadcastInvitation(stripBotMention(message.content))
+      isRepoPersonaBroadcastInvitation(stripBotMention(message.content))
       ? repoDiscordIdentities.identities.filter((identity) =>
           isRepoDiscordIdentityAllowedInChannel(identity, message.channelId),
         )
@@ -418,20 +418,20 @@ export async function startBot(): Promise<void> {
             broadcastAddressed: broadcastAddressedRepoIdentities.some((entry) => entry.id === identity.id),
           });
           if (!identityVisiblePrompt) {
-            console.log(`Ignored empty repo Face mention ${message.id} for ${identity.id}.`);
+            console.log(`Ignored empty repo Persona mention ${message.id} for ${identity.id}.`);
             continue;
           }
-          const faceInitialization = await ensureRepoFaceInitialized({
+          const faceInitialization = await ensureRepoPersonaInitialized({
             identity,
             storageRoot: config.storageRoot,
             sourceRepoRoot: config.sourceRepoRoot,
             epiphanyAgentRoot: config.epiphanyAgentRoot,
             workspaceRoot: process.cwd(),
-            birthMode: config.repoFaceBirthMode,
-            birthExecutor: config.repoFaceBirthExecutor,
+            birthMode: config.repoPersonaBirthMode,
+            birthExecutor: config.repoPersonaBirthExecutor,
           });
-          const queuedMention = await queueRepoFaceMention({
-            statePath: config.repoFaceHeartbeats.statePath,
+          const queuedMention = await queueRepoPersonaMention({
+            statePath: config.repoPersonaHeartbeats.statePath,
             identity,
             channelId: message.channelId,
             messageId: message.id,
@@ -444,19 +444,19 @@ export async function startBot(): Promise<void> {
             queuedCount += 1;
           }
           console.log(
-            `Queued repo Face mention ${message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
+            `Queued repo Persona mention ${message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
               faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
             }`,
           );
         }
         if (queuedCount === 0) {
-          console.log(`Repo Face mention ${message.id} matched existing pending obligations only.`);
+          console.log(`Repo Persona mention ${message.id} matched existing pending obligations only.`);
         }
         return;
       }
 
       const queuedMention = await queueAgentHeartbeatMention({
-        statePath: config.repoFaceHeartbeats.statePath,
+        statePath: config.repoPersonaHeartbeats.statePath,
         identityId: "void",
         channelId: message.channelId,
         messageId: message.id,
@@ -720,7 +720,7 @@ async function resolveRepliedRepoIdentity(
     return findRepoDiscordIdentityByPersonaName(registry, personaName, message.channelId);
   } catch (error) {
     console.warn(
-      `Could not resolve referenced message ${message.reference.messageId} for repo Face reply routing: ${
+      `Could not resolve referenced message ${message.reference.messageId} for repo Persona reply routing: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -780,7 +780,7 @@ function renderRepoIdentityVisiblePrompt(input: {
   );
 }
 
-function isRepoFaceBroadcastInvitation(content: string): boolean {
+function isRepoPersonaBroadcastInvitation(content: string): boolean {
   const normalized = collapseWhitespace(content).toLowerCase();
   if (normalized.length === 0) {
     return false;
@@ -812,7 +812,7 @@ function uniqueRepoIdentities(identities: RepoDiscordIdentity[]): RepoDiscordIde
   return result;
 }
 
-async function queueRepoFaceCollaborationHooksFromBotMessage(input: {
+async function queueRepoPersonaCollaborationHooksFromBotMessage(input: {
   message: Message;
   registry: { identities: RepoDiscordIdentity[] };
   statePath: string;
@@ -820,10 +820,10 @@ async function queueRepoFaceCollaborationHooksFromBotMessage(input: {
   sourceRepoRoot?: string;
   epiphanyAgentRoot: string;
   workspaceRoot: string;
-  birthMode: Parameters<typeof ensureRepoFaceInitialized>[0]["birthMode"];
-  birthExecutor: Parameters<typeof ensureRepoFaceInitialized>[0]["birthExecutor"];
+  birthMode: Parameters<typeof ensureRepoPersonaInitialized>[0]["birthMode"];
+  birthExecutor: Parameters<typeof ensureRepoPersonaInitialized>[0]["birthExecutor"];
 }): Promise<void> {
-  if (!input.message.inGuild() || !isRepoFaceCollaborationHook(input.message.content)) {
+  if (!input.message.inGuild() || !isRepoPersonaCollaborationHook(input.message.content)) {
     return;
   }
 
@@ -842,7 +842,7 @@ async function queueRepoFaceCollaborationHooksFromBotMessage(input: {
     input.message.channelId,
   );
   for (const identity of addressed.filter((entry) => entry.id !== speakerIdentity?.id)) {
-    const faceInitialization = await ensureRepoFaceInitialized({
+    const faceInitialization = await ensureRepoPersonaInitialized({
       identity,
       storageRoot: input.storageRoot,
       sourceRepoRoot: input.sourceRepoRoot,
@@ -851,7 +851,7 @@ async function queueRepoFaceCollaborationHooksFromBotMessage(input: {
       birthMode: input.birthMode,
       birthExecutor: input.birthExecutor,
     });
-    const queuedMention = await queueRepoFaceMention({
+    const queuedMention = await queueRepoPersonaMention({
       statePath: input.statePath,
       identity,
       channelId: input.message.channelId,
@@ -863,14 +863,14 @@ async function queueRepoFaceCollaborationHooksFromBotMessage(input: {
         `A public collaboration hook named ${identity.displayName}. Treat this as a live consultation or coauthorship obligation, not passive background: ${input.message.content}`,
     });
     console.log(
-      `Queued repo Face collaboration hook ${input.message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
+      `Queued repo Persona collaboration hook ${input.message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
         faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
       }`,
     );
   }
 }
 
-function isRepoFaceCollaborationHook(content: string): boolean {
+function isRepoPersonaCollaborationHook(content: string): boolean {
   return /\b(consult(?:ation|ed|ing)?|co[- ]?author(?:ship|ed|ing)?|collab(?:oration|orate|orating)?|parallel byline|byline|stewardship|consensus check|ask(?:ed|ing)?|invite(?:d|s|ing)?)\b/i.test(content);
 }
 

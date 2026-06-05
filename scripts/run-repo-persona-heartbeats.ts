@@ -12,19 +12,19 @@ import {
   ContextBuilder,
   createStateStorage,
   ensureGameCultTextDocument,
-  ensureRepoFaceInitialized,
+  ensureRepoPersonaInitialized,
   getRepoDiscordIdentityAllowedChannelIds,
-  faceRegistryAsRepoDiscordRegistry,
+  personaRegistryAsRepoDiscordRegistry,
   ODIN_VERSE_POEM_DOCUMENT_ID,
-  projectRepoFaceSleepCycleForNow,
+  projectRepoPersonaSleepCycleForNow,
   applyVoidSelfStateOperation,
-  loadFaceIdentityRegistry,
+  loadPersonaIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   renderGameCultStructuredTextDocument,
-  REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
-  type RepoFaceRestSnapshot,
-  resolveRepoFaceStatePath,
-  type RepoFacePendingMention,
+  REPO_PERSONA_HEARTBEAT_SCHEMA_VERSION,
+  type RepoPersonaRestSnapshot,
+  resolveRepoPersonaStatePath,
+  type RepoPersonaPendingMention,
   type RepoDiscordIdentity,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
@@ -42,15 +42,15 @@ import {
   type SourceMessageAttachment,
 } from "@voidbot/shared";
 
-const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
-const HEARTBEAT_COMMAND = "repo-face-rumination";
+const HEARTBEAT_SCHEMA_VERSION = REPO_PERSONA_HEARTBEAT_SCHEMA_VERSION;
+const HEARTBEAT_COMMAND = "repo-persona-rumination";
 const MIN_STALE_ACTIVE_JOB_MS = 45 * 60_000;
 const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
-interface FaceHeartbeatParticipant {
+interface PersonaHeartbeatParticipant {
   identityId: string;
-  participantKind: "repo_face" | "native_persona" | "system_agent";
-  turnKind: "repo_face_rumination" | "void_moderation";
+  participantKind: "repo_persona" | "native_persona" | "system_agent";
+  turnKind: "repo_persona_rumination" | "void_moderation";
   repoName: string;
   displayName: string;
   initiativeSpeed: number;
@@ -71,15 +71,15 @@ interface FaceHeartbeatParticipant {
   constraints: string[];
 }
 
-interface FaceHeartbeatState {
+interface PersonaHeartbeatState {
   schemaVersion: typeof HEARTBEAT_SCHEMA_VERSION;
   initiativeClock: number;
   baseRecoveryMinutes: number;
   globalHeat: number;
   lastTickAt?: string;
-  participants: FaceHeartbeatParticipant[];
+  participants: PersonaHeartbeatParticipant[];
   history: Array<Record<string, unknown>>;
-  pendingMentions: RepoFacePendingMention[];
+  pendingMentions: RepoPersonaPendingMention[];
 }
 
 interface ActiveTurnScan {
@@ -110,14 +110,14 @@ interface StaleActiveTurn {
   ageMinutes: number;
 }
 
-interface RepoFaceChannelPlan {
+interface RepoPersonaChannelPlan {
   primaryChannelId?: string;
   snapshotChannelIds: string[];
-  options: RepoFaceChannelOption[];
+  options: RepoPersonaChannelOption[];
   lowThresholdTopics: string[];
 }
 
-interface RepoFaceChannelOption {
+interface RepoPersonaChannelOption {
   channelId: string;
   label: string;
   topic: string;
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
   const assemblePromptIdentity = readArgValue("--assemble-prompt");
   if (assemblePromptIdentity) {
-    const result = await assembleRepoFaceTurnPrompt({
+    const result = await assembleRepoPersonaTurnPrompt({
       config,
       identityId: assemblePromptIdentity,
       outPath: readArgValue("--out"),
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
 
   const pause = await readAgentSwarmPause();
   if (pause.paused) {
-    const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
+    const state = await readHeartbeatState(config.repoPersonaHeartbeats.statePath);
     state.lastTickAt = new Date().toISOString();
     state.history.push({
       type: "skipped",
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
     });
     state.history = state.history.slice(-80);
     if (!dryRun) {
-      await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+      await writeHeartbeatState(config.repoPersonaHeartbeats.statePath, state);
       publishSwarmDashboardSurface();
     }
     process.stdout.write(
@@ -199,30 +199,30 @@ async function main(): Promise<void> {
         skipped: true,
         reason: "agent_swarm_paused",
         pausePath: pause.path,
-        statePath: config.repoFaceHeartbeats.statePath,
+        statePath: config.repoPersonaHeartbeats.statePath,
       })}\n`,
     );
     return;
   }
 
-  if (!config.repoFaceHeartbeats.enabled && !process.argv.includes("--force")) {
-    const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
+  if (!config.repoPersonaHeartbeats.enabled && !process.argv.includes("--force")) {
+    const state = await readHeartbeatState(config.repoPersonaHeartbeats.statePath);
     state.lastTickAt = new Date().toISOString();
     state.history.push({
       type: "skipped",
-      reason: "repo_face_heartbeats_disabled",
+      reason: "repo_persona_heartbeats_disabled",
       skippedAt: state.lastTickAt,
     });
     state.history = state.history.slice(-80);
-    await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+    await writeHeartbeatState(config.repoPersonaHeartbeats.statePath, state);
     publishSwarmDashboardSurface();
     return;
   }
 
-  const faceRegistry = await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath);
-  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
-  const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
-  const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state, { dryRun });
+  const faceRegistry = await loadPersonaIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
+  const state = await readHeartbeatState(config.repoPersonaHeartbeats.statePath);
+  const restStates = await loadRepoPersonaRestStates(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
@@ -241,18 +241,18 @@ async function main(): Promise<void> {
     });
   }
 
-  state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
-  state.globalHeat = config.repoFaceHeartbeats.globalHeat;
+  state.baseRecoveryMinutes = config.repoPersonaHeartbeats.baseRecoveryMinutes;
+  state.globalHeat = config.repoPersonaHeartbeats.globalHeat;
   const completedThisTick = new Set<string>();
   state.participants = reconcileParticipants(
     state.participants,
     buildParticipantSpecs(registry.identities),
-    config.repoFaceHeartbeats.defaultChannelId,
-    config.repoFaceHeartbeats.speedOverrides,
-    config.repoFaceHeartbeats.heatOverrides,
+    config.repoPersonaHeartbeats.defaultChannelId,
+    config.repoPersonaHeartbeats.speedOverrides,
+    config.repoPersonaHeartbeats.heatOverrides,
     state.initiativeClock,
-    config.repoFaceHeartbeats.baseRecoveryMinutes,
-    config.repoFaceHeartbeats.globalHeat,
+    config.repoPersonaHeartbeats.baseRecoveryMinutes,
+    config.repoPersonaHeartbeats.globalHeat,
   ).map((participant) =>
     applyActiveTurnFreeze(
       participant,
@@ -273,7 +273,7 @@ async function main(): Promise<void> {
 
   const selected = selectReadyParticipants(
     state,
-    config.repoFaceHeartbeats.maxJobsPerTick,
+    config.repoPersonaHeartbeats.maxJobsPerTick,
     completedThisTick,
     activeTurnScan.queued,
     restStates,
@@ -378,7 +378,7 @@ async function main(): Promise<void> {
   state.history = state.history.slice(-80);
   state.lastTickAt = now.toISOString();
   if (!dryRun) {
-    await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
+    await writeHeartbeatState(config.repoPersonaHeartbeats.statePath, state);
     publishSwarmDashboardSurface();
   }
   process.stdout.write(
@@ -390,7 +390,7 @@ async function main(): Promise<void> {
       dryRun,
       selected: selected.map((entry) => entry.identityId),
       queued: queuedIdentityIds,
-      statePath: config.repoFaceHeartbeats.statePath,
+      statePath: config.repoPersonaHeartbeats.statePath,
       idleCooling,
     })}\n`,
   );
@@ -419,8 +419,8 @@ async function readAgentSwarmPause(): Promise<{ paused: boolean; path: string; r
 
 interface ParticipantSpec {
   id: string;
-  participantKind: FaceHeartbeatParticipant["participantKind"];
-  turnKind: FaceHeartbeatParticipant["turnKind"];
+  participantKind: PersonaHeartbeatParticipant["participantKind"];
+  turnKind: PersonaHeartbeatParticipant["turnKind"];
   repoName: string;
   displayName: string;
   allowedChannelIds: string[];
@@ -443,8 +443,8 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
       id: identity.id,
       participantKind: identity.identityKind === "native_persona"
         ? "native_persona" as const
-        : "repo_face" as const,
-      turnKind: "repo_face_rumination" as const,
+        : "repo_persona" as const,
+      turnKind: "repo_persona_rumination" as const,
       repoName: identity.repoName,
       displayName: identity.displayName,
       allowedChannelIds: getRepoDiscordIdentityAllowedChannelIds(identity),
@@ -455,16 +455,16 @@ function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSp
 }
 
 async function queueParticipantTurn(input: {
-  participant: FaceHeartbeatParticipant;
-  pendingMentions: RepoFacePendingMention[];
+  participant: PersonaHeartbeatParticipant;
+  pendingMentions: RepoPersonaPendingMention[];
   registryIdentities: RepoDiscordIdentity[];
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
   queuedAt: string;
 }): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   switch (input.participant.turnKind) {
-    case "repo_face_rumination":
-      return queueRepoFaceTurn(input);
+    case "repo_persona_rumination":
+      return queueRepoPersonaTurn(input);
     case "void_moderation":
       return startVoidModerationTurn({
         queuedAt: input.queuedAt,
@@ -474,9 +474,9 @@ async function queueParticipantTurn(input: {
   }
 }
 
-async function queueRepoFaceTurn(input: {
-  participant: FaceHeartbeatParticipant;
-  pendingMentions: RepoFacePendingMention[];
+async function queueRepoPersonaTurn(input: {
+  participant: PersonaHeartbeatParticipant;
+  pendingMentions: RepoPersonaPendingMention[];
   registryIdentities: RepoDiscordIdentity[];
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
@@ -490,7 +490,7 @@ async function queueRepoFaceTurn(input: {
   const preferredChannelId = newestPendingMentionChannel(input.pendingMentions);
   const channelPlan = buildChannelPlan(
     identity,
-    input.config.repoFaceHeartbeats.defaultChannelId,
+    input.config.repoPersonaHeartbeats.defaultChannelId,
     preferredChannelId,
   );
   const fallbackChannelId = channelPlan.primaryChannelId;
@@ -498,21 +498,21 @@ async function queueRepoFaceTurn(input: {
     input.participant.status = "blocked";
     input.participant.constraints = mergeStrings(
       input.participant.constraints,
-      "No CTB turn channel is configured for this Face.",
+      "No CTB turn channel is configured for this Persona.",
     );
     return { created: false };
   }
 
   const contextBuilder = new ContextBuilder();
   if (identity.identityKind !== "native_persona") {
-    await ensureRepoFaceInitialized({
+    await ensureRepoPersonaInitialized({
       identity,
       storageRoot: input.config.storageRoot,
       sourceRepoRoot: input.config.sourceRepoRoot,
       epiphanyAgentRoot: input.config.epiphanyAgentRoot,
       workspaceRoot: process.cwd(),
-      birthMode: input.config.repoFaceBirthMode,
-      birthExecutor: input.config.repoFaceBirthExecutor,
+      birthMode: input.config.repoPersonaBirthMode,
+      birthExecutor: input.config.repoPersonaBirthExecutor,
     });
   }
   const fetchedChannelSnapshots = await fetchChannelSnapshots({
@@ -521,14 +521,14 @@ async function queueRepoFaceTurn(input: {
     limit: 15,
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
-  const turnTarget = selectRepoFaceTurnTarget({
+  const turnTarget = selectRepoPersonaTurnTarget({
     channelPlan,
     fetchedChannelSnapshots,
     pendingMentions: input.pendingMentions,
     fallbackChannelId,
   });
   const channelId = turnTarget.channelId;
-  const activeChannelPlan: RepoFaceChannelPlan = {
+  const activeChannelPlan: RepoPersonaChannelPlan = {
     ...channelPlan,
     primaryChannelId: channelId,
   };
@@ -536,7 +536,7 @@ async function queueRepoFaceTurn(input: {
   const channelSnapshots = fetchedChannelSnapshots
     .filter((snapshot) => snapshot.channelId !== channelId)
     .slice(0, 5);
-  const bifrostDigest = input.config.repoFaceBifrostEnabled && identity.identityKind !== "native_persona"
+  const bifrostDigest = input.config.repoPersonaBifrostEnabled && identity.identityKind !== "native_persona"
     ? await fetchBifrostGovernanceDigest({
         bifrostRoot: input.config.bifrostRoot,
         repoName: identity.repoName,
@@ -547,8 +547,8 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     channelSnapshots,
   };
-  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
-  const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
+  const humanPronounGuidance = await loadRepoPersonaHumanPronounGuidance(input.config, roomContext);
+  const memorySurface = await renderRepoPersonaMemorySurfaceForTurn(
     identity,
     input.config,
     input.registryIdentities,
@@ -557,13 +557,13 @@ async function queueRepoFaceTurn(input: {
   );
   const repoActivitySurface = identity.identityKind === "native_persona"
     ? renderNativePersonaBodySurface(identity)
-    : renderRepoFaceRepoActivitySurface(identity, input.config);
+    : renderRepoPersonaRepoActivitySurface(identity, input.config);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const colossusOdinDoctrine = await renderColossusOdinDoctrine({
     displayName: identity.displayName,
     repoName: identity.repoName,
   });
-  const conversationMemorySurface = renderRepoFaceConversationTranscript({
+  const conversationMemorySurface = renderRepoPersonaConversationTranscript({
     identity,
     recentMessages,
     channelSnapshots,
@@ -584,7 +584,7 @@ async function queueRepoFaceTurn(input: {
     participant: input.participant,
     pendingMentions: input.pendingMentions,
     jurisdictionDive: buildJurisdictionDiveDirective(identity, input.participant),
-    githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
+    githubActionsEnabled: input.config.repoPersonaGithubActionsEnabled,
     globalAgentDoctrine,
     colossusOdinDoctrine,
   });
@@ -631,13 +631,13 @@ async function queueRepoFaceTurn(input: {
   };
 }
 
-async function loadRepoFaceRestStates(
+async function loadRepoPersonaRestStates(
   identities: RepoDiscordIdentity[],
   storageRoot: string,
-  heartbeatState: FaceHeartbeatState,
+  heartbeatState: PersonaHeartbeatState,
   options: { dryRun?: boolean } = {},
-): Promise<Map<string, RepoFaceRestSnapshot>> {
-  const restStates = new Map<string, RepoFaceRestSnapshot>();
+): Promise<Map<string, RepoPersonaRestSnapshot>> {
+  const restStates = new Map<string, RepoPersonaRestSnapshot>();
   const now = new Date();
 
   for (const identity of identities) {
@@ -646,7 +646,7 @@ async function loadRepoFaceRestStates(
     }
 
     try {
-      const statePath = resolveRepoFaceStatePath(identity, storageRoot);
+      const statePath = resolveRepoPersonaStatePath(identity, storageRoot);
       const typedState = await loadVoidSelfStateTypedDocuments({
         canonicalPath: statePath,
         identity: {
@@ -655,7 +655,7 @@ async function loadRepoFaceRestStates(
           publicDescription: identity.description,
         },
       });
-      const projected = projectRepoFaceSleepCycleForNow(
+      const projected = projectRepoPersonaSleepCycleForNow(
         typedState.scheduledRuntime.sleepCycle,
         identity.id,
         now,
@@ -676,7 +676,7 @@ async function loadRepoFaceRestStates(
           },
         );
       }
-      const speakingPressure = buildRepoFaceSpeakingPressure(
+      const speakingPressure = buildRepoPersonaSpeakingPressure(
         typedState,
         projected.sleepCycle,
         now,
@@ -699,7 +699,7 @@ async function loadRepoFaceRestStates(
       }
       const maintenance = options.dryRun
         ? { started: false, reason: "dry_run", statusPath: undefined }
-        : await maybeStartRepoFaceMemoryMaintenance({
+        : await maybeStartRepoPersonaMemoryMaintenance({
             identity,
             statePath,
             typedState,
@@ -707,7 +707,7 @@ async function loadRepoFaceRestStates(
           });
       if (maintenance.started || maintenance.failureReason) {
         heartbeatState.history.push({
-          type: maintenance.started ? "repo_face_memory_maintenance_started" : "repo_face_memory_maintenance_failed_to_start",
+          type: maintenance.started ? "repo_persona_memory_maintenance_started" : "repo_persona_memory_maintenance_failed_to_start",
           identityId: identity.id,
           observedAt: now.toISOString(),
           reason: maintenance.reason,
@@ -732,9 +732,9 @@ async function loadRepoFaceRestStates(
   return restStates;
 }
 
-function buildRepoFaceSpeakingPressure(
+function buildRepoPersonaSpeakingPressure(
   typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>,
-  sleepCycle: Awaited<ReturnType<typeof projectRepoFaceSleepCycleForNow>>["sleepCycle"],
+  sleepCycle: Awaited<ReturnType<typeof projectRepoPersonaSleepCycleForNow>>["sleepCycle"],
   now: Date,
 ): Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"] {
   const previous = typedState.scheduledRuntime.speakingPressure;
@@ -745,23 +745,23 @@ function buildRepoFaceSpeakingPressure(
   const lastSpokeAt = lastReceipt?.sentAt ?? previous.lastSpokeAt;
   const hoursSinceSpeech = lastSpokeAt ? Math.max(0, (now.getTime() - Date.parse(lastSpokeAt)) / 3_600_000) : 24;
   const recentSpeechDamping = clamp(Math.exp(-hoursSinceSpeech / 3.5), 0, 1);
-  const affectNeedPressure = (typedState.faceAffect.needs ?? [])
+  const affectNeedPressure = (typedState.personaAffect.needs ?? [])
     .filter((entry) => entry.status === "active" || entry.status === "neglected")
     .reduce((sum, entry) => {
       const neglectedWeight = entry.status === "neglected" ? 1.25 : 1;
       const substrateWeight = ["substrate", "agency", "status", "territory", "recognition"].includes(entry.kind) ? 0.18 : 0.11;
       return sum + entry.intensity * substrateWeight * neglectedWeight;
     }, 0);
-  const statusReadPressure = (typedState.faceAffect.statusReads ?? [])
+  const statusReadPressure = (typedState.personaAffect.statusReads ?? [])
     .filter((entry) => !entry.retiredAt)
     .reduce((sum, entry) => {
       const sharpWeight = ["neglected", "bypassed", "blocked", "ignored", "threatened", "challenged"].includes(entry.status) ? 0.14 : 0.08;
       return sum + entry.intensity * sharpWeight;
     }, 0);
-  const socialBondPressure = (typedState.faceAffect.socialBonds ?? [])
+  const socialBondPressure = (typedState.personaAffect.socialBonds ?? [])
     .filter((entry) => entry.status === "active")
     .reduce((sum, entry) => sum + entry.intensity * 0.07, 0);
-  const moodPressure = (typedState.faceAffect.moodDimensions ?? [])
+  const moodPressure = (typedState.personaAffect.moodDimensions ?? [])
     .reduce((sum, entry) => {
       const expressiveWeight = ["anger", "annoyance", "irritation", "envy", "pride", "smugness", "playfulness", "anxiety", "commandForce", "restlessness"].includes(entry.name)
         ? 0.06
@@ -803,11 +803,11 @@ function speakingPressuresEqual(
     && left.lastSpokeAt === right.lastSpokeAt;
 }
 
-async function maybeStartRepoFaceMemoryMaintenance(input: {
+async function maybeStartRepoPersonaMemoryMaintenance(input: {
   identity: RepoDiscordIdentity;
   statePath: string;
   typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>;
-  projectedRest: RepoFaceRestSnapshot;
+  projectedRest: RepoPersonaRestSnapshot;
 }): Promise<{
   started: boolean;
   reason?: string;
@@ -830,7 +830,7 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
     return { started: false, reason: "not_napping_or_stale" };
   }
 
-  const paths = repoFaceMemoryMaintenancePaths(input.statePath);
+  const paths = repoPersonaMemoryMaintenancePaths(input.statePath);
   const currentStatus = await readJsonFile(paths.statusPath);
   if (isRecentRunningStatus(currentStatus, 25)) {
     return { started: false, reason: "maintenance_already_running", statusPath: paths.statusPath };
@@ -870,7 +870,7 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
     child.unref();
     return {
       started: true,
-      reason: input.projectedRest.isNapping ? "repo_face_napping_with_short_term_memory" : "repo_face_stale_short_term_memory",
+      reason: input.projectedRest.isNapping ? "repo_persona_napping_with_short_term_memory" : "repo_persona_stale_short_term_memory",
       statusPath: paths.statusPath,
       pid: child.pid,
     };
@@ -884,7 +884,7 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
   }
 }
 
-function repoFaceMemoryMaintenancePaths(statePath: string): {
+function repoPersonaMemoryMaintenancePaths(statePath: string): {
   statusDir: string;
   logDir: string;
   statusPath: string;
@@ -1013,10 +1013,10 @@ async function fetchChannelSnapshots(input: {
   return snapshots;
 }
 
-function selectRepoFaceTurnTarget(input: {
-  channelPlan: RepoFaceChannelPlan;
+function selectRepoPersonaTurnTarget(input: {
+  channelPlan: RepoPersonaChannelPlan;
   fetchedChannelSnapshots: ChannelSnapshot[];
-  pendingMentions: RepoFacePendingMention[];
+  pendingMentions: RepoPersonaPendingMention[];
   fallbackChannelId: string;
 }): { channelId: string; replyToMessageId?: string } {
   const pendingChannelId = newestPendingMentionChannel(input.pendingMentions);
@@ -1064,7 +1064,7 @@ function newestHumanMessage(messages: SourceMessage[]): SourceMessage | undefine
     .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0];
 }
 
-function newestPendingMention(pendingMentions: RepoFacePendingMention[]): RepoFacePendingMention | undefined {
+function newestPendingMention(pendingMentions: RepoPersonaPendingMention[]): RepoPersonaPendingMention | undefined {
   return pendingMentions
     .slice()
     .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))[0];
@@ -1083,7 +1083,7 @@ async function materializeDiscordAttachments(input: {
   for (const attachment of attachments.slice(0, 4)) {
     const kind = isDiscordImageAttachment(attachment) ? "image" : "other";
     let localPath: string | undefined;
-    if (kind === "image" && isWithinFaceImageSizeLimit(attachment)) {
+    if (kind === "image" && isWithinPersonaImageSizeLimit(attachment)) {
       localPath = await cacheDiscordImageAttachment({
         channelId: input.channelId,
         messageId: input.message.id,
@@ -1106,7 +1106,7 @@ async function materializeDiscordAttachments(input: {
   return materialized;
 }
 
-function isWithinFaceImageSizeLimit(attachment: DiscordApiAttachment): boolean {
+function isWithinPersonaImageSizeLimit(attachment: DiscordApiAttachment): boolean {
   return typeof attachment.size !== "number" || attachment.size <= MAX_FACE_IMAGE_ATTACHMENT_BYTES;
 }
 
@@ -1266,7 +1266,7 @@ interface DiscordApiAttachment {
 async function startVoidModerationTurn(input: {
   queuedAt: string;
   storageRoot: string;
-  pendingMentions: RepoFacePendingMention[];
+  pendingMentions: RepoPersonaPendingMention[];
 }): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   const runnerScript = resolve(process.cwd(), "scripts", "run-void-moderator-rumination.ps1");
   const statusDir = resolve(input.storageRoot, "status");
@@ -1402,8 +1402,8 @@ async function listExistingActiveTurns(
       const match =
         job.requestMessageId?.match(/^agent-turn:([^:]+):/) ??
         job.requestMessageId?.match(/^agent-heartbeat:([^:]+):/) ??
-        job.requestMessageId?.match(/^repo-face-heartbeat:([^:]+):/) ??
-        job.requestMessageId?.match(/:repo-face:([^:]+):\d+$/);
+        job.requestMessageId?.match(/^repo-persona-heartbeat:([^:]+):/) ??
+        job.requestMessageId?.match(/:repo-persona:([^:]+):\d+$/);
       if (match) {
         if (job.state === "approved") {
           queued.add(match[1]);
@@ -1416,7 +1416,7 @@ async function listExistingActiveTurns(
           const ageMinutes = Number.isFinite(ageMs) ? Math.round((ageMs / 60_000) * 10) / 10 : -1;
           await storage.jobQueue.markFailed(
             job.id,
-            `Repo Face CTB recovered stale active turn job after ${ageMinutes} minutes without progress.`,
+            `Repo Persona CTB recovered stale active turn job after ${ageMinutes} minutes without progress.`,
           );
           staleRecovered.push({
             identityId: match[1],
@@ -1452,7 +1452,7 @@ async function readRecentLock(path: string, maxAgeMinutes: number): Promise<bool
 }
 
 function reconcileParticipants(
-  existing: FaceHeartbeatParticipant[],
+  existing: PersonaHeartbeatParticipant[],
   specs: ParticipantSpec[],
   defaultChannelId: string | undefined,
   speedOverrides: Record<string, number>,
@@ -1460,7 +1460,7 @@ function reconcileParticipants(
   initiativeClock: number,
   baseRecoveryMinutes: number,
   globalHeat: number,
-): FaceHeartbeatParticipant[] {
+): PersonaHeartbeatParticipant[] {
   const existingById = new Map(existing.map((entry) => [entry.identityId, entry]));
   const count = Math.max(specs.length, 1);
 
@@ -1529,12 +1529,12 @@ function reconcileParticipants(
 }
 
 function applyActiveTurnFreeze(
-  participant: FaceHeartbeatParticipant,
+  participant: PersonaHeartbeatParticipant,
   activeJobId: string | undefined,
   queuedIdentities: Set<string>,
-  state: FaceHeartbeatState,
+  state: PersonaHeartbeatState,
   completedThisTick: Set<string>,
-): FaceHeartbeatParticipant {
+): PersonaHeartbeatParticipant {
   if (activeJobId) {
     return {
       ...participant,
@@ -1585,13 +1585,13 @@ function applyActiveTurnFreeze(
 }
 
 function selectReadyParticipants(
-  state: FaceHeartbeatState,
+  state: PersonaHeartbeatState,
   maxJobs: number,
   completedThisTick: Set<string>,
   queuedIdentities: Set<string>,
-  restStates: Map<string, RepoFaceRestSnapshot>,
+  restStates: Map<string, RepoPersonaRestSnapshot>,
   idleCooling: IdleCoolingSnapshot,
-): FaceHeartbeatParticipant[] {
+): PersonaHeartbeatParticipant[] {
   const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
   const eligible = state.participants
     .filter((participant) => {
@@ -1603,7 +1603,7 @@ function selectReadyParticipants(
         !queuedIdentities.has(participant.identityId) &&
         !completedThisTick.has(participant.identityId) &&
         !(
-          participant.participantKind === "repo_face" &&
+          participant.participantKind === "repo_persona" &&
           pendingMentionCount === 0 &&
           restState?.isNapping === true
         )
@@ -1650,7 +1650,7 @@ function selectReadyParticipants(
   return [...mentioned, ...cooled].slice(0, maxJobs);
 }
 
-function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Date): void {
+function advanceInitiativeClockFromWallClock(state: PersonaHeartbeatState, now: Date): void {
   const lastTickMs = Date.parse(state.lastTickAt ?? "");
   if (!Number.isFinite(lastTickMs)) {
     return;
@@ -1665,7 +1665,7 @@ function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Dat
   state.initiativeClock = round3(state.initiativeClock + boundedElapsedMinutes);
 }
 
-function rescheduleStaleOverdueParticipants(state: FaceHeartbeatState): void {
+function rescheduleStaleOverdueParticipants(state: PersonaHeartbeatState): void {
   const activeParticipants = state.participants.filter((participant) => participant.status === "active");
   const count = Math.max(activeParticipants.length, 1);
   let rescheduledCount = 0;
@@ -1689,7 +1689,7 @@ function rescheduleStaleOverdueParticipants(state: FaceHeartbeatState): void {
   }
 }
 
-function applyPendingMentionPriority(state: FaceHeartbeatState): void {
+function applyPendingMentionPriority(state: PersonaHeartbeatState): void {
   const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
   for (const participant of state.participants) {
     if (
@@ -1703,16 +1703,16 @@ function applyPendingMentionPriority(state: FaceHeartbeatState): void {
 }
 
 function pendingMentionsForParticipant(
-  state: FaceHeartbeatState,
+  state: PersonaHeartbeatState,
   identityId: string,
-): RepoFacePendingMention[] {
+): RepoPersonaPendingMention[] {
   return state.pendingMentions
     .filter((mention) => mention.identityId === identityId)
     .sort((left, right) => Date.parse(left.queuedAt) - Date.parse(right.queuedAt));
 }
 
 function countPendingMentionsByIdentity(
-  pendingMentions: RepoFacePendingMention[],
+  pendingMentions: RepoPersonaPendingMention[],
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const mention of pendingMentions) {
@@ -1724,10 +1724,10 @@ function countPendingMentionsByIdentity(
 async function readIdleCoolingSnapshot(input: {
   config: ReturnType<typeof loadConfig>;
   identities: RepoDiscordIdentity[];
-  state: FaceHeartbeatState;
+  state: PersonaHeartbeatState;
   now: Date;
 }): Promise<IdleCoolingSnapshot> {
-  const policy = input.config.repoFaceHeartbeats.idleCooling;
+  const policy = input.config.repoPersonaHeartbeats.idleCooling;
   const checkedChannelIds = collectIdleCoolingChannelIds(input.config, input.identities);
   const base = {
     enabled: policy.enabled,
@@ -1803,14 +1803,14 @@ function collectIdleCoolingChannelIds(
   identities: RepoDiscordIdentity[],
 ): string[] {
   return Array.from(new Set([
-    config.repoFaceHeartbeats.defaultChannelId,
+    config.repoPersonaHeartbeats.defaultChannelId,
     config.bifrostDiscordChannelId,
     ...config.indexedChannelIds,
     ...identities.flatMap((identity) => getRepoDiscordIdentityAllowedChannelIds(identity)),
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
 }
 
-function newestUnpromptedTurnQueuedAt(state: FaceHeartbeatState): string | undefined {
+function newestUnpromptedTurnQueuedAt(state: PersonaHeartbeatState): string | undefined {
   for (const entry of [...state.history].reverse()) {
     if (entry.type !== "queued" && entry.type !== "dry_run_selected") {
       continue;
@@ -1829,22 +1829,22 @@ function newestUnpromptedTurnQueuedAt(state: FaceHeartbeatState): string | undef
 function buildHeartbeatPrompt(input: {
   identity: RepoDiscordIdentity;
   channelId: string;
-  channelPlan: RepoFaceChannelPlan;
+  channelPlan: RepoPersonaChannelPlan;
   channelSnapshots: ChannelSnapshot[];
   recentMessages: SourceMessage[];
   memorySurface?: string;
   repoActivitySurface?: string;
   conversationMemorySurface?: string;
-  humanPronounGuidance?: RepoFaceHumanPronounGuidance[];
+  humanPronounGuidance?: RepoPersonaHumanPronounGuidance[];
   bifrostDigest?: BifrostGovernanceDigest;
-  participant: FaceHeartbeatParticipant;
-  pendingMentions: RepoFacePendingMention[];
+  participant: PersonaHeartbeatParticipant;
+  pendingMentions: RepoPersonaPendingMention[];
   jurisdictionDive: JurisdictionDiveDirective;
   githubActionsEnabled: boolean;
   globalAgentDoctrine: string;
   colossusOdinDoctrine: string;
 }): string {
-  return loadPromptTemplate("repo-face-turn.prompt.md", {
+  return loadPromptTemplate("repo-persona-turn.prompt.md", {
     displayName: input.identity.displayName,
     identityId: input.identity.id,
     repoName: input.identity.repoName,
@@ -1855,9 +1855,9 @@ function buildHeartbeatPrompt(input: {
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
-    humanPronounDirective: renderRepoFaceHumanPronounFacts(input.humanPronounGuidance ?? [])
+    humanPronounDirective: renderRepoPersonaHumanPronounFacts(input.humanPronounGuidance ?? [])
       ?? "Known human pronoun guidance:\n- No explicit human pronoun guidance is attached for this turn. Use names or neutral phrasing instead of guessing.",
-    roomWeatherDirective: renderRepoFaceRoomWeatherDirective(input.identity, {
+    roomWeatherDirective: renderRepoPersonaRoomWeatherDirective(input.identity, {
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
     }),
@@ -1896,14 +1896,14 @@ async function renderColossusOdinDoctrine(input: {
     stanzaSeparator: "\n\n",
   });
 
-  return loadPromptTemplate("repo-face-colossus-odin-doctrine.prompt.md", {
+  return loadPromptTemplate("repo-persona-colossus-odin-doctrine.prompt.md", {
     displayName: input.displayName,
     repoName: input.repoName,
     odinVersePoem,
   });
 }
 
-async function assembleRepoFaceTurnPrompt(input: {
+async function assembleRepoPersonaTurnPrompt(input: {
   config: ReturnType<typeof loadConfig>;
   identityId: string;
   outPath?: string;
@@ -1917,17 +1917,17 @@ async function assembleRepoFaceTurnPrompt(input: {
   memorySurfacePath?: string;
   conversationSurfacePath?: string;
 }> {
-  const faceRegistry = await loadFaceIdentityRegistry(input.config.repoDiscordIdentitiesPath);
-  const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
+  const faceRegistry = await loadPersonaIdentityRegistry(input.config.repoDiscordIdentitiesPath);
+  const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
   const identity = registry.identities.find(
     (entry) => entry.id.toLowerCase() === input.identityId.toLowerCase(),
   );
 
   if (!identity) {
-    throw new Error(`Unknown repo Face identity: ${input.identityId}`);
+    throw new Error(`Unknown repo Persona identity: ${input.identityId}`);
   }
 
-  const channelPlan = buildChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId);
+  const channelPlan = buildChannelPlan(identity, input.config.repoPersonaHeartbeats.defaultChannelId);
   const fallbackChannelId = channelPlan.primaryChannelId;
   if (!fallbackChannelId) {
     throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
@@ -1940,7 +1940,7 @@ async function assembleRepoFaceTurnPrompt(input: {
       limit: 15,
       bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
     }),
-    input.config.repoFaceBifrostEnabled
+    input.config.repoPersonaBifrostEnabled
       ? fetchBifrostGovernanceDigest({
           bifrostRoot: input.config.bifrostRoot,
           repoName: identity.repoName,
@@ -1948,14 +1948,14 @@ async function assembleRepoFaceTurnPrompt(input: {
         })
       : Promise.resolve(undefined),
   ]);
-  const turnTarget = selectRepoFaceTurnTarget({
+  const turnTarget = selectRepoPersonaTurnTarget({
     channelPlan,
     fetchedChannelSnapshots,
     pendingMentions: [],
     fallbackChannelId,
   });
   const channelId = turnTarget.channelId;
-  const activeChannelPlan: RepoFaceChannelPlan = {
+  const activeChannelPlan: RepoPersonaChannelPlan = {
     ...channelPlan,
     primaryChannelId: channelId,
   };
@@ -1967,17 +1967,17 @@ async function assembleRepoFaceTurnPrompt(input: {
     recentMessages,
     channelSnapshots,
   };
-  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
+  const humanPronounGuidance = await loadRepoPersonaHumanPronounGuidance(input.config, roomContext);
   const memorySurface = input.memorySurfacePath
     ? await readOptionalMemorySurface(input.memorySurfacePath)
-    : await renderRepoFaceMemorySurfaceForTurn(
+    : await renderRepoPersonaMemorySurfaceForTurn(
         identity,
         input.config,
         registry.identities,
         roomContext,
         humanPronounGuidance,
       );
-  const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const repoActivitySurface = renderRepoPersonaRepoActivitySurface(identity, input.config);
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const colossusOdinDoctrine = await renderColossusOdinDoctrine({
     displayName: identity.displayName,
@@ -1985,7 +1985,7 @@ async function assembleRepoFaceTurnPrompt(input: {
   });
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
-    : renderRepoFaceConversationTranscript({
+    : renderRepoPersonaConversationTranscript({
         identity,
         recentMessages,
         channelSnapshots,
@@ -1994,7 +1994,7 @@ async function assembleRepoFaceTurnPrompt(input: {
       });
   const participant = buildInspectionParticipant(
     identity,
-    input.config.repoFaceHeartbeats.baseRecoveryMinutes,
+    input.config.repoPersonaHeartbeats.baseRecoveryMinutes,
   );
   const prompt = buildHeartbeatPrompt({
     identity,
@@ -2010,7 +2010,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     participant,
     pendingMentions: [],
     jurisdictionDive: buildJurisdictionDiveDirective(identity, participant),
-    githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
+    githubActionsEnabled: input.config.repoPersonaGithubActionsEnabled,
     globalAgentDoctrine,
     colossusOdinDoctrine,
   });
@@ -2056,7 +2056,7 @@ async function loadGlobalAgentDoctrine(): Promise<string> {
   return [
     "# Global Agent Instructions Unavailable",
     "",
-    "The Face prompt attempted to load the global Codex AGENTS.md file, but no readable file was found.",
+    "The Persona prompt attempted to load the global Codex AGENTS.md file, but no readable file was found.",
     "This is not a replacement doctrine. Treat it as an inspection failure and avoid claiming global guidance was available for this turn.",
     "",
     "Attempted paths:",
@@ -2064,7 +2064,7 @@ async function loadGlobalAgentDoctrine(): Promise<string> {
   ].join("\n");
 }
 
-async function renderRepoFaceMemorySurfaceForTurn(
+async function renderRepoPersonaMemorySurfaceForTurn(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
   registryIdentities: RepoDiscordIdentity[] = [],
@@ -2072,30 +2072,30 @@ async function renderRepoFaceMemorySurfaceForTurn(
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
-  humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
+  humanPronounGuidance?: RepoPersonaHumanPronounGuidance[],
 ): Promise<string> {
   if (identity.identityKind === "native_persona") {
     return renderNativePersonaMemorySurface(identity);
   }
 
-  const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
+  const statePath = resolveRepoPersonaStatePath(identity, config.storageRoot);
   const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
   const curiosityGraphFacts = roomContext
-    ? await renderRepoFaceCuriosityGraphFacts(identity, config, typedState, roomContext)
+    ? await renderRepoPersonaCuriosityGraphFacts(identity, config, typedState, roomContext)
     : undefined;
-  const statePacket = renderRepoFaceStatePacket(
+  const statePacket = renderRepoPersonaStatePacket(
     identity,
     typedState,
     registryIdentities,
     roomContext,
-    humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
+    humanPronounGuidance ?? await loadRepoPersonaHumanPronounGuidance(config, roomContext),
     curiosityGraphFacts,
   );
-  if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
+  if (!config.repoPersonaHeartbeats.stateProjectorEnabled) {
     return rejectLeakyMemorySurface(statePacket);
   }
 
-  return projectRepoFaceMemorySurface({
+  return projectRepoPersonaMemorySurface({
     identity,
     statePacket,
     config,
@@ -2106,7 +2106,7 @@ async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): 
   const personaStatePath = identity.personaStatePath;
   if (!personaStatePath) {
     return [
-      `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
+      `${identity.displayName} is a native VoidBot Persona, not a repo Persona.`,
       "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest.",
     ].join("\n");
   }
@@ -2116,11 +2116,11 @@ async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): 
   const profile = readRecord(state, "profile") ?? readRecord(state, "selfProfile") ?? state;
   const presentation = readRecord(state, "presentation");
   const memory = readRecord(state, "memory") ?? readRecord(state, "thoughtMemory");
-  const affect = readRecord(state, "affect") ?? readRecord(state, "faceAffect");
+  const affect = readRecord(state, "affect") ?? readRecord(state, "personaAffect");
   const doctrine = readRecord(state, "doctrine") ?? readRecord(state, "doctrineStances");
 
   const lines = [
-    `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
+    `${identity.displayName} is a native VoidBot Persona, not a repo Persona.`,
     `Persona state: ${resolve(personaStatePath)}`,
     identity.avatarUrl ? `Public avatar URL: ${identity.avatarUrl}` : undefined,
     identity.avatarPath ? `Local avatar asset: ${identity.avatarPath}` : undefined,
@@ -2233,7 +2233,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function renderRepoFaceStatePacket(
+function renderRepoPersonaStatePacket(
   identity: RepoDiscordIdentity,
   state: VoidSelfStateTypedProjection,
   registryIdentities: RepoDiscordIdentity[] = [],
@@ -2241,7 +2241,7 @@ function renderRepoFaceStatePacket(
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
-  humanPronounGuidance: RepoFaceHumanPronounGuidance[] = [],
+  humanPronounGuidance: RepoPersonaHumanPronounGuidance[] = [],
   curiosityGraphFacts?: string,
 ): string {
   const name = identity.displayName;
@@ -2250,16 +2250,16 @@ function renderRepoFaceStatePacket(
   const privateNotes = profile.privateNotes;
   const values = [...profile.values]
     .sort((left, right) => right.priority - left.priority);
-  const needs = [...state.faceAffect.needs]
+  const needs = [...state.personaAffect.needs]
     .filter((need) => need.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
-  const bonds = [...state.faceAffect.socialBonds]
+  const bonds = [...state.personaAffect.socialBonds]
     .filter((bond) => bond.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
-  const statusReads = [...state.faceAffect.statusReads]
+  const statusReads = [...state.personaAffect.statusReads]
     .filter((read) => !read.retiredAt)
     .sort(sortAffectByStatusAndIntensity);
-  const moodDimensions = [...state.faceAffect.moodDimensions]
+  const moodDimensions = [...state.personaAffect.moodDimensions]
     .sort((left, right) => right.value - left.value);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => pressure.status !== "retired")
@@ -2282,10 +2282,10 @@ function renderRepoFaceStatePacket(
   const recentReceipts = [...state.speechReceipts.recentReceipts]
     .slice(-6)
     .reverse();
-  const activationFacts = renderRepoFaceActivationProfileFacts(profile.activationProfile);
-  const runtimeFacts = renderRepoFaceRuntimePressureFacts(name, state);
+  const activationFacts = renderRepoPersonaActivationProfileFacts(profile.activationProfile);
+  const runtimeFacts = renderRepoPersonaRuntimePressureFacts(name, state);
   const humanClarityFacts = roomContext
-    ? renderRepoFaceHumanClarityPressureFacts(identity, roomContext)
+    ? renderRepoPersonaHumanClarityPressureFacts(identity, roomContext)
     : undefined;
   const clarityPressureActive = Boolean(humanClarityFacts);
 
@@ -2370,43 +2370,43 @@ function renderRepoFaceStatePacket(
   if (durableMemories.length > 0) {
     lines.push([
       "Durable memories that should still bias judgment:",
-      ...durableMemories.map((memory) => renderRepoFaceMemoryFact(name, memory)),
+      ...durableMemories.map((memory) => renderRepoPersonaMemoryFact(name, memory)),
     ].join("\n"));
   }
 
   if (shortTermResidue.length > 0) {
     lines.push([
       "Short-term residue waiting to settle:",
-      ...shortTermResidue.map((memory) => renderRepoFaceMemoryFact(name, memory)),
+      ...shortTermResidue.map((memory) => renderRepoPersonaMemoryFact(name, memory)),
     ].join("\n"));
   }
 
-  const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
+  const socialGraphFacts = renderRepoPersonaSocialGraphFacts(identity, registryIdentities, state);
   if (socialGraphFacts) {
     lines.push(socialGraphFacts);
   }
 
   const peerOpeningFacts = roomContext
-    ? renderRepoFacePeerOpeningFacts(identity, registryIdentities, roomContext)
+    ? renderRepoPersonaPeerOpeningFacts(identity, registryIdentities, roomContext)
     : undefined;
   if (peerOpeningFacts) {
     lines.push(peerOpeningFacts);
   }
 
   const socialPressureFacts = roomContext
-    ? renderRepoFaceRelationshipPressureFacts(identity, registryIdentities, state, roomContext)
+    ? renderRepoPersonaRelationshipPressureFacts(identity, registryIdentities, state, roomContext)
     : undefined;
   if (socialPressureFacts) {
     lines.push(socialPressureFacts);
   }
 
-  const pronounFacts = renderRepoFaceHumanPronounFacts(humanPronounGuidance);
+  const pronounFacts = renderRepoPersonaHumanPronounFacts(humanPronounGuidance);
   if (pronounFacts) {
     lines.push(pronounFacts);
   }
 
   const roomTextureFacts = roomContext
-    ? renderRepoFaceRoomTextureFacts(identity, roomContext)
+    ? renderRepoPersonaRoomTextureFacts(identity, roomContext)
     : undefined;
   if (roomTextureFacts) {
     lines.push(roomTextureFacts);
@@ -2495,10 +2495,10 @@ function renderRepoFaceStatePacket(
     return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
   }
 
-  return rejectLeakyMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
+  return rejectLeakyMemorySurface(cleanRepoPersonaProjectorLoopVocabulary(identity, lines.join("\n\n")));
 }
 
-function cleanRepoFaceProjectorLoopVocabulary(
+function cleanRepoPersonaProjectorLoopVocabulary(
   identity: RepoDiscordIdentity,
   surface: string,
 ): string {
@@ -2567,7 +2567,7 @@ function targetLabel(target: { label?: string; id?: string; kind?: string } | un
   return target.label ?? target.id ?? target.kind ?? "an unnamed target";
 }
 
-function renderRepoFaceActivationProfileFacts(
+function renderRepoPersonaActivationProfileFacts(
   activationProfile: VoidSelfStateTypedProjection["selfProfile"]["activationProfile"],
 ): string | undefined {
   const sections = Object.entries(activationProfile)
@@ -2584,7 +2584,7 @@ function renderRepoFaceActivationProfileFacts(
     : undefined;
 }
 
-function renderRepoFaceRuntimePressureFacts(
+function renderRepoPersonaRuntimePressureFacts(
   name: string,
   state: VoidSelfStateTypedProjection,
 ): string | undefined {
@@ -2614,7 +2614,7 @@ function renderRepoFaceRuntimePressureFacts(
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
-function renderRepoFaceMemoryFact(
+function renderRepoPersonaMemoryFact(
   name: string,
   memory: VoidSelfStateTypedProjection["thoughtMemory"]["memories"][number],
 ): string {
@@ -2628,14 +2628,14 @@ function renderRepoFaceMemoryFact(
   return parts.filter(Boolean).join(" ");
 }
 
-function renderRepoFaceRoomTextureFacts(
+function renderRepoPersonaRoomTextureFacts(
   identity: RepoDiscordIdentity,
   input: {
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
 ): string | undefined {
-  const stats = collectRepoFaceRoomTextureStats(identity, input);
+  const stats = collectRepoPersonaRoomTextureStats(identity, input);
   if (!stats) {
     return undefined;
   }
@@ -2646,27 +2646,27 @@ function renderRepoFaceRoomTextureFacts(
         "- These are not stored needs and not orders. Project whether this character gets mischievous, bored, sharp, withdrawn, socially hungry, status-testing, or still work-focused.",
       ]
     : [];
-  const topicAttractorFacts = renderRepoFaceTopicAttractorFacts(identity, input.recentMessages);
+  const topicAttractorFacts = renderRepoPersonaTopicAttractorFacts(identity, input.recentMessages);
 
   return [
     "Room texture facts:",
     `- Observed messages: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
     `- Long messages: ${stats.longMessages}; short messages: ${stats.shortMessages}; average length: ${stats.averageCharacters} characters.`,
-    `- This Face's own recent messages in the attached window: ${stats.ownMessages}.`,
+    `- This Persona's own recent messages in the attached window: ${stats.ownMessages}.`,
     `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
     ...temporaryPressures,
     ...(topicAttractorFacts ? [topicAttractorFacts] : []),
   ].join("\n");
 }
 
-function renderRepoFaceRoomWeatherDirective(
+function renderRepoPersonaRoomWeatherDirective(
   identity: RepoDiscordIdentity,
   input: {
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
 ): string {
-  const stats = collectRepoFaceRoomTextureStats(identity, input);
+  const stats = collectRepoPersonaRoomTextureStats(identity, input);
   if (!stats) {
     return "- No current room weather was available.";
   }
@@ -2685,7 +2685,7 @@ function renderRepoFaceRoomWeatherDirective(
   ].join("\n");
 }
 
-interface RepoFaceCuriosityNode {
+interface RepoPersonaCuriosityNode {
   id: string;
   text: string;
   sourceKind: RetrievalResult["sourceKind"];
@@ -2695,9 +2695,9 @@ interface RepoFaceCuriosityNode {
   seedLabels: string[];
 }
 
-interface RepoFaceCuriosityCluster {
+interface RepoPersonaCuriosityCluster {
   label: string;
-  nodes: RepoFaceCuriosityNode[];
+  nodes: RepoPersonaCuriosityNode[];
   prominence: number;
   saturation: number;
   novelty: number;
@@ -2706,7 +2706,7 @@ interface RepoFaceCuriosityCluster {
   evidence: string[];
 }
 
-async function renderRepoFaceCuriosityGraphFacts(
+async function renderRepoPersonaCuriosityGraphFacts(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
   state: VoidSelfStateTypedProjection,
@@ -2715,14 +2715,14 @@ async function renderRepoFaceCuriosityGraphFacts(
     channelSnapshots: ChannelSnapshot[];
   },
 ): Promise<string | undefined> {
-  const seedQueries = buildRepoFaceCuriositySeedQueries(identity, state, roomContext);
+  const seedQueries = buildRepoPersonaCuriositySeedQueries(identity, state, roomContext);
   if (seedQueries.length === 0) {
     return undefined;
   }
 
   try {
-    const retrieval = createRepoFaceCuriosityRetrievalService(config);
-    const nodesById = new Map<string, RepoFaceCuriosityNode>();
+    const retrieval = createRepoPersonaCuriosityRetrievalService(config);
+    const nodesById = new Map<string, RepoPersonaCuriosityNode>();
 
     for (const seed of seedQueries) {
       const [historyResults, sourceResults, homeSourceResults] = await Promise.all([
@@ -2761,12 +2761,12 @@ async function renderRepoFaceCuriosityGraphFacts(
       return undefined;
     }
 
-    const clusters = decodeRepoFaceCuriosityGraph(identity, state, roomContext, nodes);
+    const clusters = decodeRepoPersonaCuriosityGraph(identity, state, roomContext, nodes);
     if (clusters.length === 0) {
       return undefined;
     }
 
-    return renderRepoFaceCuriosityClusters(identity, config, clusters);
+    return renderRepoPersonaCuriosityClusters(identity, config, clusters);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return [
@@ -2777,7 +2777,7 @@ async function renderRepoFaceCuriosityGraphFacts(
   }
 }
 
-function createRepoFaceCuriosityRetrievalService(config: ReturnType<typeof loadConfig>): RetrievalService {
+function createRepoPersonaCuriosityRetrievalService(config: ReturnType<typeof loadConfig>): RetrievalService {
   const historyEmbedder = createTextEmbedder({
     backend: config.ragEmbeddingBackend,
     hashDimensions: config.ragEmbeddingDimensions,
@@ -2805,7 +2805,7 @@ function createRepoFaceCuriosityRetrievalService(config: ReturnType<typeof loadC
   return new RetrievalService(stores.history, stores.source);
 }
 
-function buildRepoFaceCuriositySeedQueries(
+function buildRepoPersonaCuriositySeedQueries(
   identity: RepoDiscordIdentity,
   state: VoidSelfStateTypedProjection,
   roomContext: {
@@ -2867,15 +2867,15 @@ function buildRepoFaceCuriositySeedQueries(
     .slice(0, 4);
 }
 
-function decodeRepoFaceCuriosityGraph(
+function decodeRepoPersonaCuriosityGraph(
   identity: RepoDiscordIdentity,
   state: VoidSelfStateTypedProjection,
   roomContext: {
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
-  nodes: RepoFaceCuriosityNode[],
-): RepoFaceCuriosityCluster[] {
+  nodes: RepoPersonaCuriosityNode[],
+): RepoPersonaCuriosityCluster[] {
   const edgeWeights = new Map<string, number>();
   const adjacency = new Map<string, Set<string>>();
   for (const node of nodes) {
@@ -2886,7 +2886,7 @@ function decodeRepoFaceCuriosityGraph(
     for (let rightIndex = leftIndex + 1; rightIndex < nodes.length; rightIndex += 1) {
       const left = nodes[leftIndex];
       const right = nodes[rightIndex];
-      const weight = repoFaceCuriosityEdgeWeight(left, right);
+      const weight = repoPersonaCuriosityEdgeWeight(left, right);
       if (weight < 0.16) {
         continue;
       }
@@ -2898,14 +2898,14 @@ function decodeRepoFaceCuriosityGraph(
   }
 
   const visited = new Set<string>();
-  const clusters: RepoFaceCuriosityNode[][] = [];
+  const clusters: RepoPersonaCuriosityNode[][] = [];
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
   for (const node of nodes) {
     if (visited.has(node.id)) {
       continue;
     }
     const stack = [node.id];
-    const cluster: RepoFaceCuriosityNode[] = [];
+    const cluster: RepoPersonaCuriosityNode[] = [];
     visited.add(node.id);
     while (stack.length > 0) {
       const id = stack.pop();
@@ -2927,7 +2927,7 @@ function decodeRepoFaceCuriosityGraph(
   }
 
   const recentTerms = collectRecentRoomTopicTermCounts(roomContext);
-  const stateTerms = collectRepoFaceStateTopicTermCounts(state);
+  const stateTerms = collectRepoPersonaStateTopicTermCounts(state);
   const identityTerms = new Set(significantTopicTerms([
     identity.id,
     identity.displayName,
@@ -2942,7 +2942,7 @@ function decodeRepoFaceCuriosityGraph(
 
   return clusters
     .filter((cluster) => cluster.length >= 2)
-    .map((cluster): RepoFaceCuriosityCluster => {
+    .map((cluster): RepoPersonaCuriosityCluster => {
       const clusterTerms = rankedClusterTerms(cluster).slice(0, 7);
       const density = clusterDensity(cluster, edgeWeights);
       const averageScore = average(cluster.map((node) => node.score));
@@ -2983,10 +2983,10 @@ function decodeRepoFaceCuriosityGraph(
     .slice(0, 5);
 }
 
-function renderRepoFaceCuriosityClusters(
+function renderRepoPersonaCuriosityClusters(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
-  clusters: RepoFaceCuriosityCluster[],
+  clusters: RepoPersonaCuriosityCluster[],
 ): string {
   const backend = config.vectorStore.kind === "qdrant"
     ? `Qdrant collections ${config.qdrant.historyCollection} + ${config.qdrant.sourceCollection}`
@@ -3006,7 +3006,7 @@ function renderRepoFaceCuriosityClusters(
   ].join("\n");
 }
 
-function repoFaceCuriosityEdgeWeight(left: RepoFaceCuriosityNode, right: RepoFaceCuriosityNode): number {
+function repoPersonaCuriosityEdgeWeight(left: RepoPersonaCuriosityNode, right: RepoPersonaCuriosityNode): number {
   const termSimilarity = jaccard(left.terms, right.terms);
   const sameRepo = left.metadata.repoName && right.metadata.repoName && normalizeKey(left.metadata.repoName) === normalizeKey(right.metadata.repoName)
     ? 1
@@ -3017,7 +3017,7 @@ function repoFaceCuriosityEdgeWeight(left: RepoFaceCuriosityNode, right: RepoFac
   return clamp((termSimilarity * 0.58) + (sameRepo * 0.16) + (sameCorpus * 0.1) + (sharedSeeds * 0.08) + (scoreProximity * 0.08), 0, 1);
 }
 
-function rankedClusterTerms(cluster: RepoFaceCuriosityNode[]): string[] {
+function rankedClusterTerms(cluster: RepoPersonaCuriosityNode[]): string[] {
   const counts = new Map<string, number>();
   for (const node of cluster) {
     for (const term of node.terms) {
@@ -3051,7 +3051,7 @@ function collectRecentRoomTopicTermCounts(input: {
   return counts;
 }
 
-function collectRepoFaceStateTopicTermCounts(state: VoidSelfStateTypedProjection): Map<string, number> {
+function collectRepoPersonaStateTopicTermCounts(state: VoidSelfStateTypedProjection): Map<string, number> {
   const counts = new Map<string, number>();
   const surfaces = [
     ...state.selfProfile.privateNotes,
@@ -3078,7 +3078,7 @@ function weightedTermOverlap(terms: string[], counts: Map<string, number>): numb
   return clamp(overlap / Math.min(terms.length, 6), 0, 1);
 }
 
-function clusterDensity(cluster: RepoFaceCuriosityNode[], edgeWeights: Map<string, number>): number {
+function clusterDensity(cluster: RepoPersonaCuriosityNode[], edgeWeights: Map<string, number>): number {
   if (cluster.length < 2) {
     return 0;
   }
@@ -3093,7 +3093,7 @@ function clusterDensity(cluster: RepoFaceCuriosityNode[], edgeWeights: Map<strin
   return pairs > 0 ? clamp(sum / pairs, 0, 1) : 0;
 }
 
-function curiosityAttractorRank(cluster: RepoFaceCuriosityCluster): number {
+function curiosityAttractorRank(cluster: RepoPersonaCuriosityCluster): number {
   return clamp(
     cluster.prominence * 0.42
       + cluster.novelty * 0.28
@@ -3105,7 +3105,7 @@ function curiosityAttractorRank(cluster: RepoFaceCuriosityCluster): number {
   );
 }
 
-function suggestCuriosityMotion(identity: RepoDiscordIdentity, cluster: RepoFaceCuriosityCluster): string {
+function suggestCuriosityMotion(identity: RepoDiscordIdentity, cluster: RepoPersonaCuriosityCluster): string {
   if (cluster.saturation >= 0.68 && cluster.novelty <= 0.42) {
     return `treat this as over-chewed; ${identity.displayName} should close, defer, or pivot to a neighboring question unless a new concrete anchor appears.`;
   }
@@ -3121,7 +3121,7 @@ function suggestCuriosityMotion(identity: RepoDiscordIdentity, cluster: RepoFace
   return "stay interested only if the turn adds a new anchor, concrete question, or relationship move.";
 }
 
-function curiosityEvidenceLabel(node: RepoFaceCuriosityNode): string {
+function curiosityEvidenceLabel(node: RepoPersonaCuriosityNode): string {
   const source = node.sourceKind === "source_document"
     ? [node.metadata.repoName, node.metadata.path].filter(Boolean).join(":") || node.sourceId
     : [node.metadata.channelId ? `channel ${node.metadata.channelId}` : undefined, node.sourceId].filter(Boolean).join(":") || node.sourceId;
@@ -3164,7 +3164,7 @@ function formatSignal(value: number): string {
   return `low ${value.toFixed(2)}`;
 }
 
-function renderRepoFaceHumanClarityPressureFacts(
+function renderRepoPersonaHumanClarityPressureFacts(
   identity: RepoDiscordIdentity,
   input: {
     recentMessages: SourceMessage[];
@@ -3285,7 +3285,7 @@ function collectLoopVocabularyTerms(content: string): string[] {
   return terms.filter((term) => normalized.includes(term));
 }
 
-interface RepoFaceRoomTextureStats {
+interface RepoPersonaRoomTextureStats {
   total: number;
   agentMessages: number;
   humanMessages: number;
@@ -3298,13 +3298,13 @@ interface RepoFaceRoomTextureStats {
   agentShare: number;
 }
 
-function collectRepoFaceRoomTextureStats(
+function collectRepoPersonaRoomTextureStats(
   identity: RepoDiscordIdentity,
   input: {
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
-): RepoFaceRoomTextureStats | undefined {
+): RepoPersonaRoomTextureStats | undefined {
   const messages = [
     ...input.recentMessages,
     ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
@@ -3347,12 +3347,12 @@ function collectRepoFaceRoomTextureStats(
   };
 }
 
-function renderRepoFaceSocialGraphFacts(
+function renderRepoPersonaSocialGraphFacts(
   identity: RepoDiscordIdentity,
   registryIdentities: RepoDiscordIdentity[],
   state: VoidSelfStateTypedProjection,
 ): string | undefined {
-  const relations = collectRepoFaceSocialRelations(state);
+  const relations = collectRepoPersonaSocialRelations(state);
   const unmappedPeers = collectUnmappedSocialPeers(identity, registryIdentities, relations);
   if (registryIdentities.length === 0) {
     return undefined;
@@ -3373,7 +3373,7 @@ function renderRepoFaceSocialGraphFacts(
   return lines.join("\n");
 }
 
-function renderRepoFacePeerOpeningFacts(
+function renderRepoPersonaPeerOpeningFacts(
   identity: RepoDiscordIdentity,
   registryIdentities: RepoDiscordIdentity[],
   roomContext: {
@@ -3433,7 +3433,7 @@ function renderRepoFacePeerOpeningFacts(
   ].join("\n");
 }
 
-function renderRepoFaceRelationshipPressureFacts(
+function renderRepoPersonaRelationshipPressureFacts(
   identity: RepoDiscordIdentity,
   registryIdentities: RepoDiscordIdentity[],
   state: VoidSelfStateTypedProjection,
@@ -3450,7 +3450,7 @@ function renderRepoFaceRelationshipPressureFacts(
       identity: peer,
       tokens: socialPressureTokensForIdentity(peer),
     }));
-  const relationTargets = collectRepoFaceSocialRelations(state)
+  const relationTargets = collectRepoPersonaSocialRelations(state)
     .map((relation) => ({
       label: relation.targetLabel,
       tokens: socialPressureTokens(relation.targetLabel),
@@ -3628,7 +3628,7 @@ function socialPressureLanguageKinds(content: string): string[] {
   return kinds;
 }
 
-interface RepoFaceHumanPronounGuidance {
+interface RepoPersonaHumanPronounGuidance {
   actorId: string;
   actorName: string;
   guidance: string;
@@ -3638,13 +3638,13 @@ interface RepoFaceHumanPronounGuidance {
   evidenceExcerpt?: string;
 }
 
-async function loadRepoFaceHumanPronounGuidance(
+async function loadRepoPersonaHumanPronounGuidance(
   config: ReturnType<typeof loadConfig>,
   roomContext?: {
     recentMessages: SourceMessage[];
     channelSnapshots: ChannelSnapshot[];
   },
-): Promise<RepoFaceHumanPronounGuidance[]> {
+): Promise<RepoPersonaHumanPronounGuidance[]> {
   const visibleHumans = new Map<string, string>();
   for (const message of [
     ...(roomContext?.recentMessages ?? []),
@@ -3676,19 +3676,19 @@ async function loadRepoFaceHumanPronounGuidance(
 
     return profiles
       .map(({ actorId, fallbackName, profile }) =>
-        profile ? repoFacePronounGuidanceFromProfile(actorId, fallbackName, profile) : undefined,
+        profile ? repoPersonaPronounGuidanceFromProfile(actorId, fallbackName, profile) : undefined,
       )
-      .filter((entry): entry is RepoFaceHumanPronounGuidance => entry !== undefined);
+      .filter((entry): entry is RepoPersonaHumanPronounGuidance => entry !== undefined);
   } finally {
     await storage.close();
   }
 }
 
-function repoFacePronounGuidanceFromProfile(
+function repoPersonaPronounGuidanceFromProfile(
   actorId: string,
   fallbackName: string,
   profile: InteractionMemoryProfile,
-): RepoFaceHumanPronounGuidance | undefined {
+): RepoPersonaHumanPronounGuidance | undefined {
   if (profile.pronounPolicy === "unknown" || profile.resolvedPronounSets.length === 0) {
     return undefined;
   }
@@ -3724,8 +3724,8 @@ function pronounEvidenceRank(profile: InteractionMemoryProfile, entry: Interacti
   return resolvedSetBonus + (sourceRank[entry.source] ?? 0) + stanceBonus + confidenceBonus + recencyBonus;
 }
 
-function renderRepoFaceHumanPronounFacts(
-  guidance: RepoFaceHumanPronounGuidance[],
+function renderRepoPersonaHumanPronounFacts(
+  guidance: RepoPersonaHumanPronounGuidance[],
 ): string | undefined {
   if (guidance.length === 0) {
     return undefined;
@@ -3746,12 +3746,12 @@ function renderRepoFaceHumanPronounFacts(
   ].join("\n");
 }
 
-function collectRepoFaceSocialRelations(
+function collectRepoPersonaSocialRelations(
   state: VoidSelfStateTypedProjection,
 ): Array<{ targetLabel: string; pressure: string; intensity: number }> {
   const byTarget = new Map<string, { targetLabel: string; parts: string[]; intensity: number }>();
 
-  for (const bond of state.faceAffect.socialBonds ?? []) {
+  for (const bond of state.personaAffect.socialBonds ?? []) {
     if (bond.status !== "active") {
       continue;
     }
@@ -3768,7 +3768,7 @@ function collectRepoFaceSocialRelations(
     byTarget.set(targetLabel, entry);
   }
 
-  for (const read of state.faceAffect.statusReads ?? []) {
+  for (const read of state.personaAffect.statusReads ?? []) {
     if (read.retiredAt) {
       continue;
     }
@@ -3844,7 +3844,7 @@ function projectPrivateNoteForMemorySurface(note: string): string {
 function cleanCharacterFacingSentence(value: string | undefined): string {
   const cleaned = (value ?? "")
     .replace(/\s*\|\s*/g, " ")
-    .replace(/\bFace of\s+[A-Za-z0-9_-]+\b/gi, "")
+    .replace(/\bPersona of\s+[A-Za-z0-9_-]+\b/gi, "")
     .replace(/\bgrants:\s*[^.]+/gi, "")
     .replace(/\bjurisdictions:\s*[^.]+/gi, "")
     .replace(/\brepo=[^\s]+/gi, "")
@@ -3878,7 +3878,7 @@ function rejectLeakyMemorySurface(surface: string): string {
   const leaks = [
     /\bgrants:/i,
     /\bjurisdictions:/i,
-    /\bFace of\s+[A-Z][A-Za-z0-9_-]+\b/,
+    /\bPersona of\s+[A-Z][A-Za-z0-9_-]+\b/,
     /\brepo=[^\s]+/i,
     /\bpath=[^\s]+/i,
     /\bdo not prompt\b/i,
@@ -3886,47 +3886,47 @@ function rejectLeakyMemorySurface(surface: string): string {
   ];
 
   if (leaks.some((pattern) => pattern.test(surface))) {
-    throw new Error("Repo Face memory surface leaked schema or prompt-construction language.");
+    throw new Error("Repo Persona memory surface leaked schema or prompt-construction language.");
   }
 
   return surface;
 }
 
-async function projectRepoFaceMemorySurface(input: {
+async function projectRepoPersonaMemorySurface(input: {
   identity: RepoDiscordIdentity;
   statePacket: string;
   config: ReturnType<typeof loadConfig>;
 }): Promise<string> {
-  const prompt = loadPromptTemplate("repo-face-state-projector.prompt.md", {
+  const prompt = loadPromptTemplate("repo-persona-state-projector.prompt.md", {
     characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
     statePacket: input.statePacket,
   });
   const output = await runCodexTextProjection({
     prompt,
     config: input.config,
-    command: "repo-face-state-projector",
+    command: "repo-persona-state-projector",
     jobId: `state-projector:${input.identity.id}:${Date.now()}`,
     timeoutMs: 180_000,
   });
   const projected = output.trim();
   if (projected.length < 80) {
-    throw new Error(`Repo Face state projector returned too little text for ${input.identity.id}.`);
+    throw new Error(`Repo Persona state projector returned too little text for ${input.identity.id}.`);
   }
   return rejectLeakyMemorySurface(projected);
 }
 
-function renderRepoFaceConversationTranscript(input: {
+function renderRepoPersonaConversationTranscript(input: {
   identity: RepoDiscordIdentity;
   recentMessages: SourceMessage[];
   channelSnapshots: ChannelSnapshot[];
-  pendingMentions: RepoFacePendingMention[];
-  channelPlan: RepoFaceChannelPlan;
+  pendingMentions: RepoPersonaPendingMention[];
+  channelPlan: RepoPersonaChannelPlan;
 }): string {
   const sections: string[] = [];
   sections.push([
     "Read this as raw recent message evidence, not as a summary and not as consensus.",
     "Messages are ordered oldest to newest inside each section. Newer human corrections can supersede older agent proposals.",
-    "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Face.",
+    "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Persona.",
     "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
     "If you answer the live conversation, default to the current room unless a human explicitly asks to move elsewhere.",
     "Message IDs are shown so a public reply can target the message that gives it context. If you revive an older side thread, either reply_to that message id or include enough context in your message for readers to know what you mean.",
@@ -3964,7 +3964,7 @@ function renderRepoFaceConversationTranscript(input: {
 function renderVisibleConversationChronology(input: {
   recentMessages: SourceMessage[];
   channelSnapshots: ChannelSnapshot[];
-  channelPlan: RepoFaceChannelPlan;
+  channelPlan: RepoPersonaChannelPlan;
 }): string {
   const byId = new Map<string, SourceMessage & { channelLabel: string }>();
   const primaryLabel = input.channelPlan.options.find((option) =>
@@ -3999,11 +3999,11 @@ function renderVisibleConversationChronology(input: {
   ].join("\n");
 }
 
-function renderRepoFaceRepoActivitySurface(
+function renderRepoPersonaRepoActivitySurface(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
 ): string {
-  const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
+  const statePath = resolveRepoPersonaStatePath(identity, config.storageRoot);
   const result = spawnSync(
     process.execPath,
     [
@@ -4108,8 +4108,8 @@ function runCodexTextProjection(input: {
   timeoutMs: number;
 }): Promise<string> {
   const models = [
-    ...input.config.repoFaceHeartbeats.codexModels,
-    input.config.repoFaceHeartbeats.codexModel,
+    ...input.config.repoPersonaHeartbeats.codexModels,
+    input.config.repoPersonaHeartbeats.codexModel,
     input.config.codexModel,
   ].filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
 
@@ -4133,7 +4133,7 @@ function runCodexTextProjectionWithModels(input: {
     const startedAt = new Date().toISOString();
     const startedMs = Date.now();
     const model = input.models[0] ?? input.config.codexModel;
-    const reasoningEffort = input.config.repoFaceHeartbeats.codexModelReasoningEffort ?? "low";
+    const reasoningEffort = input.config.repoPersonaHeartbeats.codexModelReasoningEffort ?? "low";
     const args = [
       ...input.config.codexExecArgs,
       "exec",
@@ -4202,12 +4202,12 @@ function runCodexTextProjectionWithModels(input: {
           }).then(resolveProjection, rejectProjection);
           return;
         }
-        rejectProjection(new Error(`Repo Face ${input.command} failed: ${attemptedErrors.join("\n---\n")}`));
+        rejectProjection(new Error(`Repo Persona ${input.command} failed: ${attemptedErrors.join("\n---\n")}`));
         return;
       }
       const text = extractLastCodexAgentMessage(stdout).trim();
       if (!text) {
-        rejectProjection(new Error("Repo Face state projector returned no visible agent message."));
+        rejectProjection(new Error("Repo Persona state projector returned no visible agent message."));
         return;
       }
       resolveProjection(text);
@@ -4295,11 +4295,11 @@ async function readOptionalMemorySurface(path: string | undefined): Promise<stri
 function buildInspectionParticipant(
   identity: RepoDiscordIdentity,
   baseRecoveryMinutes: number,
-): FaceHeartbeatParticipant {
+): PersonaHeartbeatParticipant {
   return {
     identityId: identity.id,
-    participantKind: "repo_face",
-    turnKind: "repo_face_rumination",
+    participantKind: "repo_persona",
+    turnKind: "repo_persona_rumination",
     repoName: identity.repoName,
     displayName: identity.displayName,
     initiativeSpeed: 1,
@@ -4309,8 +4309,8 @@ function buildInspectionParticipant(
     status: "active",
     groups: [
       "all",
-      "kind:repo_face",
-      "turn:repo_face_rumination",
+      "kind:repo_persona",
+      "turn:repo_persona_rumination",
       `identity:${normalizeKey(identity.id)}`,
       `repo:${normalizeKey(identity.repoName)}`,
     ],
@@ -4330,8 +4330,8 @@ function buildChannelPlan(
   identity: RepoDiscordIdentity,
   defaultChannelId?: string,
   preferredChannelId?: string,
-): RepoFaceChannelPlan {
-  const explicit = identity.channelPermissions.map((permission): RepoFaceChannelOption => ({
+): RepoPersonaChannelPlan {
+  const explicit = identity.channelPermissions.map((permission): RepoPersonaChannelOption => ({
     channelId: permission.channelId,
     label: permission.label ?? permission.channelId,
     topic: permission.topic ?? "general",
@@ -4342,7 +4342,7 @@ function buildChannelPlan(
   const explicitChannelIds = new Set(explicit.map((permission) => permission.channelId));
   const legacy = identity.allowedChannelIds
     .filter((channelId) => !explicitChannelIds.has(channelId))
-    .map((channelId): RepoFaceChannelOption => ({
+    .map((channelId): RepoPersonaChannelOption => ({
       channelId,
       label: channelId === defaultChannelId ? "default" : channelId,
       topic: channelId === defaultChannelId ? "casual Aquarium musing" : "registered channel",
@@ -4386,37 +4386,37 @@ function buildChannelPlan(
   };
 }
 
-function newestPendingMentionChannel(pendingMentions: RepoFacePendingMention[]): string | undefined {
+function newestPendingMentionChannel(pendingMentions: RepoPersonaPendingMention[]): string | undefined {
   return pendingMentions
     .slice()
     .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))
     [0]?.channelId;
 }
 
-function renderChannelPermissionDirective(plan: RepoFaceChannelPlan): string {
+function renderChannelPermissionDirective(plan: RepoPersonaChannelPlan): string {
   const options = plan.options.length > 0
     ? plan.options.map((option) =>
         `${option.label}: ${option.topic}. ${option.posture ?? "Use judgment and keep it compact."}`,
       )
     : ["- No channel permissions are configured; stay private."];
 
-  return loadPromptTemplate("repo-face-channel-permissions.prompt.md", {
+  return loadPromptTemplate("repo-persona-channel-permissions.prompt.md", {
     options,
   });
 }
 
 function renderResearchCapabilitiesDirective(identity: RepoDiscordIdentity): string {
-  return loadPromptTemplate("repo-face-research-capabilities.prompt.md", {
+  return loadPromptTemplate("repo-persona-research-capabilities.prompt.md", {
     repoName: identity.repoName,
   });
 }
 
 function renderTurnSituationDirective(input: {
   identity: RepoDiscordIdentity;
-  participant: FaceHeartbeatParticipant;
+  participant: PersonaHeartbeatParticipant;
   recentMessages: SourceMessage[];
   channelSnapshots: ChannelSnapshot[];
-  pendingMentions: RepoFacePendingMention[];
+  pendingMentions: RepoPersonaPendingMention[];
 }): string {
   const lines: string[] = [];
   if (input.pendingMentions.length > 0) {
@@ -4439,7 +4439,7 @@ function renderTurnSituationDirective(input: {
 
 function shouldPromptIntroduction(
   identity: RepoDiscordIdentity,
-  participant: FaceHeartbeatParticipant,
+  participant: PersonaHeartbeatParticipant,
   messages: SourceMessage[],
 ): boolean {
   if (participant.queuedCount > 0) {
@@ -4453,19 +4453,19 @@ function shouldPromptIntroduction(
 }
 
 function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string {
-  return loadPromptTemplate("repo-face-social-embodiment.prompt.md", {
+  return loadPromptTemplate("repo-persona-social-embodiment.prompt.md", {
     displayName: identity.displayName,
   });
 }
 
 function renderJurisdictionRespectDirective(identity: RepoDiscordIdentity): string {
-  return loadPromptTemplate("repo-face-jurisdiction-respect.prompt.md", {
+  return loadPromptTemplate("repo-persona-jurisdiction-respect.prompt.md", {
     displayName: identity.displayName,
   });
 }
 
 function renderComedyImprovDirective(identity: RepoDiscordIdentity): string {
-  return loadPromptTemplate("repo-face-comedy-improv.prompt.md", {
+  return loadPromptTemplate("repo-persona-comedy-improv.prompt.md", {
     displayName: identity.displayName,
   });
 }
@@ -4479,7 +4479,7 @@ function renderRepetitionSamplingDirective(messages: SourceMessage[]): string {
     .filter((entry) => entry.count >= 2)
     .slice(0, 8);
 
-  return loadPromptTemplate("repo-face-repetition-sampling.prompt.md", {
+  return loadPromptTemplate("repo-persona-repetition-sampling.prompt.md", {
     overused: overused.map((entry) => `${entry.phrase} (${entry.count} recent uses)`),
   });
 }
@@ -4515,7 +4515,7 @@ interface TopicRelationToIdentity {
   matchedTerms: string[];
 }
 
-function renderRepoFaceTopicAttractorFacts(
+function renderRepoPersonaTopicAttractorFacts(
   identity: RepoDiscordIdentity,
   messages: SourceMessage[],
 ): string | undefined {
@@ -4764,7 +4764,7 @@ function normalizeForRepetition(value: string): string {
     .trim();
 }
 
-function thresholdRank(threshold: RepoFaceChannelOption["speechThreshold"]): number {
+function thresholdRank(threshold: RepoPersonaChannelOption["speechThreshold"]): number {
   switch (threshold) {
     case "very_low":
       return 0;
@@ -4792,7 +4792,7 @@ function renderBifrostGovernanceDigestDirective(
   }
 
   if (digest.topics.length === 0) {
-    return loadPromptTemplate("repo-face-bifrost-digest.prompt.md", {
+    return loadPromptTemplate("repo-persona-bifrost-digest.prompt.md", {
       topics: [],
     });
   }
@@ -4809,17 +4809,17 @@ function renderBifrostGovernanceDigestDirective(
     }
   }
 
-  return loadPromptTemplate("repo-face-bifrost-digest.prompt.md", {
+  return loadPromptTemplate("repo-persona-bifrost-digest.prompt.md", {
     topics: lines,
   });
 }
 
 function renderPendingMentionDirective(
   identity: RepoDiscordIdentity,
-  pendingMentions: RepoFacePendingMention[],
+  pendingMentions: RepoPersonaPendingMention[],
 ): string {
   if (pendingMentions.length === 0) {
-    return loadPromptTemplate("repo-face-pending-mentions.prompt.md", {
+    return loadPromptTemplate("repo-persona-pending-mentions.prompt.md", {
       mentions: [],
     });
   }
@@ -4828,7 +4828,7 @@ function renderPendingMentionDirective(
     `- ${index === pendingMentions.length - 1 ? "Newest" : "Earlier"}: ${mention.authorName ?? mention.authorId} said, "${collapseWhitespace(mention.visiblePrompt, 500)}"`,
   );
 
-  return loadPromptTemplate("repo-face-pending-mentions.prompt.md", {
+  return loadPromptTemplate("repo-persona-pending-mentions.prompt.md", {
     displayName: identity.displayName,
     mentions: mentionLines,
   });
@@ -4836,7 +4836,7 @@ function renderPendingMentionDirective(
 
 function renderWorldbuildingPublicationDirective(identity: RepoDiscordIdentity): string {
   const isNibu = identity.id.toLowerCase() === "nibu";
-  return loadPromptTemplate("repo-face-worldbuilding-publication.prompt.md", {
+  return loadPromptTemplate("repo-persona-worldbuilding-publication.prompt.md", {
     nibu: isNibu,
   });
 }
@@ -4849,7 +4849,7 @@ interface JurisdictionDiveDirective {
 
 function buildJurisdictionDiveDirective(
   identity: RepoDiscordIdentity,
-  participant: FaceHeartbeatParticipant,
+  participant: PersonaHeartbeatParticipant,
 ): JurisdictionDiveDirective {
   const isNibu = identity.id.toLowerCase() === "nibu";
   const cadence = isNibu ? 3 : 8;
@@ -4858,7 +4858,7 @@ function buildJurisdictionDiveDirective(
   return {
     due,
     cadence,
-    promptLine: loadPromptTemplate("repo-face-jurisdiction-dive.prompt.md", {
+    promptLine: loadPromptTemplate("repo-persona-jurisdiction-dive.prompt.md", {
       due,
       nibu: isNibu,
       repoName: identity.repoName,
@@ -4867,7 +4867,7 @@ function buildJurisdictionDiveDirective(
 }
 
 function renderRepoCharacterIdentityDoctrine(identity: RepoDiscordIdentity): string {
-  const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).faces[0];
+  const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).personas[0];
   return loadPromptTemplate("repo-character-identity.prompt.md", {
     displayName: identity.displayName,
     repoName: identity.repoName,
@@ -4893,8 +4893,8 @@ function projectCharacterDescription(description: string | undefined): string | 
       .replace(/\bmore opinionated and abrasive than Void because she is a character, not the room moderator\b/gi, "more opinionated and abrasive than a room moderator")
       .replace(/\bShe is much more opinionated and abrasive than Void because she is a character, not the room moderator:/gi, "She is much more opinionated and abrasive than a room moderator:")
       .replace(/\bthan Void\b/g, "than a moderator")
-      .replace(/\bcharacter Face\b/g, "character")
-      .replace(/\bFace\b/g, "personality")
+      .replace(/\bcharacter Persona\b/g, "character")
+      .replace(/\bPersona\b/g, "personality")
       .replace(/\brepo=AetheriaLore path=[^\s]+/g, "")
       .replace(/\s{2,}/g, " ")
       .trim(),
@@ -4903,17 +4903,17 @@ function projectCharacterDescription(description: string | undefined): string | 
     .join(" ");
 }
 
-function recoveryFor(participant: FaceHeartbeatParticipant): number {
+function recoveryFor(participant: PersonaHeartbeatParticipant): number {
   const loadPenalty = 1 + participant.currentLoad * 0.75;
   return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.1);
 }
 
-async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
+async function readHeartbeatState(path: string): Promise<PersonaHeartbeatState> {
   try {
     const raw = await readFile(path, "utf8");
-    const parsed = JSON.parse(stripLeadingBom(raw)) as Partial<FaceHeartbeatState> & {
+    const parsed = JSON.parse(stripLeadingBom(raw)) as Partial<PersonaHeartbeatState> & {
       baseIntervalMinutes?: number;
-      participants?: Array<Partial<FaceHeartbeatParticipant> & { nextReadyAt?: string }>;
+      participants?: Array<Partial<PersonaHeartbeatParticipant> & { nextReadyAt?: string }>;
     };
     if (parsed.schemaVersion === HEARTBEAT_SCHEMA_VERSION) {
       return {
@@ -4922,10 +4922,10 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
         baseRecoveryMinutes: Number.isFinite(parsed.baseRecoveryMinutes) ? parsed.baseRecoveryMinutes : 10,
         globalHeat: Number.isFinite(parsed.globalHeat) ? parsed.globalHeat : 1,
         lastTickAt: parsed.lastTickAt,
-        participants: Array.isArray(parsed.participants) ? parsed.participants as FaceHeartbeatParticipant[] : [],
+        participants: Array.isArray(parsed.participants) ? parsed.participants as PersonaHeartbeatParticipant[] : [],
         history: Array.isArray(parsed.history) ? parsed.history : [],
         pendingMentions: Array.isArray(parsed.pendingMentions)
-          ? parsed.pendingMentions.filter(isRepoFacePendingMention)
+          ? parsed.pendingMentions.filter(isRepoPersonaPendingMention)
           : [],
       };
     }
@@ -4947,7 +4947,7 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
   };
 }
 
-async function writeHeartbeatState(path: string, state: FaceHeartbeatState): Promise<void> {
+async function writeHeartbeatState(path: string, state: PersonaHeartbeatState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
@@ -4972,11 +4972,11 @@ function publishSwarmDashboardSurface(): void {
 }
 
 function migrateLegacyHeartbeatState(
-  parsed: Partial<FaceHeartbeatState> & {
+  parsed: Partial<PersonaHeartbeatState> & {
     baseIntervalMinutes?: number;
-    participants?: Array<Partial<FaceHeartbeatParticipant> & { nextReadyAt?: string }>;
+    participants?: Array<Partial<PersonaHeartbeatParticipant> & { nextReadyAt?: string }>;
   },
-): FaceHeartbeatState {
+): PersonaHeartbeatState {
   const nowMs = Date.now();
   const legacyBase = Number.isFinite(parsed.baseIntervalMinutes) ? parsed.baseIntervalMinutes : 30;
   const baseRecoveryMinutes = Math.max(5, legacyBase / 3);
@@ -4990,7 +4990,7 @@ function migrateLegacyHeartbeatState(
     return {
       identityId: participant.identityId ?? `legacy-face-${index + 1}`,
       repoName: participant.repoName ?? "unknown",
-      displayName: participant.displayName ?? participant.identityId ?? `Legacy Face ${index + 1}`,
+      displayName: participant.displayName ?? participant.identityId ?? `Legacy Persona ${index + 1}`,
       initiativeSpeed: speed,
       reactionBias: Number.isFinite(participant.reactionBias) ? participant.reactionBias : 0.4,
       interruptThreshold: Number.isFinite(participant.interruptThreshold) ? participant.interruptThreshold : 0.6,
@@ -5007,9 +5007,9 @@ function migrateLegacyHeartbeatState(
       lastQueuedAt: participant.lastQueuedAt,
       queuedCount: Number.isFinite(participant.queuedCount) ? participant.queuedCount : 0,
       constraints: participant.constraints ?? [
-        "Migrated from wall-clock repo Face turn state.",
+        "Migrated from wall-clock repo Persona turn state.",
       ],
-    } satisfies FaceHeartbeatParticipant;
+    } satisfies PersonaHeartbeatParticipant;
   });
 
   return {
@@ -5020,7 +5020,7 @@ function migrateLegacyHeartbeatState(
     lastTickAt: parsed.lastTickAt,
     participants,
     pendingMentions: Array.isArray(parsed.pendingMentions)
-      ? parsed.pendingMentions.filter(isRepoFacePendingMention)
+      ? parsed.pendingMentions.filter(isRepoPersonaPendingMention)
       : [],
     history: [
       ...(Array.isArray(parsed.history) ? parsed.history : []),
@@ -5034,7 +5034,7 @@ function migrateLegacyHeartbeatState(
   };
 }
 
-function isRepoFacePendingMention(value: unknown): value is RepoFacePendingMention {
+function isRepoPersonaPendingMention(value: unknown): value is RepoPersonaPendingMention {
   if (!value || typeof value !== "object") {
     return false;
   }

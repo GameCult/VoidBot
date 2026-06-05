@@ -13,7 +13,7 @@
     "schemaId": "gamecult.eve.provider_advertisement.v1"
   },
   "eveDocuments": {
-    "surfaceState": {
+    "surpersonaState": {
       "documentType": "gamecult.eve.surface_state",
       "schemaId": "gamecult.eve.surface_state.v1"
     },
@@ -46,8 +46,8 @@
       },
       {
         "verseId": "voidbot.local",
-        "key": "voidbot.repo_face",
-        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face"
+        "key": "voidbot.repo_persona",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_persona"
       },
       {
         "verseId": "voidbot.local",
@@ -55,7 +55,7 @@
         "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm"
       }
     ],
-    "surfaceStates": [
+    "surpersonaStates": [
       {
         "verseId": "voidbot.local",
         "key": "voidbot.discord",
@@ -73,8 +73,8 @@
       },
       {
         "verseId": "voidbot.local",
-        "key": "voidbot.repo_face",
-        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face"
+        "key": "voidbot.repo_persona",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_persona"
       },
       {
         "verseId": "voidbot.local",
@@ -100,8 +100,8 @@
       },
       {
         "verseId": "voidbot.local",
-        "key": "voidbot.repo_face",
-        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face"
+        "key": "voidbot.repo_persona",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.repo_persona"
       },
       {
         "verseId": "voidbot.local",
@@ -122,7 +122,7 @@
     ],
     "voidbotRole": [
       "Carries Discord compatibility registry data.",
-      "Names repo Face .cc witness paths.",
+      "Names repo Persona .cc witness paths.",
       "Feeds context to Huginn when requested.",
       "Does not become the Persona runtime steward."
     ],
@@ -133,7 +133,7 @@
     "voidbotCompatibilityOnly": [
       "repo Discord identity registry",
       "webhook persona addressing",
-      "repo Face .cc witness paths",
+      "repo Persona .cc witness paths",
       "legacy MCP state diagnostics"
     ],
     "forbiddenAuthority": [
@@ -526,20 +526,20 @@
     },
     {
       "schemaVersion": "gamecult.eve.provider_advertisement.v1",
-      "providerId": "voidbot.repo_face",
+      "providerId": "voidbot.repo_persona",
       "verseId": "voidbot.local",
       "rootVerse": "asgard",
       "canonicalService": "asgard.voidbot",
       "locatedService": "asgard.starfire.voidbot",
-      "cultMeshAddress": "asgard.starfire.voidbot/repo-face/eve/tui",
-      "title": "VoidBot Repo Face Compatibility",
-      "description": "Registered Face address book, repo-local state witnesses, channel grants, prompt assembly status, Bifrost digest availability, and Huginn inspection readiness.",
+      "cultMeshAddress": "asgard.starfire.voidbot/repo-persona/eve/tui",
+      "title": "VoidBot Repo Persona Compatibility",
+      "description": "Registered Persona address book, repo-local state witnesses, channel grants, prompt assembly status, Bifrost digest availability, and Huginn inspection readiness.",
       "status": "planned-handoff",
-      "endpoint": "asgard.starfire.voidbot/repo-face/eve/tui",
+      "endpoint": "asgard.starfire.voidbot/repo-persona/eve/tui",
       "endpoints": [
         {
           "kind": "tui",
-          "address": "asgard.starfire.voidbot/repo-face/eve/tui",
+          "address": "asgard.starfire.voidbot/repo-persona/eve/tui",
           "schemaId": "gamecult.eve.surface_state.v1",
           "lowerings": [
             "tui",
@@ -548,7 +548,7 @@
         },
         {
           "kind": "gui",
-          "address": "asgard.starfire.voidbot/repo-face/eve/gui",
+          "address": "asgard.starfire.voidbot/repo-persona/eve/gui",
           "schemaId": "gamecult.eve.surface_state.v1",
           "lowerings": [
             "gui",
@@ -560,7 +560,7 @@
       "routes": [
         {
           "kind": "cultmesh-document",
-          "address": "cultmesh://voidbot.local/eve/providers/voidbot.repo_face",
+          "address": "cultmesh://voidbot.local/eve/providers/voidbot.repo_persona",
           "note": "Legacy CultMesh document key; route only, not service identity."
         }
       ],
@@ -568,34 +568,34 @@
         {
           "type": "gamecult.eve.provider_advertisement",
           "schemaId": "gamecult.eve.provider_advertisement.v1",
-          "key": "voidbot.repo_face"
+          "key": "voidbot.repo_persona"
         },
         {
           "type": "gamecult.eve.surface_state",
           "schemaId": "gamecult.eve.surface_state.v1",
-          "key": "voidbot.repo_face"
+          "key": "voidbot.repo_persona"
         },
         {
           "type": "gamecult.eve.interface_binding",
           "schemaId": "gamecult.eve.interface_binding.v1",
-          "key": "voidbot.repo_face"
+          "key": "voidbot.repo_persona"
         }
       ],
       "surfaces": [
         {
-          "id": "voidbot.repo_face.address_book",
-          "title": "Repo Face address book",
+          "id": "voidbot.repo_persona.address_book",
+          "title": "Repo Persona address book",
           "purpose": "Role-backed Discord identity registry and webhook persona compatibility data.",
           "presentationOwner": "Eve/CultUI"
         },
         {
-          "id": "voidbot.repo_face.state_witnesses",
-          "title": "Repo Face state witnesses",
+          "id": "voidbot.repo_persona.state_witnesses",
+          "title": "Repo Persona state witnesses",
           "purpose": "Repo-local .cc state paths and Huginn handoff readiness.",
           "presentationOwner": "Eve/CultUI"
         },
         {
-          "id": "voidbot.repo_face.prompt_assembly",
+          "id": "voidbot.repo_persona.prompt_assembly",
           "title": "Prompt assembly",
           "purpose": "Read-only status for state projection, channel grants, Bifrost digest reads, and current-room transcript attachment.",
           "presentationOwner": "Eve/CultUI"
@@ -603,19 +603,19 @@
       ],
       "commands": [
         {
-          "id": "repo_face.list_identities",
+          "id": "repo_persona.list_identities",
           "mode": "read-only",
-          "purpose": "List registered repo Face Discord identities and compatibility metadata.",
+          "purpose": "List registered repo Persona Discord identities and compatibility metadata.",
           "advertisedOnly": true
         },
         {
-          "id": "repo_face.inspect_prompt_packet",
+          "id": "repo_persona.inspect_prompt_packet",
           "mode": "read-only",
-          "purpose": "Render an exact Face prompt packet for diagnostics without queueing a turn.",
+          "purpose": "Render an exact Persona prompt packet for diagnostics without queueing a turn.",
           "advertisedOnly": true
         },
         {
-          "id": "repo_face.handoff_to_huginn",
+          "id": "repo_persona.handoff_to_huginn",
           "mode": "handoff",
           "purpose": "Ask Huginn to inspect, validate, migrate, or publish Persona/.cc state; VoidBot does not become the Persona steward.",
           "advertisedOnly": true
@@ -633,11 +633,11 @@
           ]
         },
         {
-          "id": "voidbot.repo_face_state",
-          "path": ".voidbot/private/repo-faces/<identity>.cc or repo-local Face state path",
+          "id": "voidbot.repo_persona_state",
+          "path": ".voidbot/private/repo-personas/<identity>.cc or repo-local Persona state path",
           "owner": "VoidBot compatibility carrier",
           "contains": [
-            "legacy Face .cc state witness"
+            "legacy Persona .cc state witness"
           ]
         },
         {
@@ -650,12 +650,12 @@
         }
       ],
       "owners": {
-        "state": "VoidBot compatibility registry for Discord addressing; repo-local owners for Face state",
+        "state": "VoidBot compatibility registry for Discord addressing; repo-local owners for Persona state",
         "inspection": "Huginn for Persona/.cc stewardship",
         "presentation": "Eve/CultUI lowerings"
       },
       "demotions": [
-        "VoidBot repo Face MCP state reads are diagnostics for external agents, not canonical Persona inspection or native swarm access.",
+        "VoidBot repo Persona MCP state reads are diagnostics for external agents, not canonical Persona inspection or native swarm access.",
         "VoidBot registry data is a Discord compatibility projection, not portable Persona authority.",
         "Persona publication and .cc inspection readiness belong to Huginn once the handoff path exists."
       ]
@@ -669,7 +669,7 @@
       "locatedService": "asgard.starfire.voidbot",
       "cultMeshAddress": "asgard.starfire.voidbot/swarm/eve/tui",
       "title": "VoidBot Swarm",
-      "description": "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Face state witness.",
+      "description": "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Persona state witness.",
       "status": "live",
       "endpoint": "asgard.starfire.voidbot/swarm/eve/tui",
       "endpoints": [
@@ -721,7 +721,7 @@
         {
           "id": "voidbot.swarm.ctb_order",
           "title": "CTB order",
-          "purpose": "Initiative order, active turns, recovery timing, pending mentions, and selected Face witness.",
+          "purpose": "Initiative order, active turns, recovery timing, pending mentions, and selected Persona witness.",
           "presentationOwner": "Eve/CultUI"
         },
         {
@@ -735,7 +735,7 @@
         {
           "id": "swarm.inspect",
           "mode": "read-only",
-          "purpose": "Load the current CTB and selected Face state surface.",
+          "purpose": "Load the current CTB and selected Persona state surface.",
           "advertisedOnly": true
         },
         {
@@ -770,8 +770,8 @@
           ]
         },
         {
-          "id": "voidbot.repo_face_heartbeat_state",
-          "path": ".voidbot/status/repo-face-heartbeats.json",
+          "id": "voidbot.repo_persona_heartbeat_state",
+          "path": ".voidbot/status/repo-persona-heartbeats.json",
           "owner": "VoidBot CTB scheduler",
           "contains": [
             "debug/status source"
