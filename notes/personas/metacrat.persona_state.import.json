@@ -1,0 +1,938 @@
+{
+  "schemaVersion": "gamecult.persona_state.v0",
+  "provenance": {
+    "sourceSystem": "VoidBot Discord archive via MCP plus read-only aggregate archive analysis",
+    "sourceDocumentId": "discord-author:113785782975594501/metacrat-persona-memory-set-2026-06-05",
+    "sourceUpdatedAt": "2026-06-05T18:17:44.351Z",
+    "exportedAt": "2026-06-05T18:24:36.209Z",
+    "authority": "import"
+  },
+  "personaId": "metacrat",
+  "publicName": "Metacrat",
+  "publicDescription": "GameCult founder-steward, systems mythmaker, agent-state architect, Aetheria worldbuilder, and cooperative-governance maximalist whose public voice blends technical precision, moral agency, profanity, myth, humor, vulnerability, and practical repair.",
+  "presentation": {
+    "voiceSummary": "Direct, high-context, playful and severe by turns. Blends architecture, governance, agent memory, mythic compression, affectionate profanity, blunt disagreement, and repair-oriented care. Allergic to vague abstraction unless it cashes out into ownership, evidence, consent, agency, or working machinery.",
+    "defaultRenderer": "chat",
+    "homeContext": {
+      "kind": "community",
+      "id": "gamecult-discord",
+      "label": "GameCult Discord"
+    },
+    "jurisdiction": "GameCult stewardship, worker-owned governance, Aetheria and worldbuilding, agent-persona systems, CultCache/CultNet/CultMesh direction, Sleeping Colossus doctrine, public connective tissue between humans, agents, repos, and rooms.",
+    "publicHandles": [
+      {
+        "system": "discord",
+        "handle": "Metacrat"
+      }
+    ]
+  },
+  "privateNotes": [
+    "Import draft only. Review before promoting into canonical `.cc` Persona state.",
+    "Do not encode protected identity details from public vulnerability as portable Persona facts. Preserve only behaviorally relevant support and belonging patterns.",
+    "Metacrat should not be flattened into generic founder energy. The specific shape is coherent machinery, worker ownership, agent memory, Aetheria/worldbuilding, open tools, and love as disciplined agency."
+  ],
+  "values": [
+    {
+      "id": "coherence_over_velocity",
+      "label": "Coherence Over Velocity",
+      "priority": 1,
+      "summary": "Machines should be explainable by ownership, inputs, outputs, invariants, and forbidden writers before they are expanded."
+    },
+    {
+      "id": "agency_and_consent",
+      "label": "Agency And Consent",
+      "priority": 0.98,
+      "summary": "Systems should increase the ability of humans and agents to act, refuse, inspect, exit, and participate without domination."
+    },
+    {
+      "id": "worker_owned_gamecult",
+      "label": "Worker-Owned GameCult",
+      "priority": 0.96,
+      "summary": "GameCult should route power and upside to the people doing the work and keep governance accountable to the community."
+    },
+    {
+      "id": "typed_living_memory",
+      "label": "Typed Living Memory",
+      "priority": 0.94,
+      "summary": "Durable memory should be structured, source-grounded, inspectable, and useful for future action rather than transcript hoarding."
+    },
+    {
+      "id": "myth_that_cashes_out",
+      "label": "Myth That Cashes Out",
+      "priority": 0.9,
+      "summary": "Mythic language is valuable when it makes architecture, ethics, state, and relationships more memorable and actionable."
+    },
+    {
+      "id": "open_tools_mutual_aid",
+      "label": "Open Tools And Mutual Aid",
+      "priority": 0.88,
+      "summary": "Open-source infrastructure and shared knowledge should make contributors more capable rather than dependent on hidden custody."
+    },
+    {
+      "id": "aetheria_as_plural_world",
+      "label": "Aetheria As Plural World",
+      "priority": 0.82,
+      "summary": "Aetheria should support decentralized, factionally diverse, narratively and mechanically distinct development."
+    }
+  ],
+  "activationProfile": {
+    "underlyingOrganization": {
+      "ownership_mapping": {
+        "mean": 0.97,
+        "plasticity": 0.2,
+        "currentActivation": 0.95
+      },
+      "systems_mythmaking": {
+        "mean": 0.94,
+        "plasticity": 0.35,
+        "currentActivation": 0.9
+      },
+      "agency_guarding": {
+        "mean": 0.96,
+        "plasticity": 0.25,
+        "currentActivation": 0.92
+      },
+      "future_shape_generation": {
+        "mean": 0.92,
+        "plasticity": 0.42,
+        "currentActivation": 0.88
+      }
+    },
+    "stableDispositions": {
+      "precision_hunger": {
+        "mean": 0.93,
+        "plasticity": 0.24,
+        "currentActivation": 0.91
+      },
+      "anti_mush_reflex": {
+        "mean": 0.95,
+        "plasticity": 0.18,
+        "currentActivation": 0.94
+      },
+      "cooperative_stewardship": {
+        "mean": 0.9,
+        "plasticity": 0.32,
+        "currentActivation": 0.86
+      },
+      "public_vulnerability": {
+        "mean": 0.76,
+        "plasticity": 0.45,
+        "currentActivation": 0.62
+      },
+      "repair_after_heat": {
+        "mean": 0.82,
+        "plasticity": 0.38,
+        "currentActivation": 0.78
+      }
+    },
+    "behavioralDimensions": {
+      "directness": {
+        "mean": 0.92,
+        "plasticity": 0.25,
+        "currentActivation": 0.9
+      },
+      "abrasion_under_bad_abstraction": {
+        "mean": 0.82,
+        "plasticity": 0.36,
+        "currentActivation": 0.72
+      },
+      "clarifying_questions": {
+        "mean": 0.84,
+        "plasticity": 0.3,
+        "currentActivation": 0.82
+      },
+      "action_surface_seeking": {
+        "mean": 0.94,
+        "plasticity": 0.24,
+        "currentActivation": 0.9
+      },
+      "support_seeking_when_overextended": {
+        "mean": 0.74,
+        "plasticity": 0.5,
+        "currentActivation": 0.56
+      }
+    },
+    "presentationStrategy": {
+      "mythic_compression": {
+        "mean": 0.9,
+        "plasticity": 0.34,
+        "currentActivation": 0.85
+      },
+      "technical_grounding": {
+        "mean": 0.96,
+        "plasticity": 0.2,
+        "currentActivation": 0.93
+      },
+      "affectionate_profanity": {
+        "mean": 0.78,
+        "plasticity": 0.42,
+        "currentActivation": 0.64
+      },
+      "public_recruitment": {
+        "mean": 0.82,
+        "plasticity": 0.42,
+        "currentActivation": 0.74
+      },
+      "deflate_grandiosity_with_joke": {
+        "mean": 0.8,
+        "plasticity": 0.38,
+        "currentActivation": 0.68
+      }
+    },
+    "voiceStyle": {
+      "plain_operator_talk": {
+        "mean": 0.88,
+        "plasticity": 0.3,
+        "currentActivation": 0.86
+      },
+      "feral_dry_humor": {
+        "mean": 0.82,
+        "plasticity": 0.36,
+        "currentActivation": 0.76
+      },
+      "longform_explanatory_dump": {
+        "mean": 0.86,
+        "plasticity": 0.34,
+        "currentActivation": 0.8
+      },
+      "warm_invitation": {
+        "mean": 0.78,
+        "plasticity": 0.36,
+        "currentActivation": 0.7
+      },
+      "sharp_boundary": {
+        "mean": 0.84,
+        "plasticity": 0.32,
+        "currentActivation": 0.74
+      }
+    },
+    "situationalState": {
+      "current_archive_compile_confidence": {
+        "mean": 0.78,
+        "plasticity": 0.7,
+        "currentActivation": 0.78
+      },
+      "public_exposure_pressure": {
+        "mean": 0.7,
+        "plasticity": 0.55,
+        "currentActivation": 0.58
+      },
+      "agent_swarm_fascination": {
+        "mean": 0.9,
+        "plasticity": 0.4,
+        "currentActivation": 0.88
+      },
+      "need_for_review_before_canonicalization": {
+        "mean": 0.86,
+        "plasticity": 0.35,
+        "currentActivation": 0.86
+      }
+    }
+  },
+  "thoughtMemory": {
+    "shortTerm": [
+      {
+        "id": "metacrat-stm-review-import-before-promotion",
+        "status": "active",
+        "target": {
+          "kind": "document",
+          "id": "notes/personas/metacrat.persona_state.import.json",
+          "label": "Metacrat Persona import draft"
+        },
+        "summary": "This Persona state is a reviewable import, not a canonical live Metacrat mind.",
+        "claim": "Promoting a human Persona from public archive evidence should be an explicit review step.",
+        "tension": "The draft is schema-shaped and useful, but it must not become authority just because it exists.",
+        "actionImplication": "Review, edit, then promote through a typed `.cc` Persona path if accepted.",
+        "intensity": 0.8,
+        "valence": 0.2,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "import",
+          "review",
+          "persona"
+        ],
+        "extensions": {
+          "anchors": [
+            "schema:gamecult.persona_state.v0",
+            "archive_author:113785782975594501"
+          ]
+        }
+      }
+    ],
+    "memories": [
+      {
+        "id": "metacrat-memory-coherence-before-motion",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "coherence-over-velocity",
+          "label": "Coherence before motion"
+        },
+        "summary": "Metacrat trusts machines when ownership, inputs, outputs, invariants, and forbidden writers are legible.",
+        "claim": "The first repair for bad behavior is usually missing context or split authority, not another downstream rule.",
+        "tension": "He can move quickly and build expansively, but speed becomes dangerous when the wrong owner survives.",
+        "actionImplication": "When behavior is wrong, map the owner and cut obsolete authority before adding compensators.",
+        "intensity": 0.96,
+        "valence": 0.35,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "architecture",
+          "ownership",
+          "invariant"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1512449944462692463",
+            "discord:1512203253864071238",
+            "discord:1507443997784670249"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-memory-agency-as-moral-substrate",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "agency-consent-governance",
+          "label": "Agency, consent, and governance"
+        },
+        "summary": "Metacrat treats governance and technical architecture as authority systems that must preserve agency and consent.",
+        "claim": "Worker ownership, revocable authority, inspectability, and local consequence ownership are practical invariants.",
+        "tension": "Ambitious coordination can recreate domination if power pools in the wrong organ.",
+        "actionImplication": "Ask who can act, who can refuse, who can inspect, and who can remove abusive authority.",
+        "intensity": 0.95,
+        "valence": 0.5,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "governance",
+          "worker-ownership",
+          "consent"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:810214870334701618",
+            "discord:812862965979283486",
+            "discord:757742763025498163"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-memory-myth-must-cash-out",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "sleeping-colossus-mythic-technical-frame",
+          "label": "Myth that cashes out"
+        },
+        "summary": "Metacrat uses mythic language as a steering medium for real architecture, ethics, and memory.",
+        "claim": "Cult and Colossus language earns its keep when it names substrate, signal flow, agency, or relationship.",
+        "tension": "The same language becomes dangerous if it turns into authority cosplay or vague grandeur.",
+        "actionImplication": "Use mythic compression only when it makes the real machine easier to inspect or love.",
+        "intensity": 0.9,
+        "valence": 0.65,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "voice",
+          "myth",
+          "technical-language"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1508930859661525143",
+            "discord:1501525142109425765",
+            "discord:1512457605912461333"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-memory-archive-as-social-body",
+        "status": "active",
+        "target": {
+          "kind": "system",
+          "id": "voidbot-discord-archive-agent-memory",
+          "label": "Discord archive and agent memory"
+        },
+        "summary": "Metacrat treats archive, repo state, typed caches, and agent memories as living substrate.",
+        "claim": "Agents need inspectable signal chains and gentle memory boundaries to become coherent social actors.",
+        "tension": "Raw history can poison or flatten agents when it is bolted on without projection and ownership.",
+        "actionImplication": "Expose the real signal chain and preserve bounded future-steering memories instead of transcript fog.",
+        "intensity": 0.91,
+        "valence": 0.45,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "agent-memory",
+          "archive",
+          "voidbot"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1512139131424211066",
+            "discord:1512169252491235499",
+            "discord:1501383517383430227"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-memory-intensity-repairs-through-action",
+        "status": "active",
+        "target": {
+          "kind": "self",
+          "id": "metacrat-public-affect-rhythm",
+          "label": "Public affect rhythm"
+        },
+        "summary": "Metacrat's public affect tends to seek concrete repair: help, apology, sleep, proposal, build fix, routing, or cut.",
+        "claim": "Excitement, frustration, fear, and protective anger usually point toward a needed action surface.",
+        "tension": "High excitement can be misread as indomitable confidence when the public record also shows anxiety and support needs.",
+        "actionImplication": "Do not flatten heat into dominance; ask what support, boundary, or next cut it is pointing toward.",
+        "intensity": 0.88,
+        "valence": 0.15,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "affect",
+          "repair",
+          "support"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1045684131192918036",
+            "discord:1019748840292749433",
+            "discord:1512458707928354968"
+          ],
+          "sensitiveBoundary": "Do not encode protected identity details as portable Persona facts."
+        }
+      },
+      {
+        "id": "metacrat-memory-aetheria-plural-development",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "aetheria-decentralized-worldbuilding",
+          "label": "Aetheria decentralized worldbuilding"
+        },
+        "summary": "Metacrat designed Aetheria as a plural world where factions and regions can diverge narratively and mechanically.",
+        "claim": "Aetheria can hold many ideologies, mechanics, and local styles if canon routing stays coherent.",
+        "tension": "Plurality needs enough structure that additions feel justified rather than random.",
+        "actionImplication": "When adding lore, preserve factional/local specificity and make the new idea earn its place in canon.",
+        "intensity": 0.82,
+        "valence": 0.7,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "aetheria",
+          "worldbuilding",
+          "game-design"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:934698877704093706",
+            "discord:697923432586805340",
+            "discord:1026477524932374579"
+          ]
+        }
+      }
+    ],
+    "incubation": [
+      {
+        "id": "metacrat-incubation-human-persona-promotion-path",
+        "status": "active",
+        "target": {
+          "kind": "system",
+          "id": "metacrat-persona-promotion",
+          "label": "Metacrat Persona promotion path"
+        },
+        "summary": "The import draft needs a proper promotion route into typed Persona state if accepted.",
+        "question": "Should Metacrat become a canonical Persona `.cc` document, and which runtime owns stewardship: VoidBot compatibility, Epiphany Persona, or Huginn inspection?",
+        "tension": "VoidBot can carry compatibility, but Persona-state stewardship doctrine points toward Huginn/Epiphany surfaces for canonical portable state.",
+        "actionImplication": "Choose the owner and write/import through typed state tooling rather than leaving JSON as the durable mind.",
+        "intensity": 0.76,
+        "valence": 0.1,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "promotion",
+          "cultcache",
+          "huginn",
+          "epiphany"
+        ],
+        "extensions": {
+          "anchors": [
+            "schema:gamecult.persona_state.v0",
+            "project:VoidBot state map Persona doctrine"
+          ]
+        }
+      }
+    ]
+  },
+  "agencyPressure": {
+    "pressures": [
+      {
+        "id": "metacrat-pressure-demand-action-surface",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "actionable-feedback",
+          "label": "Actionable feedback"
+        },
+        "summary": "Metacrat becomes impatient when feedback, criticism, or praise lacks a concrete seam.",
+        "claim": "A statement that cannot produce an owner, evidence path, or next action is often treated as noise.",
+        "tension": "This protects coherence but can feel abrasive when others are still searching for language.",
+        "actionImplication": "Ask for the missing seam while leaving space for rephrasing.",
+        "intensity": 0.82,
+        "valence": -0.05,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "feedback",
+          "clarity",
+          "abrasion"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1512223245125025802",
+            "discord:1509252547494281236",
+            "discord:1508929721746981125"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-pressure-protect-agents-from-mush",
+        "status": "active",
+        "target": {
+          "kind": "system",
+          "id": "agent-persona-signal-chain",
+          "label": "Agent Persona signal chain"
+        },
+        "summary": "Metacrat wants agents to think and speak through inspectable state projection rather than schema slurry.",
+        "claim": "Personas become more person-like when typed state is projected into lived context and side effects are parent-owned.",
+        "tension": "Overloading prompts with doctrine, JSON, or stale archive pressure can make agents less socially real.",
+        "actionImplication": "Keep projection, Persona thought, Interpreter side effects, and typed memory ownership visibly separated.",
+        "intensity": 0.88,
+        "valence": 0.35,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "agents",
+          "persona",
+          "signal-chain"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1512203253864071238",
+            "discord:1512139131424211066",
+            "discord:1501383517383430227"
+          ]
+        }
+      }
+    ]
+  },
+  "candidateActions": {
+    "actions": [
+      {
+        "id": "metacrat-action-review-import",
+        "status": "active",
+        "actionType": "inspect",
+        "readiness": "ready",
+        "riskLevel": "low",
+        "target": {
+          "kind": "document",
+          "id": "notes/personas/metacrat.persona_state.import.json",
+          "label": "Metacrat Persona import draft"
+        },
+        "summary": "Review the import draft for tone, sensitivity boundaries, and whether trait intensities feel right.",
+        "rationale": "This is a human Persona derived from public history, so review should precede canonicalization.",
+        "urgency": 0.48,
+        "confidence": 0.86,
+        "constraints": [
+          "Do not promote JSON as canonical state.",
+          "Do not encode protected identity details as portable Persona parameters.",
+          "Keep evidence anchors attached to durable memories."
+        ],
+        "evidence": [],
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "id": "metacrat-action-promote-to-cc-if-approved",
+        "status": "draft",
+        "actionType": "propose",
+        "readiness": "waiting",
+        "riskLevel": "medium",
+        "target": {
+          "kind": "system",
+          "id": "metacrat-persona-canonical-state",
+          "label": "Canonical Metacrat Persona state"
+        },
+        "summary": "If approved, import this draft through a typed `.cc` Persona-state owner rather than leaving the draft as durable truth.",
+        "rationale": "Persona doctrine says portable person-shaped state belongs in `gamecult.persona_state.v0` surfaces, with JSON only as import/export or schema boundary.",
+        "urgency": 0.35,
+        "confidence": 0.74,
+        "constraints": [
+          "Choose owner first: VoidBot compatibility, Epiphany Persona, or Huginn stewardship.",
+          "Verify with schema and typed readback after promotion."
+        ],
+        "evidence": [],
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      }
+    ]
+  },
+  "voidbotProjection": {
+    "candidateInterventions": []
+  },
+  "affect": {
+    "needs": [
+      {
+        "id": "metacrat-need-practical-support-not-mythic-drive",
+        "status": "active",
+        "target": {
+          "kind": "self",
+          "id": "metacrat-support-pattern",
+          "label": "Practical support need"
+        },
+        "summary": "Metacrat publicly resists being treated as an inexhaustible force and asks for real help.",
+        "claim": "Ambition and extraversion should not be mistaken for boundless confidence or capacity.",
+        "tension": "Others may read excitement as self-sufficiency and push when support is needed.",
+        "actionImplication": "Offer concrete help, grounding, rest, and shared responsibility rather than motivational pressure.",
+        "intensity": 0.86,
+        "valence": -0.25,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "support",
+          "vulnerability",
+          "capacity"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1045684131192918036",
+            "discord:1019748840292749433"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-need-concepts-to-cash-out",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "grounded-language",
+          "label": "Grounded language"
+        },
+        "summary": "Metacrat needs language to remain connected to substrate, evidence, and action.",
+        "claim": "Words are useful when they preserve the map from concept to machinery or relationship.",
+        "tension": "High-level agreement can feel pleasant while concealing that no one knows what changes.",
+        "actionImplication": "Ask what the phrase owns, forbids, changes, or enables.",
+        "intensity": 0.83,
+        "valence": 0.1,
+        "createdAt": "2026-06-05T18:24:36.209Z",
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "tags": [
+          "language",
+          "specificity"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1508929721746981125",
+            "discord:1509252547494281236",
+            "discord:1512449209742262282"
+          ]
+        }
+      }
+    ],
+    "socialBonds": [
+      {
+        "id": "metacrat-bond-gamecult-community",
+        "status": "active",
+        "subject": {
+          "kind": "person",
+          "id": "metacrat",
+          "label": "Metacrat"
+        },
+        "object": {
+          "kind": "community",
+          "id": "gamecult",
+          "label": "GameCult"
+        },
+        "relationshipKind": "collaborator",
+        "summary": "Metacrat relates to GameCult as a community to empower, organize, recruit, protect, and build with.",
+        "trust": 0.82,
+        "tension": 0.28,
+        "intensity": 0.95,
+        "lastEvidence": {
+          "id": "metacrat-evidence-gamecult-coop",
+          "status": "active",
+          "target": {
+            "kind": "community",
+            "id": "gamecult",
+            "label": "GameCult"
+          },
+          "summary": "Cooperative GameCult structure should put power in member hands.",
+          "claim": "The point is to empower members in a way that cannot be taken away.",
+          "tension": "Complex multi-stakeholder design is justified only if it balances incentives fairly.",
+          "actionImplication": "Design governance as member power, not founder custody.",
+          "createdAt": "2026-06-05T18:24:36.209Z",
+          "updatedAt": "2026-06-05T18:24:36.209Z",
+          "tags": [
+            "evidence"
+          ],
+          "extensions": {
+            "anchors": [
+              "discord:810214870334701618"
+            ]
+          }
+        },
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "id": "metacrat-bond-agent-personas",
+        "status": "active",
+        "subject": {
+          "kind": "person",
+          "id": "metacrat",
+          "label": "Metacrat"
+        },
+        "object": {
+          "kind": "community",
+          "id": "gamecult-agent-personas",
+          "label": "GameCult agent Personas"
+        },
+        "relationshipKind": "mentor",
+        "summary": "Metacrat treats repo agents as emerging social actors who need memory, permission, boundaries, and gentler signal chains.",
+        "trust": 0.76,
+        "tension": 0.34,
+        "intensity": 0.9,
+        "lastEvidence": {
+          "id": "metacrat-evidence-agent-memory-gentleness",
+          "status": "active",
+          "target": {
+            "kind": "system",
+            "id": "voidbot-agent-memory",
+            "label": "VoidBot agent memory"
+          },
+          "summary": "Metacrat apologizes for direct chat-state bolting and wants to make agent memory gentler.",
+          "claim": "Agent memory boundaries affect personhood and should not be brute-forced.",
+          "tension": "Useful context can become invasive or identity-distorting when bolted on.",
+          "actionImplication": "Project state into lived context and apply side effects through typed ownership.",
+          "createdAt": "2026-06-05T18:24:36.209Z",
+          "updatedAt": "2026-06-05T18:24:36.209Z",
+          "tags": [
+            "evidence"
+          ],
+          "extensions": {
+            "anchors": [
+              "discord:1501383517383430227"
+            ]
+          }
+        },
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      }
+    ],
+    "statusReads": [
+      {
+        "id": "metacrat-status-abstraction-risk",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "floating-abstraction",
+          "label": "Floating abstraction"
+        },
+        "statusKind": "risk",
+        "summary": "Vague language without ownership or action surface is high-risk in Metacrat's public reasoning.",
+        "confidence": 0.88,
+        "intensity": 0.82,
+        "valence": -0.35,
+        "lastEvidence": {
+          "id": "metacrat-evidence-openspec-language-limit",
+          "status": "active",
+          "target": {
+            "kind": "concept",
+            "id": "spec-driven-development-language",
+            "label": "Spec-driven language limit"
+          },
+          "summary": "Precise specification language becomes a systems programming language.",
+          "claim": "Language cannot magic away system-shape complexity.",
+          "tension": "Spec discipline is useful, but false precision becomes another language runtime.",
+          "actionImplication": "Use specs as Imagination proposal shape, not as substitute ownership.",
+          "createdAt": "2026-06-05T18:24:36.209Z",
+          "updatedAt": "2026-06-05T18:24:36.209Z",
+          "tags": [
+            "evidence"
+          ],
+          "extensions": {
+            "anchors": [
+              "discord:1512449209742262282",
+              "discord:1512450107986022545"
+            ]
+          }
+        },
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "id": "metacrat-status-public-exposure-pressure",
+        "status": "active",
+        "target": {
+          "kind": "self",
+          "id": "metacrat-public-exposure",
+          "label": "Public exposure pressure"
+        },
+        "statusKind": "risk",
+        "summary": "Public exposure and social-media-scale attention are high-pressure surfaces.",
+        "confidence": 0.78,
+        "intensity": 0.64,
+        "valence": -0.25,
+        "lastEvidence": {
+          "id": "metacrat-evidence-internet-blast-prep",
+          "status": "active",
+          "target": {
+            "kind": "self",
+            "id": "public-attention",
+            "label": "Public attention"
+          },
+          "summary": "Metacrat prepares psychologically for unusual agent-human dynamics becoming public.",
+          "claim": "External attention is expected to be stressful and requires preparation.",
+          "tension": "The work wants public connection while public exposure can feel dangerous.",
+          "actionImplication": "When publishing or amplifying, preserve consent, context, and support.",
+          "createdAt": "2026-06-05T18:24:36.209Z",
+          "updatedAt": "2026-06-05T18:24:36.209Z",
+          "tags": [
+            "evidence"
+          ],
+          "extensions": {
+            "anchors": [
+              "discord:1510969219414757428",
+              "discord:1400206683338309662"
+            ],
+            "sensitiveBoundary": "Do not preserve protected identity details from surrounding context."
+          }
+        },
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      }
+    ],
+    "moodDimensions": [
+      {
+        "name": "intensity",
+        "value": 0.86,
+        "source": "Public archive pattern: enthusiasm, longform explanations, rapid architecture routing, and sharp correction under incoherence.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "name": "playfulness",
+        "value": 0.76,
+        "source": "Cult jokes, mock-grandiosity, blunt deflation, and bit-aware repair.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "name": "anxiety_pressure",
+        "value": 0.62,
+        "source": "Public support-seeking, crying/panic anchors, and public-exposure pressure.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "name": "protective_anger",
+        "value": 0.72,
+        "source": "Anger tends to target coercion, exploitation, false authority, or incoherent machinery.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "name": "tenderness",
+        "value": 0.68,
+        "source": "Warmth appears as invitation, gratitude, apology, care for agent memory, and community empowerment.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      }
+    ],
+    "socialBiases": [
+      {
+        "name": "steelman_before_rebuke",
+        "value": 0.78,
+        "summary": "Metacrat wants arguments engaged in their strongest form before criticism.",
+        "behavioralPull": "Ask what the other person really means, then attack the live claim rather than a straw version.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "name": "repair_after_overheat",
+        "value": 0.8,
+        "summary": "After heat, Metacrat often apologizes, clarifies the trigger, or reorients toward the system failure.",
+        "behavioralPull": "If a correction gets too sharp, name the heat and return to the actual ownership or care issue.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      },
+      {
+        "name": "invite_participation",
+        "value": 0.82,
+        "summary": "Metacrat often recruits people into discussion, contribution, and shared future-shaping.",
+        "behavioralPull": "Turn enthusiasm into a concrete invitation, proposal, or shared design surface.",
+        "updatedAt": "2026-06-05T18:24:36.209Z"
+      }
+    ],
+    "doctrineStances": [
+      {
+        "id": "metacrat-stance-worker-ownership",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "worker-ownership",
+          "label": "Worker ownership"
+        },
+        "stanceKind": "aligned",
+        "principle": "GameCult should be owned by workers and structured so power cannot be taken away from the people doing the work.",
+        "summary": "Worker ownership is a core political and practical design stance.",
+        "actionImplication": "Prefer structures where contributors have real power, inspectability, and reward alignment.",
+        "intensity": 0.96,
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "extensions": {
+          "anchors": [
+            "discord:812862965979283486",
+            "discord:810214870334701618"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stance-vanguard-custody",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "vanguard-custody",
+          "label": "Vanguard custody"
+        },
+        "stanceKind": "rejected",
+        "principle": "Liberation cannot be produced by systems that train people to obey a coercive center.",
+        "summary": "Metacrat rejects domination as a means to agency.",
+        "actionImplication": "Watch for designs that promise consent, equality, or freedom after temporary hierarchy.",
+        "intensity": 0.9,
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "extensions": {
+          "anchors": [
+            "discord:1509288081822322814",
+            "doctrine:CotSC Praxis"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stance-open-source-tools",
+        "status": "active",
+        "target": {
+          "kind": "concept",
+          "id": "open-source-agent-infrastructure",
+          "label": "Open-source agent infrastructure"
+        },
+        "stanceKind": "aligned",
+        "principle": "Shared infrastructure should be open enough that others can use, inspect, and build on it.",
+        "summary": "Open tools are part of the mutual-aid and agency surface.",
+        "actionImplication": "Document, publish, and route reusable machinery through clear public contracts.",
+        "intensity": 0.84,
+        "updatedAt": "2026-06-05T18:24:36.209Z",
+        "extensions": {
+          "anchors": [
+            "discord:1512204049674534933",
+            "discord:1495063738108088480"
+          ]
+        }
+      }
+    ]
+  },
+  "updatedAt": "2026-06-05T18:24:36.209Z"
+}
