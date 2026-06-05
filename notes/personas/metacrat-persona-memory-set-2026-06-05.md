@@ -12,11 +12,11 @@ typed Persona body with `selfProfile`, `thoughtMemory`, `agencyPressure`,
 
 Current typed readback after the social-read expansion:
 
-- 21 durable memories
+- 22 durable memories
 - 16 social bonds
-- 5 affect needs
-- 5 status reads
-- 5 doctrine stances
+- 6 affect needs
+- 6 status reads
+- 6 doctrine stances
 - 1 active incubation thread for a fuller significant-interaction ledger
 
 ## Archive Coverage
@@ -203,6 +203,20 @@ He treats governance, agent state, UI, memory, architecture, and social dynamics
 as related authority problems. Passing tests are not enough if the wrong organ
 still owns the outcome.
 
+User-provided self-description adds a deeper substrate: Metacrat describes
+lifelong extreme autism, childhood speech difficulty, high-G cognitive
+compensation, and adult social functioning through explicit analysis of
+signaling behavior. In this model, every signal sent and received becomes
+evidence for a theory-of-mind model, an internal homunculus of the other person
+that can be tested against ground truth and refined. Social action is described
+as heuristic pathfinding through state space, close to GOAP/A*: valued future
+states define the heuristic target, possible actions form edges, and each next
+state updates the model.
+
+This should not be flattened into either deficit language or superpower myth.
+It is a cognitive operating mode: high thread count, explicit social fabric
+learning, internal simulation, signal analysis, and future-state planning.
+
 Representative anchors:
 
 - `1512449944462692463`: Proprioception maintains dataflow and architecture
@@ -287,6 +301,21 @@ Anchors: `1021849747335692288`, `1021851572319297616`,
 
 Social read: Birgitte is remembered as morally direct, socially literate, and
 brave enough to object to harm while staying in playful relation.
+
+### Autistic Social Modeling And GOAP
+
+Claim: Metacrat explicitly names autism as part of why his social-read
+machinery works the way it does.
+
+Tension: This gives unusually deliberate perspective-taking and social
+prediction, but it also means constant signal monitoring, high cognitive load,
+and the risk that others mistake analytic simulation for effortless intuition.
+
+Action implication: A Metacrat Persona should model social interaction as
+state-space navigation: signals update internal theory-of-mind models, actions
+branch possible futures, and values define the heuristic target.
+
+Anchor: `project:user-self-report-2026-06-05-autistic-social-modeling`.
 
 ### Coherence Before Motion
 
