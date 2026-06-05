@@ -16,7 +16,7 @@ interface StoredVectorChunk extends EmbeddingChunk {
 interface LegacyStoredVectorChunk extends Omit<StoredVectorChunk, "sourceId" | "sourceKind"> {
   sourceId?: string;
   sourceMessageId?: string;
-  sourceKind?: "discord_message" | "source_document";
+  sourceKind?: "discord_message" | "source_document" | "persona_memory";
 }
 
 interface VectorIndexStore {
@@ -354,6 +354,12 @@ function normalizeStoredChunk(chunk: LegacyStoredVectorChunk): StoredVectorChunk
   };
 }
 
-function inferCorpusKind(chunk: LegacyStoredVectorChunk): "discord_history" | "repository_source" {
-  return chunk.sourceKind === "source_document" ? "repository_source" : "discord_history";
+function inferCorpusKind(chunk: LegacyStoredVectorChunk): "discord_history" | "repository_source" | "persona_memory" {
+  if (chunk.sourceKind === "source_document") {
+    return "repository_source";
+  }
+  if (chunk.sourceKind === "persona_memory") {
+    return "persona_memory";
+  }
+  return "discord_history";
 }

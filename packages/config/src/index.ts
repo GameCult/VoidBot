@@ -54,6 +54,7 @@ const envSchema = z.object({
   QDRANT_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   QDRANT_HISTORY_COLLECTION: z.string().min(1).default("voidbot_discord_history_chunks"),
   QDRANT_SOURCE_COLLECTION: z.string().min(1).default("voidbot_repository_source_chunks"),
+  QDRANT_PERSONA_COLLECTION: z.string().min(1).default("voidbot_persona_memory_chunks"),
   RAG_ARCHIVE_PATH: z.string().min(1).default(".voidbot/rag/messages.json"),
   RAG_SOURCE_ARCHIVE_PATH: z.string().min(1).default(".voidbot/rag/source-documents.json"),
   RAG_IMPORT_STATE_PATH: z.string().min(1).default(".voidbot/rag/import-state.json"),
@@ -261,6 +262,7 @@ export interface AppConfig {
     timeoutMs: number;
     historyCollection: string;
     sourceCollection: string;
+    personaCollection: string;
   };
   rateLimits: {
     defaultCooldownSeconds: number;
@@ -512,6 +514,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.QDRANT_TIMEOUT_MS,
       historyCollection: parsed.QDRANT_HISTORY_COLLECTION,
       sourceCollection: parsed.QDRANT_SOURCE_COLLECTION,
+      personaCollection: parsed.QDRANT_PERSONA_COLLECTION,
     },
     rateLimits: {
       defaultCooldownSeconds: parsed.VOID_USAGE_COOLDOWN_SECONDS,

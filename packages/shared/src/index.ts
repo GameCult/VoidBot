@@ -108,12 +108,12 @@ export interface RetrievalResult {
   score: number;
   text: string;
   sourceId: string;
-  sourceKind: "discord_message" | "source_document";
+  sourceKind: "discord_message" | "source_document" | "persona_memory";
   metadata: Record<string, string>;
 }
 
 export interface RetrievalFilters {
-  corpusKind?: "discord_history" | "repository_source";
+  corpusKind?: "discord_history" | "repository_source" | "persona_memory";
   guildId?: string;
   channelId?: string;
   authorId?: string;
@@ -592,7 +592,7 @@ export interface ArchivedMessage {
 export interface EmbeddingChunk {
   id: string;
   sourceId: string;
-  sourceKind: "discord_message" | "source_document";
+  sourceKind: "discord_message" | "source_document" | "persona_memory";
   text: string;
   normalizedText: string;
   metadata: Record<string, string>;

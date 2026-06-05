@@ -51,6 +51,25 @@ export async function loadVoidSelfStateTypedDocuments(
   return readTypedStateOrEmpty(cache, options.identity);
 }
 
+export async function writeVoidSelfStateTypedDocuments(
+  options: VoidSelfStateServiceOptions,
+  typedState: VoidSelfStateTypedProjection,
+): Promise<VoidSelfStateOperationResult> {
+  const canonicalPath = resolve(options.canonicalPath);
+  const cache = createVoidSelfStateCache(canonicalPath);
+  await cache.pullAllBackingStores();
+  if (options.identity) {
+    repairSelfProfileIdentity(typedState, options.identity);
+  }
+  await writeTypedState(cache, typedState);
+
+  return {
+    operation: "repair_typed_state",
+    canonicalPath,
+    typedDocumentsWritten: 8,
+  };
+}
+
 export async function applyVoidSelfStateOperation(
   options: VoidSelfStateServiceOptions,
   rawOperation: unknown,

@@ -27,7 +27,7 @@ export interface StoredQdrantChunk extends EmbeddingChunk {
 export interface QdrantVectorStoreOptions {
   url: string;
   collectionName: string;
-  corpusKind: "discord_history" | "repository_source";
+  corpusKind: "discord_history" | "repository_source" | "persona_memory";
   apiKey?: string;
   timeoutMs?: number;
   embedder?: TextEmbedder;
@@ -346,8 +346,14 @@ function buildPathPrefixes(path: string): string[] {
 
 function inferCorpusKind(
   sourceKind: StoredQdrantChunk["sourceKind"],
-): "discord_history" | "repository_source" {
-  return sourceKind === "source_document" ? "repository_source" : "discord_history";
+): "discord_history" | "repository_source" | "persona_memory" {
+  if (sourceKind === "source_document") {
+    return "repository_source";
+  }
+  if (sourceKind === "persona_memory") {
+    return "persona_memory";
+  }
+  return "discord_history";
 }
 
 function fromQdrantPoint(point: QdrantScoredPoint): RetrievalResult | undefined {
@@ -407,8 +413,10 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function readSourceKind(value: unknown): "discord_message" | "source_document" | undefined {
-  return value === "discord_message" || value === "source_document" ? value : undefined;
+function readSourceKind(value: unknown): "discord_message" | "source_document" | "persona_memory" | undefined {
+  return value === "discord_message" || value === "source_document" || value === "persona_memory"
+    ? value
+    : undefined;
 }
 
 function validateEmbeddingBatch(vectors: number[][], expectedCount: number): number {
@@ -433,7 +441,7 @@ function validateCollectionCompatibility(
   collection: Schemas["CollectionInfo"],
   expected: {
     collectionName: string;
-    corpusKind: "discord_history" | "repository_source";
+    corpusKind: "discord_history" | "repository_source" | "persona_memory";
     embedderId: string;
     vectorLength: number;
   },
@@ -484,7 +492,7 @@ function readCollectionVectorLength(
 }
 
 function buildPayloadIndexDefinitions(
-  corpusKind: "discord_history" | "repository_source",
+  corpusKind: "discord_history" | "repository_source" | "persona_memory",
 ): Array<{
   field_name: string;
   field_schema:
@@ -506,6 +514,19 @@ function buildPayloadIndexDefinitions(
       { field_name: "channelId", field_schema: "keyword" as const },
       { field_name: "authorId", field_schema: "keyword" as const },
       { field_name: "threadId", field_schema: "keyword" as const },
+    ];
+  }
+
+  if (corpusKind === "persona_memory") {
+    return [
+      ...shared,
+      { field_name: "personaId", field_schema: "keyword" as const },
+      { field_name: "memoryId", field_schema: "keyword" as const },
+      { field_name: "memoryKind", field_schema: "keyword" as const },
+      { field_name: "targetKind", field_schema: "keyword" as const },
+      { field_name: "targetId", field_schema: "keyword" as const },
+      { field_name: "repoName", field_schema: "keyword" as const },
+      { field_name: "contentHash", field_schema: "keyword" as const },
     ];
   }
 

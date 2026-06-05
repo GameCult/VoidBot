@@ -31,6 +31,17 @@ const evidenceRefSchema = z.object({
 }).strict();
 const anchorRefSchema = evidenceRefSchema;
 
+const semanticMemoryIndexSchema = z.object({
+  corpusKind: z.literal("persona_memory"),
+  vectorStore: z.enum(["qdrant", "local_json"]),
+  collectionName: nonEmptyStringSchema,
+  embedderId: nonEmptyStringSchema,
+  contentHash: nonEmptyStringSchema,
+  chunkIds: z.array(nonEmptyStringSchema).default([]),
+  indexedAt: timestampSchema,
+  stale: z.boolean().default(false),
+}).strict();
+
 const activationVectorSchema = z.object({
   mean: z.number().min(0).max(1),
   plasticity: z.number().min(0).max(1),
@@ -148,6 +159,7 @@ const distilledMemorySchema = z.object({
   actionImplication: z.string().trim().min(1).max(2000).optional(),
   anchorRefs: z.array(anchorRefSchema).default([]),
   evidenceRefs: z.array(evidenceRefSchema).default([]),
+  semanticIndex: semanticMemoryIndexSchema.optional(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
   retiredAt: timestampSchema.optional(),
