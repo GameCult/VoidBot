@@ -5,6 +5,11 @@ Drafted 2026-06-05 from Metacrat-authored public Discord archive messages.
 This is an import draft, not canonical live Persona state. Promote it to a
 `.cc` Persona surface only after review.
 
+Typed local Persona state now exists at `state/personas/metacrat.cc`. The JSON
+import remains a readable/export boundary; the `.cc` file is the VoidBot-local
+typed Persona body with `selfProfile`, `thoughtMemory`, `agencyPressure`,
+`candidateInterventions`, and `personaAffect` documents.
+
 ## Archive Coverage
 
 - Author: Metacrat
