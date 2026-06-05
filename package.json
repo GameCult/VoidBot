@@ -74,7 +74,8 @@
     "rag:migrate-qdrant": "tsx scripts/migrate-local-vectors-to-qdrant.ts",
     "rag:migrate-vector-layout": "tsx scripts/migrate-vector-store-layout.ts",
     "rag:rebuild": "tsx scripts/rebuild-rag-index.ts",
-    "persona:memory-index": "tsx scripts/index-persona-memory.ts"
+    "persona:memory-index": "tsx scripts/index-persona-memory.ts",
+    "persona:replay-thread": "tsx scripts/replay-metacrat-thread.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

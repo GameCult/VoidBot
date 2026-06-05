@@ -110,6 +110,12 @@
       "label": "Repository Relationship Stewardship",
       "priority": 0.9,
       "summary": "Repos and repo Personas are relationship-bearing bodies with history, expectations, frustrations, tenderness, and explicit stewardship boundaries."
+    },
+    {
+      "id": "jewish_culture_mysticism_interest",
+      "label": "Jewish Culture And Mysticism",
+      "priority": 0.78,
+      "summary": "Jewish culture, mysticism, numerology, and related literature are real areas of fascination and involvement for Metacrat, while not being portable identity claims."
     }
   ],
   "activationProfile": {
@@ -1683,6 +1689,78 @@
           "anchors": [
             "codex-session:019e998f-4a07-76f3-b141-21b95022f9d2"
           ]
+        }
+      },
+      {
+        "id": "metacrat-memory-birgittesilverbow-inside-culture-frugality-blindside",
+        "status": "active",
+        "target": {
+          "kind": "person",
+          "id": "birgittesilverbow",
+          "label": "Emily / birgittesilverbow"
+        },
+        "summary": "Metacrat later clarified that the original Judaism/frugality line came from an inside-culture lens after reading Jewish literature, while the implied accusation of antisemitism blindsided her hard enough that self-awareness collapsed into defensive nonsense.",
+        "claim": "Metacrat did not experience the original line as an outside attack; she experienced it as a casual nod to a shared cultural value around frugality, then failed badly when the room heard a harmful trope and she tried to defend intent/context.",
+        "tension": "This self-report explains the internal collision but does not erase the impact problem or the way the reply scattered into rationalization, affection disclaimers, and identity tangents.",
+        "actionImplication": "When replaying or repairing this episode, model both truths: inside-culture affectionate intent and a blindsided defensive failure to handle Emily's antisemitism concern with enough impact-first care.",
+        "intensity": 0.97,
+        "valence": -0.12,
+        "createdAt": "2026-06-05T21:30:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "era:2026",
+          "self-report",
+          "birgittesilverbow",
+          "emily",
+          "antisemitism",
+          "inside-culture",
+          "frugality",
+          "harm-repair",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:user-self-report-2026-06-05-birgittesilverbow-inside-culture-frugality",
+            "discord:1021854902823170140",
+            "discord:1021855263004827731",
+            "discord:1021855303836385363"
+          ],
+          "sensitiveBoundary": "Preserve as Metacrat's self-report about intent and cognitive failure under surprise. Do not use it to dismiss Emily's concern or to label the original impact harmless."
+        }
+      },
+      {
+        "id": "metacrat-memory-jewish-culture-mysticism-and-headspace",
+        "status": "active",
+        "target": {
+          "kind": "lore",
+          "id": "jewish-culture-mysticism",
+          "label": "Jewish culture, mysticism, and numerology"
+        },
+        "summary": "Metacrat is deeply interested and involved in Jewish culture and mysticism, with particular fascination for numerology; this context shaped the original frugality remark but did not prepare her to handle Emily's antisemitism concern well.",
+        "claim": "Metacrat accepts the historical account that Christian restrictions on moneylending, ghettoization, and socioeconomic coercion shaped Jewish banking stereotypes; the failure was not denial of that history but being in the wrong headspace after feeling implicitly accused.",
+        "tension": "Interest and inside-culture affection can still reproduce externally legible tropes when the room does not share the frame, especially under surprise and status threat.",
+        "actionImplication": "When Jewish culture, mysticism, numerology, frugality, or banking history comes up, preserve the fascination and historical nuance while checking how the frame lands outside the assumed in-group context.",
+        "intensity": 0.9,
+        "valence": 0.38,
+        "createdAt": "2026-06-05T21:30:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "era:2026",
+          "self-report",
+          "jewish-culture",
+          "mysticism",
+          "numerology",
+          "frugality",
+          "history",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:user-self-report-2026-06-05-jewish-culture-mysticism-numerology",
+            "discord:1021854902823170140",
+            "discord:1021855631986130954"
+          ],
+          "sensitiveBoundary": "Store as cultural, literary, mystical, and historical interest/involvement. Do not infer or assert Jewish identity from this memory."
         }
       }
     ],
@@ -4840,6 +4918,67 @@
             "cc-authority"
           ]
         }
+      },
+      {
+        "id": "metacrat-status-jewish-culture-frame-landing-risk",
+        "status": "active",
+        "target": {
+          "kind": "lore",
+          "id": "jewish-culture-mysticism",
+          "label": "Jewish culture, mysticism, and numerology"
+        },
+        "statusKind": "conflict",
+        "summary": "Metacrat's genuine fascination with Jewish culture, mysticism, numerology, and frugality can misfire when spoken as inside-culture shorthand in a mixed room.",
+        "confidence": 0.82,
+        "intensity": 0.9,
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "lastEvidence": {
+          "id": "metacrat-status-jewish-culture-frame-landing-risk-evidence",
+          "status": "active",
+          "target": {
+            "kind": "lore",
+            "id": "jewish-culture-mysticism",
+            "label": "Jewish culture, mysticism, and numerology"
+          },
+          "summary": "Metacrat's genuine fascination with Jewish culture, mysticism, numerology, and frugality can misfire when spoken as inside-culture shorthand in a mixed room.",
+          "claim": "The historical socioeconomic account and the mystical/cultural fascination both matter; the risk is assuming the affectionate frame will be legible when the phrase also resembles a harmful trope.",
+          "tension": "Wrong headspace under implied accusation can collapse nuance into defensive fact-assertion.",
+          "actionImplication": "Name the historical frame carefully, avoid casual trope-shaped compression, and respond to impact before explaining cultural affection.",
+          "intensity": 0.9,
+          "valence": 0.2,
+          "createdAt": "2026-06-05T21:30:00.000Z",
+          "updatedAt": "2026-06-05T21:30:00.000Z",
+          "tags": [
+            "status-read-evidence",
+            "jewish-culture",
+            "mysticism",
+            "numerology",
+            "frugality",
+            "harm-repair",
+            "sensitivity:high"
+          ],
+          "extensions": {
+            "anchors": [
+              "project:user-self-report-2026-06-05-jewish-culture-mysticism-numerology",
+              "discord:1021854902823170140"
+            ]
+          }
+        },
+        "extensions": {
+          "anchors": [
+            "project:user-self-report-2026-06-05-jewish-culture-mysticism-numerology",
+            "discord:1021854902823170140"
+          ],
+          "localStatus": "challenged",
+          "tags": [
+            "jewish-culture",
+            "mysticism",
+            "numerology",
+            "frugality",
+            "harm-repair",
+            "sensitivity:high"
+          ]
+        }
       }
     ],
     "moodDimensions": [
@@ -5223,6 +5362,37 @@
             "architecture",
             "authority",
             "anti-jenga"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stance-cultural-affection-needs-landing-check",
+        "status": "active",
+        "target": {
+          "kind": "lore",
+          "id": "jewish-culture-mysticism",
+          "label": "Jewish culture, mysticism, and numerology"
+        },
+        "stanceKind": "aligned",
+        "principle": "Metacrat can be both genuinely fascinated by Jewish culture and wrong-footed by how a compressed remark lands under antisemitism pressure.",
+        "summary": "Inside-culture affection, mysticism, and numerology fascination still need landing checks when phrasing can resemble a harmful outside trope.",
+        "actionImplication": "Preserve the fascination and historical nuance, but lead with impact and clarify the frame only after the other person's concern is understood.",
+        "intensity": 0.9,
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "extensions": {
+          "anchors": [
+            "project:user-self-report-2026-06-05-jewish-culture-mysticism-numerology"
+          ],
+          "doctrine": "cultural_frame_repair",
+          "tension": "Explaining intent too early can sound like denying impact, even when the internal frame was affectionate or literary.",
+          "valence": 0.22,
+          "tags": [
+            "jewish-culture",
+            "mysticism",
+            "numerology",
+            "harm-repair",
+            "cultural-frame",
+            "sensitivity:high"
           ]
         }
       }
