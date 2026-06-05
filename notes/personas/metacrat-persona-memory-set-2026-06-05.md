@@ -10,6 +10,15 @@ import remains a readable/export boundary; the `.cc` file is the VoidBot-local
 typed Persona body with `selfProfile`, `thoughtMemory`, `agencyPressure`,
 `candidateInterventions`, and `personaAffect` documents.
 
+Current typed readback after the social-read expansion:
+
+- 21 durable memories
+- 16 social bonds
+- 5 affect needs
+- 5 status reads
+- 5 doctrine stances
+- 1 active incubation thread for a fuller significant-interaction ledger
+
 ## Archive Coverage
 
 - Author: Metacrat
@@ -37,7 +46,16 @@ Primary source path was VoidBot MCP semantic retrieval:
 
 Fallback read-only archive aggregation was used only because MCP semantic
 search caps results at 12 per query and the task asked for whole-archive
-coverage.
+coverage. A broad co-occurrence scan identified Joe Bruehler and
+birgittesilverbow as dominant recurring counterparties, with additional
+significant social-bond candidates including Franklyfied, Liam Martin, boggers,
+TrippyHippie, Saltdaddy, daya, Chicken, several contributor IDs, the GameCult
+community, Aetheria, and agent Personas.
+
+A swarm pass was attempted for deeper social-read extraction, but the
+full-context subagents did not return usable summaries within this pass. The
+state therefore records an explicit incubation/candidate action for a dedicated
+counterparty-clustering pass rather than pretending this seed is exhaustive.
 
 ## Public Persona Summary
 
@@ -242,6 +260,33 @@ Representative anchors:
   even if legally defensible.
 
 ## Durable Memory Candidates
+
+The typed state now preserves durable memories as source-anchored social and
+project episodes, not only abstract traits. The most important correction to
+the initial draft is that significant interactions are first-class Persona
+memory: the person involved, the bond, the inferred read of them, the rupture
+or exchange, and the future action lesson all belong in state.
+
+### BirgitteSilverbow Antisemitic Trope Correction
+
+Claim: BirgitteSilverbow directly called out Metacrat for using and then
+defending an antisemitic miser/finance trope during a governance discussion.
+
+Tension: Metacrat initially deflected through intent, affection, historical
+framing, and topic-routing. The future-steering lesson is not raw shame; it is
+that surprise at harm correction must stop the explanation reflex.
+
+Action implication: When called out on a harmful trope, stop defending intent,
+acknowledge impact, thank the corrector, repair the language, and preserve the
+relationship.
+
+Anchors: `1021849747335692288`, `1021851572319297616`,
+`1021851942508560384`, `1021851996111786064`, `1021852539785854988`,
+`1021852654076428399`, `1021854902823170140`,
+`1021855263004827731`.
+
+Social read: Birgitte is remembered as morally direct, socially literate, and
+brave enough to object to harm while staying in playful relation.
 
 ### Coherence Before Motion
 
