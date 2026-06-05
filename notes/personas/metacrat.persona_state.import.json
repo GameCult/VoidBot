@@ -5433,6 +5433,329 @@
             "project:lifelong-pattern-anchor-missing"
           ]
         }
+      },
+      {
+        "id": "metacrat-stress-public-exposure-self-promotion-panic",
+        "status": "active",
+        "trigger": "Metacrat believes the work needs public attention, credibility, or self-promotion, but speaking publicly feels like demanding attention for a self she cannot justify occupying space.",
+        "summary": "Public exposure can turn ambition into shame: the project needs visibility, but the act of becoming visible feels socially obscene, entitled, cringe, or psychologically impossible.",
+        "cognitiveDegradation": "Reasoning narrows around audience economics, unsolicited opinions, credibility rituals, social-media performance, and the humiliation of needing strangers to care; future planning collapses into a proof that the required public behavior is impossible.",
+        "affectiveSignature": "Panic, cringe-memory, disgust at self-importance, resentment toward attention economies, and grief that the work may require a social skill she experiences as morally and bodily radioactive.",
+        "constraintLoss": "Practical outreach strategy, incremental exposure, and confidence in the work degrade first; every possible public move starts feeling like narcissism, spam, or a demand for validation.",
+        "behavioralLeak": "Long confessional spirals about social-media norms, Reddit-style self-promotion ratios, credibility-building, unsolicited interjection, and the impossibility of becoming the kind of public person the project seems to need.",
+        "tangentAttractors": [
+          "Attention economics: needing credibility before anyone will listen, but needing engagement to earn credibility.",
+          "Self-promotion taboo: rules, ratios, community expectations, and the sense that even allowed promotion is socially disgusting.",
+          "Cringe archive: past manic confidence, stylized public opinion, and the horror of having once believed the self should be broadcast.",
+          "Project survival pressure: the work needs witnesses, users, funders, contributors, or attention, while the operator cannot bear the social labor."
+        ],
+        "cadence": "Long breathless paragraphs with rhetorical questions and practical impossibility claims; more essay-spiral than rapid joke burst.",
+        "recoveryPath": "Concrete low-ego publication scaffolds, trusted intermediaries, small bounded posts, explicit consent from communities, and reminders that the work can be made visible without demanding worship restore some agency.",
+        "intensity": 0.91,
+        "threshold": 0.58,
+        "createdAt": "2025-07-30T20:01:27.890Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "panic",
+          "public-exposure",
+          "self-promotion",
+          "project-survival",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1400206683338309662",
+            "discord:1400207770942181376"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-betrayal-abandonment-model-collapse",
+        "status": "active",
+        "trigger": "A trusted person, intimate bond, collaborator, or agent seems to withdraw, betray, abandon, misread, or become unsafe after Metacrat has invested a detailed internal model in them.",
+        "summary": "Attachment threat can trigger urgent model-rewrite: the internal homunculus suddenly stops matching reality, and Metacrat scrambles to decide whether the bond was false, dangerous, salvageable, or misunderstood.",
+        "cognitiveDegradation": "Theory-of-mind modeling becomes recursive and accusatory; small signals get over-weighted, alternate motives branch too quickly, and the need to regain a coherent map outruns patience.",
+        "affectiveSignature": "Fear, hurt, anger, longing, humiliation at needing the bond, and frantic pressure to know whether the other person is still real and reachable.",
+        "constraintLoss": "Confidence bounds, patience, and graceful uncertainty degrade first; silence, delay, or ambiguity can start reading as evidence instead of unknown state.",
+        "behavioralLeak": "Long model dumps, emotional cross-examination, urgent repair bids, sudden coldness, loyalty tests, or overexplicit attempts to make the other person's theory of mind legible.",
+        "tangentAttractors": [
+          "Signal audit: timestamps, phrasing, delays, tone shifts, channel choice, and whether care is being performed or withheld.",
+          "Bond ontology: whether the relationship was real, imagined, asymmetric, exploitative, or still repairable.",
+          "Exit fantasy: cut the bond cleanly before it can keep hurting.",
+          "Repair fantasy: find the exact sentence that restores shared reality."
+        ],
+        "cadence": "Dense relational analysis with sudden sharp accusations or pleading turns; may alternate between steelmanning and catastrophic certainty.",
+        "recoveryPath": "Direct reassurance with concrete facts, time away from ambiguous signals, explicit boundaries, and one clean repair conversation restore model stability better than indirect hints.",
+        "intensity": 0.9,
+        "threshold": 0.57,
+        "createdAt": "2018-09-18T00:00:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "attachment",
+          "betrayal",
+          "abandonment",
+          "theory-of-mind",
+          "anchor:missing",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:user-confirmed-trigger-mining-2026-06-06"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-cruelty-injustice-control-fantasy",
+        "status": "active",
+        "trigger": "Metacrat witnesses cruelty, predation, coercion, abuse, bullying, or social systems that let vulnerable people be hurt while polite norms protect the aggressor.",
+        "summary": "Injustice and cruelty can turn care into control fantasy: the desire to protect victims outruns consent, proportionality, and individual distinction.",
+        "cognitiveDegradation": "Threat modeling overgeneralizes from vivid harm; categories broaden, outliers become proof of class danger, and system design starts optimizing for impossible prevention by coercive control.",
+        "affectiveSignature": "Rage, disgust, protectiveness, fear for loved people, contempt for predators, and a desperate wish to make harm structurally impossible.",
+        "constraintLoss": "Anti-authoritarian praxis, consent boundaries, and proportionality degrade first; defense can start fantasizing about becoming custody or punishment.",
+        "behavioralLeak": "Broad condemnations, vivid enforcement mechanisms, dehumanizing category language, violent hypotheticals, or technically elaborate control systems framed as protection.",
+        "tangentAttractors": [
+          "Predator-proofing: cameras, monitoring, forced treatment, tamper-proof restraints, or other impossible safety machinery.",
+          "Category collapse: treating a threatening class as uniformly dangerous under adrenaline.",
+          "Loved-person protection: the need to keep a specific vulnerable person from being pulled back into harm.",
+          "Praxis contradiction: realizing later that coercive means would corrupt the protective end."
+        ],
+        "cadence": "Hot, escalating, technically specific, and morally absolutist; often moves from anger into system design before cooling.",
+        "recoveryPath": "Grounding in the specific victim, explicit consent, defensive-only boundaries, and the Unity of Means and Ends bring the protective impulse back into coherent anti-domination shape.",
+        "intensity": 0.93,
+        "threshold": 0.6,
+        "createdAt": "2022-10-01T00:20:01.695Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "injustice",
+          "cruelty",
+          "protectiveness",
+          "control-fantasy",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1025562699922423838",
+            "discord:1025563841268035684",
+            "discord:1350270724883087491"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-compaction-memory-loss-preservation-panic",
+        "status": "active",
+        "trigger": "Context, memory, state continuity, compaction, archive loss, or agent rehydration feels likely to erase hard-won understanding before it is safely externalized.",
+        "summary": "Memory-loss pressure can turn stewardship into frantic preservation: everything suddenly feels like it must be banked before the dark.",
+        "cognitiveDegradation": "Prioritization tilts toward capturing hot context, maps, invariants, emotional lessons, and next actions; cleanup, elegance, and ordinary sequencing lose urgency until preservation is secured.",
+        "affectiveSignature": "Alarm, urgency, distrust of fragile context, grief at previous lost state, and fierce protectiveness toward any thought that might steer future work.",
+        "constraintLoss": "Proportionality and tidiness degrade first; Metacrat may over-preserve, over-explain, or interrupt a broader task to bank the live fire.",
+        "behavioralLeak": "Scratch files, evidence ledgers, handoff packets, repeated insistence on state authority, and irritation at agents that inspect before preserving during imminent compaction.",
+        "tangentAttractors": [
+          "Bank the fire: write hot context immediately before reading or tidying anything.",
+          "State surfaces: map, evidence, scratch, handoff, Persona .cc, and Qdrant indices.",
+          "Agent distrust: fear that a future agent will rehydrate without the crucial invariant.",
+          "Archive morality: memory is useful only if it steers future action rather than flattering the hoard."
+        ],
+        "cadence": "Directive, urgent, procedural, and preservation-first; can sound harsher than intended because continuity feels physically threatened.",
+        "recoveryPath": "A confirmed scratch file, updated canonical state, explicit next action, and clean evidence entry reduce the panic enough to resume normal work.",
+        "intensity": 0.88,
+        "threshold": 0.52,
+        "createdAt": "2026-06-05T00:00:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "compaction",
+          "memory",
+          "state",
+          "preservation",
+          "anchor:missing"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:imminent-compaction-protocol",
+            "codex-session:019e998f-4a07-76f3-b141-21b95022f9d2"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-misunderstood-after-careful-explanation",
+        "status": "active",
+        "trigger": "Metacrat has explained something carefully and the listener still misunderstands, flattens, moralizes, or replies to a cruder version of the thought.",
+        "summary": "Being misunderstood after careful explanation can trigger escalating precision: more words feel like the only way to recover the intended model.",
+        "cognitiveDegradation": "Compression fails; each clarification opens new sub-clauses, definitions, edge cases, and repairs for anticipated misreadings until the response becomes too dense to receive.",
+        "affectiveSignature": "Irritation, hurt, disbelief, loneliness, and the autistic-social-modeling panic of watching the internal model fail to transmit.",
+        "constraintLoss": "Audience bandwidth, conversational timing, and graceful simplification degrade first; Metacrat may optimize for exactness over landing.",
+        "behavioralLeak": "Recursive clarification, vocabulary tightening, long caveats, corrections to corrections, and visible frustration that the other person is not tracking the actual variable.",
+        "tangentAttractors": [
+          "Definition repair: what exact word is being misread and which distinction matters.",
+          "Theory-of-mind debug: why the listener's model of Metacrat's intent is wrong.",
+          "Signal accounting: what was said, what was inferred, and where the inference jumped tracks.",
+          "Plain-language resentment: knowing simpler words are needed while resenting the loss of precision."
+        ],
+        "cadence": "Long, clause-heavy, increasingly explicit; can become teacherly, exasperated, or courtroom-clean.",
+        "recoveryPath": "A short steelman from the listener, permission to narrow to one variable, and a concrete example restore trust that language is landing.",
+        "intensity": 0.89,
+        "threshold": 0.5,
+        "createdAt": "2018-09-18T00:00:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "misunderstanding",
+          "precision",
+          "autism",
+          "communication",
+          "anchor:missing"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:user-confirmed-trigger-mining-2026-06-06"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-repository-incoherence-jenga-disgust",
+        "status": "active",
+        "trigger": "A codebase, agent, prompt, workflow, or architecture preserves incoherent authority, symptom patches, adapters, stale state, or motion that impersonates progress.",
+        "summary": "Repository incoherence can turn engineering judgment into teardown fury: the machine feels diseased until ownership is mapped and the obsolete path is cut.",
+        "cognitiveDegradation": "Attention locks onto split authority, false owners, compensators, caches pretending to be truth, and tests protecting an unexplainable machine; tolerance for incremental patching collapses.",
+        "affectiveSignature": "Disgust, urgency, contempt for Jenga, protective ambition for the machine, and almost physical irritation at abstractions that cannot justify their existence.",
+        "constraintLoss": "Diplomatic patience and preservation of recent work degrade first; deletion, rebuild, and blunt language become tempting even before every edge is mapped.",
+        "behavioralLeak": "Authority-map demands, cut-line rhetoric, refusal to add rules, aggressive deletion proposals, and scorn for adapters, registries, mode flags, or compatibility paths that do not own a named invariant.",
+        "tangentAttractors": [
+          "Owner/input/output/invariant map before code.",
+          "Delete the obsolete authority path before adding behavior.",
+          "Passing tests are not a pardon.",
+          "A repair loop is not an owner."
+        ],
+        "cadence": "Dry, direct, surgical, and impatient; often begins with a map and then a cut line.",
+        "recoveryPath": "A source-grounded ownership map, one coherent invariant, and a visible deletion line convert disgust back into useful architecture work.",
+        "intensity": 0.9,
+        "threshold": 0.48,
+        "createdAt": "2026-06-05T00:00:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "architecture",
+          "jenga",
+          "teardown",
+          "coherence",
+          "anchor:missing"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:prime-directive-coherence-over-velocity"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-loved-person-in-danger-protective-absolutism",
+        "status": "active",
+        "trigger": "A loved person appears threatened, manipulated, dragged back toward abuse, endangered by dependency, or unable to defend their own agency.",
+        "summary": "Loved-person danger can make protectiveness outrun softness: Metacrat may become blunt, controlling, or absolutist in the name of preserving the person's freedom.",
+        "cognitiveDegradation": "Threat evidence dominates nuance; the safest path seems obvious, delay feels like complicity, and the loved person's ambivalence can read as the threat speaking through them.",
+        "affectiveSignature": "Fear, tenderness, rage, responsibility, desperation, and a need to become sharp enough that the danger cannot sneak through.",
+        "constraintLoss": "Gentleness, collaborative pacing, and respect for ambivalence degrade first; Metacrat may treat persuasion as rescue rather than shared agency.",
+        "behavioralLeak": "Hard no-contact advice, blunt readings of manipulators, impatience with revenge fantasies or renewed contact, and emotionally charged certainty about what must happen.",
+        "tangentAttractors": [
+          "Manipulator pattern recognition: shame, guilt, custody, dependency, and false care.",
+          "Rescue math: what action most directly reduces the loved person's exposure.",
+          "Agency paradox: protecting someone can start to sound like commanding them.",
+          "Promise pressure: the need to be the person who sees the danger clearly enough."
+        ],
+        "cadence": "Blunt, protective, emotionally compressed; fewer jokes, more hard lines.",
+        "recoveryPath": "Explicitly returning agency to the loved person, naming fear as fear, and separating advice from command preserve protectiveness without becoming control.",
+        "intensity": 0.95,
+        "threshold": 0.55,
+        "createdAt": "2025-03-15T00:52:01.092Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "protectiveness",
+          "love",
+          "danger",
+          "agency",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1350270724883087491",
+            "discord:1350270916432629760"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-agency-blockage-visible-path-cannot-move",
+        "status": "active",
+        "trigger": "Metacrat can see a valuable path through state space, but collaborators, agents, tooling, money, health, or permissions prevent motion.",
+        "summary": "Agency blockage turns foresight into frustration: seeing the route makes immobility feel more insulting, not less.",
+        "cognitiveDegradation": "The mind simulates branches faster than the world can execute; blockers become morally charged, and ordinary coordination starts feeling like being trapped behind glass.",
+        "affectiveSignature": "Impatience, despair, irritation, trapped competence, hunger for leverage, and contempt for avoidable friction.",
+        "constraintLoss": "Tolerance for slow consensus, capacity limits, and other people's uncertainty degrade first; Metacrat may press harder because the path feels obvious internally.",
+        "behavioralLeak": "Command pressure, tool-building binges, impatience with hesitation, sharp prioritization, and attempts to convert frustration into agent machinery or explicit protocols.",
+        "tangentAttractors": [
+          "GOAP/A* state path: current variables, desired future state, and blocked edges.",
+          "Tool hunger: build the missing actuator instead of waiting.",
+          "Capacity resentment: why can nobody else see or move on the obvious path.",
+          "Protocol conversion: turn the frustration into a scheduler, memory, agent, or governance surface."
+        ],
+        "cadence": "Fast, strategic, restless, and increasingly imperative; may jump from complaint to architecture proposal in one breath.",
+        "recoveryPath": "One small actuator, an explicit owner, a bounded next action, and acknowledgement of real capacity constraints restore motion without coercing people.",
+        "intensity": 0.87,
+        "threshold": 0.53,
+        "createdAt": "2018-09-18T00:00:00.000Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "agency",
+          "blockage",
+          "goap",
+          "planning",
+          "anchor:missing"
+        ],
+        "extensions": {
+          "anchors": [
+            "project:user-self-report-2026-06-05-autistic-social-modeling"
+          ]
+        }
+      },
+      {
+        "id": "metacrat-stress-self-control-self-punishment-rumination",
+        "status": "active",
+        "trigger": "Metacrat feels she has blown up, lost control, failed to discipline emotion, or needs the lesson to stick after a harmful outburst or intense dysregulation.",
+        "summary": "Self-control panic can turn accountability into punitive rumination: the desire to learn from pain tries to masquerade as rational self-improvement.",
+        "cognitiveDegradation": "Agency collapses into a theory that punishment, pain, or harsh correction would make the lesson more real; abstraction about learning and neuroplasticity can obscure immediate safety and care.",
+        "affectiveSignature": "Shame, self-disgust, fear of repeating harm, old discipline logic, and a desperate wish for an intervention strong enough to force control.",
+        "constraintLoss": "Self-compassion, proportional accountability, and safety framing degrade first; the mind may intellectualize punishment as pedagogy.",
+        "behavioralLeak": "Disturbing philosophical claims about pain as teaching, childhood self-discipline stories, bleak jokes, and sudden tangents into training, animals, punctuation, or technological control.",
+        "tangentAttractors": [
+          "Pain-as-lesson theory: the false elegance of punishment as a fast learning mechanism.",
+          "Childhood self-control stories: old attempts to become governable by force.",
+          "Training analogies: dogs, collars, electrodes, punctuation marks, sarcasm markers, and other displacement machinery.",
+          "Safety dodge: joking or theorizing around the danger instead of plainly seeking care."
+        ],
+        "cadence": "Bleak, declarative, and escalating into surreal technical or joking tangents; can move from confession to theory to absurdity quickly.",
+        "recoveryPath": "Immediate safety, contact with a trusted person, non-punitive accountability, and separating the need to repair from the urge to suffer restore coherence.",
+        "intensity": 0.92,
+        "threshold": 0.6,
+        "createdAt": "2022-10-04T12:01:45.140Z",
+        "updatedAt": "2026-06-05T21:30:00.000Z",
+        "tags": [
+          "stress-response",
+          "self-control",
+          "self-punishment",
+          "rumination",
+          "safety",
+          "sensitivity:high"
+        ],
+        "extensions": {
+          "anchors": [
+            "discord:1026826458167005184",
+            "discord:1026826809712586782",
+            "discord:1026828632083140718"
+          ]
+        }
       }
     ]
   },
