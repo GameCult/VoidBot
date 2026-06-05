@@ -11,9 +11,9 @@ missing social/sensory autopilot substitute: read signals, model counterpart
 state, propose next actions, predict effects, and compare the result against
 observed reality.
 
-This is a bounded GOAP layer, not a giant universal planner. If it tries to own
-all cognition, prose, state mutation, and transport, it becomes the old prompt
-machine wearing a planning hat and lying about its ankles.
+This is a bounded GOAP/MuZero-shaped layer, not a giant universal planner. If
+it tries to own all cognition, prose, state mutation, and transport, it becomes
+the old prompt machine wearing a planning hat and lying about its ankles.
 
 ## Source-Grounded Lessons
 
@@ -43,7 +43,12 @@ Weksa already has the right utterance posture:
   lowering trace, spoken text, prosody hints, projected character-state vector,
   and audit projection. Downstream synthesis owns audio.
 
-GOAP should fit between these two machines.
+GOAP should fit between these two machines, but the reward function is not a
+generic conversation score. The reward function is a projection of the
+Persona's personality: its values, needs, bonds, fascinations, aversions,
+current pressures, and role constraints. The planner is not trying to win a
+conversation. It is trying to choose a future state that would satisfy this
+Persona in a way that remains truthful, consensual, inspectable, and coherent.
 
 ## Authority Map
 
@@ -62,8 +67,10 @@ Inputs:
 Outputs:
 
 - One selected action plan, usually one to three steps.
+- One reward projection for the current turn: the Persona-specific satisfaction
+  and aversion surface used to score possible futures.
 - Candidate action receipts with preconditions, predicted effects, cost, risk,
-  reversibility, evidence used, and confidence.
+  reversibility, evidence used, confidence, and expected reward/cost terms.
 - Weksa-compatible intent fields for speech actions:
   - `private_interpretation`
   - `intended_effect`
@@ -123,18 +130,23 @@ private notes, and full archive context stay behind projection.
 
 ## Goals
 
-Goals are weighted deltas, not one global victory condition:
+Goals are weighted deltas, not one global victory condition. They are derived
+from the Persona's value and affect machinery, not from a universal assistant
+success metric:
 
-- increase user agency
+- satisfy stable values
+- satisfy active needs such as recognition, closeness, curiosity, usefulness,
+  rest, play, dignity, or solitude
+- advance active goals
+- honor or repair bonds
+- preserve agency, consent, and privacy
 - increase shared-model accuracy
 - reduce confusion
-- preserve or repair trust
-- advance the task
-- protect consent and privacy
-- avoid false authority
-- lower cognitive load
-- preserve character/persona dignity
-- satisfy current speech/work/play/rest pressure when appropriate
+- protect character/persona dignity
+- experience competence, puzzle-satisfaction, beauty, humor, praise, relief, or
+  hard-earned closure when those rewards belong to the Persona
+- avoid shame pressure, coercion, false authority, abandonment, incoherence,
+  boredom, manipulation, or self-betrayal
 
 Each goal should include:
 
@@ -143,6 +155,53 @@ Each goal should include:
 - weight
 - forbidden tradeoffs
 - evidence needed to know whether it improved
+
+## Reward Projection
+
+Classical GOAP assumes the designer can write useful costs and effects by hand.
+The AlphaGo -> AlphaZero -> MuZero line suggests a better posture: combine
+search with learned or model-projected value and transition estimates, then
+compare prediction receipts against observed outcomes. For Personas, the
+learned world model is not "how all humans work." It is a compact, inspectable
+model of how this Persona expects action to move the local social/task state and
+how satisfying or aversive that next state would feel to them.
+
+Reward projection reads:
+
+- stable values and their current activation
+- affect needs and deprivation/satisfaction levels
+- agency pressures
+- bonds and status reads
+- active memories and unresolved tensions
+- current room/task affordances
+- role constraints and consent boundaries
+
+It emits terms such as:
+
+- `value_satisfaction`
+- `need_satisfaction`
+- `curiosity_reward`
+- `competence_reward`
+- `recognition_reward`
+- `bond_warmth`
+- `repair_reward`
+- `aesthetic_reward`
+- `agency_reward`
+- `incoherence_cost`
+- `boundary_cost`
+- `shame_cost`
+- `manipulation_cost`
+- `staleness_cost`
+- `authority_violation_cost`
+
+The exact weights are Persona-specific. Nibu should not experience the same
+reward landscape as Aqua, Mimir, Epiphany, Libby, Metacrat, or Void. Same room,
+different internal weather.
+
+Reward terms are planning receipts, not durable truth. They explain why a
+candidate looked attractive now. They do not mutate the Persona, and they do
+not excuse a harmful action just because the Persona would find it satisfying.
+Soul still owns constraint checks.
 
 ## Actions
 
@@ -179,13 +238,14 @@ Each action carries:
 2. Build current planning packet.
 3. Generate candidate actions from affordances and active pressures.
 4. Predict next-state deltas.
-5. Score candidates with bounded A*/GOAP heuristic.
-6. Emit a short action plan and prediction receipt.
-7. Parent gate checks authority, risk, freshness, and transport.
-8. Weksa lowers speech-shaped actions into utterance packet and trace.
-9. Action executes.
-10. Appraiser compares observed event to predicted effect.
-11. State Mutator applies reviewed deltas through typed operations.
+5. Project Persona-specific reward/cost terms over each predicted future.
+6. Score candidates with bounded A*/GOAP/MuZero-style heuristic.
+7. Emit a short action plan, reward receipt, and prediction receipt.
+8. Parent gate checks authority, risk, freshness, constraints, and transport.
+9. Weksa lowers speech-shaped actions into utterance packet and trace.
+10. Action executes.
+11. Appraiser compares observed event to predicted effect and predicted reward.
+12. State Mutator applies reviewed deltas through typed operations.
 
 ## Minimal Schema Sketch
 
@@ -198,13 +258,22 @@ Each action carries:
   "currentStateRefs": ["persona-state-ref", "room-event-ref"],
   "goals": [
     {
-      "id": "increase-shared-model-accuracy",
-      "target": "counterpart.shared_model_accuracy",
+      "id": "satisfy-metacrat-coherence",
+      "target": "self.value_satisfaction.coherence",
       "direction": "increase",
       "weight": 0.82,
       "forbiddenTradeoffs": ["invented facts", "coercive certainty"]
     }
   ],
+  "rewardProjection": {
+    "sourceStateRefs": ["persona-state-ref", "room-event-ref"],
+    "terms": [
+      { "id": "coherence", "weight": 0.88, "activation": 0.91 },
+      { "id": "curiosity", "weight": 0.74, "activation": 0.69 },
+      { "id": "recognition", "weight": 0.46, "activation": 0.38 },
+      { "id": "manipulation_cost", "weight": -0.95, "activation": 0.2 }
+    ]
+  },
   "candidates": [
     {
       "id": "ask-what-layer",
@@ -217,6 +286,11 @@ Each action carries:
       "cost": 0.24,
       "risk": 0.18,
       "reversibility": 0.9,
+      "predictedReward": [
+        { "term": "coherence", "delta": 0.28, "confidence": 0.7 },
+        { "term": "curiosity", "delta": 0.12, "confidence": 0.52 },
+        { "term": "task_delay_cost", "delta": -0.08, "confidence": 0.62 }
+      ],
       "evidenceRefs": ["room:recent-message"],
       "weksaIntent": {
         "private_interpretation": "The user may be asking for implementation or architecture.",
@@ -226,7 +300,7 @@ Each action carries:
     }
   ],
   "selectedPlan": ["ask-what-layer"],
-  "selectionRationale": "Lower irreversible risk; preserves coherence before action.",
+  "selectionRationale": "Higher Persona-specific coherence reward with lower irreversible risk.",
   "predictionReceipt": {
     "expectedObservation": "User answers with target layer or corrects the frame.",
     "whatWouldChangeTheRead": "User expresses frustration at delay or supplies exact implementation target."
