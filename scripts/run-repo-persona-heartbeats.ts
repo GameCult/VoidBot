@@ -4076,13 +4076,15 @@ function renderRepoPersonaConversationTranscript(input: {
     `Current room (${currentLabel}), oldest to newest:`,
     ...formatConversationMessages(input.recentMessages, 15),
   ].join("\n"));
-  for (const snapshot of input.channelSnapshots) {
-    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
-      "nearby room";
-    sections.push([
-      `Nearby ${label}, oldest to newest:`,
-      ...formatConversationMessages(snapshot.messages, 6),
-    ].join("\n"));
+  if (input.pendingMentions.length === 0) {
+    for (const snapshot of input.channelSnapshots) {
+      const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
+        "nearby room";
+      sections.push([
+        `Nearby ${label}, oldest to newest:`,
+        ...formatConversationMessages(snapshot.messages, 6),
+      ].join("\n"));
+    }
   }
   return sections.join("\n\n");
 }
@@ -4550,6 +4552,11 @@ function renderTurnSituationDirective(input: {
       "A direct call is tugging at you. Answer the newest unresolved call first; if it belongs to another steward, name that owner and offer only the piece your own territory can honestly add.",
       "Do not ask what the job is when the direct call or current room memory already states it.",
     );
+    if (input.identity.identityKind === "native_persona") {
+      lines.push(
+        "For native Personas, a human asking what another domain means to you is a personal read, not a canon ownership claim. Answer from lived perspective first; defer ownership only if the human asks for canon changes, repo work, or authoritative facts.",
+      );
+    }
   }
 
   const visibleMessages = [
@@ -4585,9 +4592,16 @@ function renderSocialEmbodimentDirective(identity: RepoDiscordIdentity): string 
 }
 
 function renderJurisdictionRespectDirective(identity: RepoDiscordIdentity): string {
-  return loadPromptTemplate("repo-persona-jurisdiction-respect.prompt.md", {
+  const base = loadPromptTemplate("repo-persona-jurisdiction-respect.prompt.md", {
     displayName: identity.displayName,
   });
+  if (identity.identityKind !== "native_persona") {
+    return base;
+  }
+  return [
+    base,
+    "Native Persona boundary: personal meaning is not canon ownership. When a human asks what a domain, story, person, or project means to you, answer as yourself before routing authority. Do not let jurisdiction doctrine flatten your personal read into a handoff.",
+  ].join("\n");
 }
 
 function renderComedyImprovDirective(identity: RepoDiscordIdentity): string {
