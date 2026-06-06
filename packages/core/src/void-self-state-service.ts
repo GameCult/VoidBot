@@ -498,6 +498,19 @@ function applyTypedOperation(
         .slice(0, 24);
       state.personaAffect.updatedAt = operation.updatedAt;
       return;
+    case "replace_stress_responses_by_tag": {
+      const replaceTags = new Set(operation.replaceTags);
+      state.personaAffect.stressResponses = state.personaAffect.stressResponses
+        .filter((response) => !response.tags.some((tag) => replaceTags.has(tag)));
+      for (const response of operation.responses) {
+        upsertBy(state.personaAffect.stressResponses, response, (entry) => entry.responseId);
+      }
+      state.personaAffect.stressResponses = state.personaAffect.stressResponses
+        .sort((left, right) => right.intensity - left.intensity)
+        .slice(0, 24);
+      state.personaAffect.updatedAt = operation.updatedAt;
+      return;
+    }
     case "upsert_doctrine_stance":
       upsertBy(state.personaAffect.doctrineStances, operation.stance, (entry) => entry.stanceId);
       state.personaAffect.doctrineStances = state.personaAffect.doctrineStances

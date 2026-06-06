@@ -811,6 +811,12 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
     updatedAt: timestampSchema,
   }).strict(),
   z.object({
+    operation: z.literal("replace_stress_responses_by_tag"),
+    replaceTags: z.array(nonEmptyStringSchema).min(1),
+    responses: z.array(faceStressResponseSchema).min(1),
+    updatedAt: timestampSchema,
+  }).strict(),
+  z.object({
     operation: z.literal("upsert_doctrine_stance"),
     stance: faceDoctrineStanceSchema,
   }).strict(),
