@@ -2109,7 +2109,13 @@ async function renderRepoPersonaMemorySurfaceForTurn(
   humanPronounGuidance?: RepoPersonaHumanPronounGuidance[],
 ): Promise<string> {
   if (identity.identityKind === "native_persona") {
-    return renderNativePersonaMemorySurface(identity);
+    return renderNativePersonaMemorySurface(
+      identity,
+      config,
+      registryIdentities,
+      roomContext,
+      humanPronounGuidance,
+    );
   }
 
   const statePath = resolveRepoPersonaStatePath(identity, config.storageRoot);
@@ -2136,7 +2142,16 @@ async function renderRepoPersonaMemorySurfaceForTurn(
   });
 }
 
-async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): Promise<string> {
+async function renderNativePersonaMemorySurface(
+  identity: RepoDiscordIdentity,
+  config: ReturnType<typeof loadConfig>,
+  registryIdentities: RepoDiscordIdentity[] = [],
+  roomContext?: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+  humanPronounGuidance?: RepoPersonaHumanPronounGuidance[],
+): Promise<string> {
   const personaStatePath = identity.personaStatePath;
   if (!personaStatePath) {
     return [
@@ -2145,7 +2160,40 @@ async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): 
     ].join("\n");
   }
 
-  const raw = JSON.parse(stripLeadingBom(await readFile(resolve(personaStatePath), "utf8"))) as unknown;
+  const resolvedStatePath = resolve(personaStatePath);
+  if (extname(resolvedStatePath).toLowerCase() === ".cc") {
+    const typedState = await loadVoidSelfStateTypedDocuments({
+      canonicalPath: resolvedStatePath,
+      identity: {
+        agentId: identity.id,
+        publicName: identity.displayName,
+        publicDescription: identity.description,
+      },
+    });
+    const statePacket = renderRepoPersonaStatePacket(
+      identity,
+      typedState,
+      registryIdentities,
+      roomContext,
+      humanPronounGuidance ?? await loadRepoPersonaHumanPronounGuidance(config, roomContext),
+    );
+    const nativeHeader = [
+      `${identity.displayName} is a native VoidBot Persona, not a repo Persona.`,
+      `Persona state: ${resolvedStatePath}`,
+      "No repo jurisdiction, Bifrost governance digest, source-repo activity, or repo proposal authority is implied by this native Persona category.",
+    ].join("\n");
+    if (!config.repoPersonaHeartbeats.stateProjectorEnabled) {
+      return rejectLeakyMemorySurface(`${nativeHeader}\n\n${statePacket}`);
+    }
+
+    return projectRepoPersonaMemorySurface({
+      identity,
+      statePacket: `${nativeHeader}\n\n${statePacket}`,
+      config,
+    });
+  }
+
+  const raw = JSON.parse(stripLeadingBom(await readFile(resolvedStatePath, "utf8"))) as unknown;
   const state = isRecord(raw) ? raw : {};
   const profile = readRecord(state, "profile") ?? readRecord(state, "selfProfile") ?? state;
   const presentation = readRecord(state, "presentation");
@@ -2155,7 +2203,7 @@ async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): 
 
   const lines = [
     `${identity.displayName} is a native VoidBot Persona, not a repo Persona.`,
-    `Persona state: ${resolve(personaStatePath)}`,
+    `Persona state: ${resolvedStatePath}`,
     identity.avatarUrl ? `Public avatar URL: ${identity.avatarUrl}` : undefined,
     identity.avatarPath ? `Local avatar asset: ${identity.avatarPath}` : undefined,
     stringField(profile, "publicDescription") ?? identity.description,
@@ -2630,8 +2678,9 @@ function renderRepoPersonaActivationProfileFacts(
   const sections = Object.entries(activationProfile)
     .map(([section, values]) => {
       const entries = Object.entries(values)
-        .sort(([, left], [, right]) => right.weight - left.weight)
-        .map(([key, value]) => `${key}=${value.weight.toFixed(2)}${value.note ? ` (${cleanCharacterFacingSentence(value.note)})` : ""}`);
+        .map(([key, value]) => ({ key, value, weight: activationVectorWeight(value) }))
+        .sort((left, right) => right.weight - left.weight)
+        .map(({ key, value, weight }) => `${key}=${weight.toFixed(2)}${activationVectorNote(value) ? ` (${cleanCharacterFacingSentence(activationVectorNote(value) ?? "")})` : ""}`);
       return entries.length > 0 ? `- ${section}: ${entries.join("; ")}` : undefined;
     })
     .filter((entry): entry is string => typeof entry === "string");
@@ -2639,6 +2688,25 @@ function renderRepoPersonaActivationProfileFacts(
   return sections.length > 0
     ? ["Activation profile that should color behavior:", ...sections].join("\n")
     : undefined;
+}
+
+function activationVectorWeight(value: unknown): number {
+  if (!isRecord(value)) {
+    return 0;
+  }
+
+  for (const key of ["weight", "currentActivation", "current_activation", "mean"]) {
+    const candidate = value[key];
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return clamp(candidate, 0, 1);
+    }
+  }
+
+  return 0;
+}
+
+function activationVectorNote(value: unknown): string | undefined {
+  return stringField(value, "note") ?? stringField(value, "summary");
 }
 
 function renderRepoPersonaRuntimePressureFacts(

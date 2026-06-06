@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -389,7 +389,6 @@ async function readIdentityMetadata(registryPathValue) {
         repoPath: stringOrNull(identity?.repoPath),
         identityKind: stringOrNull(identity?.identityKind),
         personaStatePath: stringOrNull(identity?.personaStatePath),
-        personaStatePath: stringOrNull(identity?.personaStatePath),
         description: stringOrNull(identity?.description),
         avatarUrl: stringOrNull(identity?.avatarUrl),
         avatarPath: stringOrNull(identity?.avatarPath),
@@ -419,7 +418,7 @@ async function readPersonaStates(identityMetadata) {
   }
 
   for (const [id, identity] of identityMetadata.entries()) {
-    if (identity.identityKind === "native_persona") {
+    if (identity.identityKind === "native_persona" && extname(identity.personaStatePath ?? "").toLowerCase() !== ".cc") {
       states.set(id, readPersonaStateSummary(identity));
       continue;
     }
@@ -497,7 +496,7 @@ function readPersonaStateSummary(identity) {
         statusReads: state.affect?.statusReads?.length ?? 0,
         doctrine: state.affect?.doctrineStances?.length ?? 0,
       },
-      tree: buildPersonaStateTree(state),
+      tree: buildJsonPersonaStateTree(state),
     };
   } catch (error) {
     return {
@@ -510,7 +509,7 @@ function readPersonaStateSummary(identity) {
   }
 }
 
-function buildPersonaStateTree(state) {
+function buildJsonPersonaStateTree(state) {
   return [
     node("Persona", "persona", [
       leaf("Public Name", state.publicName),
