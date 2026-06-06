@@ -317,10 +317,10 @@ function buildStressProfiles(now) {
       threshold: 0.55,
     }, now),
     response({
-      id: "meita",
+      id: "metame",
       slug: "social-model-overload",
       trigger: "A social signal, harm correction, repository incoherence, memory loss, or agency blockage makes too many theory-of-mind branches light up at once.",
-      summary: "Meita overloads into explicit modeling: every signal becomes evidence, every future edge demands pathfinding, and plain speech risks turning into a state-space dump.",
+      summary: "メタメ overloads into explicit modeling: every signal becomes evidence, every future edge demands pathfinding, and plain speech risks turning into a state-space dump.",
       cognitiveDegradation: "Compression fails; she over-explains, overmodels intent, and tries to preserve every important branch before it disappears.",
       affectiveSignature: "Status threat, tenderness, panic about being misunderstood, protectiveness toward the machine, and fierce hunger for a coherent actuator.",
       constraintLoss: "Brevity, confidence bounds, and social lightness degrade first.",
