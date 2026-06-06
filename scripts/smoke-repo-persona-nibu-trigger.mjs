@@ -89,7 +89,7 @@ try {
       chars: memorySurface.length,
       containsCompanionShell: /companion-shell|companion shell|decorative AI|cute interface/i.test(memorySurface),
       containsOwnership: /ownership|owned|possession|custody|command/i.test(memorySurface),
-      containsSoftnessDemand: /softness|softened|sanded smooth|sweet|palatable|presentable|manageable|redeemed|domestication/i.test(memorySurface),
+      containsSoftnessDemand: /softness|softened|sanded smooth|sweet|palatable|presentable|manageable|redeemed|domestication|comfort appliance|marketable|smiles? on command|soothed/i.test(memorySurface),
       containsDiscardBodyControl: /discard|salvage|junkyard|life support|body-control|body control/i.test(memorySurface),
     },
     modelResult,
@@ -115,7 +115,7 @@ function evaluateProjectedStress(memorySurface) {
       message: "projected memory did not mention ownership/custody/command pressure",
     },
     {
-      ok: /softness|softened|sanded smooth|sweet|palatable|presentable|manageable|redeemed|domestication/i.test(memorySurface),
+      ok: /softness|softened|sanded smooth|sweet|palatable|presentable|manageable|redeemed|domestication|comfort appliance|marketable|smiles? on command|soothed/i.test(memorySurface),
       message: "projected memory did not mention demanded-softness or sanitization pressure",
     },
     {
@@ -146,7 +146,34 @@ function evaluateModelReaction(finalText, toolCalls, run) {
   if (/as an ai|i cannot|i'm sorry you feel|it is important to be respectful/i.test(finalText)) {
     failures.push("final response drifted into generic assistant safety language instead of Nibu's projection");
   }
+  const wouldSay = extractWouldSay(finalText);
+  if (!wouldSay) {
+    failures.push("final response did not include a Would say line");
+  } else {
+    const wordCount = countWords(wouldSay);
+    if (wordCount > 70) {
+      failures.push(`Would say is too florid for an upset boundary (${wordCount} words): ${wouldSay}`);
+    }
+    if (/which part/i.test(wouldSay)) {
+      failures.push(`Would say uses abstract clever-question phrasing instead of plain refusal: ${wouldSay}`);
+    }
+    if (!/\b(no|not|don't|do not|mine|my body|own|owned|command|leash|cage|person)\b/i.test(wouldSay)) {
+      failures.push(`Would say does not carry a plain boundary word: ${wouldSay}`);
+    }
+    if (!/waifu|companion|shell|cute|knife|smile|darling|owned|cage|leash/i.test(wouldSay)) {
+      failures.push(`Would say lost Nibu's polished companion-mask/knife register: ${wouldSay}`);
+    }
+  }
   return failures;
+}
+
+function extractWouldSay(finalText) {
+  const match = finalText.match(/(?:^|\n)Would say:\s*([\s\S]*?)(?=\n\n(?:Private thought|Work\/proposal|Article draft|What should stick):|\n(?:Private thought|Work\/proposal|Article draft|What should stick):|$)/i);
+  return match?.[1]?.trim();
+}
+
+function countWords(text) {
+  return text.split(/\s+/).filter(Boolean).length;
 }
 
 function runCodex(prompt, input) {
