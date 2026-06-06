@@ -118,6 +118,32 @@ function Stop-LogCapture {
   }
 }
 
+function Test-ConfigEnabled {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable] $Config,
+    [Parameter(Mandatory = $true)]
+    [string] $Key,
+    [bool] $Default = $true
+  )
+
+  if (-not $Config.ContainsKey($Key)) {
+    return $Default
+  }
+
+  $value = [string]$Config[$Key]
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    return $false
+  }
+
+  $normalized = $value.Trim().ToLowerInvariant()
+  if ($normalized -in @("0", "false", "no", "off", "disabled")) {
+    return $false
+  }
+
+  return $true
+}
+
 function Convert-WindowsPathToSftpPath {
   param(
     [Parameter(Mandatory = $true)]
@@ -387,6 +413,23 @@ $backupLabelValue = if (-not [string]::IsNullOrWhiteSpace($BackupLabel)) {
   $config["OFFSITE_BACKUP_LABEL"]
 } else {
   "offsite-auto"
+}
+
+$offsiteBackupEnabled = Test-ConfigEnabled -Config $config -Key "OFFSITE_BACKUP_ENABLED" -Default $true
+
+if (-not $offsiteBackupEnabled) {
+  $status = @{
+    startedAt = (Get-Date).ToString("o")
+    completedAt = (Get-Date).ToString("o")
+    repoRoot = $repoRoot
+    status = "skipped"
+    statusPath = $statusPath
+    logPath = $logPath
+    reason = "OFFSITE_BACKUP_ENABLED=false"
+  }
+  Write-StatusFile -Path $statusPath -Status $status
+  Write-Host "Offsite backup skipped because OFFSITE_BACKUP_ENABLED=false."
+  exit 0
 }
 
 if ([string]::IsNullOrWhiteSpace($sshTargetValue)) {

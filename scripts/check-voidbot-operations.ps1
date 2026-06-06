@@ -560,6 +560,32 @@ function Get-OptionalPropertyValue {
   return $property.Value
 }
 
+function Test-ConfigEnabled {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable] $Config,
+    [Parameter(Mandatory = $true)]
+    [string] $Key,
+    [bool] $Default = $true
+  )
+
+  if (-not $Config.ContainsKey($Key)) {
+    return $Default
+  }
+
+  $value = [string]$Config[$Key]
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    return $false
+  }
+
+  $normalized = $value.Trim().ToLowerInvariant()
+  if ($normalized -in @("0", "false", "no", "off", "disabled")) {
+    return $false
+  }
+
+  return $true
+}
+
 function Invoke-RemotePowerShellJson {
   param(
     [Parameter(Mandatory = $true)]
@@ -764,6 +790,7 @@ $offsiteStatusPath = Join-Path $storageRoot "status\offsite-backup.json"
 $backupRoot = Join-Path $storageRoot "backups"
 $backupMaxAgeHours = if ($config.ContainsKey("VOIDBOT_BACKUP_MAX_AGE_HOURS")) { [double]$config["VOIDBOT_BACKUP_MAX_AGE_HOURS"] } else { 30.0 }
 $offsiteMaxAgeHours = if ($config.ContainsKey("VOIDBOT_OFFSITE_BACKUP_MAX_AGE_HOURS")) { [double]$config["VOIDBOT_OFFSITE_BACKUP_MAX_AGE_HOURS"] } else { 36.0 }
+$offsiteBackupEnabled = Test-ConfigEnabled -Config $config -Key "OFFSITE_BACKUP_ENABLED" -Default $true
 $notifyRepeatHours = if ($config.ContainsKey("VOIDBOT_HEALTHCHECK_NOTIFY_REPEAT_HOURS")) { [double]$config["VOIDBOT_HEALTHCHECK_NOTIFY_REPEAT_HOURS"] } else { 12.0 }
 $stackStartupTaskName = if ($config.ContainsKey("VOIDBOT_STACK_STARTUP_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["VOIDBOT_STACK_STARTUP_TASK_NAME"])) { $config["VOIDBOT_STACK_STARTUP_TASK_NAME"] } else { "VoidBot Stack Startup" }
 $watchdogTaskName = if ($config.ContainsKey("VOIDBOT_HEALTHCHECK_TASK_NAME") -and -not [string]::IsNullOrWhiteSpace($config["VOIDBOT_HEALTHCHECK_TASK_NAME"])) { $config["VOIDBOT_HEALTHCHECK_TASK_NAME"] } else { "VoidBot Operations Watchdog" }
@@ -1252,14 +1279,27 @@ try {
   try {
     $offsiteTask = Get-ScheduledTask -TaskName $offsiteTaskName -ErrorAction Stop
     $offsiteEnabled = [bool]$offsiteTask.Settings.Enabled
-    $offsiteTaskStatus = if ($offsiteEnabled) { "passed" } else { "failed" }
-    $offsiteTaskDetail = if ($offsiteEnabled) { "Offsite backup task is installed and enabled." } else { "Offsite backup task is installed but disabled." }
+    $offsiteTaskStatus = if ($offsiteBackupEnabled) {
+      if ($offsiteEnabled) { "passed" } else { "failed" }
+    } else {
+      "passed"
+    }
+    $offsiteTaskDetail = if ($offsiteBackupEnabled) {
+      if ($offsiteEnabled) { "Offsite backup task is installed and enabled." } else { "Offsite backup task is installed but disabled." }
+    } else {
+      "Offsite backup is disabled by OFFSITE_BACKUP_ENABLED=false; scheduled task state is ignored."
+    }
     Add-Check -Name "scheduled_task.offsite_backup" -Status $offsiteTaskStatus -Detail $offsiteTaskDetail -Data @{
       taskName = $offsiteTaskName
       state = [string]$offsiteTask.State
+      offsiteBackupEnabled = $offsiteBackupEnabled
     }
   } catch {
-    Add-Check -Name "scheduled_task.offsite_backup" -Status "failed" -Detail "Offsite backup task $offsiteTaskName is not installed."
+    if ($offsiteBackupEnabled) {
+      Add-Check -Name "scheduled_task.offsite_backup" -Status "failed" -Detail "Offsite backup task $offsiteTaskName is not installed."
+    } else {
+      Add-Check -Name "scheduled_task.offsite_backup" -Status "passed" -Detail "Offsite backup is disabled by OFFSITE_BACKUP_ENABLED=false; no scheduled task is required."
+    }
   }
 
   try {
@@ -1285,7 +1325,11 @@ try {
     Add-Check -Name "scheduled_task.watchdog" -Status "warning" -Detail "Operations watchdog task $watchdogTaskName is not installed yet."
   }
 
-  if (Test-Path -LiteralPath $offsiteStatusPath) {
+  if (-not $offsiteBackupEnabled) {
+    Add-Check -Name "offsite.status_file" -Status "passed" -Detail "Offsite backup status check skipped because OFFSITE_BACKUP_ENABLED=false." -Data @{
+      path = $offsiteStatusPath
+    }
+  } elseif (Test-Path -LiteralPath $offsiteStatusPath) {
     try {
       $offsiteStatus = Get-Content -LiteralPath $offsiteStatusPath -Raw | ConvertFrom-Json
 
@@ -1307,7 +1351,10 @@ try {
   }
 
   Set-WatchdogStep -CurrentStep "offsite_remote_checks" -Detail "Checking remote offsite backup freshness and retention."
-  if ([string]::IsNullOrWhiteSpace($offsiteTarget)) {
+  if (-not $offsiteBackupEnabled) {
+    Add-Check -Name "offsite.remote" -Status "passed" -Detail "Remote offsite backup check skipped because OFFSITE_BACKUP_ENABLED=false."
+    Add-Check -Name "offsite.retention" -Status "passed" -Detail "Remote offsite retention check skipped because OFFSITE_BACKUP_ENABLED=false."
+  } elseif ([string]::IsNullOrWhiteSpace($offsiteTarget)) {
     Add-Check -Name "offsite.remote" -Status "warning" -Detail "Remote offsite backup check skipped because OFFSITE_BACKUP_SSH_TARGET is blank."
   } else {
     try {

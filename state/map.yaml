@@ -75,7 +75,7 @@ accepted_design:
   - Agents and scheduled runners should cross the private-state boundary with small typed mutation operations such as cursor updates, open-case upserts, receipt records, short-term memory records, sleep-owned distillations, incubation merges, agency-pressure changes, and candidate-intervention changes.
   - JSON may be used for operation payloads or debug exports, but not as an editable working projection of canonical self-state.
   - Deterministic cleanup code should not become a permanent organ just because recent manual cleanup requests accidentally produced compensators. The desired architecture prevents bad state from entering, then uses narrow migrations for historical debris.
-  - `owner_codex` and `local_llm` remain distinct lanes with different tool-execution and safety posture.
+  - `owner_codex` is the active reply lane; the old Raven-backed `local_llm` lane is disabled until a live local inference host is deliberately reinstated.
   - Ephemeral room-reading should come from an explicit local-LLM sidecar inference pass plus raw recent-message evidence, not from a rules bucket pretending to understand natural language.
   - The VoidBot MCP server is the preferred search plane for archived Discord, indexed GameCult repos, Aetheria lore, and owner notifications.
   - Bot-directed prompts should remain in the raw Discord archive for forensics, but default history indexing and retrieval should treat them as toxic self-reference rather than ordinary community memory.
@@ -196,7 +196,7 @@ landed_baseline:
     - Discord bot, worker, provider registry, and retrieval stack are live.
     - Postgres-backed jobs, audit events, interaction memory, and rate-limit state are live.
     - Qdrant-backed history and source retrieval are live.
-    - Local and offsite backups, watchdogs, and the operations dashboard are live.
+    - Local backups, watchdogs, and the operations dashboard are live; Raven-backed offsite backup is explicitly disabled because the host is not a reliable stack dependency.
     - The stack now has a dedicated logon startup task path so bot and worker can come back after a reboot without waiting for manual resurrection.
     - Interaction memory and behavioral profiling are live.
     - Tool-driven retrieval is live, and source-grounding hints now bias the reply lanes instead of hard-gating them with a lexical pre-classifier.
