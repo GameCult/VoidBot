@@ -2222,6 +2222,7 @@ async function renderNativePersonaMemorySurface(
     ]),
     memorySection("Affect needs", arrayField(affect, "needs")),
     memorySection("Social bonds", arrayField(affect, "socialBonds")),
+    memorySection("Stress responses", arrayField(affect, "stressResponses")),
     memorySection("Doctrine stances", [
       ...arrayField(state, "doctrineStances"),
       ...arrayField(doctrine, "stances"),
