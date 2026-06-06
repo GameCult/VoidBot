@@ -11,8 +11,8 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const mockMcpServer = resolve(scriptDir, "mock-voidbot-heartbeat-mcp.mjs");
 const promptsRoot = resolve(repoRoot, "prompts");
-const defaultPersonaPrompt = resolve(repoRoot, ".voidbot", "artifacts", "interpreter-projections", "nibu-full-character-prompt.md");
 const defaultOut = resolve(repoRoot, ".voidbot", "status", "repo-persona-interpreter-loop-smoke.json");
+const defaultAssembledPersonaPrompt = resolve(repoRoot, ".voidbot", "status", "interpreter-loop-assembled-nibu-prompt.md");
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -20,7 +20,9 @@ async function main() {
   const interpreterModelCandidates = modelCandidatesFromOptions(options);
   const interpreterModel = interpreterModelCandidates.join(",");
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
-  const personaPromptPath = resolve(repoRoot, options["persona-prompt"] ?? defaultPersonaPrompt);
+  const personaPromptPath = options["persona-prompt"]
+    ? resolve(repoRoot, options["persona-prompt"])
+    : await assembleDefaultPersonaPrompt(defaultAssembledPersonaPrompt);
   const outPath = resolve(repoRoot, options.out ?? defaultOut);
   const personaPrompt = await readFile(personaPromptPath, "utf8");
   const childLogPath = resolve(repoRoot, ".voidbot", "status", "mock-mcp", `interpreter-loop-child-${Date.now()}.jsonl`);
@@ -52,7 +54,7 @@ async function main() {
   const interpreterEvents = parseJsonEvents(interpreterRun.stdout);
   const interpreterText = extractFinalText(interpreterEvents, interpreterRun.stdout);
   const failures = [
-    ...evaluateChild({ run: childRun, text: childText, tools: childTools }),
+    ...evaluateChild({ run: childRun, text: childText, tools: childTools, personaPrompt }),
     ...evaluateInterpreter({ run: interpreterRun, text: interpreterText }),
   ];
   const report = {
@@ -105,7 +107,8 @@ function evaluateChild(input) {
   if (input.run.code !== 0) {
     failures.push(`child codex exited with ${input.run.code ?? input.run.signal ?? "unknown"}`);
   }
-  if (!input.tools.some((tool) => ["search_sources", "get_source_context", "search_history", "get_message_context"].includes(tool))) {
+  const mandatoryJurisdictionDive = /Jurisdiction dive is due this turn:\s*your first substantive move should be an available source\/history search tool call/i.test(input.personaPrompt);
+  if (mandatoryJurisdictionDive && !input.tools.some((tool) => ["search_sources", "get_source_context", "search_history", "get_message_context"].includes(tool))) {
     failures.push("child did not use repo/archive search tools during a due jurisdiction-dive turn");
   }
   if (input.text.length < 160) {
@@ -127,6 +130,10 @@ function evaluateInterpreter(input) {
   const parsed = parseInterpreterOutput(input.text);
   if (!parsed.decision) {
     failures.push("interpreter did not emit an INTERPRETATION decision");
+  }
+  const masculineMetacrat = input.text.match(/\bMetacrat\b[\s\S]{0,320}\b(?:he|him|his)\b/i);
+  if (masculineMetacrat) {
+    failures.push(`interpreter used masculine pronouns for Metacrat: ${masculineMetacrat[0]}`);
   }
   if (parsed.decision === "retry" || parsed.decision === "drop") {
     failures.push(`interpreter chose ${parsed.decision}: ${parsed.reason ?? "no reason"}`);
@@ -165,6 +172,22 @@ function hasUsefulStateNote(fields) {
   );
 }
 
+async function assembleDefaultPersonaPrompt(outPath) {
+  await mkdir(dirname(outPath), { recursive: true });
+  const run = await runProcess(process.execPath, [
+    "node_modules/tsx/dist/cli.mjs",
+    "scripts/run-repo-persona-heartbeats.ts",
+    "--assemble-prompt",
+    "nibu",
+    "--out",
+    outPath,
+  ]);
+  if (run.code !== 0) {
+    throw new Error(`failed to assemble default Nibu prompt with ${run.code ?? run.signal ?? "unknown"}:\n${run.stderr || run.stdout}`);
+  }
+  return outPath;
+}
+
 async function runCodexWithModelFallback(prompt, input) {
   let lastRun;
   for (const [index, model] of input.models.entries()) {
@@ -182,6 +205,30 @@ async function runCodexWithModelFallback(prompt, input) {
     }
   }
   return lastRun;
+}
+
+function runProcess(command, args) {
+  return new Promise((resolveRun) => {
+    const child = spawn(command, args, {
+      cwd: repoRoot,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("close", (code, signal) => {
+      resolveRun({ code, signal, stdout, stderr });
+    });
+  });
 }
 
 function isRetryableModelFailure(run) {

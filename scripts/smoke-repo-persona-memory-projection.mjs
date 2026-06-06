@@ -62,6 +62,7 @@ try {
       throw new Error(`Nibu projection did not preserve Metacrat's explicit she/her pronoun guidance:\n${memorySurface}`);
     }
     const badMetacratMasculine = [
+      /\bMetacrat\b[\s\S]{0,320}\b(?:he|him|his)\b/i,
       /\bMetacrat\b[\s\S]{0,240}\bhis attention\b/i,
       /\bMetacrat\b[\s\S]{0,240}\bwhen he turns away\b/i,
       /\bMetacrat\b[\s\S]{0,240}\bhe listens\b/i,
