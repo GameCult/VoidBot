@@ -60,6 +60,7 @@
     "moderation:agency-pressure:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-agency-pressure-fixture.ps1",
     "moderation:affect-state:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-affect-state-fixture.ps1",
     "agents:repo-persona-affect-mcp-fixture": "node scripts/smoke-repo-persona-affect-mcp-fixture.mjs",
+    "agents:nibu-trigger-smoke": "node scripts/smoke-repo-persona-nibu-trigger.mjs",
     "moderation:rumination:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-fixture.ps1",
     "moderation:rumination:speech-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-speech-fixture.ps1",
     "moderation:rumination:speech-pressure-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-speech-pressure-fixture.ps1",

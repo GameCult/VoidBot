@@ -1959,7 +1959,15 @@ async function assembleRepoPersonaTurnPrompt(input: {
     ...channelPlan,
     primaryChannelId: channelId,
   };
-  const recentMessages = messagesForChannel(fetchedChannelSnapshots, channelId);
+  const conversationMemorySurface = input.conversationSurfacePath
+    ? await readOptionalMemorySurface(input.conversationSurfacePath)
+    : undefined;
+  const syntheticRecentMessages = conversationMemorySurface
+    ? parseSyntheticConversationSurface(conversationMemorySurface, channelId)
+    : [];
+  const recentMessages = syntheticRecentMessages.length > 0
+    ? syntheticRecentMessages
+    : messagesForChannel(fetchedChannelSnapshots, channelId);
   const channelSnapshots = fetchedChannelSnapshots
     .filter((snapshot) => snapshot.channelId !== channelId)
     .slice(0, 5);
@@ -1983,9 +1991,8 @@ async function assembleRepoPersonaTurnPrompt(input: {
     displayName: identity.displayName,
     repoName: identity.repoName,
   });
-  const conversationMemorySurface = input.conversationSurfacePath
-    ? await readOptionalMemorySurface(input.conversationSurfacePath)
-    : renderRepoPersonaConversationTranscript({
+  const renderedConversationMemorySurface = conversationMemorySurface
+    ?? renderRepoPersonaConversationTranscript({
         identity,
         recentMessages,
         channelSnapshots,
@@ -2004,7 +2011,7 @@ async function assembleRepoPersonaTurnPrompt(input: {
     recentMessages,
     memorySurface,
     repoActivitySurface,
-    conversationMemorySurface,
+    conversationMemorySurface: renderedConversationMemorySurface,
     humanPronounGuidance,
     bifrostDigest,
     participant,
@@ -2029,6 +2036,33 @@ async function assembleRepoPersonaTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
+}
+
+function parseSyntheticConversationSurface(surface: string, channelId: string): SourceMessage[] {
+  const now = Date.now();
+  const messages: SourceMessage[] = [];
+  const linePattern = /^-\s*([^:]{1,80}):\s*(.+)$/;
+  for (const line of surface.split(/\r?\n/)) {
+    const match = line.match(linePattern);
+    if (!match) {
+      continue;
+    }
+    const authorName = match[1]?.trim();
+    const content = match[2]?.trim();
+    if (!authorName || !content) {
+      continue;
+    }
+    const index = messages.length;
+    messages.push({
+      id: `synthetic-${channelId}-${index + 1}`,
+      authorId: `smoke:${authorName.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`,
+      authorName,
+      content,
+      timestamp: new Date(now - (messages.length - index) * 1000).toISOString(),
+      isBot: false,
+    });
+  }
+  return messages;
 }
 
 async function loadGlobalAgentDoctrine(): Promise<string> {
