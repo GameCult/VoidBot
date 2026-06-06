@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultStorageRoot = resolve(repoRoot, ".voidbot");
@@ -699,6 +699,41 @@ function deriveOrchestratorState(organs) {
 }
 
 async function writeCultMeshPublication(snapshot, eveState, storePath) {
+  return writeCultMeshPublicationAttempt(snapshot, eveState, storePath, false);
+}
+
+function isUnreadableCultMeshStoreError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /Extra \d+ of \d+ byte\(s\) found at buffer\[\d+\]/i.test(message) ||
+    /not a recognized CultCache MessagePack store/i.test(message) ||
+    /failed to decode MessagePack/i.test(message)
+  );
+}
+
+async function quarantineCultMeshStore(storePath, error) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const quarantinedPath = `${storePath}.corrupt-${stamp}`;
+  await mkdir(dirname(storePath), { recursive: true });
+  try {
+    await rename(storePath, quarantinedPath);
+  } catch (renameError) {
+    if (renameError?.code === "ENOENT") {
+      return null;
+    }
+    throw renameError;
+  }
+
+  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  await writeFile(
+    `${quarantinedPath}.txt`,
+    `Quarantined unreadable generated VoidBot swarm CultMesh store.\nOriginal path: ${storePath}\nError: ${message}\n`,
+    "utf8",
+  );
+  return quarantinedPath;
+}
+
+async function writeCultMeshPublicationAttempt(snapshot, eveState, storePath, retriedAfterQuarantine) {
   try {
     const cultPackages = loadCultPackages();
     if (!cultPackages) {
@@ -804,6 +839,24 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
       writtenAt: new Date().toISOString(),
     };
   } catch (error) {
+    if (!retriedAfterQuarantine && isUnreadableCultMeshStoreError(error)) {
+      const quarantinedPath = await quarantineCultMeshStore(storePath, error);
+      const retry = await writeCultMeshPublicationAttempt(snapshot, eveState, storePath, true);
+      if (retry.writeStatus === "ok") {
+        return {
+          ...retry,
+          recoveredFromCorruptStore: true,
+          quarantinedStorePath: quarantinedPath,
+        };
+      }
+      return {
+        ...retry,
+        recoveredFromCorruptStore: false,
+        quarantinedStorePath: quarantinedPath,
+        writeError: `CultMesh store was quarantined after decode failure, but retry also failed: ${retry.writeError ?? retry.writeStatus}`,
+      };
+    }
+
     return {
       writeStatus: "failed",
       storePath,
