@@ -111,47 +111,47 @@ export function buildEpiphanyIdentityRegistry(
   };
 }
 
-export function personaToRepoDiscordIdentity(face: ResolvedPersonaIdentity): RepoDiscordIdentity {
-  const repoName = face.repoName
-    ?? face.jurisdictions.find((jurisdiction) => jurisdiction.kind === "repo")?.repoName
-    ?? face.jurisdictions.find((jurisdiction) => jurisdiction.kind === "repo")?.id
-    ?? face.epiphanyId;
+export function personaToRepoDiscordIdentity(persona: ResolvedPersonaIdentity): RepoDiscordIdentity {
+  const repoName = persona.repoName
+    ?? persona.jurisdictions.find((jurisdiction) => jurisdiction.kind === "repo")?.repoName
+    ?? persona.jurisdictions.find((jurisdiction) => jurisdiction.kind === "repo")?.id
+    ?? persona.epiphanyId;
 
   return {
-    id: face.id,
-    identityKind: face.identityKind,
+    id: persona.id,
+    identityKind: persona.identityKind,
     repoName,
-    displayName: face.displayName,
-    repoPath: face.repoPath,
-    roleId: face.roleId,
-    allowedChannelIds: face.allowedChannelIds,
-    channelPermissions: face.channelPermissions,
-    avatarUrl: face.avatarUrl,
-    avatarPath: face.avatarPath,
-    personaStatePath: face.personaStatePath,
-    description: renderPersonaDescription(face),
+    displayName: persona.displayName,
+    repoPath: persona.repoPath,
+    roleId: persona.roleId,
+    allowedChannelIds: persona.allowedChannelIds,
+    channelPermissions: persona.channelPermissions,
+    avatarUrl: persona.avatarUrl,
+    avatarPath: persona.avatarPath,
+    personaStatePath: persona.personaStatePath,
+    description: renderPersonaDescription(persona),
   };
 }
 
-export function renderPersonaIdentityDoctrine(face: ResolvedPersonaIdentity): string {
-  const grants = face.grants.length > 0 ? face.grants.join(", ") : "discussion, rumination";
-  const jurisdictions = [...face.inheritedJurisdictions, ...face.jurisdictions]
+export function renderPersonaIdentityDoctrine(persona: ResolvedPersonaIdentity): string {
+  const grants = persona.grants.length > 0 ? persona.grants.join(", ") : "discussion, rumination";
+  const jurisdictions = [...persona.inheritedJurisdictions, ...persona.jurisdictions]
     .map(renderJurisdiction)
     .join("; ");
 
   return loadPromptTemplate("epiphany-persona-identity-doctrine.prompt.md", {
-    displayName: face.displayName,
-    epiphanyDisplayName: face.epiphanyDisplayName,
-    epiphanyId: face.epiphanyId,
-    epiphanyDescription: face.epiphanyDescription,
-    faceDescription: face.description,
+    displayName: persona.displayName,
+    epiphanyDisplayName: persona.epiphanyDisplayName,
+    epiphanyId: persona.epiphanyId,
+    epiphanyDescription: persona.epiphanyDescription,
+    personaDescription: persona.description,
     grants,
     jurisdictions,
   });
 }
 
-export function resolvePersonaStatePath(face: ResolvedPersonaIdentity, storageRoot: string): string {
-  return resolveRepoPersonaStatePath(personaToRepoDiscordIdentity(face), storageRoot);
+export function resolvePersonaStatePath(persona: ResolvedPersonaIdentity, storageRoot: string): string {
+  return resolveRepoPersonaStatePath(personaToRepoDiscordIdentity(persona), storageRoot);
 }
 
 function parseExplicitEpiphanies(
@@ -225,35 +225,35 @@ function normalizeEpiphanies(epiphanies: EpiphanyIdentity[]): EpiphanyIdentity[]
       description: epiphany.description?.trim(),
       repoNames: [...new Set(epiphany.repoNames.map((repoName) => repoName.trim()))],
       jurisdictions: epiphany.jurisdictions.map(normalizeJurisdiction),
-      personas: epiphany.personas.map((face) => {
-        const faceId = normalizeKey(face.id);
-        if (seenPersonas.has(faceId)) {
-          throw new Error(`Duplicate Persona id "${face.id}".`);
+      personas: epiphany.personas.map((persona) => {
+        const personaId = normalizeKey(persona.id);
+        if (seenPersonas.has(personaId)) {
+          throw new Error(`Duplicate Persona id "${persona.id}".`);
         }
 
-        seenPersonas.add(faceId);
+        seenPersonas.add(personaId);
         return {
-          ...face,
-          id: face.id.trim(),
-          displayName: face.displayName.trim().slice(0, 80),
-          repoName: face.repoName?.trim(),
-          repoPath: face.repoPath?.trim(),
-          roleId: face.roleId?.trim(),
-          identityKind: face.identityKind,
-          allowedChannelIds: [...new Set(face.allowedChannelIds.map((entry) => entry.trim()))],
-          channelPermissions: face.channelPermissions.map((permission) => ({
+          ...persona,
+          id: persona.id.trim(),
+          displayName: persona.displayName.trim().slice(0, 80),
+          repoName: persona.repoName?.trim(),
+          repoPath: persona.repoPath?.trim(),
+          roleId: persona.roleId?.trim(),
+          identityKind: persona.identityKind,
+          allowedChannelIds: [...new Set(persona.allowedChannelIds.map((entry) => entry.trim()))],
+          channelPermissions: persona.channelPermissions.map((permission) => ({
             ...permission,
             channelId: permission.channelId.trim(),
             label: permission.label?.trim(),
             topic: permission.topic?.trim(),
             posture: permission.posture?.trim(),
           })),
-          avatarUrl: face.avatarUrl?.trim(),
-          avatarPath: face.avatarPath?.trim(),
-          personaStatePath: face.personaStatePath?.trim(),
-          description: face.description?.trim(),
-          grants: [...new Set(face.grants)],
-          jurisdictions: face.jurisdictions.map(normalizeJurisdiction),
+          avatarUrl: persona.avatarUrl?.trim(),
+          avatarPath: persona.avatarPath?.trim(),
+          personaStatePath: persona.personaStatePath?.trim(),
+          description: persona.description?.trim(),
+          grants: [...new Set(persona.grants)],
+          jurisdictions: persona.jurisdictions.map(normalizeJurisdiction),
         };
       }),
     };
@@ -270,13 +270,13 @@ function normalizeJurisdiction(jurisdiction: EpiphanyJurisdiction): EpiphanyJuri
   };
 }
 
-function renderPersonaDescription(face: ResolvedPersonaIdentity): string | undefined {
+function renderPersonaDescription(persona: ResolvedPersonaIdentity): string | undefined {
   const parts = [
-    face.description,
-    `Persona of ${face.epiphanyDisplayName}`,
-    `grants: ${face.grants.join(", ")}`,
-    [...face.inheritedJurisdictions, ...face.jurisdictions].length > 0
-      ? `jurisdictions: ${[...face.inheritedJurisdictions, ...face.jurisdictions].map(renderJurisdiction).join("; ")}`
+    persona.description,
+    `Persona of ${persona.epiphanyDisplayName}`,
+    `grants: ${persona.grants.join(", ")}`,
+    [...persona.inheritedJurisdictions, ...persona.jurisdictions].length > 0
+      ? `jurisdictions: ${[...persona.inheritedJurisdictions, ...persona.jurisdictions].map(renderJurisdiction).join("; ")}`
       : undefined,
   ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
 

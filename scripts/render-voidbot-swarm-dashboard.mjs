@@ -1172,7 +1172,7 @@ function buildEveProviderState(snapshot) {
       detail: `agents ${summary.participantCount ?? participants.length}; next ${summary.nextDisplayName ?? "none"}`,
     },
     ...participants.slice(0, 24).map((participant, index) => ({
-      id: `face-${participant.identityId}`,
+      id: `persona-${participant.identityId}`,
       label: `${participant.displayName}\n${participant.repoName}`,
       kind: "repo-persona",
       visible: true,
@@ -1249,7 +1249,7 @@ function stableId(value) {
 
 function formatTurnText(turn, index) {
   const rank = String(index + 1).padStart(2, " ");
-  const name = String(turn?.displayName ?? turn?.identityId ?? "face").padEnd(10, " ");
+  const name = String(turn?.displayName ?? turn?.identityId ?? "persona").padEnd(10, " ");
   const status = turnStatus(turn).padEnd(7, " ");
   const due = minutesText(turn?.nextTurnInMinutes).padStart(6, " ");
   const mention = mentionText(turn).padEnd(5, " ");
@@ -2093,7 +2093,7 @@ function renderHtml(snapshot) {
       const summary = snapshot.summary || {};
       const organs = snapshot.orchestrator?.organs || [];
       const watchdog = findOrgan(organs, "watchdog");
-      const face = findOrgan(organs, "repo-persona-heartbeats");
+      const persona = findOrgan(organs, "repo-persona-heartbeats");
       const mood = findOrgan(organs, "mood");
       const rumination = findOrgan(organs, "rumination");
       const sourceFreshness = snapshot.sources?.heartbeatStateUpdatedAt ? Math.max(0, 100 - ((Date.now() - Date.parse(snapshot.sources.heartbeatStateUpdatedAt)) / 600)) : 0;
@@ -2104,7 +2104,7 @@ function renderHtml(snapshot) {
       return "<aside class=\\"status-panel\\" aria-label=\\"Compact swarm status\\"><h2><span>VOID</span><span>" + esc(String(summary.state || "UNK").slice(0, 4).toUpperCase()) + "</span></h2><div class=\\"status-grid\\">" +
         hud("WDOG", organCode(watchdog), organFill(watchdog), organWarn(watchdog)) +
         hud("ORCH", shortState(snapshot.orchestrator?.state), statusFill(snapshot.orchestrator?.state), statusWarn(snapshot.orchestrator?.state)) +
-        hud("FACE", organCode(face), organFill(face), organWarn(face)) +
+        hud("PERS", organCode(persona), organFill(persona), organWarn(persona)) +
         hud("MOOD", organCode(mood), organFill(mood), organWarn(mood)) +
         hud("RUM", organCode(rumination), organFill(rumination), organWarn(rumination)) +
         hud("MESH", shortState(snapshot.cultMesh?.writeStatus), meshOk, snapshot.cultMesh?.writeStatus !== "ok") +

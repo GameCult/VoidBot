@@ -23,7 +23,7 @@ const repoPersonaRetrievalToolAllowlist = [
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const faceModel = options["face-model"] ?? process.env.REPO_PERSONA_TURN_CODEX_MODEL ?? "gpt-5.4";
+  const personaModel = options["persona-model"] ?? options["face-model"] ?? process.env.REPO_PERSONA_TURN_CODEX_MODEL ?? "gpt-5.4";
   const interpreterModel = options["interpreter-model"] ?? options.model ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_MODEL ?? "gpt-5.3-codex-spark";
   const reasoningEffort = options["reasoning-effort"] ?? process.env.REPO_PERSONA_HEARTBEAT_CODEX_REASONING_EFFORT ?? "low";
   const mcpMode = options.mcp === "mock" ? "mock" : "real-readonly";
@@ -45,13 +45,13 @@ async function main() {
       promptPath,
     ], { cwd: repoRoot, timeoutMs: 120_000 });
 
-    const facePrompt = appendDryRunSafety(await readFile(promptPath, "utf8"), mcpMode);
+    const personaPrompt = appendDryRunSafety(await readFile(promptPath, "utf8"), mcpMode);
     const childLogPath = resolve(repoRoot, ".voidbot", "status", "mock-mcp", `swarm-dry-run-${identity}-${Date.now()}.jsonl`);
     await rm(childLogPath, { force: true }).catch(() => undefined);
 
-    process.stderr.write(`[dry-run] face turn ${identity}\n`);
-    const childRun = await runCodex(facePrompt, {
-      model: faceModel,
+    process.stderr.write(`[dry-run] persona turn ${identity}\n`);
+    const childRun = await runCodex(personaPrompt, {
+      model: personaModel,
       reasoningEffort,
       scenarioId: `${identity}_swarm_dry_run_child`,
       logPath: childLogPath,
@@ -66,7 +66,7 @@ async function main() {
     process.stderr.write(`[dry-run] interpreter ${identity}\n`);
     const interpreterPrompt = renderTemplate("repo-persona-turn-interpreter.prompt.md", {
       attempt: "1",
-      facePrompt,
+      personaPrompt,
       faceOutput: childText,
     });
     const interpreterRun = await runCodex(interpreterPrompt, {
@@ -88,15 +88,15 @@ async function main() {
     let retry;
 
     if (parsed.decision === "retry") {
-      process.stderr.write(`[dry-run] retry face turn ${identity}\n`);
+      process.stderr.write(`[dry-run] retry persona turn ${identity}\n`);
       const retryPrompt = renderRetryPrompt({
-        originalPrompt: facePrompt,
+        originalPrompt: personaPrompt,
         reasons: [parsed.reason ?? "Interpreter requested one revision."],
       });
       const retryLogPath = resolve(repoRoot, ".voidbot", "status", "mock-mcp", `swarm-dry-run-${identity}-retry-${Date.now()}.jsonl`);
       await rm(retryLogPath, { force: true }).catch(() => undefined);
       const retryChildRun = await runCodex(appendDryRunSafety(retryPrompt, mcpMode), {
-        model: faceModel,
+        model: personaModel,
         reasoningEffort,
         scenarioId: `${identity}_swarm_dry_run_retry_child`,
         logPath: retryLogPath,
@@ -111,7 +111,7 @@ async function main() {
       process.stderr.write(`[dry-run] retry interpreter ${identity}\n`);
       const retryInterpreterPrompt = renderTemplate("repo-persona-turn-interpreter.prompt.md", {
         attempt: "2",
-        facePrompt,
+        personaPrompt,
         faceOutput: retryChildText,
       });
       const retryInterpreterRun = await runCodex(retryInterpreterPrompt, {
@@ -197,7 +197,7 @@ async function main() {
 
   const report = {
     generatedAt: new Date().toISOString(),
-    faceModel,
+    personaModel,
     interpreterModel,
     reasoningEffort,
     mcpMode,

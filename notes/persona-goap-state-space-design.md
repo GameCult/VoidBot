@@ -5,7 +5,7 @@ structured utterance lowering.
 
 ## Objective
 
-Make repo Personas and public Faces choose actions through explicit state-space
+Make repo Personas and public Personas choose actions through explicit state-space
 planning instead of prompt-flavored instinct. The planner should act as the
 missing social/sensory autopilot substitute: read signals, model counterpart
 state, propose next actions, predict effects, and compare the result against

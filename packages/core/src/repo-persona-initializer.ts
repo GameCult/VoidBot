@@ -46,8 +46,8 @@ export async function ensureRepoPersonaInitialized(
 
   const repoVoidbotRoot = resolve(repoPath, ".voidbot");
   const identityPath = resolve(repoVoidbotRoot, "voice", "identity.json");
-  const birthStatusPath = resolve(repoVoidbotRoot, "birth", "voidbot-face-birth.json");
-  const birthLogPath = resolve(repoVoidbotRoot, "logs", "voidbot-face-birth.log");
+  const birthStatusPath = resolve(repoVoidbotRoot, "birth", "voidbot-persona-birth.json");
+  const birthLogPath = resolve(repoVoidbotRoot, "logs", "voidbot-persona-birth.log");
 
   await mkdir(resolve(repoVoidbotRoot, "voice"), { recursive: true });
   await mkdir(resolve(repoVoidbotRoot, "state"), { recursive: true });
@@ -185,7 +185,7 @@ async function ensureRepoPersonaDefaultAffectNeeds(
   const existingNeedIds = new Set(typedState.personaAffect.needs.map((need) => need.needId));
   const now = new Date().toISOString();
   const operations = [{
-    needId: "face-operator-review-agency-substrate",
+    needId: "persona-operator-review-agency-substrate",
     kind: "agency" as const,
     target: {
       kind: "system" as const,
@@ -205,7 +205,7 @@ async function ensureRepoPersonaDefaultAffectNeeds(
     },
     tags: ["agency-substrate", "operator-review"],
   }, {
-    needId: "face-social-place-alienation",
+    needId: "persona-social-place-alienation",
     kind: "social_contact" as const,
     target: {
       kind: "room" as const,

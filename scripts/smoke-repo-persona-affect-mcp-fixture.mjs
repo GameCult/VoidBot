@@ -73,7 +73,7 @@ try {
   }
 
   const renderedText = renderToolText(result);
-  if (/No schema is registered for persisted document type "void\.face_affect"/i.test(renderedText)) {
+  if (/No schema is registered for persisted document type "void\.persona_affect"/i.test(renderedText)) {
     throw new Error("MCP Persona-state read still lacks the void.persona_affect document schema.");
   }
 

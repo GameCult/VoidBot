@@ -428,7 +428,7 @@ async function processJob(job: JobRecord): Promise<void> {
         !bifrostTopicSubmitted &&
         repoIdentityUpdateRequests.length > 0;
       console.log(
-        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
+        `Repo-persona job ${job.id} parsed actions: say=${repoIdentityPosts.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
       );
       for (const stateNote of repoIdentityStateNotes.slice(0, 4)) {
         await applyRepoIdentityStateNoteIntent(job, stateNote);
@@ -535,7 +535,7 @@ async function executeProviderForJob(
   provider: ProviderAdapter,
   job: JobRecord,
   contextBundle: JobRecord["contextBundle"],
-  role: "face" | "interpreter" = "face",
+  role: "persona" | "interpreter" = "persona",
 ): Promise<ProviderResponse> {
   const request = provider.buildRequest(contextBundle, {
     jobId: job.id,
@@ -947,12 +947,12 @@ function dropRepoPersonaActionBlocks(
   };
 }
 
-function repoPersonaHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpreter"): Record<string, string> {
+function repoPersonaHeartbeatCodexOptions(job: JobRecord, role: "persona" | "interpreter"): Record<string, string> {
   if (job.command !== "repo-persona-rumination") {
     return {};
   }
 
-  if (role === "face") {
+  if (role === "persona") {
     return {
       model: config.repoPersonaHeartbeats.turnCodexModel,
       ...(config.repoPersonaHeartbeats.codexModelReasoningEffort
@@ -1411,7 +1411,7 @@ async function applyRepoIdentityStateNoteIntent(
   const anchorRefs = [{ ref: `job:${job.id}`, kind: "runtime" }];
   const intensity = clamp01(intent.intensity ?? 0.55);
   const baseTags = [
-    "source:face-interpreter",
+    "source:persona-interpreter",
     `kind:${intent.kind}`,
     `repo:${identity.repoName}`,
   ];
@@ -1807,7 +1807,7 @@ async function submitRepoIdentityBifrostTopicIntent(
       "--author",
       identity.id,
       "--author-kind",
-      "face",
+      "persona",
       "--stance",
       normalizeBifrostTopicStance(intent.stance),
       "--body-file",

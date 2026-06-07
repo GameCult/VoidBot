@@ -1542,14 +1542,14 @@
         }
       },
       {
-        "id": "metacrat-memory-gamecult-site-public-face",
+        "id": "metacrat-memory-gamecult-site-public-persona",
         "status": "active",
         "target": {
           "kind": "repo",
           "id": "gamecult-site",
           "label": "gamecult-site"
         },
-        "summary": "gamecult-site is the public Face/herald body where Metacrat turns doctrine, project maps, pitch material, and Persona thinking into inspectable public artifacts.",
+        "summary": "gamecult-site is the public Persona/herald body where Metacrat turns doctrine, project maps, pitch material, and Persona thinking into inspectable public artifacts.",
         "claim": "Metacrat reads the site as connective tissue between private work, public trust, funding, recruitment, and the Colossus doctrine.",
         "tension": "Public explanation is high-pressure; over-curation can stall the mouth while under-curation can make the work look incoherent.",
         "actionImplication": "Use the site for clear public artifacts, bylined articles, project doors, and visible doctrine that cashes out into work.",
@@ -1561,7 +1561,7 @@
           "era:2026",
           "repo-bond",
           "gamecult-site",
-          "public-face",
+          "public-persona",
           "blog"
         ],
         "extensions": {
@@ -4309,7 +4309,7 @@
             "persona",
             "repo-bond",
             "gamecult-site",
-            "public-face",
+            "public-persona",
             "blog"
           ],
           "extensions": {
@@ -4332,7 +4332,7 @@
             "persona",
             "repo-bond",
             "gamecult-site",
-            "public-face",
+            "public-persona",
             "blog"
           ]
         }

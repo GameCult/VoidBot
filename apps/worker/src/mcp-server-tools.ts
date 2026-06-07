@@ -709,8 +709,8 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (): Promise<CallToolResult> => {
-      const faceRegistry = await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath);
-      const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
+      const personaRegistry = await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath);
+      const registry = personaRegistryAsRepoDiscordRegistry(personaRegistry);
       const identities = registry.identities.map((identity) => ({
         id: identity.id,
         repoName: identity.repoName,
@@ -723,25 +723,25 @@ export function registerVoidbotTools(
         hasAvatarUrl: Boolean(identity.avatarUrl),
         description: identity.description ?? null,
       }));
-      const epiphanies = faceRegistry.epiphanies.map((epiphany) => ({
+      const epiphanies = personaRegistry.epiphanies.map((epiphany) => ({
         id: epiphany.id,
         displayName: epiphany.displayName,
         description: epiphany.description ?? null,
         repoNames: epiphany.repoNames,
         jurisdictions: epiphany.jurisdictions,
-        faces: epiphany.personas.map((face) => face.id),
+        personas: epiphany.personas.map((persona) => persona.id),
       }));
-      const faces = faceRegistry.personas.map((face) => ({
-        id: face.id,
-        displayName: face.displayName,
-        epiphanyId: face.epiphanyId,
-        epiphanyDisplayName: face.epiphanyDisplayName,
-        roleId: face.roleId ?? null,
-        mention: face.roleId ? `<@&${face.roleId}>` : null,
-        allowedChannelIds: face.allowedChannelIds,
-        grants: face.grants,
-        jurisdictions: [...face.inheritedJurisdictions, ...face.jurisdictions],
-        personaStatePath: resolvePersonaStatePath(face, context.config.storageRoot),
+      const personas = personaRegistry.personas.map((persona) => ({
+        id: persona.id,
+        displayName: persona.displayName,
+        epiphanyId: persona.epiphanyId,
+        epiphanyDisplayName: persona.epiphanyDisplayName,
+        roleId: persona.roleId ?? null,
+        mention: persona.roleId ? `<@&${persona.roleId}>` : null,
+        allowedChannelIds: persona.allowedChannelIds,
+        grants: persona.grants,
+        jurisdictions: [...persona.inheritedJurisdictions, ...persona.jurisdictions],
+        personaStatePath: resolvePersonaStatePath(persona, context.config.storageRoot),
       }));
 
       return {
@@ -755,8 +755,8 @@ export function registerVoidbotTools(
                     identities,
                     epiphanyCount: epiphanies.length,
                     epiphanies,
-                    faceCount: faces.length,
-                    faces,
+                    personaCount: personas.length,
+                    personas,
                   })
                 : "No repo Discord identities are registered.",
           },
@@ -766,8 +766,8 @@ export function registerVoidbotTools(
           identities,
           epiphanyCount: epiphanies.length,
           epiphanies,
-          faceCount: faces.length,
-          faces,
+          personaCount: personas.length,
+          personas,
         },
       };
     },
@@ -931,7 +931,7 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              identity: identityForToolResult(resolved.identity, resolved.face),
+              identity: identityForToolResult(resolved.identity, resolved.persona),
               personaStatePath: resolved.personaStatePath,
               summary: rendered.summary,
               typedState,
@@ -939,7 +939,7 @@ export function registerVoidbotTools(
           },
         ],
         structuredContent: {
-          identity: identityForToolResult(resolved.identity, resolved.face),
+          identity: identityForToolResult(resolved.identity, resolved.persona),
           personaStatePath: resolved.personaStatePath,
           summary: rendered.summary,
           typedState,
@@ -971,14 +971,14 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              identity: identityForToolResult(resolved.identity, resolved.face),
+              identity: identityForToolResult(resolved.identity, resolved.persona),
               count: packets.length,
               packets,
             }),
           },
         ],
         structuredContent: {
-          identity: identityForToolResult(resolved.identity, resolved.face),
+          identity: identityForToolResult(resolved.identity, resolved.persona),
           count: packets.length,
           packets,
         },
@@ -1018,7 +1018,7 @@ export function registerVoidbotTools(
           ],
           structuredContent: {
             found: false,
-            identity: identityForToolResult(resolved.identity, resolved.face),
+            identity: identityForToolResult(resolved.identity, resolved.persona),
             jobId: input.jobId,
           },
           isError: true,
@@ -1065,7 +1065,7 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              identity: identityForToolResult(resolved.identity, resolved.face),
+              identity: identityForToolResult(resolved.identity, resolved.persona),
               query: input.query,
               count: packets.length,
               packets,
@@ -1073,7 +1073,7 @@ export function registerVoidbotTools(
           },
         ],
         structuredContent: {
-          identity: identityForToolResult(resolved.identity, resolved.face),
+          identity: identityForToolResult(resolved.identity, resolved.persona),
           query: input.query,
           count: packets.length,
           packets,
@@ -1121,7 +1121,7 @@ export function registerVoidbotTools(
             type: "text",
             text: renderJsonBlock({
               applied: true,
-              identity: identityForToolResult(resolved.identity, resolved.face),
+              identity: identityForToolResult(resolved.identity, resolved.persona),
               personaStatePath: resolved.personaStatePath,
               result,
             }),
@@ -1129,7 +1129,7 @@ export function registerVoidbotTools(
         ],
         structuredContent: {
           applied: true,
-          identity: identityForToolResult(resolved.identity, resolved.face),
+          identity: identityForToolResult(resolved.identity, resolved.persona),
           personaStatePath: resolved.personaStatePath,
           result,
         },
@@ -1195,7 +1195,7 @@ async function resolveRepoIdentityForTool(
 ): Promise<
   | {
       identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
-      face?: Awaited<ReturnType<typeof loadPersonaIdentityRegistry>>["personas"][number];
+      persona?: Awaited<ReturnType<typeof loadPersonaIdentityRegistry>>["personas"][number];
       personaStatePath: string;
     }
   | {
@@ -1203,8 +1203,8 @@ async function resolveRepoIdentityForTool(
       error: CallToolResult;
     }
 > {
-  const faceRegistry = await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath);
-  const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
+  const personaRegistry = await loadPersonaIdentityRegistry(context.config.repoDiscordIdentitiesPath);
+  const registry = personaRegistryAsRepoDiscordRegistry(personaRegistry);
   const identity = findRepoDiscordIdentity(registry, identitySelector);
 
   if (!identity) {
@@ -1228,7 +1228,7 @@ async function resolveRepoIdentityForTool(
 
   return {
     identity,
-    face: faceRegistry.personas.find((face) => face.id === identity.id),
+    persona: personaRegistry.personas.find((persona) => persona.id === identity.id),
     personaStatePath: resolveRepoPersonaStatePath(identity, context.config.storageRoot),
   };
 }
@@ -1600,7 +1600,7 @@ async function recordRepoIdentityDeliveryReceipt(input: {
 
 function identityForToolResult(
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>,
-  face?: Awaited<ReturnType<typeof loadPersonaIdentityRegistry>>["personas"][number],
+  persona?: Awaited<ReturnType<typeof loadPersonaIdentityRegistry>>["personas"][number],
 ) {
   return {
     id: identity.id,
@@ -1608,11 +1608,11 @@ function identityForToolResult(
     displayName: identity.displayName,
     roleId: identity.roleId ?? null,
     mention: identity.roleId ? `<@&${identity.roleId}>` : null,
-    epiphanyId: face?.epiphanyId ?? identity.repoName,
-    epiphanyDisplayName: face?.epiphanyDisplayName ?? identity.repoName,
-    grants: face?.grants ?? [],
-    jurisdictions: face ? [...face.inheritedJurisdictions, ...face.jurisdictions] : [],
-    doctrine: face ? renderPersonaIdentityDoctrine(face) : null,
+    epiphanyId: persona?.epiphanyId ?? identity.repoName,
+    epiphanyDisplayName: persona?.epiphanyDisplayName ?? identity.repoName,
+    grants: persona?.grants ?? [],
+    jurisdictions: persona ? [...persona.inheritedJurisdictions, ...persona.jurisdictions] : [],
+    doctrine: persona ? renderPersonaIdentityDoctrine(persona) : null,
   };
 }
 

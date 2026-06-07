@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const identity = process.argv[2] ?? "libby";
-const tempDir = await mkdtemp(join(tmpdir(), "voidbot-face-projection-"));
+const tempDir = await mkdtemp(join(tmpdir(), "voidbot-persona-projection-"));
 const outPath = join(tempDir, `${identity}.md`);
 
 try {

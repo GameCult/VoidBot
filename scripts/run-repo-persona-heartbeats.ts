@@ -219,8 +219,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const faceRegistry = await loadPersonaIdentityRegistry(config.repoDiscordIdentitiesPath);
-  const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
+  const personaRegistry = await loadPersonaIdentityRegistry(config.repoDiscordIdentitiesPath);
+  const registry = personaRegistryAsRepoDiscordRegistry(personaRegistry);
   const state = await readHeartbeatState(config.repoPersonaHeartbeats.statePath);
   const restStates = await loadRepoPersonaRestStates(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
@@ -1917,8 +1917,8 @@ async function assembleRepoPersonaTurnPrompt(input: {
   memorySurfacePath?: string;
   conversationSurfacePath?: string;
 }> {
-  const faceRegistry = await loadPersonaIdentityRegistry(input.config.repoDiscordIdentitiesPath);
-  const registry = personaRegistryAsRepoDiscordRegistry(faceRegistry);
+  const personaRegistry = await loadPersonaIdentityRegistry(input.config.repoDiscordIdentitiesPath);
+  const registry = personaRegistryAsRepoDiscordRegistry(personaRegistry);
   const identity = registry.identities.find(
     (entry) => entry.id.toLowerCase() === input.identityId.toLowerCase(),
   );
@@ -4776,8 +4776,6 @@ const TOPIC_STOP_WORDS = new Set([
   "even",
   "every",
   "exactly",
-  "face",
-  "faces",
   "from",
   "give",
   "going",
@@ -5007,12 +5005,12 @@ function buildJurisdictionDiveDirective(
 }
 
 function renderRepoCharacterIdentityDoctrine(identity: RepoDiscordIdentity): string {
-  const face = buildEpiphanyIdentityRegistry({ identities: [identity] }).personas[0];
+  const persona = buildEpiphanyIdentityRegistry({ identities: [identity] }).personas[0];
   return loadPromptTemplate("repo-character-identity.prompt.md", {
     displayName: identity.displayName,
     repoName: identity.repoName,
-    originName: face?.epiphanyDisplayName ?? identity.repoName,
-    characterDescription: projectCharacterDescription(face?.description ?? identity.description),
+    originName: persona?.epiphanyDisplayName ?? identity.repoName,
+    characterDescription: projectCharacterDescription(persona?.description ?? identity.description),
   });
 }
 
@@ -5128,7 +5126,7 @@ function migrateLegacyHeartbeatState(
       : index * baseRecoveryMinutes;
 
     return {
-      identityId: participant.identityId ?? `legacy-face-${index + 1}`,
+      identityId: participant.identityId ?? `legacy-persona-${index + 1}`,
       repoName: participant.repoName ?? "unknown",
       displayName: participant.displayName ?? participant.identityId ?? `Legacy Persona ${index + 1}`,
       initiativeSpeed: speed,
