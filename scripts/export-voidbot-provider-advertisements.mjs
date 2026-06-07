@@ -77,7 +77,7 @@ function buildCatalog() {
       witnesses: [
         witness("voidbot.discord_archive", ".voidbot/rag/messages.json", "VoidBot raw archive", ["raw archive", "forensics"]),
         witness("voidbot.history_vectors", "qdrant://voidbot/history", "Qdrant", ["semantic history vectors"]),
-        witness("voidbot.operations_health", ".voidbot/status/operations-health.json", "VoidBot watchdog", ["debug status only"]),
+        witness("voidbot.operations_health", ".voidbot/status/operations-health.json", "VoidBot operations probe", ["debug status only", "lifecycle owned by Idunn"]),
       ],
       commands: [
         command("archive.search_history", "read-only", "Search archived Discord history through native CultMesh/CultNet service commands; MCP is external-agent compatibility."),

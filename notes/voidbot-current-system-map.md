@@ -116,7 +116,7 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
 - `scripts/install-stack-startup-task.ps1`
   - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
-  - watchdog for process liveness, Qdrant, Postgres, Ollama, source-repo reconcile drift, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
+  - local operations health probe for process liveness, Qdrant, Postgres, Ollama, source-repo reconcile drift, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks. Odin's Idunn keepalive organ owns the recurring watchdog loop, restart authority, and operator escalation.
 - `scripts/run-void-moderator-rumination.ps1`
   - typed rumination runner. It builds a bounded context packet from `.voidbot/private/void-self-state.cc`, recent Discord chronology, and read-only repo activity; loads `prompts/void-moderator-rumination.md`; runs bounded Codex rumination; applies returned typed operations through `scripts/void-self-state.mjs`; then records parent-owned cursor and speech receipts. After parent-owned candidate delivery, it verifies the receipt is linked to the candidate and the candidate is marked `spoken`.
 - `scripts/lib/void-rumination-context-projection.ps1`
@@ -143,7 +143,7 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
 - `scripts/install-moderation-rumination-task.ps1`
   - legacy installer for isolating the moderation/participation loop. The live scheduled pulse is now `GameCult Local Orchestrator`; keep this per-organ task disabled unless testing the organ in isolation.
 - `scripts/run-gamecult-orchestrator.ps1`
-  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Persona CTB heartbeats, Void mood drift, Void moderation rumination, and the operations watchdog from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts.
+  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Persona CTB heartbeats, Void mood drift, and Void moderation rumination from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts. It no longer owns operations watchdog recovery.
 - `scripts/install-gamecult-orchestrator-task.ps1`
   - installs scheduled task `GameCult Local Orchestrator` through the hidden PowerShell launcher and can disable the old per-organ tasks: `Bifrost Agent Dispatch`, `VoidBot Repo Persona Heartbeats`, `Void Mood Drift`, `Void Moderator Rumination`, and `VoidBot Operations Watchdog`.
 - Scheduled organ `Void Mood Drift`

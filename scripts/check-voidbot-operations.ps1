@@ -586,6 +586,22 @@ function Test-ConfigEnabled {
   return $true
 }
 
+function Get-IdunnLocalKeepaliveStatus {
+  $taskName = "Idunn Local Keepalive"
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  $taskEnabled = $null -ne $task -and [bool]$task.Settings.Enabled
+  $startupPath = Join-Path ([Environment]::GetFolderPath("Startup")) "$taskName.cmd"
+  $startupInstalled = Test-Path -LiteralPath $startupPath
+
+  return [pscustomobject]@{
+    taskName = $taskName
+    taskEnabled = $taskEnabled
+    startupPath = $startupPath
+    startupInstalled = $startupInstalled
+    installed = $taskEnabled -or $startupInstalled
+  }
+}
+
 function Invoke-RemotePowerShellJson {
   param(
     [Parameter(Mandatory = $true)]
@@ -1307,22 +1323,38 @@ try {
     $watchdogEnabled = [bool]$watchdogTask.Settings.Enabled
     $orchestratorTask = Get-ScheduledTask -TaskName "GameCult Local Orchestrator" -ErrorAction SilentlyContinue
     $orchestratorEnabled = $null -ne $orchestratorTask -and [bool]$orchestratorTask.Settings.Enabled
-    $watchdogTaskStatus = if ($watchdogEnabled -or $orchestratorEnabled) { "passed" } else { "failed" }
+    $idunnKeepalive = Get-IdunnLocalKeepaliveStatus
+    $watchdogTaskStatus = if ($idunnKeepalive.installed -or $watchdogEnabled) { "passed" } else { "failed" }
     $watchdogTaskDetail = if ($watchdogEnabled) {
-      "Operations watchdog task is installed and enabled."
-    } elseif ($orchestratorEnabled) {
-      "Operations watchdog task is disabled because GameCult Local Orchestrator owns the watchdog pulse."
+      "Legacy operations watchdog task is still installed and enabled."
+    } elseif ($idunnKeepalive.installed) {
+      "Operations watchdog task is disabled because Idunn Local Keepalive owns watchdog recovery and escalation."
     } else {
-      "Operations watchdog task is installed but disabled, and GameCult Local Orchestrator is not enabled."
+      "Operations watchdog task is installed but disabled, and Idunn Local Keepalive is not enabled."
     }
     Add-Check -Name "scheduled_task.watchdog" -Status $watchdogTaskStatus -Detail $watchdogTaskDetail -Data @{
       taskName = $watchdogTaskName
       state = [string]$watchdogTask.State
       orchestratorTaskName = "GameCult Local Orchestrator"
       orchestratorEnabled = $orchestratorEnabled
+      idunnTaskName = $idunnKeepalive.taskName
+      idunnTaskEnabled = $idunnKeepalive.taskEnabled
+      idunnStartupPath = $idunnKeepalive.startupPath
+      idunnStartupInstalled = $idunnKeepalive.startupInstalled
     }
   } catch {
-    Add-Check -Name "scheduled_task.watchdog" -Status "warning" -Detail "Operations watchdog task $watchdogTaskName is not installed yet."
+    $idunnKeepalive = Get-IdunnLocalKeepaliveStatus
+    if ($idunnKeepalive.installed) {
+      Add-Check -Name "scheduled_task.watchdog" -Status "passed" -Detail "VoidBot legacy operations watchdog task is absent because Idunn Local Keepalive owns watchdog recovery and escalation." -Data @{
+        taskName = $watchdogTaskName
+        idunnTaskName = $idunnKeepalive.taskName
+        idunnTaskEnabled = $idunnKeepalive.taskEnabled
+        idunnStartupPath = $idunnKeepalive.startupPath
+        idunnStartupInstalled = $idunnKeepalive.startupInstalled
+      }
+    } else {
+      Add-Check -Name "scheduled_task.watchdog" -Status "warning" -Detail "Operations watchdog task $watchdogTaskName is not installed, and Idunn Local Keepalive is not enabled."
+    }
   }
 
   if (-not $offsiteBackupEnabled) {

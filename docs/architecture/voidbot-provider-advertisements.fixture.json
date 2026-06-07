@@ -379,9 +379,10 @@
         {
           "id": "voidbot.operations_health",
           "path": ".voidbot/status/operations-health.json",
-          "owner": "VoidBot watchdog",
+          "owner": "VoidBot operations probe",
           "contains": [
-            "debug status only"
+            "debug status only",
+            "lifecycle owned by Idunn"
           ]
         }
       ],

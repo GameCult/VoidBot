@@ -68,21 +68,13 @@ if ($intervalMinutesValue -lt 15) {
   throw "VOIDBOT_HEALTHCHECK_INTERVAL_MINUTES must be at least 15."
 }
 
-if (-not ($config.ContainsKey("DISCORD_BOT_TOKEN")) -or [string]::IsNullOrWhiteSpace($config["DISCORD_BOT_TOKEN"])) {
-  throw "DISCORD_BOT_TOKEN must be configured in .env before installing the watchdog task."
-}
-
-if (-not ($config.ContainsKey("DISCORD_OWNER_ID")) -or [string]::IsNullOrWhiteSpace($config["DISCORD_OWNER_ID"])) {
-  throw "DISCORD_OWNER_ID must be configured in .env before installing the watchdog task."
-}
-
 $startAt = (Get-Date).AddMinutes(5)
 # Use WSH as a GUI host so the interactive task can stay hidden without flashing a console.
-$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$checkScript`" -NotifyOwner -FailOnIssues"
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$checkScript`" -FailOnIssues"
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutesValue) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
-$description = "Runs the VoidBot operations watchdog on a repeating interval and DMs the owner when the stack or backup path drifts into the swamp."
+$description = "Runs the legacy VoidBot operations probe. Idunn owns watchdog recovery and operator escalation."
 
 Register-ScheduledTask -TaskName $taskNameValue -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $description -Force | Out-Null
 
@@ -92,6 +84,7 @@ Write-Host "Task runs as: $($env:USERDOMAIN)\$($env:USERNAME)"
 Write-Host "Logon mode: Interactive"
 Write-Host "Launcher: wscript.exe hidden PowerShell shim"
 Write-Host "Execution time limit: 15 minutes"
+Write-Host "Operator escalation: owned by Idunn Local Keepalive, not this legacy probe task"
 
 if ($RunNow) {
   Start-ScheduledTask -TaskName $taskNameValue

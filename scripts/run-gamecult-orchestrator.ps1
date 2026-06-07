@@ -319,15 +319,6 @@ try {
       Cwd = $repoRoot
       Executable = $powershell
       Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-moderator-rumination.ps1"))
-    },
-    [pscustomobject]@{
-      Id = "voidbot-operations-watchdog"
-      Label = "VoidBot operations watchdog"
-      IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_HEALTHCHECK_INTERVAL_MINUTES" -Default 60 -Minimum 15
-      TimeoutMinutes = 5
-      Cwd = $repoRoot
-      Executable = $powershell
-      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-voidbot-operations.ps1"), "-NotifyOwner", "-FailOnIssues")
     }
   )
 
