@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat, writeFile } from "node:fs/promises";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultStorageRoot = resolve(repoRoot, ".voidbot");
@@ -39,6 +39,7 @@ const heartbeatStatePath = resolveConfigPath(
   resolve(statusDir, "repo-persona-heartbeats.json"),
 );
 const orchestratorPath = resolve(statusDir, "gamecult-orchestrator.json");
+const modelOutputsPath = resolve(storageRoot, "logs", "model-outputs.jsonl");
 const pausePath = resolve(repoRoot, "state", "agent-swarm-paused.json");
 const snapshotPath = resolveConfigPath(args.snapshot, defaultSnapshotPath.replace(defaultStatusDir, statusDir));
 const dashboardPath = resolveConfigPath(args.out, defaultDashboardPath.replace(defaultStatusDir, statusDir));
@@ -132,12 +133,15 @@ async function buildSnapshot() {
     .filter((participant) => typeof participant.nextTurnInMinutes === "number")
     .sort((left, right) => left.nextTurnInMinutes - right.nextTurnInMinutes)[0];
   const organs = projectOrgans(orchestrator.value);
-  const recentEvents = Array.isArray(heartbeat.value?.history)
-    ? heartbeat.value.history.slice(-24).reverse().map(projectHistoryEvent)
-    : [];
+  const heartbeatHistory = Array.isArray(heartbeat.value?.history) ? heartbeat.value.history : [];
+  const recentEvents = heartbeatHistory.slice(-24).reverse().map(projectHistoryEvent);
   const controls = projectControls(heartbeat.value?.controls);
   const upcomingTurns = buildUpcomingTurns(participantSnapshots);
   const lastShuffle = findLastShuffleEvent(recentEvents);
+  const turnReliability = await readTurnReliabilityStats({
+    heartbeatHistory,
+    modelOutputsPath,
+  });
 
   return {
     schemaVersion: snapshotSchemaId,
@@ -152,6 +156,9 @@ async function buildSnapshot() {
       orchestratorUpdatedAt: orchestratorMtime,
       orchestratorReadable: orchestrator.ok,
       orchestratorError: orchestrator.ok ? undefined : orchestrator.error,
+      modelOutputsPath,
+      modelOutputsReadable: turnReliability.sources.modelOutputsReadable,
+      modelOutputsError: turnReliability.sources.modelOutputsError,
       pausePath,
       pauseReadable: pause.ok,
       pauseError: pause.ok ? undefined : pause.error,
@@ -189,7 +196,9 @@ async function buildSnapshot() {
       cadenceMultiplier: controls.cadenceMultiplier,
       lastTickAt: stringOrNull(heartbeat.value?.lastTickAt),
       lastShuffle,
+      turnReliability: summarizeTurnReliability(turnReliability),
     },
+    turnReliability,
     controls,
     upcomingTurns,
     participants: participantSnapshots,
@@ -367,6 +376,237 @@ function projectHistoryEvent(event) {
     pendingMentionCount: numberOrNull(event?.pendingMentionCount),
     nextTurnAt: numberOrNull(event?.nextTurnAt),
     recoveryMinutes: numberOrNull(event?.recoveryMinutes),
+  };
+}
+
+async function readTurnReliabilityStats({ heartbeatHistory, modelOutputsPath }) {
+  const heartbeatEvents = Array.isArray(heartbeatHistory) ? heartbeatHistory : [];
+  const stats = {
+    schemaVersion: "voidbot.turn_reliability.v1",
+    window: {
+      heartbeatEvents: heartbeatEvents.length,
+      modelOutputRecords: 0,
+      modelOutputTailBytes: 2_000_000,
+      since: null,
+      until: null,
+    },
+    parentInterpreter: {
+      routes: 0,
+      retries: 0,
+      drops: 0,
+      malformed: 0,
+      failures: 0,
+      lastRouteAt: null,
+      lastRetryAt: null,
+      lastDropAt: null,
+      lastMalformedAt: null,
+      lastFailureAt: null,
+    },
+    worker: {
+      turnStartFailures: 0,
+      failedModelRuns: 0,
+      timedOutModelRuns: 0,
+      handoffModelRuns: 0,
+      heartbeatFailureEvents: 0,
+      lastFailureAt: null,
+    },
+    recent: [],
+    sources: {
+      modelOutputsPath,
+      modelOutputsReadable: false,
+      modelOutputsError: null,
+    },
+  };
+
+  for (const event of heartbeatEvents) {
+    const type = String(event?.type ?? "");
+    const observedAt = stringOrNull(event?.observedAt ?? event?.queuedAt ?? event?.appliedAt);
+    noteStatsTime(stats, observedAt);
+    if (type === "turn_failed_to_start") {
+      stats.worker.turnStartFailures += 1;
+      stats.worker.heartbeatFailureEvents += 1;
+      stats.worker.lastFailureAt = latestIso(stats.worker.lastFailureAt, observedAt);
+      stats.recent.push({
+        kind: "turn_failed_to_start",
+        identityId: stringOrNull(event?.identityId),
+        jobId: stringOrNull(event?.activeJobId),
+        observedAt,
+        reason: stringOrNull(event?.reason),
+        source: "heartbeat",
+      });
+    } else if (/\b(fail|failed|failure|error)\b/i.test(type)) {
+      stats.worker.heartbeatFailureEvents += 1;
+      stats.worker.lastFailureAt = latestIso(stats.worker.lastFailureAt, observedAt);
+      stats.recent.push({
+        kind: type,
+        identityId: stringOrNull(event?.identityId),
+        jobId: stringOrNull(event?.activeJobId),
+        observedAt,
+        reason: stringOrNull(event?.reason),
+        source: "heartbeat",
+      });
+    }
+  }
+
+  try {
+    const { text, bytesRead } = await readFileTail(modelOutputsPath, stats.window.modelOutputTailBytes);
+    stats.sources.modelOutputsReadable = true;
+    stats.window.modelOutputTailBytes = bytesRead;
+    const lines = text.split(/\r?\n/u).filter((line) => line.trim().length > 0);
+    for (const line of lines) {
+      let record = null;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (record?.command !== "repo-persona-rumination") continue;
+      const loggedAt = stringOrNull(record?.loggedAt ?? record?.finishedAt ?? record?.startedAt);
+      noteStatsTime(stats, loggedAt);
+      const isInterpreter = record?.promptMarker === "repo-persona-turn-interpreter";
+      if (isInterpreter) {
+        stats.window.modelOutputRecords += 1;
+        const decision = extractInterpreterDecision(record?.finalMessage);
+        if (decision === "route") {
+          stats.parentInterpreter.routes += 1;
+          stats.parentInterpreter.lastRouteAt = latestIso(stats.parentInterpreter.lastRouteAt, loggedAt);
+        } else if (decision === "retry") {
+          stats.parentInterpreter.retries += 1;
+          stats.parentInterpreter.lastRetryAt = latestIso(stats.parentInterpreter.lastRetryAt, loggedAt);
+          stats.recent.push(recentReliabilityEvent("interpreter_retry", record, loggedAt, "model-output"));
+        } else if (decision === "drop") {
+          stats.parentInterpreter.drops += 1;
+          stats.parentInterpreter.lastDropAt = latestIso(stats.parentInterpreter.lastDropAt, loggedAt);
+          stats.recent.push(recentReliabilityEvent("interpreter_drop", record, loggedAt, "model-output"));
+        } else {
+          stats.parentInterpreter.malformed += 1;
+          stats.parentInterpreter.lastMalformedAt = latestIso(stats.parentInterpreter.lastMalformedAt, loggedAt);
+          stats.recent.push(recentReliabilityEvent("interpreter_malformed", record, loggedAt, "model-output"));
+        }
+      }
+
+      if (record?.exitCode !== 0 || record?.timedOut === true || record?.handoffReason) {
+        const kind = record?.timedOut === true ? "model_run_timeout" : record?.handoffReason ? "model_run_handoff" : "model_run_failed";
+        stats.worker.failedModelRuns += record?.exitCode !== 0 ? 1 : 0;
+        stats.worker.timedOutModelRuns += record?.timedOut === true ? 1 : 0;
+        stats.worker.handoffModelRuns += record?.handoffReason ? 1 : 0;
+        stats.worker.lastFailureAt = latestIso(stats.worker.lastFailureAt, loggedAt);
+        if (isInterpreter) {
+          stats.parentInterpreter.failures += 1;
+          stats.parentInterpreter.lastFailureAt = latestIso(stats.parentInterpreter.lastFailureAt, loggedAt);
+        }
+        stats.recent.push(recentReliabilityEvent(kind, record, loggedAt, "model-output"));
+      }
+    }
+  } catch (error) {
+    stats.sources.modelOutputsReadable = false;
+    stats.sources.modelOutputsError = error instanceof Error ? error.message : String(error);
+  }
+
+  stats.recent = stats.recent
+    .filter((event) => event.observedAt)
+    .sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt))
+    .slice(0, 10);
+  return stats;
+}
+
+function summarizeTurnReliability(stats) {
+  const parent = stats?.parentInterpreter ?? {};
+  const worker = stats?.worker ?? {};
+  return {
+    status: turnReliabilityStatus(stats),
+    routes: parent.routes ?? 0,
+    retries: parent.retries ?? 0,
+    drops: parent.drops ?? 0,
+    malformed: parent.malformed ?? 0,
+    failures: (parent.failures ?? 0) + (worker.turnStartFailures ?? 0) + (worker.failedModelRuns ?? 0) + (worker.timedOutModelRuns ?? 0) + (worker.handoffModelRuns ?? 0),
+    lastFailureAt: latestIso(parent.lastFailureAt, worker.lastFailureAt),
+  };
+}
+
+function extractInterpreterDecision(value) {
+  if (typeof value !== "string") return null;
+  const blockMatch = value.match(/INTERPRETATION\s+([\s\S]*?)\bEND\b/u);
+  const text = blockMatch ? blockMatch[1] : value;
+  const decisionMatch = text.match(/^\s*decision\s*:\s*(route|retry|drop)\b/imu);
+  return decisionMatch ? decisionMatch[1].toLowerCase() : null;
+}
+
+async function readFileTail(path, maxBytes) {
+  const info = await stat(path);
+  const start = Math.max(0, info.size - maxBytes);
+  const length = Math.max(0, info.size - start);
+  const handle = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, start);
+    const text = buffer.toString("utf8");
+    const cleanText = start > 0 ? text.replace(/^[^\r\n]*(\r?\n)?/u, "") : text;
+    return { text: cleanText, bytesRead: length };
+  } finally {
+    await handle.close();
+  }
+}
+
+function recentReliabilityEvent(kind, record, observedAt, source) {
+  return {
+    kind,
+    identityId: stringOrNull(record?.identityId),
+    jobId: stringOrNull(record?.jobId),
+    observedAt,
+    reason: reliabilityReason(record),
+    source,
+  };
+}
+
+function reliabilityReason(record) {
+  if (record?.handoffReason) return String(record.handoffReason);
+  if (record?.timedOut === true) return "model run timed out";
+  if (record?.exitCode !== 0) return `exit ${record.exitCode}`;
+  if (typeof record?.finalMessage === "string") {
+    const reasonStart = record.finalMessage.match(/^\s*reason\s*:\s*/imu);
+    if (reasonStart) {
+      const afterReason = record.finalMessage.slice(reasonStart.index + reasonStart[0].length);
+      const reasonText = afterReason.split(/\n(?:END|STATE NOTE|Private summary:|SAY\b)/u)[0];
+      if (reasonText.trim()) return truncate(reasonText.replace(/\s+/g, " ").trim(), 180);
+    }
+  }
+  return null;
+}
+
+function noteStatsTime(stats, timestamp) {
+  stats.window.since = earliestIso(stats.window.since, timestamp);
+  stats.window.until = latestIso(stats.window.until, timestamp);
+}
+
+function earliestIso(left, right) {
+  if (!right) return left ?? null;
+  if (!left) return right;
+  return Date.parse(right) < Date.parse(left) ? right : left;
+}
+
+function latestIso(left, right) {
+  if (!right) return left ?? null;
+  if (!left) return right;
+  return Date.parse(right) > Date.parse(left) ? right : left;
+}
+
+function turnReliabilityStatus(stats) {
+  const summary = summarizeTurnReliabilityNoStatus(stats);
+  if (!stats?.sources?.modelOutputsReadable) return "degraded";
+  if (summary.failures > 0 || summary.drops > 0 || summary.malformed > 0) return "warning";
+  if (summary.retries > 0) return "retrying";
+  return "ok";
+}
+
+function summarizeTurnReliabilityNoStatus(stats) {
+  const parent = stats?.parentInterpreter ?? {};
+  const worker = stats?.worker ?? {};
+  return {
+    retries: parent.retries ?? 0,
+    drops: parent.drops ?? 0,
+    malformed: parent.malformed ?? 0,
+    failures: (parent.failures ?? 0) + (worker.turnStartFailures ?? 0) + (worker.failedModelRuns ?? 0) + (worker.timedOutModelRuns ?? 0) + (worker.handoffModelRuns ?? 0),
   };
 }
 
@@ -1157,6 +1397,7 @@ function operatorDmCultMeshAddress() {
 
 function buildEveProviderState(snapshot) {
   const summary = snapshot.summary ?? {};
+  const turnReliability = snapshot.turnReliability ?? {};
   const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
   const upcoming = Array.isArray(snapshot.upcomingTurns) ? snapshot.upcomingTurns : [];
   const orchestrator = snapshot.orchestrator ?? {};
@@ -1219,6 +1460,25 @@ function buildEveProviderState(snapshot) {
           viewportMode: "continuous-ops",
         },
       }, [
+        eveNode("turn-reliability", "panel", {
+          title: "Turn reliability",
+          status: turnReliabilityStatus(turnReliability),
+          layout: { direction: "vertical", overflow: "hidden", gap: 2, padding: 8, minWidth: 40, minHeight: 5 },
+        }, [
+          eveNode("turn-reliability-stats", "text", {
+            role: "mono",
+            text: formatTurnReliabilityLine(turnReliability),
+            status: turnReliabilityStatus(turnReliability),
+            detail: formatTurnReliabilityDetail(turnReliability),
+          }),
+          ...formatRecentReliabilityLines(turnReliability).map((line, index) =>
+            eveNode(`turn-reliability-recent-${index}`, "text", {
+              role: "mono",
+              text: line,
+              status: line.includes("drop") || line.includes("fail") || line.includes("malformed") ? "warning" : "ok",
+            }),
+          ),
+        ]),
         eveNode("ctb-rail", "rail", {
           title: "CTB order",
           layout: { direction: "vertical", overflow: "scroll", gap: 4, padding: 8, grow: 1, minWidth: 40, minHeight: 20 },
@@ -1254,6 +1514,42 @@ function formatTurnText(turn, index) {
   const due = minutesText(turn?.nextTurnInMinutes).padStart(6, " ");
   const mention = mentionText(turn).padEnd(5, " ");
   return `${rank}. ${name} ${status} ${due} ${mention} s${formatNumber(turn?.effectiveSpeed, 3)} h${formatNumber(turn?.heat, 2)}`;
+}
+
+function formatTurnReliabilityLine(stats) {
+  const parent = stats?.parentInterpreter ?? {};
+  const worker = stats?.worker ?? {};
+  const failures = (parent.failures ?? 0) + (worker.turnStartFailures ?? 0) + (worker.failedModelRuns ?? 0) + (worker.timedOutModelRuns ?? 0) + (worker.handoffModelRuns ?? 0);
+  return [
+    `route ${parent.routes ?? 0}`,
+    `retry ${parent.retries ?? 0}`,
+    `drop ${parent.drops ?? 0}`,
+    `malformed ${parent.malformed ?? 0}`,
+    `fail ${failures}`,
+  ].join(" | ");
+}
+
+function formatTurnReliabilityDetail(stats) {
+  const window = stats?.window ?? {};
+  const worker = stats?.worker ?? {};
+  const source = stats?.sources?.modelOutputsReadable ? "model-output tail" : `model-output unreadable: ${stats?.sources?.modelOutputsError ?? "unknown"}`;
+  return [
+    source,
+    `records ${window.modelOutputRecords ?? 0}`,
+    `heartbeat failures ${worker.heartbeatFailureEvents ?? 0}`,
+    `since ${shortIso(window.since)}`,
+    `until ${shortIso(window.until)}`,
+  ].join("; ");
+}
+
+function formatRecentReliabilityLines(stats) {
+  const recent = Array.isArray(stats?.recent) ? stats.recent : [];
+  return recent.slice(0, 3).map((event) => {
+    const kind = String(event.kind ?? "event").replace(/^interpreter_/, "");
+    const who = event.identityId ? ` ${event.identityId}` : "";
+    const job = event.jobId ? ` ${String(event.jobId).slice(0, 8)}` : "";
+    return `${shortIso(event.observedAt)} ${kind}${who}${job}`;
+  });
 }
 
 function turnStatus(turn) {
@@ -1469,7 +1765,7 @@ function renderHtml(snapshot) {
       right: 10px;
       z-index: 4;
       width: 250px;
-      height: 96px;
+      height: 124px;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       gap: 5px;
@@ -1861,7 +2157,7 @@ function renderHtml(snapshot) {
         bottom: auto;
         left: auto;
         width: clamp(190px, 22vw, 230px);
-        height: 88px;
+        height: 112px;
       }
     }
 
@@ -1891,7 +2187,7 @@ function renderHtml(snapshot) {
         right: 12px;
         bottom: 12px;
         width: 180px;
-        height: 84px;
+        height: 108px;
       }
     }
 
@@ -2091,6 +2387,7 @@ function renderHtml(snapshot) {
 
     function renderStatusPanel(snapshot, agent) {
       const summary = snapshot.summary || {};
+      const reliability = summary.turnReliability || {};
       const organs = snapshot.orchestrator?.organs || [];
       const watchdog = findOrgan(organs, "watchdog");
       const persona = findOrgan(organs, "repo-persona-heartbeats");
@@ -2101,12 +2398,20 @@ function renderHtml(snapshot) {
       const turn = agent?.nextTurnInMinutes ?? null;
       const turnFill = typeof turn === "number" ? clampPercent(100 - Math.max(0, turn) * 4) : 0;
       const load = clampPercent((agent?.currentLoad || 0) * 100);
+      const reliabilityFill = reliability.failures > 0 || reliability.drops > 0 || reliability.malformed > 0
+        ? 22
+        : reliability.retries > 0
+          ? 58
+          : 100;
       return "<aside class=\\"status-panel\\" aria-label=\\"Compact swarm status\\"><h2><span>VOID</span><span>" + esc(String(summary.state || "UNK").slice(0, 4).toUpperCase()) + "</span></h2><div class=\\"status-grid\\">" +
         hud("WDOG", organCode(watchdog), organFill(watchdog), organWarn(watchdog)) +
         hud("ORCH", shortState(snapshot.orchestrator?.state), statusFill(snapshot.orchestrator?.state), statusWarn(snapshot.orchestrator?.state)) +
         hud("PERS", organCode(persona), organFill(persona), organWarn(persona)) +
         hud("MOOD", organCode(mood), organFill(mood), organWarn(mood)) +
         hud("RUM", organCode(rumination), organFill(rumination), organWarn(rumination)) +
+        hud("RTR", String(reliability.retries ?? 0), reliabilityFill, (reliability.retries ?? 0) > 0) +
+        hud("DRP", String((reliability.drops ?? 0) + (reliability.malformed ?? 0)), reliabilityFill, ((reliability.drops ?? 0) + (reliability.malformed ?? 0)) > 0) +
+        hud("FAIL", String(reliability.failures ?? 0), reliabilityFill, (reliability.failures ?? 0) > 0) +
         hud("MESH", shortState(snapshot.cultMesh?.writeStatus), meshOk, snapshot.cultMesh?.writeStatus !== "ok") +
         hud("AGE", relative(snapshot.sources?.heartbeatStateUpdatedAt).replace(/ ago$/, ""), sourceFreshness, sourceFreshness < 50) +
         hud("TURN", minutes(turn), turnFill, load > 70) +

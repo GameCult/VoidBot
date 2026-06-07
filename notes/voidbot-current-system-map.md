@@ -237,7 +237,7 @@ Target Eve surfaces:
 - `voidbot.archive`: archived Discord corpus status, import/backfill health, bot-directed-prompt exclusion, history vector freshness.
 - `voidbot.source`: repo/lore shard freshness, indexed coverage, Qdrant collection health, detached reindex jobs.
 - `voidbot.repo_persona`: registered identities, repo-local `.cc` witnesses, channel grants, prompt assembly status, Bifrost digest availability, Huginn inspection readiness.
-- `voidbot.swarm`: CTB order, active turns, pending mention queues, heat/cadence controls, orchestrator status, selected Persona state witness.
+- `voidbot.swarm`: CTB order, active turns, pending mention queues, heat/cadence controls, orchestrator status, selected Persona state witness, and derived turn reliability stats for parent-Interpreter route/retry/drop/malformed outcomes plus turn/job failures.
 
 Migration order:
 
