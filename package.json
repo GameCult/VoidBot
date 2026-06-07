@@ -39,6 +39,7 @@
     "agents:heartbeat-model-smoke": "node scripts/smoke-repo-persona-heartbeat-model-scenarios.mjs",
     "agents:interpreter-loop-smoke": "node scripts/smoke-repo-persona-interpreter-loop.mjs",
     "agents:speech-boundary-smoke": "tsx scripts/smoke-repo-persona-speech-boundary.ts",
+    "agents:parent-interpreter-boundary-smoke": "tsx scripts/smoke-repo-persona-parent-interpreter-boundary.ts",
     "agents:memory-projection-smoke": "node scripts/smoke-repo-persona-memory-projection.mjs",
     "agents:article-contract-smoke": "tsx scripts/smoke-repo-persona-article-contract.ts",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
