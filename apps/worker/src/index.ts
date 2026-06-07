@@ -1248,7 +1248,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     );
     return true;
   }
-  if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId)) {
+  if (!isRepoDiscordIdentityAllowedInChannel(identity, channelId) && !isRepoPersonaRuntimeChannelAllowed(channelId)) {
     console.warn(
       `Rejected repo identity ${identity.id} speech for job ${job.id}: identity is not registered for Discord channel ${channelId}.`,
     );
@@ -1293,6 +1293,16 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     `Posted repo identity ${identity.id} to Discord channel ${channelId} from job ${job.id} via ${posted.transport} message ${posted.messageId}.`,
   );
   return true;
+}
+
+function isRepoPersonaRuntimeChannelAllowed(channelId: string): boolean {
+  if (config.excludedChannelIds.includes(channelId)) {
+    return false;
+  }
+  if (config.indexedChannelIds.includes(channelId)) {
+    return true;
+  }
+  return config.indexAllChannels;
 }
 
 async function resolveRepoIdentityForJobIntent(

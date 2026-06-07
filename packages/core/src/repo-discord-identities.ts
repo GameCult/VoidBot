@@ -103,6 +103,7 @@ export function findRepoDiscordIdentityByPersonaName(
   registry: RepoDiscordIdentityRegistry,
   personaName: string | undefined,
   channelId: string,
+  channelAllowedOverride = false,
 ): RepoDiscordIdentity | undefined {
   if (!personaName || personaName.trim().length === 0) {
     return undefined;
@@ -112,7 +113,7 @@ export function findRepoDiscordIdentityByPersonaName(
 
   return registry.identities.find((identity) => {
     return (
-      isRepoDiscordIdentityAllowedInChannel(identity, channelId) &&
+      (channelAllowedOverride || isRepoDiscordIdentityAllowedInChannel(identity, channelId)) &&
       normalizeIdentityKey(identity.displayName) === normalizedPersonaName
     );
   });

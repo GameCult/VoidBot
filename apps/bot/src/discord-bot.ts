@@ -83,6 +83,15 @@ import {
 
 export async function startBot(): Promise<void> {
   const config = loadConfig();
+  const isRepoPersonaRuntimeChannelAllowed = (channelId: string): boolean => {
+    if (config.excludedChannelIds.includes(channelId)) {
+      return false;
+    }
+    if (config.indexedChannelIds.includes(channelId)) {
+      return true;
+    }
+    return config.indexAllChannels;
+  };
 
   if (!config.botToken) {
     throw new Error("DISCORD_BOT_TOKEN is required to start the bot.");
@@ -370,7 +379,11 @@ export async function startBot(): Promise<void> {
       roleAddressedRepoIdentity ||
       textAddressedRepoIdentity
       ? undefined
-      : await resolveRepliedRepoIdentity(message, repoDiscordIdentities);
+      : await resolveRepliedRepoIdentity(
+          message,
+          repoDiscordIdentities,
+          isRepoPersonaRuntimeChannelAllowed(message.channelId),
+        );
     const addressedRepoIdentities = uniqueRepoIdentities([
       ...roleAddressedRepoIdentities,
       ...textMentionedRepoIdentities,
@@ -379,7 +392,8 @@ export async function startBot(): Promise<void> {
     const broadcastAddressedRepoIdentities = !isDirectMessage && addressedRepoIdentities.length === 0 &&
       isRepoPersonaBroadcastInvitation(stripBotMention(message.content))
       ? repoDiscordIdentities.identities.filter((identity) =>
-          isRepoDiscordIdentityAllowedInChannel(identity, message.channelId),
+          isRepoPersonaRuntimeChannelAllowed(message.channelId) ||
+            isRepoDiscordIdentityAllowedInChannel(identity, message.channelId),
         )
       : [];
     const pendingRepoIdentities = addressedRepoIdentities.length > 0
@@ -706,6 +720,7 @@ export async function startBot(): Promise<void> {
 async function resolveRepliedRepoIdentity(
   message: Message,
   registry: { identities: RepoDiscordIdentity[] },
+  channelAllowedOverride = false,
 ): Promise<RepoDiscordIdentity | undefined> {
   if (!message.reference?.messageId) {
     return undefined;
@@ -717,7 +732,7 @@ async function resolveRepliedRepoIdentity(
       ? referenced.author.username
       : referenced.member?.displayName ?? referenced.author.globalName ?? referenced.author.username;
 
-    return findRepoDiscordIdentityByPersonaName(registry, personaName, message.channelId);
+    return findRepoDiscordIdentityByPersonaName(registry, personaName, message.channelId, channelAllowedOverride);
   } catch (error) {
     console.warn(
       `Could not resolve referenced message ${message.reference.messageId} for repo Persona reply routing: ${

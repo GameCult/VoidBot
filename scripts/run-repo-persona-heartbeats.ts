@@ -126,6 +126,11 @@ interface RepoPersonaChannelOption {
   posture?: string;
 }
 
+interface DiscordChannelDirectoryEntry {
+  channelId: string;
+  name: string;
+}
+
 interface BifrostGovernanceDigest {
   generatedAt: string;
   topics: BifrostGovernanceTopic[];
@@ -488,10 +493,12 @@ async function queueRepoPersonaTurn(input: {
   }
 
   const preferredChannelId = newestPendingMentionChannel(input.pendingMentions);
+  const contextChannelOptions = await discoverRepoPersonaContextChannels(input.config);
   const channelPlan = buildChannelPlan(
     identity,
     input.config.repoPersonaHeartbeats.defaultChannelId,
     preferredChannelId,
+    contextChannelOptions,
   );
   const fallbackChannelId = channelPlan.primaryChannelId;
   if (!fallbackChannelId) {
@@ -518,7 +525,7 @@ async function queueRepoPersonaTurn(input: {
   const fetchedChannelSnapshots = await fetchChannelSnapshots({
     botToken: input.config.botToken,
     channelIds: channelPlan.snapshotChannelIds,
-    limit: 15,
+    limit: channelPlan.snapshotChannelIds.length > 12 ? 6 : 15,
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
   const turnTarget = selectRepoPersonaTurnTarget({
@@ -534,8 +541,7 @@ async function queueRepoPersonaTurn(input: {
   };
   const recentMessages = messagesForChannel(fetchedChannelSnapshots, channelId);
   const channelSnapshots = fetchedChannelSnapshots
-    .filter((snapshot) => snapshot.channelId !== channelId)
-    .slice(0, 5);
+    .filter((snapshot) => snapshot.channelId !== channelId);
   const bifrostDigest = input.config.repoPersonaBifrostEnabled && identity.identityKind !== "native_persona"
     ? await fetchBifrostGovernanceDigest({
         bifrostRoot: input.config.bifrostRoot,
@@ -984,7 +990,7 @@ async function fetchChannelSnapshots(input: {
   bifrostDiscordChannelId?: string;
 }): Promise<ChannelSnapshot[]> {
   const snapshots: ChannelSnapshot[] = [];
-  for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId).slice(0, 6)) {
+  for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId)) {
     try {
       snapshots.push({
         channelId,
@@ -1011,6 +1017,117 @@ async function fetchChannelSnapshots(input: {
     }
   }
   return snapshots;
+}
+
+async function discoverRepoPersonaContextChannels(
+  config: ReturnType<typeof loadConfig>,
+): Promise<RepoPersonaChannelOption[]> {
+  const explicitChannelIds = new Set(config.indexedChannelIds);
+  const byId = new Map<string, RepoPersonaChannelOption>();
+
+  if (config.indexAllChannels && config.botToken && config.developmentGuildId) {
+    for (const channel of await fetchDiscordTextChannelDirectory({
+      botToken: config.botToken,
+      guildId: config.developmentGuildId,
+    })) {
+      if (config.excludedChannelIds.includes(channel.channelId)) {
+        continue;
+      }
+      byId.set(channel.channelId, repoPersonaContextChannelOption(channel));
+    }
+  }
+
+  for (const channelId of explicitChannelIds) {
+    if (config.excludedChannelIds.includes(channelId)) {
+      continue;
+    }
+    if (!byId.has(channelId)) {
+      byId.set(channelId, {
+        channelId,
+        label: `channel ${channelId}`,
+        topic: `Discord channel ${channelId}`,
+        speechThreshold: "high",
+        speedMultiplier: 0.7,
+        posture: "Channel-aware context is visible here. Speak here only when the current turn, a direct call, or a clear channel-local reason makes that the right room.",
+      });
+    }
+  }
+
+  return [...byId.values()];
+}
+
+async function fetchDiscordTextChannelDirectory(input: {
+  botToken: string;
+  guildId: string;
+}): Promise<DiscordChannelDirectoryEntry[]> {
+  const response = await fetch(`https://discord.com/api/v10/guilds/${input.guildId}/channels`, {
+    headers: {
+      Authorization: `Bot ${input.botToken}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Discord channel directory fetch failed with ${response.status}: ${await response.text()}`);
+  }
+
+  const channels = await response.json() as Array<{
+    id?: unknown;
+    name?: unknown;
+    type?: unknown;
+  }>;
+  return channels
+    .filter((channel) => channel.type === 0 || channel.type === 5)
+    .map((channel) => ({
+      channelId: String(channel.id ?? ""),
+      name: String(channel.name ?? ""),
+    }))
+    .filter((channel) => channel.channelId.length > 0 && channel.name.length > 0);
+}
+
+function repoPersonaContextChannelOption(channel: DiscordChannelDirectoryEntry): RepoPersonaChannelOption {
+  return {
+    channelId: channel.channelId,
+    label: `#${channel.name}`,
+    topic: `Discord channel #${channel.name}`,
+    speechThreshold: contextChannelSpeechThreshold(channel.name),
+    speedMultiplier: contextChannelSpeedMultiplier(channel.name),
+    posture: contextChannelPosture(channel.name),
+  };
+}
+
+function contextChannelSpeechThreshold(channelName: string): RepoPersonaChannelOption["speechThreshold"] {
+  const normalized = normalizeKey(channelName);
+  if (["aquarium", "memes", "pics"].includes(normalized)) {
+    return "low";
+  }
+  if (["therapy", "general"].includes(normalized)) {
+    return "medium";
+  }
+  return "high";
+}
+
+function contextChannelSpeedMultiplier(channelName: string): number {
+  const normalized = normalizeKey(channelName);
+  if (normalized === "aquarium") {
+    return 1.5;
+  }
+  if (["memes", "pics"].includes(normalized)) {
+    return 1.15;
+  }
+  if (normalized === "therapy") {
+    return 0.85;
+  }
+  return 0.7;
+}
+
+function contextChannelPosture(channelName: string): string {
+  const normalized = normalizeKey(channelName);
+  if (normalized === "therapy") {
+    return "Treat this as a distinct vulnerable conversation. Do not drag its emotional context into memes, Aquarium, or work rooms unless the current speaker explicitly bridges it.";
+  }
+  if (normalized === "memes") {
+    return "Treat this as a distinct playful image/joke conversation. React to the local bit without laundering it into therapy or work.";
+  }
+  return "Treat this as its own Discord conversation. Keep channel-local context attached to this channel unless a human explicitly bridges rooms.";
 }
 
 function selectRepoPersonaTurnTarget(input: {
@@ -1927,7 +2044,13 @@ async function assembleRepoPersonaTurnPrompt(input: {
     throw new Error(`Unknown repo Persona identity: ${input.identityId}`);
   }
 
-  const channelPlan = buildChannelPlan(identity, input.config.repoPersonaHeartbeats.defaultChannelId);
+  const contextChannelOptions = await discoverRepoPersonaContextChannels(input.config);
+  const channelPlan = buildChannelPlan(
+    identity,
+    input.config.repoPersonaHeartbeats.defaultChannelId,
+    undefined,
+    contextChannelOptions,
+  );
   const fallbackChannelId = channelPlan.primaryChannelId;
   if (!fallbackChannelId) {
     throw new Error(`No prompt assembly channel is configured for ${identity.id}.`);
@@ -1937,7 +2060,7 @@ async function assembleRepoPersonaTurnPrompt(input: {
     fetchChannelSnapshots({
       botToken: input.config.botToken,
       channelIds: channelPlan.snapshotChannelIds,
-      limit: 15,
+      limit: channelPlan.snapshotChannelIds.length > 12 ? 6 : 15,
       bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
     }),
     input.config.repoPersonaBifrostEnabled
@@ -1969,8 +2092,7 @@ async function assembleRepoPersonaTurnPrompt(input: {
     ? syntheticRecentMessages
     : messagesForChannel(fetchedChannelSnapshots, channelId);
   const channelSnapshots = fetchedChannelSnapshots
-    .filter((snapshot) => snapshot.channelId !== channelId)
-    .slice(0, 5);
+    .filter((snapshot) => snapshot.channelId !== channelId);
   const roomContext = {
     recentMessages,
     channelSnapshots,
@@ -4051,6 +4173,9 @@ function renderRepoPersonaConversationTranscript(input: {
   const sections: string[] = [];
   sections.push([
     "Read this as raw recent message evidence, not as a summary and not as consensus.",
+    "Treat each Discord channel as its own conversation with its own local context, emotional temperature, and reply venue.",
+    "Do not blend separate rooms into one thread. #therapy, #memes, Aquarium, and work/domain channels can be simultaneously visible without being the same conversation.",
+    "When you carry context across channels, say the bridge plainly; otherwise keep channel-local material local to the channel where it happened.",
     "Messages are ordered oldest to newest inside each section. Newer human corrections can supersede older agent proposals.",
     "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Persona.",
     "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
@@ -4061,6 +4186,7 @@ function renderRepoPersonaConversationTranscript(input: {
   if (chronology) {
     sections.push(chronology);
   }
+  sections.push(renderConversationChannelDirectory(input.channelPlan));
   if (input.pendingMentions.length > 0) {
     sections.push([
       "Direct calls:",
@@ -4071,17 +4197,16 @@ function renderRepoPersonaConversationTranscript(input: {
   }
   const currentLabel = input.channelPlan.options.find((option) =>
     option.channelId === input.channelPlan.primaryChannelId
-  )?.label ?? "current room";
+  );
   sections.push([
-    `Current room (${currentLabel}), oldest to newest:`,
+    `Current conversation (${formatConversationChannelLabel(currentLabel, input.channelPlan.primaryChannelId)}), oldest to newest:`,
     ...formatConversationMessages(input.recentMessages, 15),
   ].join("\n"));
   if (input.pendingMentions.length === 0) {
     for (const snapshot of input.channelSnapshots) {
-      const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
-        "nearby room";
+      const option = input.channelPlan.options.find((entry) => entry.channelId === snapshot.channelId);
       sections.push([
-        `Nearby ${label}, oldest to newest:`,
+        `Other visible conversation (${formatConversationChannelLabel(option, snapshot.channelId)}), oldest to newest:`,
         ...formatConversationMessages(snapshot.messages, 6),
       ].join("\n"));
     }
@@ -4095,15 +4220,16 @@ function renderVisibleConversationChronology(input: {
   channelPlan: RepoPersonaChannelPlan;
 }): string {
   const byId = new Map<string, SourceMessage & { channelLabel: string }>();
-  const primaryLabel = input.channelPlan.options.find((option) =>
+  const primaryOption = input.channelPlan.options.find((option) =>
     option.channelId === input.channelPlan.primaryChannelId
-  )?.label ?? "current room";
+  );
+  const primaryLabel = formatConversationChannelLabel(primaryOption, input.channelPlan.primaryChannelId);
   for (const message of input.recentMessages) {
     byId.set(message.id, { ...message, channelLabel: primaryLabel });
   }
   for (const snapshot of input.channelSnapshots) {
-    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
-      "nearby room";
+    const option = input.channelPlan.options.find((entry) => entry.channelId === snapshot.channelId);
+    const label = formatConversationChannelLabel(option, snapshot.channelId);
     for (const message of snapshot.messages) {
       byId.set(message.id, { ...message, channelLabel: label });
     }
@@ -4125,6 +4251,35 @@ function renderVisibleConversationChronology(input: {
       return `- [${message.channelLabel}] ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
     }),
   ].join("\n");
+}
+
+function renderConversationChannelDirectory(plan: RepoPersonaChannelPlan): string {
+  if (plan.options.length === 0) {
+    return "Visible conversation channels:\n- No Discord conversation channels are configured for this Persona turn.";
+  }
+
+  return [
+    "Visible conversation channels:",
+    ...plan.options.map((option) => [
+      `- ${formatConversationChannelLabel(option, option.channelId)}`,
+      `topic: ${option.topic}`,
+      `threshold: ${option.speechThreshold}`,
+      option.posture ? `posture: ${option.posture}` : undefined,
+    ].filter(Boolean).join("; ")),
+  ].join("\n");
+}
+
+function formatConversationChannelLabel(
+  option: RepoPersonaChannelOption | undefined,
+  channelId: string | undefined,
+): string {
+  if (!channelId) {
+    return "current room";
+  }
+  if (!option) {
+    return `channel ${channelId}`;
+  }
+  return `${option.label} / ${channelId}`;
 }
 
 function renderRepoPersonaRepoActivitySurface(
@@ -4458,6 +4613,7 @@ function buildChannelPlan(
   identity: RepoDiscordIdentity,
   defaultChannelId?: string,
   preferredChannelId?: string,
+  contextChannelOptions: RepoPersonaChannelOption[] = [],
 ): RepoPersonaChannelPlan {
   const explicit = identity.channelPermissions.map((permission): RepoPersonaChannelOption => ({
     channelId: permission.channelId,
@@ -4490,11 +4646,14 @@ function buildChannelPlan(
         posture: "Low-stakes casual chatter, half-formed fascinations, jokes, little observations, and friendly asides are welcome here.",
       }]
     : [];
-  const options = [...explicit, ...legacy, ...fallback];
+  const speechOptions = [...explicit, ...legacy, ...fallback];
+  const speechChannelIds = new Set(speechOptions.map((option) => option.channelId));
+  const contextOnly = contextChannelOptions.filter((option) => !speechChannelIds.has(option.channelId));
+  const options = [...speechOptions, ...contextOnly];
   const preferred = preferredChannelId
     ? options.find((option) => option.channelId === preferredChannelId)
     : undefined;
-  const primary = preferred ?? options
+  const primary = preferred ?? speechOptions
     .slice()
     .sort((left, right) => thresholdRank(left.speechThreshold) - thresholdRank(right.speechThreshold))
     [0];
