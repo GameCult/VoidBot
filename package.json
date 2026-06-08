@@ -47,6 +47,7 @@
     "qdrant:up": "powershell -ExecutionPolicy Bypass -File scripts/start-qdrant.ps1",
     "rag:backfill": "tsx scripts/backfill-discord-logs.ts",
     "moderation:recent-history": "node scripts/export-recent-discord-history.mjs",
+    "moderation:discord-action": "node scripts/moderate-discord-user.mjs",
     "moderation:purge-context": "tsx scripts/purge-discord-context.ts",
     "agents:feed-consensus": "node scripts/feed-codex-chat-consensus.mjs",
     "moderation:random-history": "node scripts/export-random-discord-history.mjs",

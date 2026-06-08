@@ -43,6 +43,7 @@ $contextProjectionScriptPath = Join-Path $repoRoot "scripts\lib\void-rumination-
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $repoActivityScriptPath = Join-Path $repoRoot "scripts\export-recent-repo-activity.mjs"
 $selfStateScriptPath = Join-Path $repoRoot "scripts\void-self-state.mjs"
+$moderationActionScriptPath = Join-Path $repoRoot "scripts\moderate-discord-user.mjs"
 $sendMessageScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_SEND_DISCORD_SCRIPT)) {
   $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_SEND_DISCORD_SCRIPT)
 } else {
@@ -453,6 +454,135 @@ function Assert-UrgentModerationWitnessesHandled {
 
   $firstWitness = $Witnesses | Select-Object -First 1
   throw "Urgent moderation witness '$((Get-ObjectPropertyString -Value $firstWitness -Name "messageId"))' requires an open case or moderation candidate; silent cursor advancement is forbidden."
+}
+
+function Get-PrimaryUrgentModerationWitness {
+  param([object[]] $Witnesses)
+
+  $ownerId = Get-ConfigValue -Name "DISCORD_OWNER_ID" -Values $envValues
+  return @(
+    $Witnesses |
+      Where-Object {
+        $authorId = Get-ObjectPropertyString -Value $_ -Name "authorId"
+        -not [string]::IsNullOrWhiteSpace($authorId) -and $authorId -ne $ownerId
+      }
+  ) | Select-Object -First 1
+}
+
+function Format-UrgentModerationSummary {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Witness,
+    [string] $Mode
+  )
+
+  $authorName = Get-ObjectPropertyString -Value $Witness -Name "authorName"
+  $authorId = Get-ObjectPropertyString -Value $Witness -Name "authorId"
+  $messageId = Get-ObjectPropertyString -Value $Witness -Name "messageId"
+  $channelId = Get-ObjectPropertyString -Value $Witness -Name "channelId"
+  $content = Get-ObjectPropertyString -Value $Witness -Name "content"
+  $categories = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Witness -Name "categories")) -join ", "
+
+  return @(
+    "VoidBot urgent moderation witness"
+    "mode: $Mode"
+    "author: $authorName ($authorId)"
+    "channel: $channelId"
+    "message: $messageId"
+    "categories: $categories"
+    "excerpt: $content"
+  ) -join [Environment]::NewLine
+}
+
+function Invoke-OwnerModerationNotification {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Content
+  )
+
+  $contentPath = Join-Path $statusDir ("moderation-urgent-notify-{0}.txt" -f ([Guid]::NewGuid().ToString("n")))
+  [System.IO.File]::WriteAllText($contentPath, $Content, [System.Text.UTF8Encoding]::new($false))
+  $output = & node $sendMessageScriptPath --owner-dm --content-file $contentPath 2>&1
+  $exitCode = $LASTEXITCODE
+  Remove-Item -LiteralPath $contentPath -Force -ErrorAction SilentlyContinue
+  if ($exitCode -ne 0) {
+    throw "Owner urgent moderation notification failed: $($output | Out-String)"
+  }
+  return $output | ConvertFrom-Json
+}
+
+function Invoke-UrgentModerationEnforcement {
+  param(
+    [object[]] $Witnesses,
+    [string] $Mode,
+    [int] $TimeoutMinutes
+  )
+
+  if ($Witnesses.Count -eq 0) {
+    return $null
+  }
+
+  $normalizedMode = if ([string]::IsNullOrWhiteSpace($Mode)) { "log_only" } else { $Mode.Trim().ToLowerInvariant() }
+  if ($normalizedMode -in @("off", "disabled", "log_only", "log-only", "case_only", "case-only")) {
+    return @{
+      mode = $normalizedMode
+      status = "skipped"
+      reason = "enforcement_mode_non_destructive"
+      witnessCount = [int]$Witnesses.Count
+    }
+  }
+
+  $witness = Get-PrimaryUrgentModerationWitness -Witnesses $Witnesses
+  if ($null -eq $witness) {
+    return @{
+      mode = $normalizedMode
+      status = "skipped"
+      reason = "no_non_owner_witness_author"
+      witnessCount = [int]$Witnesses.Count
+    }
+  }
+
+  $summary = Format-UrgentModerationSummary -Witness $witness -Mode $normalizedMode
+
+  if ($normalizedMode -eq "notify_owner") {
+    $notification = Invoke-OwnerModerationNotification -Content $summary
+    return @{
+      mode = $normalizedMode
+      status = "notified_owner"
+      witnessMessageId = Get-ObjectPropertyString -Value $witness -Name "messageId"
+      authorId = Get-ObjectPropertyString -Value $witness -Name "authorId"
+      notification = $notification
+    }
+  }
+
+  if ($normalizedMode -eq "timeout") {
+    $authorId = Get-ObjectPropertyString -Value $witness -Name "authorId"
+    $messageId = Get-ObjectPropertyString -Value $witness -Name "messageId"
+    $reason = "VoidBot urgent safety witness $messageId"
+    $actionArgs = @(
+      $moderationActionScriptPath,
+      "--action", "timeout",
+      "--user-id", $authorId,
+      "--duration-minutes", ([string]$TimeoutMinutes),
+      "--reason", $reason
+    )
+    $actionOutput = & node @actionArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "Discord timeout action failed: $($actionOutput | Out-String)"
+    }
+    $notification = Invoke-OwnerModerationNotification -Content ($summary + [Environment]::NewLine + "action: timeout $TimeoutMinutes minutes")
+    return @{
+      mode = $normalizedMode
+      status = "timed_out"
+      witnessMessageId = $messageId
+      authorId = $authorId
+      timeoutMinutes = [int]$TimeoutMinutes
+      action = $actionOutput | ConvertFrom-Json
+      notification = $notification
+    }
+  }
+
+  throw "Unsupported VOID_MODERATION_ENFORCEMENT_MODE '$Mode'. Use log_only, notify_owner, or timeout."
 }
 
 function Get-TypedSelfState {
@@ -1076,7 +1206,7 @@ if (Test-Path $operationOutputPath) {
   Remove-Item -LiteralPath $operationOutputPath -Force
 }
 
-foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath, $sendMessageScriptPath)) {
+foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath, $moderationActionScriptPath, $sendMessageScriptPath)) {
   if (-not (Test-Path $requiredPath)) {
     throw "Missing required helper at $requiredPath"
   }
@@ -1124,6 +1254,14 @@ $codexTimeoutSeconds = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATIO
 $publicRoomChannelId = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_CHANNEL_ID" -Values $envValues
 $publicRoomPersonaName = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_PERSONA_NAME" -Values $envValues
 $publicRoomPersonaAvatarUrl = Get-ConfigValue -Name "VOID_PUBLIC_ROOM_PERSONA_AVATAR_URL" -Values $envValues
+$moderationEnforcementMode = Get-ConfigValue -Name "VOID_MODERATION_ENFORCEMENT_MODE" -Values $envValues
+if ([string]::IsNullOrWhiteSpace($moderationEnforcementMode)) {
+  $moderationEnforcementMode = "log_only"
+}
+$moderationTimeoutMinutes = Get-ConfigValue -Name "VOID_MODERATION_TIMEOUT_MINUTES" -Values $envValues
+if ([string]::IsNullOrWhiteSpace($moderationTimeoutMinutes)) {
+  $moderationTimeoutMinutes = "60"
+}
 
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
@@ -1305,6 +1443,7 @@ if (-not (Test-Path $operationOutputPath)) {
 Append-RunLog "reading proposed operation output."
 $proposedOperations = @(Convert-ToOperationArray -Value (Read-JsonFile -Path $operationOutputPath))
 $appliedOperations = @()
+$moderationEnforcementResult = $null
 
 Assert-UrgentModerationWitnessesHandled -Witnesses $urgentModerationWitnesses -Operations $proposedOperations -TypedState $typedState
 Assert-SpeechPressureObligationsResolved -Obligations $speechPressureObligations -Operations $proposedOperations
@@ -1317,6 +1456,13 @@ foreach ($operation in $proposedOperations) {
   }
   Assert-AllowedRuminationOperation -Operation $operation
   $appliedOperations += Apply-TypedOperation -Operation $operation
+}
+
+if (-not $NoPost) {
+  $moderationEnforcementResult = Invoke-UrgentModerationEnforcement `
+    -Witnesses $urgentModerationWitnesses `
+    -Mode $moderationEnforcementMode `
+    -TimeoutMinutes ([int]$moderationTimeoutMinutes)
 }
 
 $observedCursorMessageId = Get-ObjectPropertyString -Value $observedCursor -Name "lastReviewedMessageId"
@@ -1405,6 +1551,7 @@ $finalStatus = [ordered]@{
   proposedOperationCount = [int]@($proposedOperations).Count
   appliedOperationCount = [int]@($appliedOperations).Count
   repoCursorOperationCount = [int]@($repoCursorOperations).Count
+  moderationEnforcement = $moderationEnforcementResult
   deliveredCandidateCount = [int]$deliveredCandidateCount
   stateUpdated = [bool](@($appliedOperations).Count -gt 0)
   tracePath = [string]$tracePath
