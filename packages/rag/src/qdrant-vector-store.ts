@@ -27,7 +27,7 @@ export interface StoredQdrantChunk extends EmbeddingChunk {
 export interface QdrantVectorStoreOptions {
   url: string;
   collectionName: string;
-  corpusKind: "discord_history" | "repository_source";
+  corpusKind: "discord_history" | "repository_source" | "persona_memory";
   apiKey?: string;
   timeoutMs?: number;
   embedder?: TextEmbedder;
@@ -296,6 +296,10 @@ function buildPayload(chunk: StoredQdrantChunk): QdrantPayload {
   copyOptionalMetadataField(payload, chunk.metadata, "guildId");
   copyOptionalMetadataField(payload, chunk.metadata, "channelId");
   copyOptionalMetadataField(payload, chunk.metadata, "authorId");
+  copyOptionalMetadataField(payload, chunk.metadata, "identityId");
+  copyOptionalMetadataField(payload, chunk.metadata, "memoryKind");
+  copyOptionalMetadataField(payload, chunk.metadata, "targetKind");
+  copyOptionalMetadataField(payload, chunk.metadata, "targetId");
   copyOptionalMetadataField(payload, chunk.metadata, "threadId");
   copyOptionalMetadataField(payload, chunk.metadata, "repoName");
   copyOptionalMetadataField(payload, chunk.metadata, "language");
@@ -346,8 +350,14 @@ function buildPathPrefixes(path: string): string[] {
 
 function inferCorpusKind(
   sourceKind: StoredQdrantChunk["sourceKind"],
-): "discord_history" | "repository_source" {
-  return sourceKind === "source_document" ? "repository_source" : "discord_history";
+): "discord_history" | "repository_source" | "persona_memory" {
+  if (sourceKind === "source_document") {
+    return "repository_source";
+  }
+  if (sourceKind === "persona_memory") {
+    return "persona_memory";
+  }
+  return "discord_history";
 }
 
 function fromQdrantPoint(point: QdrantScoredPoint): RetrievalResult | undefined {
@@ -407,8 +417,10 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function readSourceKind(value: unknown): "discord_message" | "source_document" | undefined {
-  return value === "discord_message" || value === "source_document" ? value : undefined;
+function readSourceKind(value: unknown): "discord_message" | "source_document" | "persona_memory" | undefined {
+  return value === "discord_message" || value === "source_document" || value === "persona_memory"
+    ? value
+    : undefined;
 }
 
 function validateEmbeddingBatch(vectors: number[][], expectedCount: number): number {
@@ -433,7 +445,7 @@ function validateCollectionCompatibility(
   collection: Schemas["CollectionInfo"],
   expected: {
     collectionName: string;
-    corpusKind: "discord_history" | "repository_source";
+    corpusKind: "discord_history" | "repository_source" | "persona_memory";
     embedderId: string;
     vectorLength: number;
   },
@@ -484,7 +496,7 @@ function readCollectionVectorLength(
 }
 
 function buildPayloadIndexDefinitions(
-  corpusKind: "discord_history" | "repository_source",
+  corpusKind: "discord_history" | "repository_source" | "persona_memory",
 ): Array<{
   field_name: string;
   field_schema:
@@ -509,6 +521,16 @@ function buildPayloadIndexDefinitions(
     ];
   }
 
+  if (corpusKind === "persona_memory") {
+    return [
+      ...shared,
+      { field_name: "identityId", field_schema: "keyword" as const },
+      { field_name: "memoryKind", field_schema: "keyword" as const },
+      { field_name: "targetKind", field_schema: "keyword" as const },
+      { field_name: "targetId", field_schema: "keyword" as const },
+    ];
+  }
+
   return [
     ...shared,
     { field_name: "repoName", field_schema: "keyword" as const },
@@ -528,6 +550,7 @@ function toQdrantFilter(filters?: RetrievalFilters): QdrantFilter | undefined {
   appendExactMatch(must, "guildId", filters.guildId);
   appendExactMatch(must, "channelId", filters.channelId);
   appendExactMatch(must, "authorId", filters.authorId);
+  appendExactMatch(must, "identityId", filters.identityId);
   appendExactMatch(must, "repoName", filters.repoName);
   appendExactMatch(must, "language", filters.language);
   appendExactMatch(must, "sourceId", filters.sourceId);

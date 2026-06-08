@@ -28,9 +28,11 @@ import {
 import {
   createTextEmbedder,
   createVectorStores,
+  normalizeText,
   RetrievalService,
 } from "@voidbot/rag";
 import {
+  type EmbeddingChunk,
   loadPromptTemplate,
   type InteractionMemoryProfile,
   type PromptImageAttachment,
@@ -1736,6 +1738,7 @@ function buildHeartbeatPrompt(input: {
   channelSnapshots: ChannelSnapshot[];
   recentMessages: SourceMessage[];
   memorySurface?: string;
+  semanticMemoryRecallSurface?: string;
   repoActivitySurface?: string;
   conversationMemorySurface?: string;
   humanPronounGuidance?: RepoFaceHumanPronounGuidance[];
@@ -1754,6 +1757,7 @@ function buildHeartbeatPrompt(input: {
     globalAgentDoctrine: input.globalAgentDoctrine,
     channelId: input.channelId,
     memorySurface: input.memorySurface ?? `- ${input.identity.displayName} has no strong personal memory surface yet. Let the attached conversation and repo evidence wake something specific.`,
+    semanticMemoryRecallSurface: input.semanticMemoryRecallSurface ?? "- No semantic Persona memory recall was attached for this turn.",
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
     humanPronounDirective: renderRepoFaceHumanPronounFacts(input.humanPronounGuidance ?? [])
@@ -1854,6 +1858,12 @@ async function assembleRepoFaceTurnPrompt(input: {
         humanPronounGuidance,
       );
   const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const semanticMemoryRecallSurface = await renderRepoFaceSemanticMemoryRecallForTurn(
+    identity,
+    input.config,
+    memorySurface,
+    roomContext,
+  );
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
@@ -1875,6 +1885,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     channelSnapshots,
     recentMessages,
     memorySurface,
+    semanticMemoryRecallSurface,
     repoActivitySurface,
     conversationMemorySurface,
     humanPronounGuidance,
@@ -1977,6 +1988,293 @@ async function renderRepoFaceMemorySurfaceForTurn(
     statePacket,
     config,
   });
+}
+
+async function renderRepoFaceSemanticMemoryRecallForTurn(
+  identity: RepoDiscordIdentity,
+  config: ReturnType<typeof loadConfig>,
+  memorySurface: string,
+  roomContext: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): Promise<string> {
+  try {
+    const statePath = resolveFaceStatePathForSemanticMemory(identity, config);
+    if (!statePath) {
+      return "- Semantic Persona memory recall unavailable: no typed Persona state path is registered.";
+    }
+    const typedState = await loadVoidSelfStateTypedDocuments({
+      canonicalPath: statePath,
+      identity: {
+        agentId: identity.id,
+        publicName: identity.displayName,
+        publicDescription: identity.description,
+      },
+    });
+    const retrieval = createRepoFaceSemanticMemoryRetrievalService(config);
+    const chunks = buildPersonaMemoryChunks(identity, statePath, typedState, memorySurface);
+    const personaMemoryStore = createRepoFacePersonaMemoryVectorStore(config);
+    await personaMemoryStore.deleteByFilters({
+      corpusKind: "persona_memory",
+      identityId: identity.id,
+    });
+    await personaMemoryStore.upsert(chunks);
+
+    const query = buildPersonaMemoryRecallQuery(identity, memorySurface, roomContext);
+    const results = await retrieval.searchPersonaMemory(query, 12, {
+      identityId: identity.id,
+    });
+
+    if (results.length === 0) {
+      return [
+        "- Semantic Persona memory recall ran, but no nearby memories crossed the retrieval threshold.",
+        "- Fall back to the projected state, raw transcript, and direct evidence above.",
+      ].join("\n");
+    }
+
+    return [
+      "These are derived Qdrant/local-vector recall hits from this Persona's typed memory. They are hints, not new authority; the `.cc` state remains the owner.",
+      ...results.map((result, index) => {
+        const kind = result.metadata.memoryKind ? `/${result.metadata.memoryKind}` : "";
+        const target = result.metadata.targetLabel ?? result.metadata.targetId ?? "unknown target";
+        return `- ${index + 1}. ${target}${kind} score=${result.score.toFixed(3)}: ${collapseWhitespace(result.text, 520)}`;
+      }),
+    ].join("\n");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [
+      "Semantic Persona memory recall unavailable:",
+      `- ${collapseWhitespace(message, 320)}`,
+      "- Do not pretend semantic Persona memory retrieval was available this turn; use projected state and raw transcript instead.",
+    ].join("\n");
+  }
+}
+
+function resolveFaceStatePathForSemanticMemory(
+  identity: RepoDiscordIdentity,
+  config: ReturnType<typeof loadConfig>,
+): string | undefined {
+  if (identity.identityKind === "native_persona") {
+    return identity.personaStatePath ? resolve(identity.personaStatePath) : undefined;
+  }
+  return resolveRepoFaceStatePath(identity, config.storageRoot);
+}
+
+function createRepoFaceSemanticMemoryRetrievalService(config: ReturnType<typeof loadConfig>): RetrievalService {
+  const personaMemoryStore = createRepoFacePersonaMemoryVectorStore(config);
+  return new RetrievalService(personaMemoryStore, personaMemoryStore, personaMemoryStore);
+}
+
+function createRepoFacePersonaMemoryVectorStore(config: ReturnType<typeof loadConfig>) {
+  const personaMemoryEmbedder = createTextEmbedder({
+    backend: config.ragEmbeddingBackend,
+    hashDimensions: config.ragEmbeddingDimensions,
+    ollamaBaseUrl: config.ragOllamaBaseUrl,
+    ollamaModel: config.ragOllamaModel,
+    ollamaTimeoutMs: config.ragOllamaTimeoutMs,
+    queryInstruction: "Given a Face turn, retrieve relevant memories, bonds, needs, status reads, and doctrine from this Persona's own typed state.",
+  });
+  return createVectorStores({
+    kind: config.vectorStore.kind,
+    historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
+    sourceRoot: config.sourceVectorStoreRoot,
+    qdrant: config.qdrant,
+    historyEmbedder: personaMemoryEmbedder,
+    sourceEmbedder: personaMemoryEmbedder,
+    personaMemoryEmbedder,
+  }).personaMemory;
+}
+
+function buildPersonaMemoryChunks(
+  identity: RepoDiscordIdentity,
+  statePath: string,
+  state: VoidSelfStateTypedProjection,
+  memorySurface: string,
+): EmbeddingChunk[] {
+  const chunks: EmbeddingChunk[] = [];
+  const sourceId = `persona:${identity.id}`;
+  const baseMetadata = {
+    corpusKind: "persona_memory",
+    identityId: identity.id,
+    personaName: identity.displayName,
+    sourceId,
+    statePath,
+  };
+
+  const pushChunk = (input: {
+    id: string;
+    kind: string;
+    target?: Record<string, unknown>;
+    text: string;
+    createdAt?: string;
+    updatedAt?: string;
+  }): void => {
+    const text = collapseWhitespace(input.text, 1800);
+    if (text.length < 24) {
+      return;
+    }
+    const target = input.target;
+    chunks.push({
+      id: `${sourceId}:${input.id}`,
+      sourceId,
+      sourceKind: "persona_memory",
+      text,
+      normalizedText: normalizeText(text),
+      metadata: {
+        ...baseMetadata,
+        memoryKind: input.kind,
+        targetKind: typeof target?.kind === "string" ? target.kind : "",
+        targetId: typeof target?.id === "string" ? target.id : "",
+        targetLabel: typeof target?.label === "string" ? target.label : "",
+        createdAt: input.createdAt ?? "",
+        updatedAt: input.updatedAt ?? "",
+      },
+    });
+  };
+
+  pushChunk({
+    id: "projected-surface",
+    kind: "projected_surface",
+    target: { kind: "self", id: identity.id, label: identity.displayName },
+    text: memorySurface,
+    updatedAt: new Date().toISOString(),
+  });
+
+  for (const value of state.selfProfile.values) {
+    pushChunk({
+      id: `value:${value.id}`,
+      kind: "value",
+      target: { kind: "self", id: identity.id, label: identity.displayName },
+      text: joinMemoryFields(value.label, value.summary),
+    });
+  }
+
+  for (const memory of [...state.thoughtMemory.memories, ...state.thoughtMemory.shortTerm]) {
+    if (memory.retiredAt) {
+      continue;
+    }
+    pushChunk({
+      id: `memory:${memory.memoryId}`,
+      kind: memory.kind,
+      target: memory.target,
+      text: joinMemoryFields(memory.summary, memory.claim, memory.question, memory.tension, memory.actionImplication),
+      createdAt: memory.createdAt,
+      updatedAt: memory.updatedAt,
+    });
+  }
+
+  for (const pressure of state.agencyPressure.pressures) {
+    if (pressure.status === "retired") {
+      continue;
+    }
+    pushChunk({
+      id: `agency:${pressure.pressureId}`,
+      kind: `agency:${pressure.kind}:${pressure.status}`,
+      target: pressure.target,
+      text: joinMemoryFields(pressure.summary, pressure.claim, pressure.question, pressure.tension, pressure.actionImplication),
+      createdAt: pressure.createdAt,
+      updatedAt: pressure.updatedAt,
+    });
+  }
+
+  for (const need of state.faceAffect.needs) {
+    if (need.status === "retired") {
+      continue;
+    }
+    pushChunk({
+      id: `need:${need.needId}`,
+      kind: `need:${need.kind}:${need.status}`,
+      target: need.target,
+      text: joinMemoryFields(need.summary, need.claim, need.question, need.tension, need.actionImplication),
+      createdAt: need.createdAt,
+      updatedAt: need.updatedAt,
+    });
+  }
+
+  for (const bond of state.faceAffect.socialBonds) {
+    if (bond.status !== "active") {
+      continue;
+    }
+    pushChunk({
+      id: `bond:${bond.bondId}`,
+      kind: `bond:${bond.stance}`,
+      target: bond.target,
+      text: joinMemoryFields(bond.summary, bond.claim, bond.tension, bond.actionImplication),
+      createdAt: bond.createdAt,
+      updatedAt: bond.updatedAt,
+    });
+  }
+
+  for (const read of state.faceAffect.statusReads) {
+    if (read.retiredAt) {
+      continue;
+    }
+    pushChunk({
+      id: `status:${read.readId}`,
+      kind: `status:${read.status}`,
+      target: read.target,
+      text: joinMemoryFields(read.summary, read.claim, read.tension, read.actionImplication),
+      createdAt: read.createdAt,
+      updatedAt: read.updatedAt,
+    });
+  }
+
+  for (const stance of state.faceAffect.doctrineStances) {
+    if (stance.status === "retired") {
+      continue;
+    }
+    pushChunk({
+      id: `doctrine:${stance.stanceId}`,
+      kind: `doctrine:${stance.doctrine}:${stance.status}`,
+      target: stance.target,
+      text: joinMemoryFields(stance.summary, stance.claim, stance.question, stance.tension, stance.actionImplication),
+      createdAt: stance.createdAt,
+      updatedAt: stance.updatedAt,
+    });
+  }
+
+  return chunks;
+}
+
+function buildPersonaMemoryRecallQuery(
+  identity: RepoDiscordIdentity,
+  memorySurface: string,
+  roomContext: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+): string {
+  const recentRoomText = roomContext.recentMessages
+    .slice(-8)
+    .map((message) => `${message.authorName}: ${collapseWhitespace(message.content, 360)}`)
+    .filter((line) => line.trim().length > 0)
+    .join("\n");
+  const nearbyText = roomContext.channelSnapshots
+    .flatMap((snapshot) => snapshot.messages.slice(-3).map((message) =>
+      `${snapshot.label ?? snapshot.channelId} / ${message.authorName}: ${collapseWhitespace(message.content, 260)}`,
+    ))
+    .filter((line) => line.trim().length > 0)
+    .slice(-12)
+    .join("\n");
+
+  return [
+    `${identity.displayName} current Face turn`,
+    "Projected memory surface:",
+    collapseWhitespace(memorySurface, 2200),
+    "Recent room:",
+    recentRoomText,
+    "Nearby room texture:",
+    nearbyText,
+  ].join("\n");
+}
+
+function joinMemoryFields(...fields: Array<string | undefined>): string {
+  return fields
+    .map((field) => cleanCharacterFacingSentence(field))
+    .filter((field) => field.length > 0)
+    .join(" ");
 }
 
 async function renderNativePersonaMemorySurface(
@@ -2725,12 +3023,14 @@ function createRepoFaceCuriosityRetrievalService(config: ReturnType<typeof loadC
   const stores = createVectorStores({
     kind: config.vectorStore.kind,
     historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
     sourceRoot: config.sourceVectorStoreRoot,
     qdrant: config.qdrant,
     historyEmbedder,
     sourceEmbedder,
+    personaMemoryEmbedder: historyEmbedder,
   });
-  return new RetrievalService(stores.history, stores.source);
+  return new RetrievalService(stores.history, stores.source, stores.personaMemory);
 }
 
 function buildRepoFaceCuriositySeedQueries(

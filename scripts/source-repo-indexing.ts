@@ -41,10 +41,12 @@ export function createSourceVectorStore(config: AppConfig) {
   return createVectorStores({
     kind: config.vectorStore.kind,
     historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
     sourceRoot: config.sourceVectorStoreRoot,
     qdrant: config.qdrant,
     historyEmbedder: embedder,
     sourceEmbedder: embedder,
+    personaMemoryEmbedder: embedder,
   }).source;
 }
 

@@ -111,6 +111,10 @@ function matchesFilters(
     return false;
   }
 
+  if (filters.identityId && metadata.identityId !== filters.identityId) {
+    return false;
+  }
+
   if (filters.corpusKind && metadata.corpusKind !== filters.corpusKind) {
     return false;
   }

@@ -47,14 +47,17 @@ export function createVoidbotMcpContext(): VoidbotMcpContext {
   const vectorStores = createVectorStores({
     kind: config.vectorStore.kind,
     historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
     sourceRoot: config.sourceVectorStoreRoot,
     qdrant: config.qdrant,
     historyEmbedder: embedder,
     sourceEmbedder: sourceQueryEmbedder,
+    personaMemoryEmbedder: embedder,
   });
   const retrievalService = new RetrievalService(
     vectorStores.history,
     vectorStores.source,
+    vectorStores.personaMemory,
   );
   const sourceDocumentIngester = new SourceDocumentIngester();
 

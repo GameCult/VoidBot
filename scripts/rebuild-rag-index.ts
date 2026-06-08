@@ -31,13 +31,16 @@ async function main(): Promise<void> {
   const vectorStores = createVectorStores({
     kind: config.vectorStore.kind,
     historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
     sourceRoot: config.sourceVectorStoreRoot,
     qdrant: config.qdrant,
     historyEmbedder: embedder,
     sourceEmbedder: embedder,
+    personaMemoryEmbedder: embedder,
   });
   const vectorStore = vectorStores.history;
   const sourceVectorStore = vectorStores.source;
+  const personaMemoryVectorStore = vectorStores.personaMemory;
   const historyIngester = new HistoryIngester();
   const sourceIngester = new SourceDocumentIngester();
   const activeMessages = await archiveRepository.listAllActive();
@@ -47,6 +50,7 @@ async function main(): Promise<void> {
 
   await vectorStore.clear();
   await sourceVectorStore.clear();
+  await personaMemoryVectorStore.clear();
 
   for (let index = 0; index < historyChunks.length; index += REBUILD_CHUNK_BATCH_SIZE) {
     const batch = historyChunks.slice(index, index + REBUILD_CHUNK_BATCH_SIZE);

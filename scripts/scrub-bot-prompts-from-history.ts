@@ -85,10 +85,12 @@ async function main(): Promise<void> {
   const vectorStore = createVectorStores({
     kind: config.vectorStore.kind,
     historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
     sourceRoot: config.sourceVectorStoreRoot,
     qdrant: config.qdrant,
     historyEmbedder: embedder,
     sourceEmbedder: embedder,
+    personaMemoryEmbedder: embedder,
   }).history;
   const ragPipeline = new RagPipeline(
     archiveRepository,

@@ -48,12 +48,14 @@ const envSchema = z.object({
   DATABASE_DSN: z.string().min(1).default("postgres://voidbot:voidbot@localhost:5432/voidbot"),
   VECTOR_STORE_KIND: z.enum(["local_json", "qdrant"]).default("local_json"),
   VECTOR_STORE_PATH: z.string().min(1).default(".voidbot/history-vector-store.json"),
+  PERSONA_MEMORY_VECTOR_STORE_PATH: z.string().min(1).default(".voidbot/persona-memory-vector-store.json"),
   SOURCE_VECTOR_STORE_ROOT: z.string().min(1).default(".voidbot/source-vectors"),
   QDRANT_URL: z.string().url().default("http://127.0.0.1:6333"),
   QDRANT_API_KEY: optionalNonEmptyString,
   QDRANT_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   QDRANT_HISTORY_COLLECTION: z.string().min(1).default("voidbot_discord_history_chunks"),
   QDRANT_SOURCE_COLLECTION: z.string().min(1).default("voidbot_repository_source_chunks"),
+  QDRANT_PERSONA_MEMORY_COLLECTION: z.string().min(1).default("voidbot_persona_memory_chunks"),
   RAG_ARCHIVE_PATH: z.string().min(1).default(".voidbot/rag/messages.json"),
   RAG_SOURCE_ARCHIVE_PATH: z.string().min(1).default(".voidbot/rag/source-documents.json"),
   RAG_IMPORT_STATE_PATH: z.string().min(1).default(".voidbot/rag/import-state.json"),
@@ -253,6 +255,7 @@ export interface AppConfig {
   vectorStore: {
     kind: "local_json" | "qdrant";
     path: string;
+    personaMemoryPath: string;
   };
   sourceVectorStoreRoot: string;
   qdrant: {
@@ -261,6 +264,7 @@ export interface AppConfig {
     timeoutMs: number;
     historyCollection: string;
     sourceCollection: string;
+    personaMemoryCollection: string;
   };
   rateLimits: {
     defaultCooldownSeconds: number;
@@ -504,6 +508,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     vectorStore: {
       kind: parsed.VECTOR_STORE_KIND,
       path: resolve(parsed.VECTOR_STORE_PATH),
+      personaMemoryPath: resolve(parsed.PERSONA_MEMORY_VECTOR_STORE_PATH),
     },
     sourceVectorStoreRoot: resolve(parsed.SOURCE_VECTOR_STORE_ROOT),
     qdrant: {
@@ -512,6 +517,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.QDRANT_TIMEOUT_MS,
       historyCollection: parsed.QDRANT_HISTORY_COLLECTION,
       sourceCollection: parsed.QDRANT_SOURCE_COLLECTION,
+      personaMemoryCollection: parsed.QDRANT_PERSONA_MEMORY_COLLECTION,
     },
     rateLimits: {
       defaultCooldownSeconds: parsed.VOID_USAGE_COOLDOWN_SECONDS,

@@ -170,14 +170,17 @@ export async function startBot(): Promise<void> {
   const vectorStores = createVectorStores({
     kind: config.vectorStore.kind,
     historyPath: config.vectorStore.path,
+    personaMemoryPath: config.vectorStore.personaMemoryPath,
     sourceRoot: config.sourceVectorStoreRoot,
     qdrant: config.qdrant,
     historyEmbedder: embedder,
     sourceEmbedder: sourceQueryEmbedder,
+    personaMemoryEmbedder: embedder,
   });
   const vectorStore = vectorStores.history;
   const sourceRetrievalStore = vectorStores.source;
-  const retrievalService = new RetrievalService(vectorStore, sourceRetrievalStore);
+  const personaMemoryStore = vectorStores.personaMemory;
+  const retrievalService = new RetrievalService(vectorStore, sourceRetrievalStore, personaMemoryStore);
   const historyIngester = new HistoryIngester();
   const sourceDocumentIngester = new SourceDocumentIngester();
   const ragPipeline = new RagPipeline(archiveRepository, historyIngester, vectorStore);

@@ -446,10 +446,12 @@ async function markArchiveMessagesDeleted(input: {
   const vectorStore = createVectorStores({
     kind: input.config.vectorStore.kind,
     historyPath: input.config.vectorStore.path,
+    personaMemoryPath: input.config.vectorStore.personaMemoryPath,
     sourceRoot: input.config.sourceVectorStoreRoot,
     qdrant: input.config.qdrant,
     historyEmbedder: embedder,
     sourceEmbedder: embedder,
+    personaMemoryEmbedder: embedder,
   }).history;
   const pipeline = new RagPipeline(input.archiveRepository, new HistoryIngester(), vectorStore);
   const deleted: string[] = [];

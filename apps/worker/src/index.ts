@@ -112,19 +112,23 @@ const sourceQueryEmbedder = createTextEmbedder({
 const vectorStores = createVectorStores({
   kind: config.vectorStore.kind,
   historyPath: config.vectorStore.path,
+  personaMemoryPath: config.vectorStore.personaMemoryPath,
   sourceRoot: config.sourceVectorStoreRoot,
   qdrant: config.qdrant,
   historyEmbedder: embedder,
   sourceEmbedder: sourceQueryEmbedder,
+  personaMemoryEmbedder: embedder,
 });
 const historyVectorStore = vectorStores.history;
 const sourceVectorStore = vectorStores.source;
+const personaMemoryVectorStore = vectorStores.personaMemory;
 const archiveRepository = new FileMessageArchiveRepository(config.ragArchivePath);
 const sourceArchiveRepository = new FileSourceDocumentArchiveRepository(config.ragSourceArchivePath);
 const sourceDocumentIngester = new SourceDocumentIngester();
 const retrievalService = new RetrievalService(
   historyVectorStore,
   sourceVectorStore,
+  personaMemoryVectorStore,
 );
 
 let isProcessing = false;
