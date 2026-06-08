@@ -115,6 +115,7 @@ const distilledMemorySchema = z.object({
   updatedAt: timestampSchema,
   retiredAt: timestampSchema.optional(),
   tags: z.array(nonEmptyStringSchema).default([]),
+  semanticIndex: z.unknown().optional(),
 }).strict();
 
 const meaningPreservingMemorySchema = distilledMemorySchema.superRefine((memory, context) => {

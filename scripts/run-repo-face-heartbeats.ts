@@ -1946,7 +1946,13 @@ async function renderRepoFaceMemorySurfaceForTurn(
   humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
 ): Promise<string> {
   if (identity.identityKind === "native_persona") {
-    return renderNativePersonaMemorySurface(identity);
+    return renderNativePersonaMemorySurface(
+      identity,
+      config,
+      registryIdentities,
+      roomContext,
+      humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
+    );
   }
 
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
@@ -1973,13 +1979,48 @@ async function renderRepoFaceMemorySurfaceForTurn(
   });
 }
 
-async function renderNativePersonaMemorySurface(identity: RepoDiscordIdentity): Promise<string> {
+async function renderNativePersonaMemorySurface(
+  identity: RepoDiscordIdentity,
+  config: ReturnType<typeof loadConfig>,
+  registryIdentities: RepoDiscordIdentity[] = [],
+  roomContext?: {
+    recentMessages: SourceMessage[];
+    channelSnapshots: ChannelSnapshot[];
+  },
+  humanPronounGuidance: RepoFaceHumanPronounGuidance[] = [],
+): Promise<string> {
   const personaStatePath = identity.personaStatePath;
   if (!personaStatePath) {
     return [
       `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
       "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest.",
     ].join("\n");
+  }
+
+  if (extname(personaStatePath).toLowerCase() === ".cc") {
+    const typedState = await loadVoidSelfStateTypedDocuments({
+      canonicalPath: resolve(personaStatePath),
+      identity: {
+        agentId: identity.id,
+        publicName: identity.displayName,
+        publicDescription: identity.description,
+      },
+    });
+    const statePacket = renderRepoFaceStatePacket(
+      identity,
+      typedState,
+      registryIdentities,
+      roomContext,
+      humanPronounGuidance,
+    );
+    if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
+      return rejectLeakyMemorySurface(statePacket);
+    }
+    return projectRepoFaceMemorySurface({
+      identity,
+      statePacket,
+      config,
+    });
   }
 
   const raw = JSON.parse(stripLeadingBom(await readFile(resolve(personaStatePath), "utf8"))) as unknown;
@@ -2444,8 +2485,8 @@ function renderRepoFaceActivationProfileFacts(
   const sections = Object.entries(activationProfile)
     .map(([section, values]) => {
       const entries = Object.entries(values)
-        .sort(([, left], [, right]) => right.weight - left.weight)
-        .map(([key, value]) => `${key}=${value.weight.toFixed(2)}${value.note ? ` (${cleanCharacterFacingSentence(value.note)})` : ""}`);
+        .sort(([, left], [, right]) => activationVectorWeight(right) - activationVectorWeight(left))
+        .map(([key, value]) => `${key}=${activationVectorWeight(value).toFixed(2)}${activationVectorNote(value) ? ` (${cleanCharacterFacingSentence(activationVectorNote(value) ?? "")})` : ""}`);
       return entries.length > 0 ? `- ${section}: ${entries.join("; ")}` : undefined;
     })
     .filter((entry): entry is string => typeof entry === "string");
@@ -2453,6 +2494,22 @@ function renderRepoFaceActivationProfileFacts(
   return sections.length > 0
     ? ["Activation profile that should color behavior:", ...sections].join("\n")
     : undefined;
+}
+
+function activationVectorWeight(value: unknown): number {
+  if (!isRecord(value)) {
+    return 0;
+  }
+  const candidates = [value.weight, value.current_activation, value.currentActivation, value.mean];
+  const numeric = candidates.find((candidate) => typeof candidate === "number" && Number.isFinite(candidate));
+  return typeof numeric === "number" ? numeric : 0;
+}
+
+function activationVectorNote(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return typeof value.note === "string" ? value.note : undefined;
 }
 
 function renderRepoFaceRuntimePressureFacts(
