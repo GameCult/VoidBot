@@ -312,6 +312,15 @@ try {
       Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-mood-drift.ps1"))
     },
     [pscustomobject]@{
+      Id = "void-moderation-heartbeat"
+      Label = "Void rules moderation heartbeat"
+      IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
+      TimeoutMinutes = 10
+      Cwd = $repoRoot
+      Executable = $powershell
+      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-moderator-rumination.ps1"), "-ModerationHeartbeatOnly")
+    },
+    [pscustomobject]@{
       Id = "void-moderation-rumination"
       Label = "Void moderation rumination"
       IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_INTERVAL_MINUTES" -Default 15 -Minimum 15

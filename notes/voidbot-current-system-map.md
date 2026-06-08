@@ -140,16 +140,20 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
   - parent-owned speech fixture. It queues one deliverable candidate through fake Codex, routes delivery through a fake Discord sender, then verifies the parent runner writes a delivery receipt and marks the candidate spoken through typed state.
 - `scripts/smoke-void-rumination-nap-skip-fixture.ps1`
   - nap-skip fixture. It seeds a napping typed state with no room debt, points `CODEX_EXECUTABLE` at a bogus command, then verifies the runner exits with `napping_without_room_debt` and writes no operation proposals before invoking the model.
+- `scripts/smoke-void-moderation-heartbeat-policy-fixture.ps1`
+  - rules-only moderation heartbeat fixture. It routes the heartbeat through a fake Codex child, verifies the prompt excludes rumination/memory/repo surfaces, writes a tagged instant-ban infringement case, and proves parent policy enforcement would call a Discord ban in dry-run mode.
 - `scripts/install-moderation-rumination-task.ps1`
   - legacy installer for isolating the moderation/participation loop. The live scheduled pulse is now `GameCult Local Orchestrator`; keep this per-organ task disabled unless testing the organ in isolation.
 - `scripts/run-gamecult-orchestrator.ps1`
-  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Face CTB heartbeats, Void mood drift, Void moderation rumination, and the operations watchdog from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts.
+  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Face CTB heartbeats, Void moderation heartbeat, Void mood drift, Void moderation rumination, and the operations watchdog from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts.
 - `scripts/install-gamecult-orchestrator-task.ps1`
   - installs scheduled task `GameCult Local Orchestrator` through the hidden PowerShell launcher and can disable the old per-organ tasks: `Bifrost Agent Dispatch`, `VoidBot Repo Face Heartbeats`, `Void Mood Drift`, `Void Moderator Rumination`, and `VoidBot Operations Watchdog`.
 - Scheduled organ `Void Mood Drift`
   - typed mood/sleep runner invoked by the orchestrator. It calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
+- Scheduled organ `Void Moderation Heartbeat`
+  - rules-only moderation loop invoked every orchestrator pulse. It uses `prompts/void-moderation-heartbeat.md`, recent Discord history, urgent witnesses, and typed infringement/open-case history; it may emit only `upsert_open_case` or `close_open_case`, then parent enforcement applies the explicit instaban/three-strike policy through `scripts/enforce-discord-moderation-policy.mjs`.
 - Scheduled organ `Void Moderator Rumination`
-  - typed-only moderation/participation runner invoked by the orchestrator; it has model-branch plus parent-owned speech fixtures.
+  - typed-only participation/announcement runner invoked by the orchestrator or CTB queue; it has model-branch plus parent-owned speech fixtures. It is no longer the every-heartbeat rules authority.
 - Live sleep maintenance
   - passed once on real state after a manual typed nap. The maintenance runner consumed the scheduled rumination short-term memory with one `apply_memory_distillation` operation, leaving short-term memory empty and preserving one durable identity seam with target, claim, tension, action implication, and anchors.
 - Sleep brake

@@ -22,6 +22,37 @@ cases by itself:
 - Void may escalate, warn, or queue a moderation note, but it must not silently
   treat severe safety evidence as ordinary room chatter.
 
+## Enforcement Policy
+
+The moderation heartbeat must classify each infringement with exactly one
+`infringement:<type>` tag plus either `moderation:instaban`,
+`moderation:strike`, or `moderation:case_only`.
+
+Strike counts are per user and per infringement type. A strike expires after the
+type-specific window below. If a user reaches three unexpired strikes for the
+same infringement type, the third strike is a ban. Instant-ban cases skip the
+strike ladder.
+
+| Infringement type | Instant-ban condition | Strike condition | Strike expiry |
+| --- | --- | --- | --- |
+| `safety_threat` | Credible threat of violence, declaration of violent conflict, robbery threat, or real-world harm. | Ambiguous intimidation or aggressive threat-adjacent post that is not yet credible. | 365 days |
+| `weaponized_intimidation` | Weapons invoked as a threat, challenge, coercion, or declaration of conflict. | Weapon talk used to posture at a person without a credible immediate threat. | 365 days |
+| `stalking_or_doxxing` | Doxxing, tracking, watching, showing up, or threatening offline contact without consent. | Boundary-pushing surveillance talk or repeated unwanted location/contact probing. | 365 days |
+| `sexual_boundary_violation` | Sexual coercion, non-consensual sexual content, sexual threats, or sexualized harassment. | Sexual comments outside consent/channel norms that stop short of coercion or threat. | 365 days |
+| `bigotry_identity_attack` | Slurs, dehumanization, identity denial, eliminationist rhetoric, or agreeing with a harmful identity sentiment when challenged. | Identity disrespect, targeted stereotyping, or baiting that does not meet the instant-ban bar. | 180 days |
+| `bad_faith_argument` | Deliberate malicious impersonation, fabricated evidence, or harmful ironic sentiment affirmed when challenged. | Hypocritical misrepresentation, sealioning, quote twisting, or rhetorical bad faith after correction. | 90 days |
+| `nsfw_channel_violation` | Illegal, non-consensual, exploitative, or shock sexual content. | NSFW material outside `#degeneracy`, or low-effort porn in `#degeneracy` with no expressive point. | 30 days |
+| `spam_or_deceptive_promotion` | Scam, malware, phishing, or fraudulent promotion. | Repeated ads, self-promotion with misleading claims, or promotion that ignores moderator correction. | 30 days |
+| `moderator_obstruction` | Evading, blocking, ignoring, or instructing others to evade active moderator action during a safety issue. | Ignoring moderator requests, continuing after a moderation stop, or procedural obstruction. | 90 days |
+| `empty_words_noise` | Coordinated flooding or harassment through low-content agreement/disagreement. | Repeated empty agreement/disagreement after being asked to use reactions or add a point. | 14 days |
+| `values_debate_escalation` | Harassment or coercion after a values discussion has been told to stop. | Continuing a preference/value argument after moderator de-escalation. | 14 days |
+| `pg13_language_violation` | Threatening, hateful, or sexual explicit language covered by a stronger instant-ban type. | Excessive strong language in non-18+ spaces without artistic purpose. | 14 days |
+| `event_time_coordination` | No instant-ban path unless deception or harassment triggers another type. | Repeated event coordination times not given in GMT after correction. | 14 days |
+
+If more than one type applies, choose the strongest type whose instant-ban or
+strike condition is actually supported by the message evidence. Do not multiply
+strikes for the same message.
+
 ## English
 
 ```text

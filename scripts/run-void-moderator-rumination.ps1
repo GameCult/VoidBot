@@ -1,7 +1,8 @@
 param(
   [string] $StateFilePath,
   [switch] $NoPost,
-  [switch] $SkipModel
+  [switch] $SkipModel,
+  [switch] $ModerationHeartbeatOnly
 )
 
 Set-StrictMode -Version Latest
@@ -26,24 +27,30 @@ $logDir = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_LOG_DIR)) {
 } else {
   Join-Path $repoRoot ".voidbot\logs"
 }
-$statusPath = Join-Path $statusDir "moderation-rumination.json"
-$summaryLogPath = Join-Path $logDir "moderation-rumination.log"
-$tracePath = Join-Path $logDir "moderation-rumination-last.jsonl"
-$lastMessagePath = Join-Path $statusDir "moderation-rumination-last-message.txt"
-$operationOutputPath = Join-Path $statusDir "moderation-rumination-operations.json"
-$contextPath = Join-Path $statusDir "moderation-rumination-context.json"
-$lockPath = Join-Path $statusDir "moderation-rumination.lock"
+$runSlug = if ($ModerationHeartbeatOnly) { "moderation-heartbeat" } else { "moderation-rumination" }
+$statusPath = Join-Path $statusDir "$runSlug.json"
+$summaryLogPath = Join-Path $logDir "$runSlug.log"
+$tracePath = Join-Path $logDir "$runSlug-last.jsonl"
+$lastMessagePath = Join-Path $statusDir "$runSlug-last-message.txt"
+$operationOutputPath = Join-Path $statusDir "$runSlug-operations.json"
+$contextPath = Join-Path $statusDir "$runSlug-context.json"
+$lockPath = Join-Path $statusDir "$runSlug.lock"
 $pendingMentionsPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_PENDING_MENTIONS_PATH)) {
   $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_RUMINATION_PENDING_MENTIONS_PATH)
 } else {
   Join-Path $statusDir "void-moderation-pending-mentions.json"
 }
-$promptTemplatePath = Join-Path $repoRoot "prompts\void-moderator-rumination.md"
+$promptTemplatePath = if ($ModerationHeartbeatOnly) {
+  Join-Path $repoRoot "prompts\void-moderation-heartbeat.md"
+} else {
+  Join-Path $repoRoot "prompts\void-moderator-rumination.md"
+}
 $contextProjectionScriptPath = Join-Path $repoRoot "scripts\lib\void-rumination-context-projection.ps1"
 $recentHistoryScriptPath = Join-Path $repoRoot "scripts\export-recent-discord-history.mjs"
 $repoActivityScriptPath = Join-Path $repoRoot "scripts\export-recent-repo-activity.mjs"
 $selfStateScriptPath = Join-Path $repoRoot "scripts\void-self-state.mjs"
 $moderationActionScriptPath = Join-Path $repoRoot "scripts\moderate-discord-user.mjs"
+$moderationPolicyScriptPath = Join-Path $repoRoot "scripts\enforce-discord-moderation-policy.mjs"
 $sendMessageScriptPath = if (-not [string]::IsNullOrWhiteSpace($env:VOID_SEND_DISCORD_SCRIPT)) {
   $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:VOID_SEND_DISCORD_SCRIPT)
 } else {
@@ -523,11 +530,11 @@ function Invoke-UrgentModerationEnforcement {
   }
 
   $normalizedMode = if ([string]::IsNullOrWhiteSpace($Mode)) { "log_only" } else { $Mode.Trim().ToLowerInvariant() }
-  if ($normalizedMode -in @("off", "disabled", "log_only", "log-only", "case_only", "case-only")) {
+  if ($normalizedMode -in @("off", "disabled", "log_only", "log-only", "case_only", "case-only", "policy", "enforce_policy", "enforce-policy", "ban")) {
     return @{
       mode = $normalizedMode
       status = "skipped"
-      reason = "enforcement_mode_non_destructive"
+      reason = if ($normalizedMode -in @("policy", "enforce_policy", "enforce-policy", "ban")) { "policy_enforcement_owned_by_moderation_heartbeat" } else { "enforcement_mode_non_destructive" }
       witnessCount = [int]$Witnesses.Count
     }
   }
@@ -582,7 +589,70 @@ function Invoke-UrgentModerationEnforcement {
     }
   }
 
-  throw "Unsupported VOID_MODERATION_ENFORCEMENT_MODE '$Mode'. Use log_only, notify_owner, or timeout."
+  throw "Unsupported VOID_MODERATION_ENFORCEMENT_MODE '$Mode'. Use log_only, notify_owner, timeout, or policy."
+}
+
+function Assert-ModerationHeartbeatOperations {
+  param(
+    [object[]] $Operations,
+    $TypedState
+  )
+
+  foreach ($operation in $Operations) {
+    $operationName = Get-ObjectPropertyString -Value $operation -Name "operation"
+    if ($null -eq $operationName) {
+      continue
+    }
+    if ($operationName -notin @("upsert_open_case", "close_open_case")) {
+      throw "Moderation heartbeat may only emit upsert_open_case or close_open_case operations; got '$operationName'."
+    }
+    if ($operationName -eq "upsert_open_case") {
+      $case = Get-ObjectPropertyValue -Value $operation -Name "case"
+      $sourceMessageId = Get-ObjectPropertyString -Value $case -Name "sourceMessageId"
+      $priorCase = @(
+        @(Convert-ToValueArray -Value $TypedState.moderationCursor.openCases) |
+          Where-Object { (Get-ObjectPropertyString -Value $_ -Name "sourceMessageId") -eq $sourceMessageId }
+      ) | Select-Object -First 1
+      if ($null -ne $priorCase) {
+        $priorStatus = Get-ObjectPropertyString -Value $priorCase -Name "status"
+        $priorResolution = Get-ObjectPropertyString -Value $priorCase -Name "resolutionSummary"
+        if ($priorStatus -in @("answered", "resolved", "closed", "retired", "dropped") -and $priorResolution -match "(?i)(instaban|three-strike ban|strike \d/3 recorded|ban applied)") {
+          throw "Moderation heartbeat cannot reopen already-actioned case '$sourceMessageId'."
+        }
+      }
+      $tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $case -Name "tags")) | ForEach-Object { ([string]$_).ToLowerInvariant() }
+      $infringementTags = @($tags | Where-Object { $_.StartsWith("infringement:") })
+      $moderationTags = @($tags | Where-Object { $_ -in @("moderation:instaban", "moderation:strike", "moderation:case_only") })
+      if ($infringementTags.Count -ne 1) {
+        throw "Moderation heartbeat open cases must include exactly one infringement:<type> tag."
+      }
+      if ($moderationTags.Count -ne 1) {
+        throw "Moderation heartbeat open cases must include exactly one moderation:instaban, moderation:strike, or moderation:case_only tag."
+      }
+    }
+  }
+}
+
+function Invoke-ModerationPolicyEnforcement {
+  param(
+    [string] $Mode,
+    [switch] $DryRun
+  )
+
+  $arguments = @(
+    $moderationPolicyScriptPath,
+    "--state-file", $stateFilePath,
+    "--operations-file", $operationOutputPath,
+    "--mode", $Mode
+  )
+  if ($DryRun) {
+    $arguments += "--dry-run"
+  }
+  $output = & node @arguments 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw "Moderation policy enforcement failed: $($output | Out-String)"
+  }
+  return $output | ConvertFrom-Json
 }
 
 function Get-TypedSelfState {
@@ -1206,7 +1276,7 @@ if (Test-Path $operationOutputPath) {
   Remove-Item -LiteralPath $operationOutputPath -Force
 }
 
-foreach ($requiredPath in @($contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath, $moderationActionScriptPath, $sendMessageScriptPath)) {
+foreach ($requiredPath in @($promptTemplatePath, $contextProjectionScriptPath, $recentHistoryScriptPath, $repoActivityScriptPath, $selfStateScriptPath, $moderationActionScriptPath, $moderationPolicyScriptPath, $sendMessageScriptPath)) {
   if (-not (Test-Path $requiredPath)) {
     throw "Missing required helper at $requiredPath"
   }
@@ -1262,6 +1332,7 @@ $moderationTimeoutMinutes = Get-ConfigValue -Name "VOID_MODERATION_TIMEOUT_MINUT
 if ([string]::IsNullOrWhiteSpace($moderationTimeoutMinutes)) {
   $moderationTimeoutMinutes = "60"
 }
+$moderationPolicyDryRun = -not [string]::IsNullOrWhiteSpace($env:VOID_MODERATION_POLICY_DRY_RUN)
 
 $typedContext = Get-TypedSelfState
 $typedState = $typedContext.typedState
@@ -1295,54 +1366,79 @@ if ($messageCount -gt 0) {
 }
 
 $repoActivity = $null
-try {
-  $repoActivity = Invoke-NodeJson -Arguments @(
-    $repoActivityScriptPath,
-    "--hours", "96",
-    "--max-commits", "3",
-    "--read-only",
-    "--state-path", $stateFilePath
-  )
-} catch {
+if ($ModerationHeartbeatOnly) {
   $repoActivity = @{
-    status = "failed"
-    error = $_.Exception.Message
+    status = "skipped"
+    reason = "moderation_heartbeat_only"
+  }
+} else {
+  try {
+    $repoActivity = Invoke-NodeJson -Arguments @(
+      $repoActivityScriptPath,
+      "--hours", "96",
+      "--max-commits", "3",
+      "--read-only",
+      "--state-path", $stateFilePath
+    )
+  } catch {
+    $repoActivity = @{
+      status = "failed"
+      error = $_.Exception.Message
+    }
   }
 }
 
 $pendingMentions = @()
-$pendingMentionPacket = Read-JsonFile -Path $pendingMentionsPath
-if ($null -ne $pendingMentionPacket) {
-  $pendingMentionsValue = Get-ObjectPropertyValue -Value $pendingMentionPacket -Name "pendingMentions"
-  if ($null -ne $pendingMentionsValue) {
-    $pendingMentions = @(Convert-ToValueArray -Value $pendingMentionsValue)
+if (-not $ModerationHeartbeatOnly) {
+  $pendingMentionPacket = Read-JsonFile -Path $pendingMentionsPath
+  if ($null -ne $pendingMentionPacket) {
+    $pendingMentionsValue = Get-ObjectPropertyValue -Value $pendingMentionPacket -Name "pendingMentions"
+    if ($null -ne $pendingMentionsValue) {
+      $pendingMentions = @(Convert-ToValueArray -Value $pendingMentionsValue)
+    }
   }
 }
 
-Write-JsonFile -Path $contextPath -Data @{
-  generated = "now"
-  stateFile = $stateFilePath
-  noPost = [bool]$NoPost
-  selfStateSummary = $typedContext.summary
-  chronology = "Times in this prompt-facing context are relative phrases. Exact timestamps stay parent-owned for typed state and cursor bookkeeping."
-  openCases = @(Project-OpenCasesForRumination -Cases $typedState.moderationCursor.openCases -Now $startedAtUtc)
-  speechReceipts = @(Project-SpeechReceiptsForRumination -Receipts $typedState.speechReceipts.recentReceipts -Now $startedAtUtc)
-  memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
-  shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
-  incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
-  agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
-  speechPressureObligations = $speechPressureObligations
-  urgentModerationWitnesses = $urgentModerationWitnesses
-  pendingMentions = $pendingMentions
-  recentConversationTarget = Project-RecentConversationTargetForRumination -History $history -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
-  publicSpeechTarget = Project-PublicSpeechTargetForRumination -ChannelId $publicRoomChannelId -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
-  deliverableCandidateCount = [int]$deliverableCandidates.Count
-  candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
-  scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
-  priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc
-  observedCursor = Project-CursorForRumination -Cursor $observedCursor -Now $startedAtUtc
-  recentHistory = Project-RecentHistoryForRumination -History $history -Now $startedAtUtc
-  repoActivity = Select-RuminationRepoActivity -RepoActivity $repoActivity -Now $startedAtUtc
+if ($ModerationHeartbeatOnly) {
+  Write-JsonFile -Path $contextPath -Data @{
+    generated = "now"
+    mode = "moderation_heartbeat"
+    stateFile = $stateFilePath
+    noPost = [bool]$NoPost
+    chronology = "Times in this prompt-facing context are relative phrases. Exact timestamps stay parent-owned for typed state and cursor bookkeeping."
+    openCases = @(Project-OpenCasesForRumination -Cases $typedState.moderationCursor.openCases -Now $startedAtUtc)
+    urgentModerationWitnesses = $urgentModerationWitnesses
+    priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc
+    observedCursor = Project-CursorForRumination -Cursor $observedCursor -Now $startedAtUtc
+    recentHistory = Project-RecentHistoryForRumination -History $history -Now $startedAtUtc
+    enforcementMode = $moderationEnforcementMode
+  }
+} else {
+  Write-JsonFile -Path $contextPath -Data @{
+    generated = "now"
+    stateFile = $stateFilePath
+    noPost = [bool]$NoPost
+    selfStateSummary = $typedContext.summary
+    chronology = "Times in this prompt-facing context are relative phrases. Exact timestamps stay parent-owned for typed state and cursor bookkeeping."
+    openCases = @(Project-OpenCasesForRumination -Cases $typedState.moderationCursor.openCases -Now $startedAtUtc)
+    speechReceipts = @(Project-SpeechReceiptsForRumination -Receipts $typedState.speechReceipts.recentReceipts -Now $startedAtUtc)
+    memories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.memories -Now $startedAtUtc)
+    shortTermMemories = @(Project-MemoriesForRumination -Memories $typedState.thoughtMemory.shortTerm -Now $startedAtUtc)
+    incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
+    agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
+    speechPressureObligations = $speechPressureObligations
+    urgentModerationWitnesses = $urgentModerationWitnesses
+    pendingMentions = $pendingMentions
+    recentConversationTarget = Project-RecentConversationTargetForRumination -History $history -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
+    publicSpeechTarget = Project-PublicSpeechTargetForRumination -ChannelId $publicRoomChannelId -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
+    deliverableCandidateCount = [int]$deliverableCandidates.Count
+    candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
+    scheduledRuntime = Project-ScheduledRuntimeForRumination -Runtime $typedState.scheduledRuntime -Now $startedAtUtc
+    priorCursor = Project-CursorForRumination -Cursor $priorCursor -Now $startedAtUtc
+    observedCursor = Project-CursorForRumination -Cursor $observedCursor -Now $startedAtUtc
+    recentHistory = Project-RecentHistoryForRumination -History $history -Now $startedAtUtc
+    repoActivity = Select-RuminationRepoActivity -RepoActivity $repoActivity -Now $startedAtUtc
+  }
 }
 
 $isNapping = [bool](Get-ObjectPropertyValue -Value $typedState.scheduledRuntime.sleepCycle -Name "isNapping")
@@ -1350,7 +1446,7 @@ $openCaseCount = @(
   @(Convert-ToValueArray -Value $typedState.moderationCursor.openCases) |
     Where-Object { Test-OpenCaseRequiresRumination -Case $_ }
 ).Count
-if ($isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $deliverableCandidates.Count -eq 0) {
+if (-not $ModerationHeartbeatOnly -and $isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $deliverableCandidates.Count -eq 0) {
   Append-RunLog "napping: no new room messages or open cases; skipping awake rumination."
   Write-JsonFile -Path $operationOutputPath -Data @()
   $finishedAtUtc = [DateTime]::UtcNow
@@ -1446,7 +1542,11 @@ $appliedOperations = @()
 $moderationEnforcementResult = $null
 
 Assert-UrgentModerationWitnessesHandled -Witnesses $urgentModerationWitnesses -Operations $proposedOperations -TypedState $typedState
-Assert-SpeechPressureObligationsResolved -Obligations $speechPressureObligations -Operations $proposedOperations
+if ($ModerationHeartbeatOnly) {
+  Assert-ModerationHeartbeatOperations -Operations $proposedOperations -TypedState $typedState
+} else {
+  Assert-SpeechPressureObligationsResolved -Obligations $speechPressureObligations -Operations $proposedOperations
+}
 
 Append-RunLog ("applying proposed operations: {0}" -f @($proposedOperations).Count)
 foreach ($operation in $proposedOperations) {
@@ -1458,7 +1558,11 @@ foreach ($operation in $proposedOperations) {
   $appliedOperations += Apply-TypedOperation -Operation $operation
 }
 
-if (-not $NoPost) {
+if ($ModerationHeartbeatOnly) {
+  $moderationEnforcementResult = Invoke-ModerationPolicyEnforcement `
+    -Mode $moderationEnforcementMode `
+    -DryRun:([bool]$moderationPolicyDryRun)
+} elseif (-not $NoPost) {
   $moderationEnforcementResult = Invoke-UrgentModerationEnforcement `
     -Witnesses $urgentModerationWitnesses `
     -Mode $moderationEnforcementMode `
@@ -1482,7 +1586,7 @@ if (
 
 $repoCursorOperations = @()
 $disableRepoCursorAdvance = -not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE)
-if (-not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
+if (-not $ModerationHeartbeatOnly -and -not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
   $repoCursorOperations = @(Get-RepoActivityCursorOperations -RepoActivity $repoActivity -ObservedAt ([DateTime]::UtcNow))
   if ($repoCursorOperations.Count -gt 0) {
     Append-RunLog ("recording repo activity cursors: {0}" -f $repoCursorOperations.Count)
@@ -1493,7 +1597,7 @@ if (-not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
 }
 
 $deliveredCandidateCount = 0
-if (-not $NoPost) {
+if (-not $ModerationHeartbeatOnly -and -not $NoPost) {
   $refreshedTypedContext = Get-TypedSelfState
   $alreadyAnsweredCandidateOperations = @(Get-AlreadyAnsweredCandidateRetireOperations -TypedState $refreshedTypedContext.typedState -RetiredAt ([DateTime]::UtcNow))
   if ($alreadyAnsweredCandidateOperations.Count -gt 0) {
@@ -1523,7 +1627,7 @@ $finishedAtUtc = [DateTime]::UtcNow
 Append-RunLog "final status timestamp captured."
 $lastMessageSummary = @(
   "Void moderation rumination finished."
-  "mode=" + $(if ($SkipModel) { "typed_rumination_skip_model" } else { "typed_rumination" })
+  "mode=" + $(if ($ModerationHeartbeatOnly) { "moderation_heartbeat" } elseif ($SkipModel) { "typed_rumination_skip_model" } else { "typed_rumination" })
   "proposed=" + [string]@($proposedOperations).Count
   "applied=" + [string]@($appliedOperations).Count
   "deliveredCandidates=" + [string]$deliveredCandidateCount
@@ -1535,7 +1639,7 @@ Append-RunLog "final status last message loaded."
 
 $finalStatus = [ordered]@{
   status = "ok"
-  mode = if ($SkipModel) { "typed_rumination_skip_model" } else { "typed_rumination" }
+  mode = if ($ModerationHeartbeatOnly) { "moderation_heartbeat" } elseif ($SkipModel) { "typed_rumination_skip_model" } else { "typed_rumination" }
   startedAt = $startedAtUtc.ToString("o")
   finishedAt = $finishedAtUtc.ToString("o")
   durationSeconds = [Math]::Round(($finishedAtUtc - $startedAtUtc).TotalSeconds, 2)
@@ -1560,5 +1664,5 @@ $finalStatus = [ordered]@{
 }
 Write-JsonFile -Path $statusPath -Data $finalStatus
 
-Append-RunLog ("mode=typed_rumination messages={0} proposed={1} applied={2} cursor={3}" -f $messageCount, @($proposedOperations).Count, @($appliedOperations).Count, $observedCursorTimestamp)
+Append-RunLog ("mode={0} messages={1} proposed={2} applied={3} cursor={4}" -f $(if ($ModerationHeartbeatOnly) { "moderation_heartbeat" } else { "typed_rumination" }), $messageCount, @($proposedOperations).Count, @($appliedOperations).Count, $observedCursorTimestamp)
 Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
