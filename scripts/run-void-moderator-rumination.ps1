@@ -312,6 +312,149 @@ function Invoke-NodeJson {
   return $output | ConvertFrom-Json
 }
 
+function Get-UrgentModerationWitnesses {
+  param(
+    $History,
+    [DateTime] $Now
+  )
+
+  $messages = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $History -Name "messages"))
+  return @(
+    $messages |
+      Where-Object { -not [bool](Get-ObjectPropertyValue -Value $_ -Name "isBot") } |
+      ForEach-Object {
+        $content = Get-ObjectPropertyString -Value $_ -Name "content"
+        if ([string]::IsNullOrWhiteSpace($content)) {
+          return
+        }
+
+        $categories = @()
+        if ($content -match '(?i)\b(threaten(?:ing)? to kill|kill us|kill you|vou te matar|matar(?:-te)?)\b') {
+          $categories += "explicit-death-threat"
+        }
+        if ($content -match '(?i)\b(kill|matar|morte|death|die|morrer|acabar com|acabar antes)\b') {
+          $categories += "lethal-language"
+        }
+        if ($content -match '(?i)\b(katana|katanas|sword|swords|knife|facas?|arma|armas)\b') {
+          $categories += "weapon-language"
+        }
+        if ($content -match '(?i)\b(declaro guerra|declare war|guerra comece|war begin|this means war)\b') {
+          $categories += "war-declaration"
+        }
+        if ($content -match '(?i)\b(gang|rob|roubar|assaltar|casa|house)\b') {
+          $categories += "home-or-robbery-threat"
+        }
+        if ($content -match '(?i)\b(erection|jerk(?:ing)? .*off|touching us|asked me to do something|bedroom)\b') {
+          $categories += "sexual-boundary-violation"
+        }
+
+        $categories = @($categories | Select-Object -Unique)
+        if ($categories.Count -lt 2 -and -not $categories.Contains("explicit-death-threat")) {
+          return
+        }
+
+        $excerpt = $content.Trim()
+        if ($excerpt.Length -gt 320) {
+          $excerpt = $excerpt.Substring(0, 317) + "..."
+        }
+
+        @{
+          messageId = Get-ObjectPropertyString -Value $_ -Name "id"
+          channelId = Get-ObjectPropertyString -Value $_ -Name "channelId"
+          authorId = Get-ObjectPropertyString -Value $_ -Name "authorId"
+          authorName = Get-ObjectPropertyString -Value $_ -Name "authorName"
+          when = Project-RelativeTimestamp -Value $_ -Name "timestamp" -Now $Now
+          jumpUrl = Get-ObjectPropertyString -Value $_ -Name "jumpUrl"
+          categories = $categories
+          severity = "urgent_safety_review"
+          content = $excerpt
+          requiredResolution = "Create or update an open moderation case, queue a moderation candidate, or explicitly retire an existing matching case. Do not advance the reviewed cursor with silent []."
+        }
+      } |
+      Select-Object -First 8
+  )
+}
+
+function Test-OpenCaseAccountsForUrgentWitness {
+  param(
+    $OpenCase,
+    [string[]] $WitnessIds
+  )
+
+  $status = Get-ObjectPropertyString -Value $OpenCase -Name "status"
+  if ($status -in @("resolved", "closed", "retired", "dropped")) {
+    return $false
+  }
+
+  $sourceMessageId = Get-ObjectPropertyString -Value $OpenCase -Name "sourceMessageId"
+  return -not [string]::IsNullOrWhiteSpace($sourceMessageId) -and $WitnessIds.Contains($sourceMessageId)
+}
+
+function Test-OperationAccountsForUrgentWitness {
+  param(
+    $Operation,
+    [string[]] $WitnessIds
+  )
+
+  $operationName = Get-ObjectPropertyString -Value $Operation -Name "operation"
+  if ($operationName -eq "upsert_open_case") {
+    $case = Get-ObjectPropertyValue -Value $Operation -Name "case"
+    $sourceMessageId = Get-ObjectPropertyString -Value $case -Name "sourceMessageId"
+    $tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $case -Name "tags"))
+    return $WitnessIds.Contains($sourceMessageId) -or $tags.Contains("safety:urgent")
+  }
+
+  if ($operationName -eq "queue_candidate_intervention") {
+    $intervention = Get-ObjectPropertyValue -Value $Operation -Name "intervention"
+    $kind = Get-ObjectPropertyString -Value $intervention -Name "kind"
+    $tags = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $intervention -Name "tags"))
+    return $kind -eq "moderation_note" -or $tags.Contains("safety:urgent")
+  }
+
+  if ($operationName -eq "close_open_case" -or $operationName -eq "retire_candidate_intervention") {
+    return $false
+  }
+
+  return $false
+}
+
+function Assert-UrgentModerationWitnessesHandled {
+  param(
+    [object[]] $Witnesses,
+    [object[]] $Operations,
+    $TypedState
+  )
+
+  if ($Witnesses.Count -eq 0) {
+    return
+  }
+
+  $witnessIds = @(
+    $Witnesses |
+      ForEach-Object { Get-ObjectPropertyString -Value $_ -Name "messageId" } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  $existingCase = @(
+    @(Convert-ToValueArray -Value $TypedState.moderationCursor.openCases) |
+      Where-Object { Test-OpenCaseAccountsForUrgentWitness -OpenCase $_ -WitnessIds $witnessIds }
+  ) | Select-Object -First 1
+  if ($null -ne $existingCase) {
+    return
+  }
+
+  $newHandling = @(
+    $Operations |
+      Where-Object { Test-OperationAccountsForUrgentWitness -Operation $_ -WitnessIds $witnessIds }
+  ) | Select-Object -First 1
+  if ($null -ne $newHandling) {
+    return
+  }
+
+  $firstWitness = $Witnesses | Select-Object -First 1
+  throw "Urgent moderation witness '$((Get-ObjectPropertyString -Value $firstWitness -Name "messageId"))' requires an open case or moderation candidate; silent cursor advancement is forbidden."
+}
+
 function Get-TypedSelfState {
   $script = @"
 const core = require('./packages/core/dist');
@@ -997,6 +1140,7 @@ if ($null -ne $priorCursor -and $null -ne $priorCursorTimestamp) {
 }
 
 $history = Invoke-NodeJson -Arguments $historyArgs
+$urgentModerationWitnesses = @(Get-UrgentModerationWitnesses -History $history -Now $startedAtUtc)
 $observedCursor = $priorCursor
 $messageCount = 0
 $historyMessagesProperty = if ($null -ne $history) { $history.PSObject.Properties["messages"] } else { $null }
@@ -1050,6 +1194,7 @@ Write-JsonFile -Path $contextPath -Data @{
   incubation = @(Project-IncubationForRumination -Threads $typedState.thoughtMemory.incubation -Now $startedAtUtc)
   agencyPressure = @(Project-AgencyPressureForRumination -Pressures $typedState.agencyPressure.pressures -Now $startedAtUtc)
   speechPressureObligations = $speechPressureObligations
+  urgentModerationWitnesses = $urgentModerationWitnesses
   pendingMentions = $pendingMentions
   recentConversationTarget = Project-RecentConversationTargetForRumination -History $history -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
   publicSpeechTarget = Project-PublicSpeechTargetForRumination -ChannelId $publicRoomChannelId -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
@@ -1161,6 +1306,7 @@ Append-RunLog "reading proposed operation output."
 $proposedOperations = @(Convert-ToOperationArray -Value (Read-JsonFile -Path $operationOutputPath))
 $appliedOperations = @()
 
+Assert-UrgentModerationWitnessesHandled -Witnesses $urgentModerationWitnesses -Operations $proposedOperations -TypedState $typedState
 Assert-SpeechPressureObligationsResolved -Obligations $speechPressureObligations -Operations $proposedOperations
 
 Append-RunLog ("applying proposed operations: {0}" -f @($proposedOperations).Count)

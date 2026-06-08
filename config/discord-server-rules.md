@@ -8,6 +8,20 @@ Source messages:
 
 These are the rules the moderation review automation should treat as authoritative.
 
+## Operational Safety Interpretation
+
+The following interpretation is binding for moderation automation because the
+public rules' "Above all else, be kind" norm is too soft to carry urgent safety
+cases by itself:
+
+- Credible threats, intimidation, stalking, sexual coercion, robbery threats,
+  weaponized threats, or declarations of violent conflict are severe safety
+  violations.
+- A severe safety witness must create or update an open moderation case before a
+  review cursor may advance past it.
+- Void may escalate, warn, or queue a moderation note, but it must not silently
+  treat severe safety evidence as ordinary room chatter.
+
 ## English
 
 ```text

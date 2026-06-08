@@ -63,6 +63,7 @@
     "moderation:rumination:speech-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-speech-fixture.ps1",
     "moderation:rumination:speech-pressure-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-speech-pressure-fixture.ps1",
     "moderation:rumination:nap-skip-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-nap-skip-fixture.ps1",
+    "moderation:rumination:urgent-safety-fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-rumination-urgent-safety-fixture.ps1",
     "moderation:mood-drift": "node scripts/simulate-void-mood.mjs",
     "rag:scrub-bot-prompts": "tsx scripts/scrub-bot-prompts-from-history.ts",
     "rag:index-sources": "tsx scripts/index-source-repos.ts",
