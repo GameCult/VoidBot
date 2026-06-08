@@ -11,6 +11,7 @@ import {
   type VoidSelfStateOperation,
   type VoidSpeechReceipts,
   type VoidThoughtMemory,
+  legacyVoidPersonaAffectDocument,
   voidCandidateInterventionsDocument,
   voidFaceAffectDocument,
   voidAgencyPressureDocument,
@@ -125,7 +126,10 @@ function readTypedStateOrEmpty(
     agencyPressure: cache.getGlobal(voidAgencyPressureDocument) ?? empty.agencyPressure,
     candidateInterventions:
       cache.getGlobal(voidCandidateInterventionsDocument) ?? empty.candidateInterventions,
-    faceAffect: cache.getGlobal(voidFaceAffectDocument) ?? empty.faceAffect,
+    faceAffect:
+      cache.getGlobal(voidFaceAffectDocument) ??
+      cache.getGlobal(legacyVoidPersonaAffectDocument) ??
+      empty.faceAffect,
   };
   if (identity) {
     repairSelfProfileIdentity(state, identity);
@@ -148,6 +152,7 @@ async function writeTypedState(
   await cache.putGlobal(voidAgencyPressureDocument, stripUndefined(state.agencyPressure));
   await cache.putGlobal(voidCandidateInterventionsDocument, stripUndefined(state.candidateInterventions));
   await cache.putGlobal(voidFaceAffectDocument, stripUndefined(state.faceAffect));
+  await cache.deleteGlobal(legacyVoidPersonaAffectDocument);
 }
 
 function repairSelfProfileIdentity(

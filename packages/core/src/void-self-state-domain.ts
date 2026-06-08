@@ -406,7 +406,7 @@ export const voidSelfProfileSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
-export const voidModerationCursorSchema = z.object({
+const voidModerationCursorDocumentBodySchema = z.object({
   schemaVersion: z.literal(1),
   lastReviewedMessageId: z.string().trim().min(1).optional(),
   lastReviewedTimestamp: timestampSchema.optional(),
@@ -414,6 +414,20 @@ export const voidModerationCursorSchema = z.object({
   repoActivityCursor: z.array(moderationRepoCursorSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
+
+export const voidModerationCursorSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const document = raw as Record<string, unknown>;
+  if (!("userStatuses" in document)) {
+    return raw;
+  }
+
+  const { userStatuses: _legacyUserStatuses, ...currentDocument } = document;
+  return currentDocument;
+}, voidModerationCursorDocumentBodySchema);
 
 export const voidSpeechReceiptsSchema = z.object({
   schemaVersion: z.literal(1),
@@ -466,7 +480,7 @@ export const voidAgencyPressureSchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
-export const voidFaceAffectSchema = z.object({
+const voidFaceAffectDocumentBodySchema = z.object({
   schemaVersion: z.literal(1),
   needs: z.array(faceAffectNeedSchema).default([]),
   socialBonds: z.array(faceSocialBondSchema).default([]),
@@ -476,6 +490,31 @@ export const voidFaceAffectSchema = z.object({
   doctrineStances: z.array(faceDoctrineStanceSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
+
+export const voidFaceAffectSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const document = raw as Record<string, unknown>;
+  if (!("userStatuses" in document) && !("stressResponses" in document)) {
+    return raw;
+  }
+
+  const {
+    userStatuses: legacyUserStatuses,
+    stressResponses: _legacyStressResponses,
+    ...currentDocument
+  } = document;
+  if ("statusReads" in currentDocument) {
+    return currentDocument;
+  }
+
+  return {
+    ...currentDocument,
+    statusReads: legacyUserStatuses,
+  };
+}, voidFaceAffectDocumentBodySchema);
 
 export const voidSelfProfileDocument = defineDocumentType({
   type: VOID_SELF_STATE_DOCUMENT_TYPES.selfProfile,
@@ -525,6 +564,12 @@ export const voidFaceAffectDocument = defineDocumentType({
   global: true,
 });
 
+export const legacyVoidPersonaAffectDocument = defineDocumentType({
+  type: "void.persona_affect",
+  schema: voidFaceAffectSchema,
+  global: true,
+});
+
 export const voidSelfStateDocumentRegistry = defineDocumentRegistry(
   voidSelfProfileDocument,
   voidModerationCursorDocument,
@@ -534,6 +579,7 @@ export const voidSelfStateDocumentRegistry = defineDocumentRegistry(
   voidAgencyPressureDocument,
   voidCandidateInterventionsDocument,
   voidFaceAffectDocument,
+  legacyVoidPersonaAffectDocument,
 );
 
 export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [

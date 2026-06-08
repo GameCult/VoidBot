@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultStorageRoot = resolve(repoRoot, ".voidbot");
@@ -678,7 +678,7 @@ function deriveOrchestratorState(organs) {
   return "ok";
 }
 
-async function writeCultMeshPublication(snapshot, eveState, storePath) {
+async function writeCultMeshPublication(snapshot, eveState, storePath, allowStoreReset = true) {
   try {
     const cultPackages = loadCultPackages();
     if (!cultPackages) {
@@ -765,12 +765,34 @@ async function writeCultMeshPublication(snapshot, eveState, storePath) {
       writtenAt: new Date().toISOString(),
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      allowStoreReset &&
+      existsSync(storePath) &&
+      /global document type .* has multiple persisted entries/i.test(message)
+    ) {
+      const backupPath = `${storePath}.bak-duplicate-globals-${timestampForFile(new Date())}`;
+      await rename(storePath, backupPath);
+      const retry = await writeCultMeshPublication(snapshot, eveState, storePath, false);
+      return {
+        ...retry,
+        recoveredFrom: {
+          reason: "duplicate-global-documents",
+          backupPath,
+        },
+      };
+    }
+
     return {
       writeStatus: "failed",
       storePath,
-      writeError: error instanceof Error ? error.message : String(error),
+      writeError: message,
     };
   }
+}
+
+function timestampForFile(date) {
+  return date.toISOString().replace(/[:.]/g, "").replace("T", "-").replace("Z", "Z");
 }
 
 function loadCultPackages() {
@@ -784,8 +806,14 @@ function loadCultPackages() {
     }
     try {
       const requireCult = createRequire(packageJson);
-      const { CultMesh } = requireCult("cultmesh-ts/dist/index.js");
-      const { defineDocumentType } = requireCult("cultcache-ts/dist/index.js");
+      const { CultMesh } = requireFirstAvailable(requireCult, [
+        "cultmesh-ts",
+        "cultmesh-ts/dist/index.js",
+      ]);
+      const { defineDocumentType } = requireFirstAvailable(requireCult, [
+        "cultcache-ts",
+        "cultcache-ts/dist/index.js",
+      ]);
       if (CultMesh && defineDocumentType) {
         return { CultMesh, defineDocumentType };
       }
@@ -794,6 +822,18 @@ function loadCultPackages() {
     }
   }
   return null;
+}
+
+function requireFirstAvailable(requireFromPackage, specifiers) {
+  let lastError;
+  for (const specifier of specifiers) {
+    try {
+      return requireFromPackage(specifier);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function parseObjectDocument(label) {

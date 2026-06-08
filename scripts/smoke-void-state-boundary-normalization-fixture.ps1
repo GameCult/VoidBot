@@ -31,6 +31,17 @@ function Write-OperationFile {
   return $path
 }
 
+function Write-NodeScriptFile {
+  param(
+    [Parameter(Mandatory = $true)][string] $Script,
+    [Parameter(Mandatory = $true)][string] $Name
+  )
+
+  $path = Join-Path $tempRoot $Name
+  Set-Content -LiteralPath $path -Value $Script -Encoding UTF8
+  return $path
+}
+
 function Assert-NotFutureTimestamp {
   param(
     [Parameter(Mandatory = $true)][string] $Timestamp,
@@ -98,6 +109,42 @@ try {
   $state = $stateJson | ConvertFrom-Json
   $memory = @($state.thoughtMemory.shortTerm | Where-Object { $_.memoryId -eq "fixture-future-short-term" })[0]
   $candidate = @($state.candidateInterventions.interventions | Where-Object { $_.interventionId -eq "fixture-targetless-queued" })[0]
+  $legacyFaceAffectScriptText = @'
+const core = require(`${process.cwd()}/packages/core/dist/index.js`);
+const legacy = {
+  schemaVersion: 1,
+  needs: [],
+  socialBonds: [],
+  userStatuses: [{
+    readId: "fixture-legacy-user-status",
+    target: { kind: "person", id: "metacrat", label: "Metacrat" },
+    status: "consulted",
+    summary: "Legacy userStatuses should decode as statusReads.",
+    claim: "The live authority is statusReads; userStatuses is only a migration alias.",
+    tension: "A stale persisted key should not keep the Face affect organ offline.",
+    actionImplication: "Decode legacy state and rewrite through the current strict schema.",
+    intensity: 0.6,
+    anchorRefs: [{ ref: "fixture:legacy-userStatuses", kind: "fixture" }],
+    evidenceRefs: [],
+    createdAt: "2026-06-08T00:00:00.000Z",
+    updatedAt: "2026-06-08T00:00:00.000Z",
+    tags: ["fixture:legacy"]
+  }],
+  moodDimensions: [],
+  socialBiases: [],
+  stressResponses: [{
+    name: "legacy-startle",
+    value: 0.4,
+    updatedAt: "2026-06-08T00:00:00.000Z"
+  }],
+  doctrineStances: [],
+  updatedAt: "2026-06-08T00:00:00.000Z"
+};
+console.log(JSON.stringify(core.voidFaceAffectSchema.parse(legacy)));
+'@
+  $legacyFaceAffectScript = Write-NodeScriptFile -Name "legacy-face-affect.cjs" -Script $legacyFaceAffectScriptText
+  $legacyFaceAffectJson = Invoke-NodeChecked -Arguments @($legacyFaceAffectScript)
+  $legacyFaceAffect = $legacyFaceAffectJson | ConvertFrom-Json
 
   if ($memory.createdAt -eq "2999-01-01T00:00:00.000Z" -or $memory.updatedAt -eq "2999-01-01T00:00:00.000Z") {
     throw "Short-term memory kept model-authored future timestamps."
@@ -114,11 +161,22 @@ try {
   Assert-NotFutureTimestamp -Timestamp $candidate.createdAt -Label "candidate createdAt"
   Assert-NotFutureTimestamp -Timestamp $candidate.updatedAt -Label "candidate updatedAt"
 
+  if (@($legacyFaceAffect.statusReads).Count -ne 1) {
+    throw "Legacy userStatuses did not decode into one statusReads entry."
+  }
+  if ($legacyFaceAffect.PSObject.Properties.Name -contains "userStatuses") {
+    throw "Legacy userStatuses survived parsed Face affect state."
+  }
+  if ($legacyFaceAffect.PSObject.Properties.Name -contains "stressResponses") {
+    throw "Legacy stressResponses survived parsed Face affect state."
+  }
+
   @{
     status = "ok"
     shortTermMemoryId = $memory.memoryId
     candidateStatus = $candidate.status
     candidateTags = @($candidate.tags)
+    legacyFaceAffectStatusReads = @($legacyFaceAffect.statusReads).Count
   } | ConvertTo-Json -Compress
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
