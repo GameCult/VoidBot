@@ -26,6 +26,16 @@ const cases: Case[] = [
     detail: "Even a malformed Interpreter SAY cannot send silence markers as public content.",
   },
   {
+    name: "qualified silence SAY rejected",
+    run: () => isNonPublicRepoIdentitySpeech("nothing public yet. I want one real specimen first."),
+    detail: "Silence explanations that add private rationale are still not public speech.",
+  },
+  {
+    name: "bare no-public line rejected",
+    run: () => isNonPublicRepoIdentitySpeech("No public line. Silence is cleaner here."),
+    detail: "The worker must not post parent routing language as a Face message.",
+  },
+  {
     name: "single-line markdown fence rejected",
     run: () => isNonPublicRepoIdentitySpeech("`the whole message is a code span`"),
     detail: "A whole Face message wrapped as code is transport-shaped, not public speech.",

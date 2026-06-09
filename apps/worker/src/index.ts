@@ -850,7 +850,7 @@ function normalizeBareInterpreterSayCandidate(interpretationText: string): strin
   if (/^(INTERPRETATION|Private summary|STATE NOTE|ARTICLE|REDDIT THREAD|BIFROST TOPIC|UPDATE REQUEST)\b/i.test(content)) {
     return undefined;
   }
-  if (/\b(stay quiet|cleaner reply is to stay quiet|if you want a line at all|would say nothing|no public line)\b/i.test(content)) {
+  if (/\b(stay quiet|stay private|cleaner reply is to stay quiet|if you want a line at all|would say nothing|no public line|no public speech|nothing public|nothing right now|nothing yet|hold silence)\b/i.test(content)) {
     return undefined;
   }
   return content;

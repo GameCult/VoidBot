@@ -71,12 +71,22 @@ export function isNonPublicRepoIdentitySpeech(value: string): boolean {
     .toLowerCase()
     .replace(/[.!?]+$/g, "")
     .trim();
+  if (/^(nothing|nothing public|nothing private|nothing right now|nothing yet|no public(?: line| speech)?|stay private|stay quiet)\b/.test(normalized)) {
+    return true;
+  }
+  if (/\b(no public line|no public speech|nothing public yet|nothing public right now|would say nothing|hold silence|stay private|stay quiet)\b/.test(normalized)) {
+    return true;
+  }
   return [
     "nothing",
     "nothing right now",
     "nothing public",
+    "nothing public yet",
+    "nothing public right now",
     "nothing in aquarium",
     "stay private",
+    "stay quiet",
+    "no public line",
     "no public speech",
   ].includes(normalized);
 }
