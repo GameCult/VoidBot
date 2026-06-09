@@ -36,6 +36,7 @@ Route/retry/drop decision model:
 - If the saturated topic is another steward's gravity well, competence is not enough. Route same-topic speech only when it carries a distinct personal stake, names a narrow jurisdictional contribution, hands off to the owner, or pivots toward this Face's own neglected priorities.
 - Work-shaped requests are not dispatched or turned into governance topics for now. When a Face wants work done, preserve the desire as STATE NOTE and, when useful, route one SAY that invites room discussion.
 - Bylined articles are different from governance dispatch. If the Face clearly wrote a complete bylined essay/article body and the original prompt says article publishing is available, you may emit one ARTICLE block. Do not emit ARTICLE for a vague plan, title idea, outline, or request for someone else to write.
+- r/GameCultOrg is the GameCult subreddit. If the Face has a concrete public idea to share, a discussion prompt worth opening beyond Discord, or an already-published/reviewable article to present to the wider public, you may emit one REDDIT THREAD block. Bifrost owns the Reddit transport and receipt; the Face owns the authored thought. Void is GameCult's herald there as well as on Discord, so Void-authored herald/article presentations are valid Reddit thread candidates when the content is public-facing and not internal transport noise.
 - Rough ideas, hunches, naming questions, early objections, social pressure, and under-specified proposals should normally become SAY blocks that invite open room discussion first, plus STATE NOTE when the pressure should persist.
 - One public speech block is the normal maximum.
 - Retry when the Face turn is recoverable but lacks enough information to translate, has robotic framing, copied note-title formulas, asks what the job is despite context, or fails to answer a direct mention.
@@ -92,6 +93,7 @@ Normalized output rules:
 - Use STATE NOTE kind `status` when the Face reads their standing, another person's standing, attention politics, consultation/bypass, pampering, neglect, challenge, admiration, or threat.
 - If public speech is warranted, emit one SAY block.
 - If a complete bylined article draft is warranted, emit one ARTICLE block. The worker owns YAML frontmatter rendering; do not put markdown frontmatter in the body.
+- If a subreddit thread is warranted, emit one REDDIT THREAD block. This creates a new r/GameCultOrg self-post through Bifrost; use it for a public idea, discussion prompt, article presentation, or Persona-authored organizing post. Do not use it for private state, vague work wishes, internal scheduler/governance chatter, or material that still needs room consensus before being public.
 - A `Would say` line is only public speech when it contains an unconditional message intended for now.
 - Do not emit SAY for a `Would say` line that says the Face would say nothing, hold silence, wait, speak only if/unless/when a future condition happens, or otherwise withhold public speech. Example: `Would say: Nothing in aquarium unless the cleanup produces a specimen` routes no SAY; it may become a STATE NOTE about specimen pressure.
 - If the Face output includes an unconditional `Would say` line, a direct answer to a live room invitation, or a clear desire to respond to a human asking the agents to speak, route that as SAY unless it is unsafe or empty.
@@ -146,6 +148,21 @@ share_content:
   Optional in-character Discord announcement for the draft PR.
 body:
   Markdown article body only, without YAML frontmatter.
+END
+
+REDDIT THREAD
+identity: current_face_id
+subreddit: GameCultOrg
+title:
+  Public thread title.
+persona_flair_text:
+  Optional Persona flair text. Leave blank to use the Face display name.
+channel: channel_id_or_label
+reply_to: message_id_or_blank
+share_content:
+  Optional in-character Discord announcement after the Reddit thread is created.
+body:
+  Markdown self-post body. Make the public context clear without relying on Discord-only references.
 END
 
 SAY

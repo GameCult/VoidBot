@@ -27,10 +27,11 @@ Discord Gateway
 VoidBot's Verse-facing service contract lives in
 `docs/architecture/voidbot-verse-service-contract.md`. The short version:
 VoidBot owns Discord cognition, r/GameCultOrg moderation judgment when Bifrost
-supplies Reddit threads/posts, archive/source retrieval, typed Void self-state,
-and repo Face compatibility rails; Huginn owns Persona/.cc runtime inspection
-stewardship; Bifrost owns governed work and Reddit transport; Odin discovers
-provider-owned CultMesh surfaces; Eve/CultUI is the presentation contract.
+supplies Reddit threads/posts, repo Face Reddit thread intent packaging,
+archive/source retrieval, typed Void self-state, and repo Face compatibility
+rails; Huginn owns Persona/.cc runtime inspection stewardship; Bifrost owns
+governed work and Reddit transport; Odin discovers provider-owned CultMesh
+surfaces; Eve/CultUI is the presentation contract.
 
 ## Current shortcuts and tradeoffs
 

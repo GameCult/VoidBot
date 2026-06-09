@@ -394,6 +394,9 @@ async function processJob(job: JobRecord): Promise<void> {
       const repoIdentityArticles = config.repoFaceGithubActionsEnabled
         ? parseRepoFaceArticleIntents(repoFaceOutput)
         : [];
+      const repoIdentityRedditThreads = config.repoFaceGithubActionsEnabled
+        ? parseRepoIdentityRedditThreadIntents(repoFaceOutput)
+        : [];
       const repoIdentityProposals = config.repoFaceGithubActionsEnabled
         ? parseRepoIdentityProposalPrIntents(repoFaceOutput)
         : [];
@@ -407,21 +410,28 @@ async function processJob(job: JobRecord): Promise<void> {
       const prCommentSubmitted = !proposalPrSubmitted && repoIdentityPrComments.length > 0;
       const articlePrSubmitted =
         !proposalPrSubmitted && !prCommentSubmitted && repoIdentityArticles.length > 0;
+      const redditThreadSubmitted =
+        !proposalPrSubmitted &&
+        !prCommentSubmitted &&
+        !articlePrSubmitted &&
+        repoIdentityRedditThreads.length > 0;
       const bifrostTopicSubmitted =
         config.repoFaceBifrostEnabled &&
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
+        !redditThreadSubmitted &&
         repoIdentityBifrostTopics.length > 0;
       const updateRequestRoutedToBifrostTopic =
         config.repoFaceBifrostEnabled &&
         !proposalPrSubmitted &&
         !prCommentSubmitted &&
         !articlePrSubmitted &&
+        !redditThreadSubmitted &&
         !bifrostTopicSubmitted &&
         repoIdentityUpdateRequests.length > 0;
       console.log(
-        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
+        `Repo-face job ${job.id} parsed actions: say=${repoIdentityPosts.length}, stateNote=${repoIdentityStateNotes.length}, bifrostTopic=${repoIdentityBifrostTopics.length}, updateRequest=${repoIdentityUpdateRequests.length}, article=${repoIdentityArticles.length}, redditThread=${repoIdentityRedditThreads.length}, proposalPr=${repoIdentityProposals.length}, prComment=${repoIdentityPrComments.length}.`,
       );
       for (const stateNote of repoIdentityStateNotes.slice(0, 4)) {
         await applyRepoIdentityStateNoteIntent(job, stateNote);
@@ -432,6 +442,8 @@ async function processJob(job: JobRecord): Promise<void> {
         await commentRepoIdentityPullRequestIntent(job, repoIdentityPrComments[0]);
       } else if (repoIdentityArticles.length > 0) {
         await writeRepoIdentityArticleIntent(job, repoIdentityArticles[0]);
+      } else if (repoIdentityRedditThreads.length > 0) {
+        await postRepoIdentityRedditThreadIntent(job, repoIdentityRedditThreads[0]);
       } else if (repoIdentityBifrostTopics.length > 0) {
         await submitRepoIdentityBifrostTopicIntent(job, repoIdentityBifrostTopics[0]);
       } else if (repoIdentityUpdateRequests.length > 0) {
@@ -441,7 +453,7 @@ async function processJob(job: JobRecord): Promise<void> {
         );
       }
       let repoIdentityPostDelivered = 0;
-      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted) {
+      if (!proposalPrSubmitted && !prCommentSubmitted && !articlePrSubmitted && !redditThreadSubmitted) {
         for (const post of repoIdentityPosts.slice(0, 1)) {
           if (await postRepoIdentityIntent(job, post)) {
             repoIdentityPostDelivered += 1;
@@ -463,9 +475,11 @@ async function processJob(job: JobRecord): Promise<void> {
             proposalPrSubmitted ||
             prCommentSubmitted ||
             articlePrSubmitted ||
+            redditThreadSubmitted ||
             bifrostTopicSubmitted ||
             updateRequestRoutedToBifrostTopic,
           articlePrSubmitted,
+          redditThreadSubmitted,
           proposalPrSubmitted,
           prCommentSubmitted,
           bifrostTopicSubmitted,
@@ -478,6 +492,8 @@ async function processJob(job: JobRecord): Promise<void> {
                 ? "repo_face_rumination_commented_on_pr_as_registered_identity"
               : articlePrSubmitted
                 ? "repo_face_rumination_submitted_registered_identity_article_pr"
+              : redditThreadSubmitted
+                ? "repo_face_rumination_submitted_registered_identity_reddit_thread"
               : bifrostTopicSubmitted
                 ? "repo_face_rumination_submitted_bifrost_topic"
               : updateRequestRoutedToBifrostTopic
@@ -1152,12 +1168,26 @@ interface RepoIdentityBifrostTopicIntent {
   replyToMessageId?: string;
 }
 
+interface RepoIdentityRedditThreadIntent {
+  identity?: string;
+  title: string;
+  content: string;
+  subreddit?: string;
+  personaFlairText?: string;
+  personaFlairId?: string;
+  shareContent?: string;
+  channelId?: string;
+  replyToMessageId?: string;
+}
+
 interface BifrostBridgeReceipt {
   action?: string;
   ok?: boolean;
   branch?: string;
   prUrl?: string;
   messageId?: string;
+  thingId?: string;
+  url?: string;
   transport?: "bot" | "webhook";
 }
 
@@ -1384,6 +1414,36 @@ function parseRepoFaceArticleIntents(finalResponse: string): RepoIdentityArticle
     });
 }
 
+function parseRepoIdentityRedditThreadIntents(finalResponse: string): RepoIdentityRedditThreadIntent[] {
+  return parseRepoFaceActionBlocks(finalResponse)
+    .filter((block) => block.kind === "reddit_thread")
+    .flatMap((block): RepoIdentityRedditThreadIntent[] => {
+      const title = requiredDslString(block.fields.title);
+      const content = requiredDslString(block.fields.body ?? block.fields.content);
+      if (!title || !content) {
+        return [];
+      }
+      return [{
+        identity: optionalDslString(block.fields.identity),
+        title,
+        content,
+        subreddit: optionalDslString(block.fields.subreddit),
+        personaFlairText:
+          optionalDslString(block.fields.persona_flair_text) ??
+          optionalDslString(block.fields.personaFlairText),
+        personaFlairId:
+          optionalDslString(block.fields.persona_flair_id) ??
+          optionalDslString(block.fields.personaFlairId),
+        shareContent:
+          optionalDslString(block.fields.share_content) ??
+          optionalDslString(block.fields.shareContent),
+        channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
+        replyToMessageId:
+          optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
+      }];
+    });
+}
+
 async function applyRepoIdentityStateNoteIntent(
   job: JobRecord,
   intent: RepoIdentityStateNoteIntent,
@@ -1591,6 +1651,53 @@ async function writeRepoIdentityArticleIntent(job: JobRecord, intent: RepoIdenti
     channelId: intent.channelId ?? job.outputChannelId,
     replyToMessageId: intent.replyToMessageId,
     content: `${shareContent}${prLine}${articleLine}`,
+  });
+}
+
+async function postRepoIdentityRedditThreadIntent(
+  job: JobRecord,
+  intent: RepoIdentityRedditThreadIntent,
+): Promise<void> {
+  const identityId = intent.identity ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    throw new Error(`Could not resolve repo identity for Reddit thread intent on job ${job.id}.`);
+  }
+
+  const registry = await loadRegisteredFaceRepoRegistry();
+  const identity = findRepoDiscordIdentity(registry, identityId);
+  if (!identity) {
+    throw new Error(`No registered repo identity matched "${identityId}" for Reddit thread intent on job ${job.id}.`);
+  }
+
+  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-reddit-thread.md`, ensureTrailingNewline(intent.content));
+  const receipt = runBifrostBridge([
+    "reddit-post",
+    "--title",
+    intent.title,
+    "--persona-name",
+    identity.displayName,
+    "--content-file",
+    contentFile,
+    ...(intent.subreddit ? ["--subreddit", intent.subreddit] : []),
+    ...(intent.personaFlairId ? ["--persona-flair-id", intent.personaFlairId] : []),
+    "--persona-flair-text",
+    intent.personaFlairText ?? identity.displayName,
+  ]);
+
+  const redditLine = receipt.url
+    ? `\n\nReddit: ${receipt.url}`
+    : receipt.thingId
+      ? `\n\nReddit thing: ${receipt.thingId}`
+      : "";
+  const shareContent =
+    intent.shareContent && intent.shareContent.trim().length > 0
+      ? intent.shareContent.trim()
+      : `${identity.displayName}: I opened a thread on r/GameCultOrg: "${intent.title}".`;
+  await postRepoIdentityIntent(job, {
+    identity: identity.id,
+    channelId: intent.channelId ?? job.outputChannelId,
+    replyToMessageId: intent.replyToMessageId,
+    content: `${shareContent}${redditLine}`,
   });
 }
 
@@ -2162,7 +2269,7 @@ function countRepoIdentityGithubActionIntents(finalResponse: string): number {
 }
 
 interface RepoFaceActionBlock {
-  kind: "say" | "state_note" | "article" | "bifrost_topic" | "update_request";
+  kind: "say" | "state_note" | "article" | "reddit_thread" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 }
 
@@ -2206,6 +2313,8 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
       return "state_note";
     case "ARTICLE":
       return "article";
+    case "REDDIT THREAD":
+      return "reddit_thread";
     case "BIFROST TOPIC":
       return "bifrost_topic";
     case "UPDATE REQUEST":

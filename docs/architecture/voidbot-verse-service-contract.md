@@ -81,8 +81,9 @@ typed CultCache documents behind the Eve binding:
 
 - `voidbot.discord`: Discord ingress, room obligations, direct mentions,
   pending reply anchors, speech receipts, and moderation/open-case pressure.
-- `voidbot.reddit`: r/GameCultOrg post/thread obligations, moderation/open-case
-  pressure, proposed replies, and Bifrost transport receipts.
+- `voidbot.reddit`: r/GameCultOrg post/thread obligations, Persona-authored
+  thread creation, moderation/open-case pressure, proposed replies, and
+  Bifrost transport receipts.
 - `voidbot.archive`: archived Discord corpus status, source archive freshness,
   backfill/import health, and retrieval caveats.
 - `voidbot.source`: indexed repo/lore coverage, repo shard status, vector
@@ -101,8 +102,8 @@ All meaningful presentation flows through Eve/CultUI DSL:
   shows room debt, direct mentions, recent public speech receipts, moderation
   cases, venue targets, and candidate delivery state.
 - Reddit surface:
-  shows r/GameCultOrg thread/post debt, moderation witnesses, proposed replies or
-  actions, and Bifrost receipt state.
+  shows r/GameCultOrg thread/post debt, Persona-authored thread ideas,
+  moderation witnesses, proposed replies or actions, and Bifrost receipt state.
 - Archive surface:
   shows archived Discord import status, bot-directed-prompt exclusion health,
   history vector freshness, and retrieval warning notes.

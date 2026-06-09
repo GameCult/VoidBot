@@ -257,7 +257,7 @@
       "providerId": "voidbot.reddit",
       "verseId": "voidbot.local",
       "title": "VoidBot Reddit",
-      "description": "r/GameCultOrg thread/post obligations, moderation pressure, proposed replies, and Bifrost transport receipts.",
+      "description": "r/GameCultOrg thread/post obligations, Persona-authored thread creation, moderation pressure, proposed replies, and Bifrost transport receipts.",
       "status": "planned-witness",
       "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.reddit",
       "documents": [
@@ -281,7 +281,7 @@
         {
           "id": "voidbot.reddit.thread_obligations",
           "title": "Thread obligations",
-          "purpose": "Open r/GameCultOrg post/comment obligations, moderation cases, and proposed reply targets.",
+          "purpose": "Open r/GameCultOrg post/comment obligations, moderation cases, Persona-authored thread ideas, and proposed reply targets.",
           "presentationOwner": "Eve/CultUI"
         },
         {
@@ -322,6 +322,7 @@
           "owner": "Bifrost",
           "contains": [
             "r/GameCultOrg thread context",
+            "Persona-authored Reddit thread creation",
             "Reddit post/comment transport receipts"
           ]
         }

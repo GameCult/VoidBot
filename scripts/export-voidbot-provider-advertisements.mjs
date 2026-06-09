@@ -64,15 +64,15 @@ function buildCatalog() {
     provider({
       id: "voidbot.reddit",
       title: "VoidBot Reddit",
-      description: "r/GameCultOrg thread/post obligations, moderation pressure, proposed replies, and Bifrost transport receipts.",
+      description: "r/GameCultOrg thread/post obligations, Persona-authored thread creation, moderation pressure, proposed replies, and Bifrost transport receipts.",
       status: "planned-witness",
       surfaces: [
-        surface("voidbot.reddit.thread_obligations", "Thread obligations", "Open r/GameCultOrg post/comment obligations, moderation cases, and proposed reply targets."),
+        surface("voidbot.reddit.thread_obligations", "Thread obligations", "Open r/GameCultOrg post/comment obligations, moderation cases, Persona-authored thread ideas, and proposed reply targets."),
         surface("voidbot.reddit.transport_receipts", "Bifrost receipts", "Reddit viewing, posting, moderation-action, and receipt state owned by Bifrost."),
       ],
       witnesses: [
         witness("voidbot.private_self_state", ".voidbot/private/void-self-state.cc", "VoidBot typed operations", ["void.moderation_cursor", "void.speech_receipts", "void.candidate_interventions"]),
-        witness("bifrost.reddit_threads", "BIFROST_ROOT CultCache/CultNet Reddit surfaces", "Bifrost", ["r/GameCultOrg thread context", "Reddit post/comment transport receipts"]),
+        witness("bifrost.reddit_threads", "BIFROST_ROOT CultCache/CultNet Reddit surfaces", "Bifrost", ["r/GameCultOrg thread context", "Persona-authored Reddit thread creation", "Reddit post/comment transport receipts"]),
       ],
       commands: [
         command("reddit.inspect_thread_obligations", "read-only", "Load r/GameCultOrg thread/post obligations projected through Bifrost."),

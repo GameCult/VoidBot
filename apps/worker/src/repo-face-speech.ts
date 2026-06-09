@@ -8,7 +8,7 @@ export interface RepoIdentityPostIntent {
 }
 
 type RepoFaceActionBlock = {
-  kind: "say" | "state_note" | "article" | "bifrost_topic" | "update_request";
+  kind: "say" | "state_note" | "article" | "reddit_thread" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
 };
 
@@ -140,6 +140,8 @@ function parseRepoFaceActionKind(line: string): RepoFaceActionBlock["kind"] | un
       return "state_note";
     case "ARTICLE":
       return "article";
+    case "REDDIT THREAD":
+      return "reddit_thread";
     case "BIFROST TOPIC":
       return "bifrost_topic";
     case "UPDATE REQUEST":

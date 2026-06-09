@@ -498,7 +498,7 @@ function parseDslBlocks(text) {
   const lines = text.split(/\r?\n/);
   const blocks = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const kind = ["STATE NOTE", "SAY", "ARTICLE", "BIFROST TOPIC"].includes(lines[index].trim().toUpperCase())
+    const kind = ["STATE NOTE", "SAY", "ARTICLE", "REDDIT THREAD", "BIFROST TOPIC"].includes(lines[index].trim().toUpperCase())
       ? lines[index].trim().toUpperCase()
       : undefined;
     if (!kind) {
