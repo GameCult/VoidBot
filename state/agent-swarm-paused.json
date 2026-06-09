@@ -1,5 +1,5 @@
 {
-  "paused": true,
-  "reason": "Paused by Codex on 2026-06-09 after scheduled repo Face heartbeat repeatedly exceeded the orchestrator window and killed the gpt-5.4 state-projector child. Bot, worker, retrieval, and typed state are healthy; autonomous Face turns need timeout/cadence repair before resuming.",
-  "updatedAt": "2026-06-09T14:26:00.0000000Z"
+  "paused": false,
+  "reason": "Resumed by Codex on 2026-06-09 after local runtime config disabled the expensive repo Face state-projector pass and reduced heartbeat selection to one job per tick. Watch scheduled pulses for clean exits before raising cadence.",
+  "updatedAt": "2026-06-09T15:00:00.0000000Z"
 }

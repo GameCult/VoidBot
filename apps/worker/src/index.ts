@@ -680,7 +680,7 @@ async function interpretRepoFaceTurnOutput(
   };
   const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
-  return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
+  return parseRepoFaceParentInterpretation(interpretationText, input.attempt, outputText);
 }
 
 async function renderRepoFaceDynamicMemoryRecall(
@@ -769,8 +769,17 @@ function renderRepoFaceInterpreterPromptContext(prompt: string): string {
 function parseRepoFaceParentInterpretation(
   interpretationText: string,
   attempt: 1 | 2,
+  faceOutputText: string,
 ): RepoFaceParentInterpretation {
   const block = parseInterpretationBlock(interpretationText);
+  const fallback = buildBareInterpreterSayFallback(interpretationText, faceOutputText);
+  if (!block.decision && fallback) {
+    return {
+      decision: "route",
+      reasons: ["parent interpreter returned a bare compact SAY candidate for an unconditional Face speech line"],
+      routedOutput: fallback,
+    };
+  }
   const decision = block.decision?.trim().toLowerCase();
   const parsedDecision =
     decision === "route" || decision === "retry" || decision === "drop"
@@ -789,6 +798,62 @@ function parseRepoFaceParentInterpretation(
     reasons: reasons.length > 0 ? reasons : ["parent interpreter did not provide a parseable reason"],
     routedOutput: extractRoutedRepoFaceOutput(interpretationText),
   };
+}
+
+function buildBareInterpreterSayFallback(interpretationText: string, faceOutputText: string): string | undefined {
+  if (!faceOutputHasUnconditionalWouldSay(faceOutputText)) {
+    return undefined;
+  }
+  if (parseRepoFaceActionBlocks(interpretationText).length > 0) {
+    return undefined;
+  }
+  const content = normalizeBareInterpreterSayCandidate(interpretationText);
+  if (!content) {
+    return undefined;
+  }
+
+  return [
+    "Private summary:",
+    "The parent interpreter returned a compact public line without the required SAY wrapper; routing it as the Face's public speech.",
+    "",
+    "SAY",
+    "identity: current_face_id",
+    "channel: current_room",
+    "content:",
+    ...content.split(/\r?\n/).map((line) => `  ${line}`),
+    "END",
+  ].join("\n");
+}
+
+function faceOutputHasUnconditionalWouldSay(faceOutputText: string): boolean {
+  const match = faceOutputText.match(/(?:^|\n)\s*Would say:\s*([\s\S]*?)(?:\n\s*(?:Work\/proposal|Article draft|What should stick|Private thought):|\s*$)/i);
+  if (!match) {
+    return false;
+  }
+  const content = normalizePublicRepoIdentitySpeech(match[1].replace(/^`|`$/g, "").trim());
+  return Boolean(content) && !isNonPublicRepoIdentitySpeech(content);
+}
+
+function normalizeBareInterpreterSayCandidate(interpretationText: string): string | undefined {
+  const content = normalizePublicRepoIdentitySpeech(
+    interpretationText
+      .replace(/^["“”]+|["“”]+$/g, "")
+      .replace(/^`+|`+$/g, "")
+      .trim(),
+  );
+  if (!content || isNonPublicRepoIdentitySpeech(content)) {
+    return undefined;
+  }
+  if (content.length > 700 || content.split(/\r?\n/).length > 4) {
+    return undefined;
+  }
+  if (/^(INTERPRETATION|Private summary|STATE NOTE|ARTICLE|REDDIT THREAD|BIFROST TOPIC|UPDATE REQUEST)\b/i.test(content)) {
+    return undefined;
+  }
+  if (/\b(stay quiet|cleaner reply is to stay quiet|if you want a line at all|would say nothing|no public line)\b/i.test(content)) {
+    return undefined;
+  }
+  return content;
 }
 
 function collectForbiddenRepoFaceChildTools(artifacts: ProviderArtifact[]): string[] {

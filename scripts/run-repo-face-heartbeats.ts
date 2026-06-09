@@ -4594,7 +4594,10 @@ function buildChannelPlan(
   const preferred = preferredChannelId
     ? options.find((option) => option.channelId === preferredChannelId)
     : undefined;
-  const primary = preferred ?? options
+  const defaultOption = defaultChannelId
+    ? options.find((option) => option.channelId === defaultChannelId)
+    : undefined;
+  const primary = preferred ?? defaultOption ?? options
     .slice()
     .sort((left, right) => thresholdRank(left.speechThreshold) - thresholdRank(right.speechThreshold))
     [0];

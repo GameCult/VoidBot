@@ -76,7 +76,7 @@ async function main() {
       },
     );
 
-    const memoryMaintenance = runSleepMemoryMaintenanceIfDue({ sleepCycle });
+    const memoryMaintenance = runSleepMemoryMaintenanceIfDue({ sleepCycle, typedState });
     if (memoryMaintenance.status === "failed") {
       writeStatus({
         status: "failed",
@@ -226,7 +226,7 @@ function readJsonSafe(path) {
   }
 }
 
-function runSleepMemoryMaintenanceIfDue({ sleepCycle }) {
+function runSleepMemoryMaintenanceIfDue({ sleepCycle, typedState }) {
   if (args.has("--skip-memory-maintenance")) {
     return {
       status: "skipped",
@@ -253,6 +253,16 @@ function runSleepMemoryMaintenanceIfDue({ sleepCycle }) {
     return {
       status: "skipped",
       reason: "already_completed_this_nap",
+    };
+  }
+
+  const shortTermPressure = (typedState.thoughtMemory?.shortTerm ?? [])
+    .filter((memory) => typeof memory?.retiredAt !== "string" || memory.retiredAt.trim().length === 0)
+    .length;
+  if (!args.has("--force-memory-maintenance") && shortTermPressure === 0) {
+    return {
+      status: "skipped",
+      reason: "no_short_term_memory_pressure",
     };
   }
 
