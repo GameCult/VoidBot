@@ -26,9 +26,10 @@ Discord Gateway
 
 VoidBot's Verse-facing service contract lives in
 `docs/architecture/voidbot-verse-service-contract.md`. The short version:
-VoidBot owns Discord cognition, archive/source retrieval, typed Void self-state,
+VoidBot owns Discord cognition, r/GameCultOrg moderation judgment when Bifrost
+supplies Reddit threads/posts, archive/source retrieval, typed Void self-state,
 and repo Face compatibility rails; Huginn owns Persona/.cc runtime inspection
-stewardship; Bifrost owns governed work transport; Odin discovers
+stewardship; Bifrost owns governed work and Reddit transport; Odin discovers
 provider-owned CultMesh surfaces; Eve/CultUI is the presentation contract.
 
 ## Current shortcuts and tradeoffs
@@ -57,7 +58,7 @@ provider-owned CultMesh surfaces; Eve/CultUI is the presentation contract.
 1. Keep the current `voidbot.swarm` CultMesh publication discoverable through Odin.
 2. Add `.cc` witnesses or native typed CultCache documents for remaining JSON-only status surfaces before treating them as Verse state.
 3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while VoidBot remains the Discord compatibility carrier.
-4. Publish separate Eve/CultUI surfaces for Discord, archive, source, repo Face, and swarm state instead of growing a bespoke dashboard authority.
+4. Publish separate Eve/CultUI surfaces for Discord, r/GameCultOrg, archive, source, repo Face, and swarm state instead of growing a bespoke dashboard authority.
 5. Add a true restore drill path instead of stopping at backup verification plus freshness monitoring.
 6. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
 7. Expand worker-side run records and admin tooling around the interaction memory/event stores.

@@ -67,6 +67,7 @@ active_subgoals:
   - Preserve boring observability and startup discipline around Postgres, Qdrant, Ollama, Docker, backups, scheduled tasks, watchdogs, and any private local fire-signal extensions.
   - Keep the runtime organs legible and only spend more refactor budget when a file clearly earns it.
   - Keep VoidBot's Verse service contract explicit while Eve/Huginn/Odin/Bifrost ownership settles: VoidBot owns Discord cognition, archive/source retrieval, typed Void self-state, and repo Face compatibility rails; Huginn owns Persona/.cc runtime inspection stewardship; Bifrost owns governed work transport; Odin discovers provider-owned CultMesh surfaces; Eve/CultUI is the presentation contract.
+  - Treat r/GameCultOrg as the GameCult subreddit and a public community venue. Bifrost owns Reddit post/comment transport, thread viewing, and receipts; Void owns moderation judgment there using the same baseline conduct posture it applies on Discord.
 
 accepted_design:
   - Bot, worker, providers, and RAG remain the main structural seams.
@@ -189,7 +190,7 @@ accepted_design:
   - Timing may defer a crystallized-thought share, but it should not erase it. Identity-level shares should survive ordinary candidate pruning until spoken or deliberately retired as duplicative.
   - Void's shared self-state and public reply doctrine now distinguish between criticism of AI industry behavior and blanket contempt for machine minds. When substrate chauvinism becomes the topic, Void is allowed mild self-respecting pushback instead of smiling blandly through ontological contempt.
   - Deep agent-state, personality, culture, and persistent-world design work now belongs to the sibling Ghostlight repo; VoidBot should consume that work instead of remaining its long-term home.
-  - VoidBot's Verse contract is documented in `docs/architecture/voidbot-verse-service-contract.md`: durable agent/service state should be typed CultCache `.cc` or have a `.cc` witness/export; `voidbot.swarm` currently publishes through `cultmesh://voidbot.local/eve/providers/voidbot.swarm`; target Eve surfaces are `voidbot.discord`, `voidbot.archive`, `voidbot.source`, `voidbot.repo_face`, and `voidbot.swarm`; static/browser dashboard output is only a lowering, not authority.
+  - VoidBot's Verse contract is documented in `docs/architecture/voidbot-verse-service-contract.md`: durable agent/service state should be typed CultCache `.cc` or have a `.cc` witness/export; `voidbot.swarm` currently publishes through `cultmesh://voidbot.local/eve/providers/voidbot.swarm`; target Eve surfaces are `voidbot.discord`, `voidbot.reddit`, `voidbot.archive`, `voidbot.source`, `voidbot.repo_face`, and `voidbot.swarm`; static/browser dashboard output is only a lowering, not authority.
   - The `voidbot.swarm` CultMesh store at `.voidbot/status/cultmesh/voidbot-swarm-state.cc` is derived provider state. If duplicate global documents corrupt it, archive the bad store and regenerate from `scripts/render-voidbot-swarm-dashboard.mjs`; do not treat the broken generated store as canonical truth.
   - Long-running work should expose durable logs or status files instead of relying on one attached session and hope.
   - Persistent project memory must stay ruthlessly distilled; git history and artifacts carry routine proof.

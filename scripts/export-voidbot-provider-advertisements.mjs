@@ -62,6 +62,29 @@ function buildCatalog() {
       },
     }),
     provider({
+      id: "voidbot.reddit",
+      title: "VoidBot Reddit",
+      description: "r/GameCultOrg thread/post obligations, moderation pressure, proposed replies, and Bifrost transport receipts.",
+      status: "planned-witness",
+      surfaces: [
+        surface("voidbot.reddit.thread_obligations", "Thread obligations", "Open r/GameCultOrg post/comment obligations, moderation cases, and proposed reply targets."),
+        surface("voidbot.reddit.transport_receipts", "Bifrost receipts", "Reddit viewing, posting, moderation-action, and receipt state owned by Bifrost."),
+      ],
+      witnesses: [
+        witness("voidbot.private_self_state", ".voidbot/private/void-self-state.cc", "VoidBot typed operations", ["void.moderation_cursor", "void.speech_receipts", "void.candidate_interventions"]),
+        witness("bifrost.reddit_threads", "BIFROST_ROOT CultCache/CultNet Reddit surfaces", "Bifrost", ["r/GameCultOrg thread context", "Reddit post/comment transport receipts"]),
+      ],
+      commands: [
+        command("reddit.inspect_thread_obligations", "read-only", "Load r/GameCultOrg thread/post obligations projected through Bifrost."),
+        command("reddit.inspect_transport_receipts", "read-only", "Inspect Bifrost Reddit transport receipts without posting."),
+      ],
+      owners: {
+        state: "VoidBot typed self-state service for moderation judgment; Bifrost for Reddit transport state",
+        inspection: "Bifrost for Reddit thread/receipt access; VoidBot for moderation obligations",
+        presentation: "Eve/CultUI lowerings",
+      },
+    }),
+    provider({
       id: "voidbot.archive",
       title: "VoidBot Archive",
       description: "Archived Discord corpus status, import/backfill health, bot-directed-prompt exclusion, and history retrieval caveats.",
@@ -280,7 +303,7 @@ function key(value) {
 }
 
 function validateCatalog(value) {
-  const requiredProviders = ["voidbot.discord", "voidbot.archive", "voidbot.source", "voidbot.repo_face", "voidbot.swarm"];
+  const requiredProviders = ["voidbot.discord", "voidbot.reddit", "voidbot.archive", "voidbot.source", "voidbot.repo_face", "voidbot.swarm"];
   const providerIds = new Set(value.providers.map((providerItem) => providerItem.providerId));
   for (const providerId of requiredProviders) {
     if (!providerIds.has(providerId)) {

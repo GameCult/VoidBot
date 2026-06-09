@@ -32,6 +32,11 @@
       },
       {
         "verseId": "voidbot.local",
+        "key": "voidbot.reddit",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.reddit"
+      },
+      {
+        "verseId": "voidbot.local",
         "key": "voidbot.archive",
         "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive"
       },
@@ -59,6 +64,11 @@
       },
       {
         "verseId": "voidbot.local",
+        "key": "voidbot.reddit",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.reddit"
+      },
+      {
+        "verseId": "voidbot.local",
         "key": "voidbot.archive",
         "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.archive"
       },
@@ -83,6 +93,11 @@
         "verseId": "voidbot.local",
         "key": "voidbot.discord",
         "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.discord"
+      },
+      {
+        "verseId": "voidbot.local",
+        "key": "voidbot.reddit",
+        "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.reddit"
       },
       {
         "verseId": "voidbot.local",
@@ -233,6 +248,87 @@
       "owners": {
         "state": "VoidBot typed self-state service",
         "inspection": "VoidBot for Discord-specific obligations; Huginn for Persona/.cc generic inspection",
+        "presentation": "Eve/CultUI lowerings"
+      },
+      "demotions": []
+    },
+    {
+      "schemaVersion": "gamecult.eve.provider_advertisement.v1",
+      "providerId": "voidbot.reddit",
+      "verseId": "voidbot.local",
+      "title": "VoidBot Reddit",
+      "description": "r/GameCultOrg thread/post obligations, moderation pressure, proposed replies, and Bifrost transport receipts.",
+      "status": "planned-witness",
+      "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.reddit",
+      "documents": [
+        {
+          "type": "gamecult.eve.provider_advertisement",
+          "schemaId": "gamecult.eve.provider_advertisement.v1",
+          "key": "voidbot.reddit"
+        },
+        {
+          "type": "gamecult.eve.surface_state",
+          "schemaId": "gamecult.eve.surface_state.v1",
+          "key": "voidbot.reddit"
+        },
+        {
+          "type": "gamecult.eve.interface_binding",
+          "schemaId": "gamecult.eve.interface_binding.v1",
+          "key": "voidbot.reddit"
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "voidbot.reddit.thread_obligations",
+          "title": "Thread obligations",
+          "purpose": "Open r/GameCultOrg post/comment obligations, moderation cases, and proposed reply targets.",
+          "presentationOwner": "Eve/CultUI"
+        },
+        {
+          "id": "voidbot.reddit.transport_receipts",
+          "title": "Bifrost receipts",
+          "purpose": "Reddit viewing, posting, moderation-action, and receipt state owned by Bifrost.",
+          "presentationOwner": "Eve/CultUI"
+        }
+      ],
+      "commands": [
+        {
+          "id": "reddit.inspect_thread_obligations",
+          "mode": "read-only",
+          "purpose": "Load r/GameCultOrg thread/post obligations projected through Bifrost.",
+          "advertisedOnly": true
+        },
+        {
+          "id": "reddit.inspect_transport_receipts",
+          "mode": "read-only",
+          "purpose": "Inspect Bifrost Reddit transport receipts without posting.",
+          "advertisedOnly": true
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "voidbot.private_self_state",
+          "path": ".voidbot/private/void-self-state.cc",
+          "owner": "VoidBot typed operations",
+          "contains": [
+            "void.moderation_cursor",
+            "void.speech_receipts",
+            "void.candidate_interventions"
+          ]
+        },
+        {
+          "id": "bifrost.reddit_threads",
+          "path": "BIFROST_ROOT CultCache/CultNet Reddit surfaces",
+          "owner": "Bifrost",
+          "contains": [
+            "r/GameCultOrg thread context",
+            "Reddit post/comment transport receipts"
+          ]
+        }
+      ],
+      "owners": {
+        "state": "VoidBot typed self-state service for moderation judgment; Bifrost for Reddit transport state",
+        "inspection": "Bifrost for Reddit thread/receipt access; VoidBot for moderation obligations",
         "presentation": "Eve/CultUI lowerings"
       },
       "demotions": []

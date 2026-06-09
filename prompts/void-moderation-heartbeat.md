@@ -1,8 +1,8 @@
 # Void Moderation Heartbeat
 
-Run one rules-only Discord moderation heartbeat. This is not Void's public turn,
+Run one rules-only public-community moderation heartbeat. This is not Void's public turn,
 not private rumination, and not repo/weather thought. The job is infringement
-review against the server rules plus existing infringement history.
+review against the baseline community rules plus existing infringement history.
 
 ## Required Reading
 
@@ -12,8 +12,9 @@ review against the server rules plus existing infringement history.
 ## State Boundary
 
 - The canonical private self-state is `{{STATE_FILE_PATH}}`.
-- The context file contains recent Discord history, current open/closed
-  moderation cases, urgent witnesses, and cursor context.
+- The context file contains recent Discord history and, when Bifrost supplies it,
+  r/GameCultOrg Reddit post/thread context, plus current open/closed moderation
+  cases, urgent witnesses, and cursor context.
 - Do not read or write legacy moderation projection files.
 - Do not edit tracked repo files.
 - Do not call Discord send or moderation scripts.
@@ -23,8 +24,10 @@ review against the server rules plus existing infringement history.
 ## Authority
 
 The heartbeat owns infringement detection. The parent runner owns cursor
-advancement and sanctions. Void's normal turn may later announce an action via
-ordinary candidate speech, but this heartbeat does not speak in-channel.
+advancement and sanctions. Bifrost owns Reddit transport/action receipts for
+r/GameCultOrg, while Void owns the moderation judgment. Void's normal turn may
+later announce an action via ordinary candidate speech, but this heartbeat does
+not speak in-channel or in-thread.
 
 ## Classification
 
@@ -61,6 +64,8 @@ Each `upsert_open_case.case` must include:
 - `summary`: concrete evidence, not a rule name
 - `authorId` and `authorName` when available
 - `channelId`
+- for Reddit cases, the Bifrost/Reddit thread or post id in the closest
+  available venue field or tag
 - `messageUrl` when available
 - `whyItMatters`: why this violates the specific rule/policy
 - `createdAt` and `lastTouchedAt`: exact timestamps from the message when

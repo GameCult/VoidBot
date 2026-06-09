@@ -10,9 +10,10 @@ VoidBot surfaces as they become first-class Verse nodes.
 
 ## Owner Map
 
-- VoidBot owns Discord ingress, room cognition, moderation judgment, archived
-  Discord history, indexed source/lore retrieval, direct owner handoff, repo
-  Face scheduling compatibility, and parent-owned speech delivery.
+- VoidBot owns Discord ingress, room cognition, moderation judgment for
+  GameCult public community spaces, archived Discord history, indexed
+  source/lore retrieval, direct owner handoff, repo Face scheduling
+  compatibility, and parent-owned speech delivery.
 - VoidBot owns typed Void self-state at `.voidbot/private/void-self-state.cc`
   through the typed operation service and its runners.
 - VoidBot temporarily carries repo Face `.cc` state paths as compatibility
@@ -22,9 +23,10 @@ VoidBot surfaces as they become first-class Verse nodes.
   schema availability, migration pressure, projection health, access-tool
   sanity, CultMesh publication, and Eve DSL inspection for typed state.
 - Bifrost owns governed public crossings: GitHub proposal/article/comment
-  transport, work topics, dispatch receipts, and future Discord-native work
-  interfaces. VoidBot may mirror or feed context, but Bifrost owns the work
-  request authority.
+  transport, Reddit post/thread viewing and posting for r/GameCultOrg, work
+  topics, dispatch receipts, and future Discord-native work interfaces. VoidBot
+  may mirror or feed context, but Bifrost owns the work request and external
+  transport authority.
 - Heimdall owns account, OAuth, grants, custody, revocation, and capability
   gates.
 - Odin owns Verse/provider discovery and interface aggregation. VoidBot
@@ -79,6 +81,8 @@ typed CultCache documents behind the Eve binding:
 
 - `voidbot.discord`: Discord ingress, room obligations, direct mentions,
   pending reply anchors, speech receipts, and moderation/open-case pressure.
+- `voidbot.reddit`: r/GameCultOrg post/thread obligations, moderation/open-case
+  pressure, proposed replies, and Bifrost transport receipts.
 - `voidbot.archive`: archived Discord corpus status, source archive freshness,
   backfill/import health, and retrieval caveats.
 - `voidbot.source`: indexed repo/lore coverage, repo shard status, vector
@@ -96,6 +100,9 @@ All meaningful presentation flows through Eve/CultUI DSL:
 - Discord surface:
   shows room debt, direct mentions, recent public speech receipts, moderation
   cases, venue targets, and candidate delivery state.
+- Reddit surface:
+  shows r/GameCultOrg thread/post debt, moderation witnesses, proposed replies or
+  actions, and Bifrost receipt state.
 - Archive surface:
   shows archived Discord import status, bot-directed-prompt exclusion health,
   history vector freshness, and retrieval warning notes.
@@ -123,8 +130,9 @@ Eve binding and the underlying typed state owners.
    status surfaces before treating them as Verse state.
 3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while
    leaving VoidBot as the Discord compatibility carrier.
-4. Publish `voidbot.discord`, `voidbot.archive`, `voidbot.source`, and
-   `voidbot.repo_face` provider surfaces as typed Eve/CultUI bindings.
+4. Publish `voidbot.discord`, `voidbot.reddit`, `voidbot.archive`,
+   `voidbot.source`, and `voidbot.repo_face` provider surfaces as typed
+   Eve/CultUI bindings.
 5. Let Odin discover and aggregate those provider-owned surfaces. Do not add a
    parallel HTTP dashboard or status-card summary as the public contract.
 6. Demote old JSON exports, static HTML, and legacy MCP state reads to
