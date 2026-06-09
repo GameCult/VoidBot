@@ -1365,6 +1365,37 @@ if ($messageCount -gt 0) {
   }
 }
 
+$recentRoomLinkHistory = $null
+$recentRoomLinks = @{
+  source = "recent_discord_url_scan"
+  itemCount = 0
+  items = @()
+}
+if (-not $ModerationHeartbeatOnly) {
+  $recentRoomLinkArgs = @($recentHistoryScriptPath, "--hours", "24", "--limit", "200")
+  if (-not [string]::IsNullOrWhiteSpace($publicRoomChannelId)) {
+    $recentRoomLinkArgs += @("--channel-id", $publicRoomChannelId)
+  }
+  try {
+    $recentRoomLinkHistory = Invoke-NodeJson -Arguments $recentRoomLinkArgs
+    $receiptReplyMessageIds = @(
+      @(Convert-ToValueArray -Value $typedState.speechReceipts.recentReceipts) |
+        ForEach-Object { Get-ObjectPropertyString -Value $_ -Name "replyToMessageId" } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $recentRoomLinks = Project-RecentRoomLinksForRumination -History $recentRoomLinkHistory -Now $startedAtUtc -MinTimestampInclusive $priorCursorTimestamp -ReceiptReplyMessageIds $receiptReplyMessageIds
+  } catch {
+    $recentRoomLinks = @{
+      source = "recent_discord_url_scan"
+      status = "failed"
+      error = $_.Exception.Message
+      itemCount = 0
+      items = @()
+    }
+  }
+}
+$recentRoomLinkCount = [int](Get-ObjectPropertyValue -Value $recentRoomLinks -Name "itemCount")
+
 $repoActivity = $null
 if ($ModerationHeartbeatOnly) {
   $repoActivity = @{
@@ -1430,6 +1461,7 @@ if ($ModerationHeartbeatOnly) {
     urgentModerationWitnesses = $urgentModerationWitnesses
     pendingMentions = $pendingMentions
     recentConversationTarget = Project-RecentConversationTargetForRumination -History $history -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
+    recentRoomLinks = $recentRoomLinks
     publicSpeechTarget = Project-PublicSpeechTargetForRumination -ChannelId $publicRoomChannelId -PersonaName $publicRoomPersonaName -PersonaAvatarUrl $publicRoomPersonaAvatarUrl
     deliverableCandidateCount = [int]$deliverableCandidates.Count
     candidateInterventions = @(Project-InterventionsForRumination -Interventions $typedState.candidateInterventions.interventions -Now $startedAtUtc)
@@ -1447,6 +1479,9 @@ $openCaseCount = @(
     Where-Object { Test-OpenCaseRequiresRumination -Case $_ }
 ).Count
 if (-not $ModerationHeartbeatOnly -and $isNapping -and $messageCount -eq 0 -and $openCaseCount -eq 0 -and $deliverableCandidates.Count -eq 0) {
+  if ($recentRoomLinkCount -gt 0) {
+    Append-RunLog ("napping: recent room links present ({0}); keeping awake rumination path available." -f $recentRoomLinkCount)
+  } else {
   Append-RunLog "napping: no new room messages or open cases; skipping awake rumination."
   Write-JsonFile -Path $operationOutputPath -Data @()
   $finishedAtUtc = [DateTime]::UtcNow
@@ -1469,6 +1504,7 @@ if (-not $ModerationHeartbeatOnly -and $isNapping -and $messageCount -eq 0 -and 
   }
   Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
   return
+  }
 }
 
 $stateWriteBefore = if (Test-Path $stateFilePath) { (Get-Item $stateFilePath).LastWriteTimeUtc } else { [DateTime]::MinValue }
@@ -1650,6 +1686,7 @@ $finalStatus = [ordered]@{
   contextPath = [string]$contextPath
   operationOutputPath = [string]$operationOutputPath
   observedMessageCount = [int]$messageCount
+  recentRoomLinkCount = [int]$recentRoomLinkCount
   previousCursorTimestamp = [string](Get-ObjectPropertyString -Value $priorCursor -Name "lastReviewedTimestamp")
   observedCursorTimestamp = [string]$observedCursorTimestamp
   proposedOperationCount = [int]@($proposedOperations).Count

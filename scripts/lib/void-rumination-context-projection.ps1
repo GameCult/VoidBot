@@ -197,6 +197,154 @@ function Project-RecentConversationTargetForRumination {
   return $target
 }
 
+function Get-UrlsFromText {
+  param([string] $Text)
+
+  if ([string]::IsNullOrWhiteSpace($Text)) {
+    return @()
+  }
+
+  return @(
+    [regex]::Matches($Text, "https?://[^\s<>()]+") |
+      ForEach-Object { $_.Value.TrimEnd(".", ",", "!", "?", ":", ";", ")", "]") } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+}
+
+function Resolve-GameCultUrlSource {
+  param([string] $Url)
+
+  if ([string]::IsNullOrWhiteSpace($Url)) {
+    return $null
+  }
+
+  $uri = $null
+  if (-not [System.Uri]::TryCreate($Url, [System.UriKind]::Absolute, [ref]$uri)) {
+    return $null
+  }
+
+  $uriHost = $uri.Host.ToLowerInvariant()
+  if ($uriHost -notin @("gamecult.org", "www.gamecult.org", "gamecult.games", "www.gamecult.games")) {
+    return $null
+  }
+
+  $segments = @(
+    $uri.AbsolutePath.Trim("/") -split "/" |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      ForEach-Object { [System.Uri]::UnescapeDataString($_) }
+  )
+
+  if ($segments.Count -lt 2 -or $segments[0].ToLowerInvariant() -ne "blog") {
+    return @{
+      kind = "gamecult_url"
+      host = $uriHost
+      path = $uri.AbsolutePath
+    }
+  }
+
+  $slugParts = @($segments | Select-Object -Skip 1)
+  $relativePath = "GameCult/Blog/$($slugParts -join "/")"
+  $markdownPath = "$relativePath.md"
+  if ($slugParts.Count -gt 1) {
+    $markdownPath = "$relativePath/index.md"
+  }
+
+  return @{
+    kind = "gamecult_blog"
+    host = $uriHost
+    slug = ($slugParts -join "/")
+    repoName = "gamecult-site"
+    path = $markdownPath
+    sourceRef = "gamecult-site:$markdownPath"
+  }
+}
+
+function Project-RecentRoomLinksForRumination {
+  param(
+    $History,
+    [DateTime] $Now,
+    [string] $MinTimestampInclusive,
+    [object[]] $ReceiptReplyMessageIds
+  )
+
+  $messages = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $History -Name "messages"))
+  $answeredMessageIds = [System.Collections.Generic.HashSet[string]]::new()
+  foreach ($replyMessageId in @(Convert-ToValueArray -Value $ReceiptReplyMessageIds)) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$replyMessageId)) {
+      [void]$answeredMessageIds.Add([string]$replyMessageId)
+    }
+  }
+
+  $minTimestampMs = $null
+  if (-not [string]::IsNullOrWhiteSpace($MinTimestampInclusive)) {
+    $parsedMinTimestamp = [DateTime]::MinValue
+    if ([DateTime]::TryParse($MinTimestampInclusive, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal, [ref]$parsedMinTimestamp)) {
+      $minTimestampMs = $parsedMinTimestamp.ToUniversalTime()
+    }
+  }
+
+  $items = @()
+  foreach ($message in $messages) {
+    if ([bool](Get-ObjectPropertyValue -Value $message -Name "isBot")) {
+      continue
+    }
+
+    $messageId = Get-ObjectPropertyString -Value $message -Name "id"
+    if (-not [string]::IsNullOrWhiteSpace($messageId) -and $answeredMessageIds.Contains($messageId)) {
+      continue
+    }
+
+    $cursorAlreadyPassed = $false
+    if ($null -ne $minTimestampMs) {
+      $messageTimestamp = [DateTime]::MinValue
+      $rawTimestamp = Get-ObjectPropertyString -Value $message -Name "timestamp"
+      if (
+        [string]::IsNullOrWhiteSpace($rawTimestamp) -or
+        -not [DateTime]::TryParse($rawTimestamp, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal, [ref]$messageTimestamp)
+      ) {
+        continue
+      }
+
+      $messageTimestampUtc = $messageTimestamp.ToUniversalTime()
+      if ($messageTimestampUtc -lt $minTimestampMs) {
+        if ($minTimestampMs -gt $Now.ToUniversalTime().AddMinutes(1)) {
+          continue
+        }
+        $cursorAlreadyPassed = $true
+      }
+    }
+
+    $content = Get-ObjectPropertyString -Value $message -Name "content"
+    $urls = @(Get-UrlsFromText -Text $content)
+    if ($urls.Count -eq 0) {
+      continue
+    }
+
+    foreach ($url in $urls) {
+      $items += @{
+        kind = "naked_or_embedded_url"
+        id = $messageId
+        channelId = Get-ObjectPropertyString -Value $message -Name "channelId"
+        authorId = Get-ObjectPropertyString -Value $message -Name "authorId"
+        authorName = Get-ObjectPropertyString -Value $message -Name "authorName"
+        when = Project-RelativeTimestamp -Value $message -Name "timestamp" -Now $Now
+        content = $content
+        url = $url
+        resolvedSource = Resolve-GameCultUrlSource -Url $url
+        carryForwardReason = if ($cursorAlreadyPassed) { "safety cursor already reviewed this message, but no speech receipt answers the URL object yet" } else { "at or after current reviewed cursor" }
+        attentionContract = "A human posting a naked URL is still presenting an object to inspect. Treat it as room context, not as empty speech."
+      }
+    }
+  }
+
+  return @{
+    source = "recent_discord_url_scan"
+    itemCount = [int]$items.Count
+    lookback = Get-ObjectPropertyValue -Value $History -Name "hours"
+    items = $items
+  }
+}
+
 function Project-OpenCasesForRumination {
   param($Cases, [DateTime] $Now)
 
