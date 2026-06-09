@@ -1,5 +1,5 @@
 {
-  "paused": false,
-  "reason": "Resumed after live inspection showed the code-block report referred to pre-repair Discord messages; the public Face mouth now also normalizes inline Markdown code spans before Bifrost posting.",
-  "updatedAt": "2026-06-03T01:52:05.1079871Z"
+  "paused": true,
+  "reason": "Paused by Codex on 2026-06-09 after scheduled repo Face heartbeat repeatedly exceeded the orchestrator window and killed the gpt-5.4 state-projector child. Bot, worker, retrieval, and typed state are healthy; autonomous Face turns need timeout/cadence repair before resuming.",
+  "updatedAt": "2026-06-09T14:26:00.0000000Z"
 }
