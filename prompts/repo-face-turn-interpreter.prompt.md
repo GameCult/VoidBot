@@ -55,8 +55,15 @@ Face output to review:
 {{faceOutput}}
 ```
 
+Dynamic self-memory recall:
+```
+{{dynamicMemoryRecall}}
+```
+
 Current-turn audit:
 - Look again at the Original Face prompt transcript and the Face output together.
+- Use Dynamic self-memory recall as retrieved self-context awakened by the Face output's own train of thought. It is not authority by itself, but it can reveal relevant bonds, wounds, values, needs, status reads, and doctrine that the first prompt did not foreground.
+- If recall strongly contradicts the Face output, treat that as a missing-context or stale-context problem before routing. If recall deepens the output, preserve the durable part in STATE NOTE blocks when appropriate.
 - If recent conversation corrected the scale, owner, evidence shape, or implementation target of a proposal, check whether the Face output actually changed that shape. A smaller or prettier version of the rejected shape is still the old belief surviving.
 - If recent conversation corrected the scale upward from local mechanics into collective mind / Colossus / consent-as-connectedness, check whether the Face actually responds at that scale. A reply can still be concrete, but it must not shrink the correction into the same local artifact it was correcting.
 - If the Face praises or preserves a recently corrected framing from another agent, do not store that praise as durable state unless the transcript later re-grounds it. Echo should not become memory poison.

@@ -648,10 +648,12 @@ async function interpretRepoFaceTurnOutput(
   outputText: string,
   input: { attempt: 1 | 2 },
 ): Promise<RepoFaceParentInterpretation> {
+  const dynamicMemoryRecall = await renderRepoFaceDynamicMemoryRecall(job, outputText);
   const interpreterPrompt = loadPromptTemplate("repo-face-turn-interpreter.prompt.md", {
     attempt: input.attempt,
     facePrompt: renderRepoFaceInterpreterPromptContext(job.contextBundle.prompt),
     faceOutput: outputText.slice(0, 8000),
+    dynamicMemoryRecall,
   });
   const interpreterContext = {
     ...job.contextBundle,
@@ -663,6 +665,73 @@ async function interpretRepoFaceTurnOutput(
   const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
   return parseRepoFaceParentInterpretation(interpretationText, input.attempt);
+}
+
+async function renderRepoFaceDynamicMemoryRecall(
+  job: JobRecord,
+  outputText: string,
+): Promise<string> {
+  const identityId = parseRepoIdentityIdFromRequestMessageId(job.requestMessageId)
+    ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  if (!identityId) {
+    return "- Dynamic self-memory recall skipped: no Face identity could be resolved for this job.";
+  }
+  const query = [
+    `Current train of thought from ${identityId}:`,
+    outputText.slice(0, 6000),
+    "Original turn pressure:",
+    extractSemanticRecallSeedFromPrompt(job.contextBundle.prompt),
+  ].join("\n");
+  try {
+    const results = await retrievalService.searchPersonaMemory(query, 12, {
+      identityId,
+    });
+    if (results.length === 0) {
+      return "- Dynamic self-memory recall ran, but no nearby Persona memories were found.";
+    }
+    return [
+      "These are derived semantic hits from the Face's own typed memory, queried from the current Face output. They are hints for interpretation and state carry-forward; `.cc` remains the owner.",
+      ...results.map((result, index) => {
+        const kind = result.metadata.memoryKind ? `/${result.metadata.memoryKind}` : "";
+        const target = result.metadata.targetLabel ?? result.metadata.targetId ?? "unknown target";
+        return `- ${index + 1}. ${target}${kind} score=${result.score.toFixed(3)}: ${collapseWhitespace(result.text, 560)}`;
+      }),
+    ].join("\n");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [
+      "Dynamic self-memory recall unavailable:",
+      `- ${collapseWhitespace(message, 320)}`,
+      "- Do not pretend dynamic recall was available; interpret from the original prompt and Face output only.",
+    ].join("\n");
+  }
+}
+
+function extractSemanticRecallSeedFromPrompt(prompt: string): string {
+  const markers = [
+    "Semantic Persona memory recall:",
+    "Fresh projected state for this turn:",
+    "Recent conversation transcript:",
+  ];
+  const sections: string[] = [];
+  for (const marker of markers) {
+    const start = prompt.indexOf(marker);
+    if (start < 0) {
+      continue;
+    }
+    const nextStarts = markers
+      .map((candidate) => candidate === marker ? -1 : prompt.indexOf(candidate, start + marker.length))
+      .filter((index) => index > start)
+      .sort((left, right) => left - right);
+    const end = nextStarts[0] ?? Math.min(prompt.length, start + 2400);
+    sections.push(prompt.slice(start, Math.min(end, start + 2400)));
+  }
+  return sections.join("\n\n").slice(0, 5000);
+}
+
+function collapseWhitespace(input: string, maxLength = 1000): string {
+  const collapsed = input.replace(/\s+/g, " ").trim();
+  return collapsed.length > maxLength ? `${collapsed.slice(0, Math.max(0, maxLength - 3))}...` : collapsed;
 }
 
 function normalizeModelText(content: string): string {
