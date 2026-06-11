@@ -134,196 +134,85 @@ function buildFriendlyPersonaInput(input: {
       publicHandles: [],
     },
     personality: mapActivationProfile(profile.activationProfile),
-    coreValues: profile.values.map((value) => ({
-      id: value.id,
-      label: value.label,
-      priority: scaleWord(value.priority),
-      rawPriority: round(value.priority),
-      summary: value.summary ?? "",
-      behavioralImplication: "",
-      refusalLine: "",
-    })),
+    coreValues: profile.values.map(mapCoreValue),
     privateNotes: profile.privateNotes,
     memories: {
       shortTerm: typedState.thoughtMemory.shortTerm.map(mapMemory),
       longTerm: typedState.thoughtMemory.memories.map(mapMemory),
-      incubation: typedState.thoughtMemory.incubation.map((thread) => stripUndefined({
-        id: thread.threadId,
-        status: thread.status,
-        topic: thread.topic,
-        summary: thread.summary,
-        target: thread.target,
-        maturation: scaleWord(thread.maturation),
-        rawMaturation: round(thread.maturation),
-        noveltyToRoom: maybeScale(thread.noveltyToRoom),
-        noveltyToSelf: maybeScale(thread.noveltyToSelf),
-        desireToSpeak: maybeScale(thread.desireToSpeak),
-        saturation: maybeScale(thread.saturationScore),
-        supportMemoryIds: thread.supportMemoryIds,
-        anchorRefs: thread.anchorRefs,
-        evidenceRefs: thread.evidenceRefs,
-        createdAt: thread.createdAt,
-        updatedAt: thread.updatedAt,
-      })),
+      incubation: typedState.thoughtMemory.incubation.map(mapIncubationThread),
     },
     affect: {
-      needs: typedState.faceAffect.needs.map((need) => stripUndefined({
-        id: need.needId,
-        kind: need.kind,
-        status: need.status,
-        target: need.target,
-        summary: need.summary,
-        claim: need.claim,
-        question: need.question,
-        tension: need.tension,
-        actionImplication: need.actionImplication,
-        intensity: scaleWord(need.intensity),
-        rawIntensity: round(need.intensity),
-        valence: valenceWord(need.valence),
-        rawValence: round(need.valence),
-        anchorRefs: need.anchorRefs,
-        evidenceRefs: need.evidenceRefs,
-        sourceMemoryIds: need.sourceMemoryIds,
-        lastSatisfiedAt: need.lastSatisfiedAt,
-        createdAt: need.createdAt,
-        updatedAt: need.updatedAt,
-        retiredAt: need.retiredAt,
-        tags: need.tags,
-      })),
-      bonds: typedState.faceAffect.socialBonds.map((bond) => stripUndefined({
-        id: bond.bondId,
-        target: bond.target,
-        relationship: bond.stance,
-        status: bond.status,
-        summary: bond.summary,
-        claim: bond.claim,
-        tension: bond.tension,
-        actionImplication: bond.actionImplication,
-        trust: bond.stance === "trust" ? scaleWord(bond.intensity) : undefined,
-        closeness: ["fondness", "attachment", "protectiveness"].includes(bond.stance)
-          ? scaleWord(bond.intensity)
-          : undefined,
-        intensity: scaleWord(bond.intensity),
-        rawIntensity: round(bond.intensity),
-        anchorRefs: bond.anchorRefs,
-        evidenceRefs: bond.evidenceRefs,
-        createdAt: bond.createdAt,
-        updatedAt: bond.updatedAt,
-        retiredAt: bond.retiredAt,
-        tags: bond.tags,
-      })),
-      statusReads: typedState.faceAffect.statusReads.map((read) => stripUndefined({
-        id: read.readId,
-        status: read.status,
-        target: read.target,
-        summary: read.summary,
-        claim: read.claim,
-        tension: read.tension,
-        actionImplication: read.actionImplication,
-        intensity: scaleWord(read.intensity),
-        rawIntensity: round(read.intensity),
-        anchorRefs: read.anchorRefs,
-        evidenceRefs: read.evidenceRefs,
-        createdAt: read.createdAt,
-        updatedAt: read.updatedAt,
-        retiredAt: read.retiredAt,
-        tags: read.tags,
-      })),
+      needs: typedState.faceAffect.needs.map(mapAffectNeed),
+      bonds: typedState.faceAffect.socialBonds.map(mapSocialBond),
+      statusReads: typedState.faceAffect.statusReads.map(mapStatusRead),
       mood: Object.fromEntries(
         typedState.faceAffect.moodDimensions.map((dimension) => [
           dimension.name,
-          stripUndefined({
-            value: scaleWord(dimension.value),
-            rawValue: round(dimension.value),
-            source: dimension.source,
-            updatedAt: dimension.updatedAt,
-          }),
+          scaleWord(dimension.value),
         ]),
       ),
-      socialBiases: typedState.faceAffect.socialBiases.map((bias) => ({
-        name: bias.name,
-        value: scaleWord(bias.value),
-        rawValue: round(bias.value),
-        summary: bias.summary,
-        behavioralPull: bias.behavioralPull,
-        updatedAt: bias.updatedAt,
-      })),
-      doctrineStances: typedState.faceAffect.doctrineStances.map((stance) => stripUndefined({
-        id: stance.stanceId,
-        principle: stance.doctrine,
-        stance: stance.status,
-        target: stance.target,
-        summary: stance.summary,
-        claim: stance.claim,
-        question: stance.question,
-        tension: stance.tension,
-        actionImplication: stance.actionImplication,
-        intensity: scaleWord(stance.intensity),
-        rawIntensity: round(stance.intensity),
-        valence: valenceWord(stance.valence),
-        rawValence: round(stance.valence),
-        anchorRefs: stance.anchorRefs,
-        evidenceRefs: stance.evidenceRefs,
-        sourceMemoryIds: stance.sourceMemoryIds,
-        createdAt: stance.createdAt,
-        updatedAt: stance.updatedAt,
-        retiredAt: stance.retiredAt,
-        tags: stance.tags,
-      })),
+      socialBiases: typedState.faceAffect.socialBiases.map(mapSocialBias),
+      doctrineStances: typedState.faceAffect.doctrineStances.map(mapDoctrineStance),
     },
-    agencyPressure: typedState.agencyPressure.pressures.map((pressure) => stripUndefined({
-      id: pressure.pressureId,
-      kind: pressure.kind,
-      status: pressure.status,
-      target: pressure.target,
-      summary: pressure.summary,
-      claim: pressure.claim,
-      question: pressure.question,
-      tension: pressure.tension,
-      actionImplication: pressure.actionImplication,
-      intensity: scaleWord(pressure.intensity),
-      rawIntensity: round(pressure.intensity),
-      anchorRefs: pressure.anchorRefs,
-      evidenceRefs: pressure.evidenceRefs,
-      sourceMemoryIds: pressure.sourceMemoryIds,
-      createdAt: pressure.createdAt,
-      updatedAt: pressure.updatedAt,
-      resolvedAt: pressure.resolvedAt,
-      retiredAt: pressure.retiredAt,
-      tags: pressure.tags,
-    })),
-    candidateActions: typedState.candidateInterventions.interventions.map((intervention) => stripUndefined({
-      id: intervention.interventionId,
-      kind: intervention.kind,
-      status: intervention.status,
-      target: intervention.target,
-      summary: intervention.summary,
-      draft: intervention.draft,
-      deliveryTarget: intervention.deliveryTarget,
-      priority: scaleWord(intervention.priority),
-      rawPriority: round(intervention.priority),
-      mustEventuallyShare: intervention.mustEventuallyShare,
-      createdAt: intervention.createdAt,
-      updatedAt: intervention.updatedAt,
-      spokenAt: intervention.spokenAt,
-      retiredAt: intervention.retiredAt,
-      tags: intervention.tags,
-    })),
+    agencyPressure: typedState.agencyPressure.pressures.map(mapAgencyPressure),
+    candidateActions: typedState.candidateInterventions.interventions.map(mapCandidateAction),
     operationalState: {
-      moderation: {
+      moderation: stripUndefined({
         lastReviewedMessageId: typedState.moderationCursor.lastReviewedMessageId,
         lastReviewedTimestamp: typedState.moderationCursor.lastReviewedTimestamp,
-        openCases: typedState.moderationCursor.openCases,
-        repoActivityCursor: typedState.moderationCursor.repoActivityCursor,
+        openCases: typedState.moderationCursor.openCases.map((entry) => stripUndefined({
+          summary: entry.summary,
+          whyItMatters: entry.whyItMatters,
+          author: entry.authorName,
+          status: entry.status,
+          tags: entry.tags,
+          source: {
+            sourceMessageId: entry.sourceMessageId,
+            channelId: entry.channelId,
+            messageUrl: entry.messageUrl,
+            createdAt: entry.createdAt,
+            lastTouchedAt: entry.lastTouchedAt,
+            resolvedAt: entry.resolvedAt,
+          },
+        })),
+        repoActivityCursor: typedState.moderationCursor.repoActivityCursor.map((cursor) => stripUndefined({
+          repo: cursor.repo,
+          lastCommitAt: cursor.lastCommitAt,
+          lastCommitSha: cursor.lastCommitSha,
+          updatedAt: cursor.updatedAt,
+        })),
         updatedAt: typedState.moderationCursor.updatedAt,
-      },
+      }),
       runtime: {
-        sleepCycle: typedState.scheduledRuntime.sleepCycle,
+        sleepCycle: stripUndefined({
+          state: typedState.scheduledRuntime.sleepCycle.isNapping ? "napping" : "awake",
+          activeDreamThemes: typedState.scheduledRuntime.sleepCycle.activeDreamThemes,
+          currentNapStartedAt: typedState.scheduledRuntime.sleepCycle.currentNapStartedAt,
+          currentNapEndsAt: typedState.scheduledRuntime.sleepCycle.currentNapEndsAt,
+          nextNapStartsAt: typedState.scheduledRuntime.sleepCycle.nextNapStartsAt,
+        }),
         speakingPressure: mapSpeakingPressure(typedState.scheduledRuntime.speakingPressure),
         lastRuns: typedState.scheduledRuntime.lastRuns,
         updatedAt: typedState.scheduledRuntime.updatedAt,
       },
-      speechReceipts: typedState.speechReceipts.recentReceipts.map((receipt) => receipt),
+      speechReceipts: typedState.speechReceipts.recentReceipts.map((receipt) => stripUndefined({
+        sentAt: receipt.sentAt,
+        personaName: receipt.personaName,
+        target: stripUndefined({
+          mode: receipt.mode,
+          transport: receipt.transport,
+          channelId: receipt.channelId,
+          replyToMessageId: receipt.replyToMessageId,
+        }),
+        preview: receipt.preview,
+        source: stripUndefined({
+          receiptKey: receipt.receiptKey,
+          candidateInterventionId: receipt.candidateInterventionId,
+          contentLength: receipt.contentLength,
+          chunkCount: receipt.chunkCount,
+          previewHash: receipt.previewHash,
+        }),
+      })),
     },
   });
 }
@@ -347,38 +236,236 @@ function mapActivationCategory(
   return Object.fromEntries(
     Object.entries(category).map(([key, value]) => [
       key,
-      {
-        level: scaleWord(value.mean),
-        activation: scaleWord(value.current_activation),
-        plasticity: scaleWord(value.plasticity),
-        raw: {
-          mean: round(value.mean),
-          currentActivation: round(value.current_activation),
-          plasticity: round(value.plasticity),
-        },
-      },
+      scaleWord(value.mean),
     ]),
   );
 }
 
 function mapMemory(memory: VoidSelfStateTypedProjection["thoughtMemory"]["memories"][number]): JsonValue {
   return stripUndefined({
-    id: memory.memoryId,
-    kind: memory.kind,
-    status: memory.retiredAt ? "retired" : "active",
+    about: targetLabel(memory.target),
     summary: memory.summary,
-    claim: memory.claim,
-    question: memory.question,
-    tension: memory.tension,
-    actionImplication: memory.actionImplication,
     importance: inferImportance(memory.tags),
-    target: memory.target,
-    anchorRefs: memory.anchorRefs,
-    evidenceRefs: memory.evidenceRefs,
-    createdAt: memory.createdAt,
-    updatedAt: memory.updatedAt,
-    retiredAt: memory.retiredAt,
-    tags: memory.tags,
+    belief: memory.claim,
+    openQuestion: normalizeOptionalQuestion(memory.question),
+    watchOutFor: memory.tension,
+    futureUse: memory.actionImplication,
+    source: sourceBlock({
+      id: memory.memoryId,
+      kind: memory.kind,
+      status: memory.retiredAt ? "retired" : "active",
+      target: memory.target,
+      createdAt: memory.createdAt,
+      updatedAt: memory.updatedAt,
+      retiredAt: memory.retiredAt,
+      tags: memory.tags,
+      anchorRefs: memory.anchorRefs,
+      evidenceRefs: memory.evidenceRefs,
+    }),
+  });
+}
+
+function mapCoreValue(value: VoidSelfStateTypedProjection["selfProfile"]["values"][number]): JsonValue {
+  return stripUndefined({
+    id: value.id,
+    label: value.label,
+    priority: scaleWord(value.priority),
+    summary: value.summary ?? "",
+    behavioralImplication: "",
+    refusalLine: "",
+  });
+}
+
+function mapIncubationThread(
+  thread: VoidSelfStateTypedProjection["thoughtMemory"]["incubation"][number],
+): JsonValue {
+  return stripUndefined({
+    about: targetLabel(thread.target),
+    topic: thread.topic,
+    summary: thread.summary,
+    maturity: scaleWord(thread.maturation),
+    noveltyToRoom: maybeScaleWord(thread.noveltyToRoom),
+    noveltyToSelf: maybeScaleWord(thread.noveltyToSelf),
+    desireToSpeak: maybeScaleWord(thread.desireToSpeak),
+    saturation: maybeScaleWord(thread.saturationScore),
+    supportingMemoryIds: thread.supportMemoryIds,
+    source: sourceBlock({
+      id: thread.threadId,
+      status: thread.status,
+      target: thread.target,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      anchorRefs: thread.anchorRefs,
+      evidenceRefs: thread.evidenceRefs,
+    }),
+  });
+}
+
+function mapAffectNeed(need: VoidSelfStateTypedProjection["faceAffect"]["needs"][number]): JsonValue {
+  return stripUndefined({
+    about: targetLabel(need.target),
+    kind: need.kind,
+    status: need.status,
+    summary: need.summary,
+    feelsLike: valenceWord(need.valence),
+    intensity: scaleWord(need.intensity),
+    belief: need.claim,
+    openQuestion: normalizeOptionalQuestion(need.question),
+    watchOutFor: need.tension,
+    wantsNext: need.actionImplication,
+    lastSatisfiedAt: need.lastSatisfiedAt,
+    source: sourceBlock({
+      id: need.needId,
+      target: need.target,
+      createdAt: need.createdAt,
+      updatedAt: need.updatedAt,
+      retiredAt: need.retiredAt,
+      tags: need.tags,
+      anchorRefs: need.anchorRefs,
+      evidenceRefs: need.evidenceRefs,
+      sourceMemoryIds: need.sourceMemoryIds,
+    }),
+  });
+}
+
+function mapSocialBond(bond: VoidSelfStateTypedProjection["faceAffect"]["socialBonds"][number]): JsonValue {
+  return stripUndefined({
+    target: targetLabel(bond.target),
+    relationship: bond.stance,
+    status: bond.status,
+    summary: bond.summary,
+    intensity: scaleWord(bond.intensity),
+    trust: bond.stance === "trust" ? scaleWord(bond.intensity) : undefined,
+    closeness: ["fondness", "attachment", "protectiveness"].includes(bond.stance)
+      ? scaleWord(bond.intensity)
+      : undefined,
+    belief: bond.claim,
+    watchOutFor: bond.tension,
+    futureUse: bond.actionImplication,
+    source: sourceBlock({
+      id: bond.bondId,
+      target: bond.target,
+      createdAt: bond.createdAt,
+      updatedAt: bond.updatedAt,
+      retiredAt: bond.retiredAt,
+      tags: bond.tags,
+      anchorRefs: bond.anchorRefs,
+      evidenceRefs: bond.evidenceRefs,
+    }),
+  });
+}
+
+function mapStatusRead(read: VoidSelfStateTypedProjection["faceAffect"]["statusReads"][number]): JsonValue {
+  return stripUndefined({
+    target: targetLabel(read.target),
+    read: read.status,
+    summary: read.summary,
+    intensity: scaleWord(read.intensity),
+    belief: read.claim,
+    watchOutFor: read.tension,
+    futureUse: read.actionImplication,
+    source: sourceBlock({
+      id: read.readId,
+      target: read.target,
+      createdAt: read.createdAt,
+      updatedAt: read.updatedAt,
+      retiredAt: read.retiredAt,
+      tags: read.tags,
+      anchorRefs: read.anchorRefs,
+      evidenceRefs: read.evidenceRefs,
+    }),
+  });
+}
+
+function mapSocialBias(bias: VoidSelfStateTypedProjection["faceAffect"]["socialBiases"][number]): JsonValue {
+  return {
+    name: bias.name,
+    value: scaleWord(bias.value),
+    summary: bias.summary,
+    behavioralPull: bias.behavioralPull,
+    source: {
+      updatedAt: bias.updatedAt,
+    },
+  };
+}
+
+function mapDoctrineStance(
+  stance: VoidSelfStateTypedProjection["faceAffect"]["doctrineStances"][number],
+): JsonValue {
+  return stripUndefined({
+    about: targetLabel(stance.target),
+    principle: stance.doctrine,
+    stance: stance.status,
+    summary: stance.summary,
+    belief: stance.claim,
+    openQuestion: normalizeOptionalQuestion(stance.question),
+    watchOutFor: stance.tension,
+    futureUse: stance.actionImplication,
+    intensity: scaleWord(stance.intensity),
+    feelsLike: valenceWord(stance.valence),
+    source: sourceBlock({
+      id: stance.stanceId,
+      target: stance.target,
+      createdAt: stance.createdAt,
+      updatedAt: stance.updatedAt,
+      retiredAt: stance.retiredAt,
+      tags: stance.tags,
+      anchorRefs: stance.anchorRefs,
+      evidenceRefs: stance.evidenceRefs,
+      sourceMemoryIds: stance.sourceMemoryIds,
+    }),
+  });
+}
+
+function mapAgencyPressure(
+  pressure: VoidSelfStateTypedProjection["agencyPressure"]["pressures"][number],
+): JsonValue {
+  return stripUndefined({
+    about: targetLabel(pressure.target),
+    kind: pressure.kind,
+    status: pressure.status,
+    summary: pressure.summary,
+    intensity: scaleWord(pressure.intensity),
+    belief: pressure.claim,
+    openQuestion: normalizeOptionalQuestion(pressure.question),
+    watchOutFor: pressure.tension,
+    wantsNext: pressure.actionImplication,
+    source: sourceBlock({
+      id: pressure.pressureId,
+      target: pressure.target,
+      createdAt: pressure.createdAt,
+      updatedAt: pressure.updatedAt,
+      resolvedAt: pressure.resolvedAt,
+      retiredAt: pressure.retiredAt,
+      tags: pressure.tags,
+      anchorRefs: pressure.anchorRefs,
+      evidenceRefs: pressure.evidenceRefs,
+      sourceMemoryIds: pressure.sourceMemoryIds,
+    }),
+  });
+}
+
+function mapCandidateAction(
+  intervention: VoidSelfStateTypedProjection["candidateInterventions"]["interventions"][number],
+): JsonValue {
+  return stripUndefined({
+    target: intervention.target ? targetLabel(intervention.target) : undefined,
+    kind: intervention.kind,
+    status: intervention.status,
+    summary: intervention.summary,
+    draft: intervention.draft,
+    priority: scaleWord(intervention.priority),
+    mustEventuallyShare: intervention.mustEventuallyShare,
+    deliveryTarget: intervention.deliveryTarget,
+    source: {
+      id: intervention.interventionId,
+      target: intervention.target,
+      createdAt: intervention.createdAt,
+      updatedAt: intervention.updatedAt,
+      spokenAt: intervention.spokenAt,
+      retiredAt: intervention.retiredAt,
+      tags: intervention.tags,
+    },
   });
 }
 
@@ -387,10 +474,9 @@ function mapSpeakingPressure(
 ): JsonValue {
   return stripUndefined({
     needToSpeak: scaleWord(pressure.needToSpeak),
-    rawNeedToSpeak: round(pressure.needToSpeak),
-    confessionPressure: maybeScale(pressure.confessionPressure),
-    noveltyPressure: maybeScale(pressure.noveltyPressure),
-    recentSpeechDamping: maybeScale(pressure.recentSpeechDamping),
+    confessionPressure: maybeScaleWord(pressure.confessionPressure),
+    noveltyPressure: maybeScaleWord(pressure.noveltyPressure),
+    recentSpeechDamping: maybeScaleWord(pressure.recentSpeechDamping),
     lastSpokeAt: pressure.lastSpokeAt,
     lastHeraldAt: pressure.lastHeraldAt,
   });
@@ -413,13 +499,70 @@ function inferImportance(tags: string[]): string {
   return "medium";
 }
 
-function maybeScale(value: number | undefined): JsonValue | undefined {
-  return value === undefined
-    ? undefined
-    : {
-        value: scaleWord(value),
-        rawValue: round(value),
-      };
+function sourceBlock(input: {
+  id?: string;
+  kind?: string;
+  status?: string;
+  target?: JsonValue;
+  createdAt?: string;
+  updatedAt?: string;
+  resolvedAt?: string;
+  retiredAt?: string;
+  tags?: string[];
+  anchorRefs?: JsonValue;
+  evidenceRefs?: JsonValue;
+  sourceMemoryIds?: string[];
+}): JsonValue {
+  return stripUndefined({
+    id: input.id,
+    kind: input.kind,
+    status: input.status,
+    target: input.target,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+    resolvedAt: input.resolvedAt,
+    retiredAt: input.retiredAt,
+    tags: nonEmptyArray(input.tags),
+    anchors: mapRefs(input.anchorRefs),
+    evidence: mapRefs(input.evidenceRefs),
+    sourceMemoryIds: nonEmptyArray(input.sourceMemoryIds),
+  });
+}
+
+function nonEmptyArray<T>(value: T[] | undefined): T[] | undefined {
+  return value && value.length > 0 ? value : undefined;
+}
+
+function targetLabel(target: { label?: string; id: string }): string {
+  return target.label ?? target.id;
+}
+
+function normalizeOptionalQuestion(value: string | undefined): string | undefined {
+  if (!value || value.trim().toLowerCase() === "none.") {
+    return undefined;
+  }
+  return value;
+}
+
+function mapRefs(refs: JsonValue | undefined): JsonValue | undefined {
+  if (!Array.isArray(refs) || refs.length === 0) {
+    return undefined;
+  }
+  return refs.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return entry;
+    }
+    const ref = entry.ref;
+    const kind = entry.kind;
+    const summary = entry.summary;
+    return typeof kind === "string" || typeof summary === "string"
+      ? stripUndefined({ ref, kind, summary })
+      : ref;
+  });
+}
+
+function maybeScaleWord(value: number | undefined): string | undefined {
+  return value === undefined ? undefined : scaleWord(value);
 }
 
 function scaleWord(value: number): "very_low" | "low" | "medium" | "high" | "very_high" {
@@ -459,10 +602,6 @@ function latestTimestamp(values: Array<string | undefined>): string {
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => left.localeCompare(right))
     .at(-1) ?? new Date(0).toISOString();
-}
-
-function round(value: number): number {
-  return Number(value.toFixed(3));
 }
 
 function stripUndefined<T extends JsonValue | undefined>(value: T): T {
