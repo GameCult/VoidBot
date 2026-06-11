@@ -13,6 +13,7 @@ interface CliOptions {
   repoName?: string;
   avatarUri?: string;
   repoPath?: string;
+  includeSource: boolean;
   statePath: string;
   outPath: string;
 }
@@ -38,9 +39,11 @@ type JsonValue =
 const DEFAULT_IDENTITY_PATH = "E:/Projects/Sai/.voidbot/voice/identity.json";
 const DEFAULT_STATE_PATH = "E:/Projects/Sai/.voidbot/state/sai.cc";
 const DEFAULT_OUT_PATH = "docs/persona-intake/sai.persona-intake.yaml";
+let includeItemSource = false;
 
 async function main(args: string[]): Promise<void> {
   const options = parseArgs(args);
+  includeItemSource = options.includeSource;
   const identity = await resolveIdentity(options);
   const identityDefaults = identity.displayName
     ? {
@@ -205,13 +208,13 @@ function buildFriendlyPersonaInput(input: {
           replyToMessageId: receipt.replyToMessageId,
         }),
         preview: receipt.preview,
-        source: stripUndefined({
+        source: includeItemSource ? stripUndefined({
           receiptKey: receipt.receiptKey,
           candidateInterventionId: receipt.candidateInterventionId,
           contentLength: receipt.contentLength,
           chunkCount: receipt.chunkCount,
           previewHash: receipt.previewHash,
-        }),
+        }) : undefined,
       })),
     },
   });
@@ -378,15 +381,15 @@ function mapStatusRead(read: VoidSelfStateTypedProjection["faceAffect"]["statusR
 }
 
 function mapSocialBias(bias: VoidSelfStateTypedProjection["faceAffect"]["socialBiases"][number]): JsonValue {
-  return {
+  return stripUndefined({
     name: bias.name,
     value: scaleWord(bias.value),
     summary: bias.summary,
     behavioralPull: bias.behavioralPull,
-    source: {
+    source: includeItemSource ? {
       updatedAt: bias.updatedAt,
-    },
-  };
+    } : undefined,
+  });
 }
 
 function mapDoctrineStance(
@@ -457,7 +460,7 @@ function mapCandidateAction(
     priority: scaleWord(intervention.priority),
     mustEventuallyShare: intervention.mustEventuallyShare,
     deliveryTarget: intervention.deliveryTarget,
-    source: {
+    source: sourceBlock({
       id: intervention.interventionId,
       target: intervention.target,
       createdAt: intervention.createdAt,
@@ -465,7 +468,7 @@ function mapCandidateAction(
       spokenAt: intervention.spokenAt,
       retiredAt: intervention.retiredAt,
       tags: intervention.tags,
-    },
+    }),
   });
 }
 
@@ -512,7 +515,10 @@ function sourceBlock(input: {
   anchorRefs?: JsonValue;
   evidenceRefs?: JsonValue;
   sourceMemoryIds?: string[];
-}): JsonValue {
+}): JsonValue | undefined {
+  if (!includeItemSource) {
+    return undefined;
+  }
   return stripUndefined({
     id: input.id,
     kind: input.kind,
@@ -693,6 +699,7 @@ async function resolveIdentity(options: CliOptions): Promise<RepoFaceIdentity> {
 
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
+    includeSource: false,
     identityPath: DEFAULT_IDENTITY_PATH,
     statePath: DEFAULT_STATE_PATH,
     outPath: DEFAULT_OUT_PATH,
@@ -721,6 +728,8 @@ function parseArgs(args: string[]): CliOptions {
     } else if (arg === "--repo-path" && value) {
       options.repoPath = value;
       index += 1;
+    } else if (arg === "--include-source") {
+      options.includeSource = true;
     } else if (arg === "--state" && value) {
       options.statePath = value;
       index += 1;
@@ -749,6 +758,9 @@ function printUsage(): void {
     "",
     "Native Persona options:",
     "  --no-identity-file --state .voidbot/private/personas/metame/metame.cc --out docs/persona-intake/metame.persona-intake.yaml",
+    "",
+    "Provenance:",
+    "  --include-source   Include per-item parse-back IDs, timestamps, tags, and anchors.",
   ].join("\n"));
 }
 
