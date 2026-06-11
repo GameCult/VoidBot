@@ -7,7 +7,12 @@ import {
 } from "@voidbot/core";
 
 interface CliOptions {
-  identityPath: string;
+  identityPath?: string;
+  identityId?: string;
+  displayName?: string;
+  repoName?: string;
+  avatarUri?: string;
+  repoPath?: string;
   statePath: string;
   outPath: string;
 }
@@ -17,6 +22,7 @@ interface RepoFaceIdentity {
   displayName?: string;
   repoName?: string;
   avatarUrl?: string;
+  description?: string;
   repoPath?: string;
   createdOrRefreshedAt?: string;
 }
@@ -35,16 +41,17 @@ const DEFAULT_OUT_PATH = "docs/persona-intake/sai.persona-intake.yaml";
 
 async function main(args: string[]): Promise<void> {
   const options = parseArgs(args);
-  const identity = await readIdentity(options.identityPath);
-  const agentId = identity.identityId ?? "sai";
-  const publicName = identity.displayName ?? "Sai";
+  const identity = await resolveIdentity(options);
+  const identityDefaults = identity.displayName
+    ? {
+        agentId: identity.identityId ?? identity.displayName,
+        publicName: identity.displayName,
+        publicDescription: identity.description,
+      }
+    : undefined;
   const typedState = await loadVoidSelfStateTypedDocuments({
     canonicalPath: options.statePath,
-    identity: {
-      agentId,
-      publicName,
-      publicDescription: undefined,
-    },
+    identity: identityDefaults,
   });
 
   const projection = buildFriendlyPersonaInput({
@@ -67,7 +74,7 @@ async function main(args: string[]): Promise<void> {
 
 function buildFriendlyPersonaInput(input: {
   identity: RepoFaceIdentity;
-  identityPath: string;
+  identityPath?: string;
   statePath: string;
   typedState: VoidSelfStateTypedProjection;
 }): JsonValue {
@@ -88,9 +95,9 @@ function buildFriendlyPersonaInput(input: {
     schemaVersion: "gamecult.persona_intake.v0",
     source: {
       authority: "projection",
-      sourceSystem: "voidbot.repo_face_state",
+      sourceSystem: identity.repoPath ? "voidbot.repo_face_state" : "voidbot.native_persona_state",
       sourceStatePath: resolve(input.statePath),
-      sourceIdentityPath: resolve(input.identityPath),
+      sourceIdentityPath: input.identityPath ? resolve(input.identityPath) : undefined,
       projectedAt: new Date().toISOString(),
       sourceUpdatedAt: updatedAt,
     },
@@ -101,8 +108,12 @@ function buildFriendlyPersonaInput(input: {
       pronouns: "",
       avatarUri: identity.avatarUrl ?? "",
       jurisdiction: identity.repoName
-        ? `Repo Face for ${identity.repoName}.`
-        : "",
+        ? identity.repoPath
+          ? `Repo Face for ${identity.repoName}.`
+          : `Native VoidBot Persona for ${identity.repoName}.`
+        : identity.repoPath
+          ? "Repo Face."
+          : "Native VoidBot Persona.",
       sourceRepo: identity.repoPath
         ? {
             kind: "repo",
@@ -116,7 +127,7 @@ function buildFriendlyPersonaInput(input: {
       voiceSummary: inferVoiceSummary(profile.publicDescription),
       defaultRenderer: "chat",
       homeContext: {
-        kind: "repo",
+        kind: identity.repoPath ? "repo" : "self",
         id: identity.repoName ?? profile.agentId,
         label: identity.repoName ?? profile.publicName,
       },
@@ -526,6 +537,21 @@ async function readIdentity(path: string): Promise<RepoFaceIdentity> {
   return JSON.parse(raw) as RepoFaceIdentity;
 }
 
+async function resolveIdentity(options: CliOptions): Promise<RepoFaceIdentity> {
+  const fileIdentity = options.identityPath
+    ? await readIdentity(options.identityPath)
+    : {};
+
+  return {
+    ...fileIdentity,
+    identityId: options.identityId ?? fileIdentity.identityId,
+    displayName: options.displayName ?? fileIdentity.displayName,
+    repoName: options.repoName ?? fileIdentity.repoName,
+    avatarUrl: options.avatarUri ?? fileIdentity.avatarUrl,
+    repoPath: options.repoPath ?? fileIdentity.repoPath,
+  };
+}
+
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     identityPath: DEFAULT_IDENTITY_PATH,
@@ -538,6 +564,23 @@ function parseArgs(args: string[]): CliOptions {
     const value = args[index + 1];
     if (arg === "--identity" && value) {
       options.identityPath = value;
+      index += 1;
+    } else if (arg === "--no-identity-file") {
+      options.identityPath = undefined;
+    } else if (arg === "--id" && value) {
+      options.identityId = value;
+      index += 1;
+    } else if (arg === "--name" && value) {
+      options.displayName = value;
+      index += 1;
+    } else if (arg === "--repo-name" && value) {
+      options.repoName = value;
+      index += 1;
+    } else if (arg === "--avatar-uri" && value) {
+      options.avatarUri = value;
+      index += 1;
+    } else if (arg === "--repo-path" && value) {
+      options.repoPath = value;
       index += 1;
     } else if (arg === "--state" && value) {
       options.statePath = value;
@@ -558,12 +601,15 @@ function parseArgs(args: string[]): CliOptions {
 
 function printUsage(): void {
   console.log([
-    "Usage: npx tsx scripts/export-persona-friendly-input.ts [--identity path] [--state path] [--out path]",
+    "Usage: npx tsx scripts/export-persona-friendly-input.ts [--identity path | --no-identity-file] [--state path] [--out path]",
     "",
     `Defaults:`,
     `  --identity ${DEFAULT_IDENTITY_PATH}`,
     `  --state    ${DEFAULT_STATE_PATH}`,
     `  --out      ${DEFAULT_OUT_PATH}`,
+    "",
+    "Native Persona options:",
+    "  --no-identity-file --state .voidbot/private/personas/metame/metame.cc --out docs/persona-intake/metame.persona-intake.yaml",
   ].join("\n"));
 }
 
