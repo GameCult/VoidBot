@@ -823,6 +823,14 @@ async function maybeStartRepoFaceMemoryMaintenance(input: {
   try {
     await mkdir(paths.statusDir, { recursive: true });
     await mkdir(paths.logDir, { recursive: true });
+    const launchedAt = new Date();
+    await writeJsonFile(paths.statusPath, {
+      status: "starting",
+      startedAt: launchedAt.toISOString(),
+      stateFile: input.statePath,
+      launcher: "repo_face_heartbeat",
+      reason: input.projectedRest.isNapping ? "repo_face_napping_with_short_term_memory" : "repo_face_stale_short_term_memory",
+    });
     const child = spawn(
       "powershell.exe",
       [
@@ -887,6 +895,11 @@ async function readJsonFile(path: string): Promise<Record<string, unknown> | und
   } catch {
     return undefined;
   }
+}
+
+async function writeJsonFile(path: string, value: unknown): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 function isRecentRunningStatus(status: Record<string, unknown> | undefined, maxAgeMinutes: number): boolean {

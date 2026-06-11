@@ -656,6 +656,7 @@ interface RepoFaceParentInterpretation {
   decision: "route" | "retry" | "drop";
   reasons: string[];
   routedOutput?: string;
+  artifacts?: ProviderArtifact[];
 }
 
 async function interpretRepoFaceTurnOutput(
@@ -680,7 +681,10 @@ async function interpretRepoFaceTurnOutput(
   };
   const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
-  return parseRepoFaceParentInterpretation(interpretationText, input.attempt, outputText);
+  return {
+    ...parseRepoFaceParentInterpretation(interpretationText, input.attempt, outputText),
+    artifacts: prefixProviderArtifacts(`interpreter-attempt-${input.attempt}`, response.artifacts ?? []),
+  };
 }
 
 async function renderRepoFaceDynamicMemoryRecall(
@@ -904,6 +908,10 @@ function routeRepoFaceInterpretedOutput(
     ...response,
     outputText: summary,
     summary,
+    artifacts: [
+      ...(response.artifacts ?? []),
+      ...(interpretation.artifacts ?? []),
+    ],
     metadata: {
       ...(response.metadata ?? {}),
       repoFaceParentInterpreterDecision: interpretation.decision,
@@ -1013,12 +1021,23 @@ function dropRepoFaceActionBlocks(
     ...response,
     outputText: privateSummary,
     summary: privateSummary,
+    artifacts: [
+      ...(response.artifacts ?? []),
+      ...(interpretation.artifacts ?? []),
+    ],
     metadata: {
       ...(response.metadata ?? {}),
       repoFaceParentInterpreterDecision: interpretation.decision,
       repoFaceParentInterpreterReasons: interpretation.reasons.join(" | "),
     },
   };
+}
+
+function prefixProviderArtifacts(prefix: string, artifacts: ProviderArtifact[]): ProviderArtifact[] {
+  return artifacts.map((artifact) => ({
+    ...artifact,
+    name: `${prefix}-${artifact.name}`,
+  }));
 }
 
 function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpreter"): Record<string, string> {
