@@ -40,6 +40,7 @@
     "agents:speech-boundary-smoke": "tsx scripts/smoke-repo-face-speech-boundary.ts",
     "agents:memory-projection-smoke": "node scripts/smoke-repo-face-memory-projection.mjs",
     "agents:article-contract-smoke": "tsx scripts/smoke-repo-face-article-contract.ts",
+    "persona:export-friendly": "tsx scripts/export-persona-friendly-input.ts",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",
