@@ -72,6 +72,18 @@ const cases: Case[] = [
       "show \"rear pair drifting 38 ms\", \"geometry confidence low\", \"world model provisional\".",
     detail: "Repo Faces can mention technical labels without speaking in code spans.",
   },
+  {
+    name: "leading self-label is stripped with kana-folding",
+    run: () => normalizePublicRepoIdentitySpeech(
+      "メタめ: We need one real owner for the public name.",
+      {
+        identityId: "metame",
+        displayName: "メタメ",
+        repoName: "メタメ",
+      },
+    ) === "We need one real owner for the public name.",
+    detail: "The public speech boundary owns the speaker label, so mixed-script self-renames in SAY content must be stripped before posting.",
+  },
 ];
 
 const failures = cases.filter((entry) => !entry.run());

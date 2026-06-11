@@ -1300,7 +1300,11 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   if (isNonPublicRepoIdentitySpeech(rawContent)) {
     throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
   }
-  const content = normalizePublicRepoIdentitySpeech(rawContent);
+  const content = normalizePublicRepoIdentitySpeech(rawContent, {
+    identityId: identity.id,
+    displayName: identity.displayName,
+    repoName: identity.repoName,
+  });
   if (isNonPublicRepoIdentitySpeech(content)) {
     throw new Error(`Repo identity ${identity.id} SAY content is not public speech.`);
   }

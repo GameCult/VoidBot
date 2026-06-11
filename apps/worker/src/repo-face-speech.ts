@@ -7,6 +7,12 @@ export interface RepoIdentityPostIntent {
   replyToMessageId?: string;
 }
 
+export interface PublicRepoIdentitySpeechNormalizationOptions {
+  identityId?: string;
+  displayName?: string;
+  repoName?: string;
+}
+
 type RepoFaceActionBlock = {
   kind: "say" | "state_note" | "article" | "reddit_thread" | "bifrost_topic" | "update_request";
   fields: Record<string, string>;
@@ -91,11 +97,17 @@ export function isNonPublicRepoIdentitySpeech(value: string): boolean {
   ].includes(normalized);
 }
 
-export function normalizePublicRepoIdentitySpeech(value: string): string {
-  return value
+export function normalizePublicRepoIdentitySpeech(
+  value: string,
+  options: PublicRepoIdentitySpeechNormalizationOptions = {},
+): string {
+  return stripLeadingSelfLabel(
+    value
     .replace(/```[A-Za-z0-9_-]*\s*\r?\n([\s\S]*?)\r?\n```/g, (_match, body: string) => body.trim())
     .replace(/`([^`\r\n]+)`/g, (_match, body: string) => `"${body.trim()}"`)
-    .trim();
+    .trim(),
+    options,
+  );
 }
 
 function stripSingleMarkdownFence(value: string): string {
@@ -203,4 +215,56 @@ function optionalDslString(value: string | undefined): string | undefined {
 
 function requiredDslString(value: string | undefined): string | undefined {
   return optionalDslString(value);
+}
+
+function stripLeadingSelfLabel(
+  value: string,
+  options: PublicRepoIdentitySpeechNormalizationOptions,
+): string {
+  const aliases = [
+    options.displayName,
+    options.identityId,
+    options.repoName,
+  ]
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => normalizeSpeakerKey(entry));
+
+  if (aliases.length === 0) {
+    return value;
+  }
+
+  const match = value.match(/^([^\r\n:：-]{1,80})(\s*[:：]\s*|\s+-\s+)([\s\S]*)$/);
+  if (!match) {
+    return value;
+  }
+
+  const candidate = normalizeSpeakerKey(
+    match[1].replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, "").trim(),
+  );
+  if (!candidate || !aliases.includes(candidate)) {
+    return value;
+  }
+
+  return match[3].trimStart();
+}
+
+function normalizeSpeakerKey(value: string): string {
+  return foldKana(
+    value
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/["'“”‘’`・.]+/g, ""),
+  );
+}
+
+function foldKana(value: string): string {
+  let output = "";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    output += code >= 0x30a1 && code <= 0x30f6
+      ? String.fromCharCode(code - 0x60)
+      : char;
+  }
+  return output;
 }
