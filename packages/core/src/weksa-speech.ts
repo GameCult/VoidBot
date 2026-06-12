@@ -13,6 +13,15 @@ export interface WeksaRepoFaceSpeechInput {
   messageId: string;
   content: string;
   replyToMessageId?: string;
+  requestId?: string;
+  scene?: string;
+  addressee?: string;
+  performanceRegister?: Record<string, unknown>;
+  deliveryControls?: string[];
+  forbiddenTraits?: string[];
+  voiceDesignPrompt?: string;
+  privateInterpretation?: string;
+  intendedEffect?: string;
 }
 
 export interface WeksaMimoReceipt {
@@ -52,32 +61,34 @@ export class WeksaSpeechClient {
         },
         signal: controller.signal,
         body: JSON.stringify({
-          request_id: buildRequestId(input),
+          request_id: input.requestId ?? buildRequestId(input),
           persona_state_path: input.personaStatePath,
           speaker_agent_id: input.identityId,
           thought_text: input.content,
           spoken_text: input.content,
-          scene: `Discord channel ${input.channelId}`,
-          addressee: "Discord room",
+          scene: input.scene ?? `Discord channel ${input.channelId}`,
+          addressee: input.addressee ?? "Discord room",
           intent: input.content,
-          performance_register: {
+          performance_register: input.performanceRegister ?? {
             label: `${input.displayName} Discord voice`,
             medium: "Discord voice channel playback",
             delivery_archetype: `${input.displayName} speaks an approved VoidBot SAY line`,
           },
-          delivery_controls: [
+          delivery_controls: input.deliveryControls ?? [
             "Discord-room conversational delivery",
             "preserve the approved text exactly",
             `repo Face for ${input.repoName}`,
           ],
-          forbidden_traits: [
+          forbidden_traits: input.forbiddenTraits ?? [
             "generic assistant voice",
             "rewriting source meaning",
             "changing the approved Discord text",
           ],
-          private_interpretation:
+          voice_design_prompt: input.voiceDesignPrompt,
+          private_interpretation: input.privateInterpretation ??
             "VoidBot already approved this SAY line for public text delivery; Weksa is only projecting it into spoken audio.",
-          intended_effect: "Make the approved public Discord line audible without changing its meaning.",
+          intended_effect: input.intendedEffect ??
+            "Make the approved public Discord line audible without changing its meaning.",
         }),
       });
 

@@ -117,6 +117,10 @@ const envSchema = z.object({
   REPO_FACE_DISCORD_VOICE_OUTBOX_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-outbox.jsonl"),
   REPO_FACE_DISCORD_VOICE_PLAYED_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-played.jsonl"),
   REPO_FACE_DISCORD_VOICE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  METAME_OWNER_VOICE_ENABLED: booleanFromEnv.default(false),
+  METAME_OWNER_VOICE_SOURCE_CHANNEL_ID: optionalNonEmptyString,
+  METAME_OWNER_VOICE_PERSONA_ID: z.string().min(1).default("metame"),
+  METAME_OWNER_VOICE_STATE_PATH: z.string().min(1).default(".voidbot/private/personas/metame/metame-owner-voice-sync.md"),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
   BIFROST_DISCORD_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
@@ -204,6 +208,12 @@ export interface AppConfig {
     outboxPath: string;
     playedPath: string;
     pollIntervalMs: number;
+  };
+  metameOwnerVoice: {
+    enabled: boolean;
+    sourceChannelId?: string;
+    personaId: string;
+    statePath: string;
   };
   bifrostRoot: string;
   bifrostDiscordChannelId?: string;
@@ -458,6 +468,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       outboxPath: resolve(parsed.REPO_FACE_DISCORD_VOICE_OUTBOX_PATH),
       playedPath: resolve(parsed.REPO_FACE_DISCORD_VOICE_PLAYED_PATH),
       pollIntervalMs: parsed.REPO_FACE_DISCORD_VOICE_POLL_INTERVAL_MS,
+    },
+    metameOwnerVoice: {
+      enabled: parsed.METAME_OWNER_VOICE_ENABLED,
+      sourceChannelId: parsed.METAME_OWNER_VOICE_SOURCE_CHANNEL_ID,
+      personaId: parsed.METAME_OWNER_VOICE_PERSONA_ID,
+      statePath: resolve(parsed.METAME_OWNER_VOICE_STATE_PATH),
     },
     bifrostRoot: resolve(parsed.BIFROST_ROOT),
     bifrostDiscordChannelId: parsed.BIFROST_DISCORD_CHANNEL_ID,

@@ -22,6 +22,8 @@ import {
   resolveRepoFaceStatePath,
   resolveWeksaArtifactPath,
   type SystemMessageCatalog,
+  WeksaSpeechClient,
+  type WeksaMimoReceipt,
 } from "@voidbot/core";
 import {
   LocalLlmProvider,
@@ -64,7 +66,6 @@ import {
   parseRepoIdentityPostIntents,
   type RepoIdentityPostIntent,
 } from "./repo-face-speech.js";
-import { WeksaSpeechClient, type WeksaMimoReceipt } from "./weksa-speech.js";
 
 const config = loadConfig();
 const weksaSpeechClient = new WeksaSpeechClient({

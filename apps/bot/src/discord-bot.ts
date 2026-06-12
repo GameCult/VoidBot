@@ -61,6 +61,7 @@ import {
   parseProviderOverride,
   replyEphemeral,
 } from "./discord-bot-handlers";
+import { maybeMirrorOwnerAquariumMessageAsMetameVoice } from "./metame-owner-voice-bridge";
 import { startRepoFaceVoicePlayback } from "./repo-face-voice-playback";
 import {
   buildActorFromInteraction,
@@ -333,6 +334,11 @@ export async function startBot(): Promise<void> {
       botDirectedRoleIds,
     );
     await rememberAmbientVoidReference(message, client.user?.id, interactionMemory);
+    await maybeMirrorOwnerAquariumMessageAsMetameVoice({
+      message,
+      registry: repoDiscordIdentities,
+      config,
+    });
 
     const roleAddressedRepoIdentity = isDirectMessage
       ? undefined
