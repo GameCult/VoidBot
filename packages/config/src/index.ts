@@ -108,6 +108,9 @@ const envSchema = z.object({
   REPO_FACE_BIRTH_EXECUTOR: z.enum(["model-runtime", "openai-runtime"]).default("model-runtime"),
   REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_BIFROST_ENABLED: booleanFromEnv.default(false),
+  REPO_FACE_WEKSA_SPEECH_ENABLED: booleanFromEnv.default(false),
+  WEKSA_DAEMON_BASE_URL: z.string().url().default("http://127.0.0.1:8813"),
+  WEKSA_DAEMON_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
   BIFROST_DISCORD_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
@@ -183,6 +186,11 @@ export interface AppConfig {
   repoFaceBirthExecutor: "model-runtime" | "openai-runtime";
   repoFaceGithubActionsEnabled: boolean;
   repoFaceBifrostEnabled: boolean;
+  repoFaceWeksaSpeech: {
+    enabled: boolean;
+    daemonBaseUrl: string;
+    timeoutMs: number;
+  };
   bifrostRoot: string;
   bifrostDiscordChannelId?: string;
   repoFaceHeartbeats: {
@@ -424,6 +432,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     repoFaceBirthExecutor: parsed.REPO_FACE_BIRTH_EXECUTOR,
     repoFaceGithubActionsEnabled: parsed.REPO_FACE_GITHUB_ACTIONS_ENABLED,
     repoFaceBifrostEnabled: parsed.REPO_FACE_BIFROST_ENABLED,
+    repoFaceWeksaSpeech: {
+      enabled: parsed.REPO_FACE_WEKSA_SPEECH_ENABLED,
+      daemonBaseUrl: parsed.WEKSA_DAEMON_BASE_URL.replace(/\/+$/, ""),
+      timeoutMs: parsed.WEKSA_DAEMON_TIMEOUT_MS,
+    },
     bifrostRoot: resolve(parsed.BIFROST_ROOT),
     bifrostDiscordChannelId: parsed.BIFROST_DISCORD_CHANNEL_ID,
     repoFaceHeartbeats: {

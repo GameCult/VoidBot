@@ -62,8 +62,13 @@ import {
   parseRepoIdentityPostIntents,
   type RepoIdentityPostIntent,
 } from "./repo-face-speech.js";
+import { WeksaSpeechClient, type WeksaMimoReceipt } from "./weksa-speech.js";
 
 const config = loadConfig();
+const weksaSpeechClient = new WeksaSpeechClient({
+  baseUrl: config.repoFaceWeksaSpeech.daemonBaseUrl,
+  timeoutMs: config.repoFaceWeksaSpeech.timeoutMs,
+});
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
@@ -1394,6 +1399,14 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`Could not record repo identity delivery receipt for job ${job.id}: ${message}`);
   });
+  await maybeRenderRepoIdentityWeksaSpeech({
+    job,
+    identity,
+    channelId,
+    content,
+    replyToMessageId: intent.replyToMessageId,
+    messageId: posted.messageId,
+  });
   console.log(
     `Posted repo identity ${identity.id} to Discord channel ${channelId} from job ${job.id} via ${posted.transport} message ${posted.messageId}.`,
   );
@@ -1429,6 +1442,90 @@ async function resolveRepoIdentityForJobIntent(
 
   const registry = await loadRegisteredFaceRepoRegistry();
   return findRepoDiscordIdentity(registry, identityId);
+}
+
+async function maybeRenderRepoIdentityWeksaSpeech(input: {
+  job: JobRecord;
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+  messageId: string;
+}): Promise<void> {
+  if (!config.repoFaceWeksaSpeech.enabled) {
+    return;
+  }
+  if (!input.identity.faceStatePath) {
+    console.warn(
+      `Skipped Weksa speech for repo identity ${input.identity.id}: no faceStatePath is registered.`,
+    );
+    return;
+  }
+
+  try {
+    const receipt = await weksaSpeechClient.renderRepoFaceSpeech({
+      jobId: input.job.id,
+      identityId: input.identity.id,
+      displayName: input.identity.displayName,
+      repoName: input.identity.repoName,
+      personaStatePath: input.identity.faceStatePath,
+      channelId: input.channelId,
+      messageId: input.messageId,
+      replyToMessageId: input.replyToMessageId,
+      content: input.content,
+    });
+    await recordRepoIdentityWeksaSpeechReceipt({
+      ...input,
+      receipt,
+    });
+    console.log(
+      `Rendered Weksa/MiMo speech for repo identity ${input.identity.id} message ${input.messageId}: ${receipt.artifacts?.audio ?? "audio artifact not reported"}.`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await auditLog.record({
+      type: "repo_identity.weksa_speech_failed",
+      actorId: input.job.requester.id,
+      jobId: input.job.id,
+      provider: input.job.provider,
+      details: {
+        identityId: input.identity.id,
+        channelId: input.channelId,
+        messageId: input.messageId,
+        error: message,
+      },
+    });
+    console.warn(`Weksa speech failed for repo identity ${input.identity.id} job ${input.job.id}: ${message}`);
+  }
+}
+
+async function recordRepoIdentityWeksaSpeechReceipt(input: {
+  job: JobRecord;
+  identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+  messageId: string;
+  receipt: WeksaMimoReceipt;
+}): Promise<void> {
+  await auditLog.record({
+    type: "repo_identity.weksa_speech_rendered",
+    actorId: input.job.requester.id,
+    jobId: input.job.id,
+    provider: input.job.provider,
+    details: {
+      identityId: input.identity.id,
+      channelId: input.channelId,
+      messageId: input.messageId,
+      replyToMessageId: input.replyToMessageId,
+      requestId: input.receipt.request_id,
+      receiptSchema: input.receipt.schema_version,
+      audioArtifact: input.receipt.artifacts?.audio,
+      receiptArtifact: input.receipt.artifacts?.receipt,
+      audioBytes: input.receipt.provider_response?.audio_bytes,
+      spokenContentLength: input.content.length,
+    },
+  });
 }
 
 async function loadRegisteredFaceRepoRegistry() {
