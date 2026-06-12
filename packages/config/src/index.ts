@@ -111,6 +111,12 @@ const envSchema = z.object({
   REPO_FACE_WEKSA_SPEECH_ENABLED: booleanFromEnv.default(false),
   WEKSA_DAEMON_BASE_URL: z.string().url().default("http://127.0.0.1:8813"),
   WEKSA_DAEMON_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+  WEKSA_REPO_ROOT: z.string().min(1).default("E:/Projects/weksa"),
+  REPO_FACE_DISCORD_VOICE_ENABLED: booleanFromEnv.default(false),
+  REPO_FACE_DISCORD_VOICE_CHANNEL_ID: optionalNonEmptyString,
+  REPO_FACE_DISCORD_VOICE_OUTBOX_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-outbox.jsonl"),
+  REPO_FACE_DISCORD_VOICE_PLAYED_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-played.jsonl"),
+  REPO_FACE_DISCORD_VOICE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
   BIFROST_DISCORD_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
@@ -190,6 +196,14 @@ export interface AppConfig {
     enabled: boolean;
     daemonBaseUrl: string;
     timeoutMs: number;
+    repoRoot: string;
+  };
+  repoFaceDiscordVoice: {
+    enabled: boolean;
+    channelId?: string;
+    outboxPath: string;
+    playedPath: string;
+    pollIntervalMs: number;
   };
   bifrostRoot: string;
   bifrostDiscordChannelId?: string;
@@ -436,6 +450,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: parsed.REPO_FACE_WEKSA_SPEECH_ENABLED,
       daemonBaseUrl: parsed.WEKSA_DAEMON_BASE_URL.replace(/\/+$/, ""),
       timeoutMs: parsed.WEKSA_DAEMON_TIMEOUT_MS,
+      repoRoot: resolve(parsed.WEKSA_REPO_ROOT),
+    },
+    repoFaceDiscordVoice: {
+      enabled: parsed.REPO_FACE_DISCORD_VOICE_ENABLED,
+      channelId: parsed.REPO_FACE_DISCORD_VOICE_CHANNEL_ID,
+      outboxPath: resolve(parsed.REPO_FACE_DISCORD_VOICE_OUTBOX_PATH),
+      playedPath: resolve(parsed.REPO_FACE_DISCORD_VOICE_PLAYED_PATH),
+      pollIntervalMs: parsed.REPO_FACE_DISCORD_VOICE_POLL_INTERVAL_MS,
     },
     bifrostRoot: resolve(parsed.BIFROST_ROOT),
     bifrostDiscordChannelId: parsed.BIFROST_DISCORD_CHANNEL_ID,

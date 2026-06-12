@@ -61,6 +61,7 @@ import {
   parseProviderOverride,
   replyEphemeral,
 } from "./discord-bot-handlers";
+import { startRepoFaceVoicePlayback } from "./repo-face-voice-playback";
 import {
   buildActorFromInteraction,
   buildChannelIndexingTarget,
@@ -92,6 +93,7 @@ export async function startBot(): Promise<void> {
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.MessageContent,
     ],
   });
@@ -313,6 +315,7 @@ export async function startBot(): Promise<void> {
   client.once(Events.ClientReady, async (readyClient) => {
     console.log(`VoidBot connected as ${readyClient.user.tag}.`);
     await maybeRegisterCommands(config.botToken!, config.applicationId, config.developmentGuildId);
+    startRepoFaceVoicePlayback(readyClient, config.repoFaceDiscordVoice);
   });
 
   client.on(Events.MessageCreate, async (message) => {

@@ -8,6 +8,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { loadConfig } from "@voidbot/config";
 import {
   applyRepoFacePostFatigueAfterSpeech,
+  appendRepoFaceVoiceOutboxEntry,
   type AuditLog,
   buildVoidMcpServerConfig,
   createStateStorage,
@@ -19,6 +20,7 @@ import {
   loadFaceIdentityRegistry,
   loadSystemMessageCatalog,
   resolveRepoFaceStatePath,
+  resolveWeksaArtifactPath,
   type SystemMessageCatalog,
 } from "@voidbot/core";
 import {
@@ -1508,6 +1510,28 @@ async function recordRepoIdentityWeksaSpeechReceipt(input: {
   messageId: string;
   receipt: WeksaMimoReceipt;
 }): Promise<void> {
+  const audioPath = resolveWeksaArtifactPath(
+    config.repoFaceWeksaSpeech.repoRoot,
+    input.receipt.artifacts?.audio,
+  );
+  if (config.repoFaceDiscordVoice.enabled && audioPath) {
+    await appendRepoFaceVoiceOutboxEntry(config.repoFaceDiscordVoice.outboxPath, {
+      schemaVersion: "voidbot.repo_face_voice_outbox.v1",
+      id: `repo-face:${input.identity.id}:${input.messageId}`,
+      createdAt: new Date().toISOString(),
+      identityId: input.identity.id,
+      displayName: input.identity.displayName,
+      repoName: input.identity.repoName,
+      textChannelId: input.channelId,
+      textMessageId: input.messageId,
+      replyToMessageId: input.replyToMessageId,
+      contentPreview: input.content.slice(0, 500),
+      weksaRequestId: input.receipt.request_id,
+      weksaReceiptArtifact: input.receipt.artifacts?.receipt,
+      audioPath,
+      audioBytes: input.receipt.provider_response?.audio_bytes,
+    });
+  }
   await auditLog.record({
     type: "repo_identity.weksa_speech_rendered",
     actorId: input.job.requester.id,
