@@ -15,7 +15,9 @@ import {
   applyVoidSelfStateOperation,
   findRepoDiscordIdentity,
   faceRegistryAsRepoDiscordRegistry,
+  hasFreshHumanRepoFaceVoiceListener,
   isRepoDiscordIdentityAllowedInChannel,
+  loadRepoFaceVoicePresenceSnapshot,
   type JobQueue,
   loadFaceIdentityRegistry,
   loadSystemMessageCatalog,
@@ -1456,6 +1458,19 @@ async function maybeRenderRepoIdentityWeksaSpeech(input: {
   messageId: string;
 }): Promise<void> {
   if (!config.repoFaceWeksaSpeech.enabled) {
+    return;
+  }
+  if (!config.repoFaceDiscordVoice.enabled) {
+    return;
+  }
+  const voicePresence = await loadRepoFaceVoicePresenceSnapshot(config.repoFaceDiscordVoice.presencePath);
+  if (!hasFreshHumanRepoFaceVoiceListener({
+    snapshot: voicePresence,
+    channelId: config.repoFaceDiscordVoice.channelId,
+  })) {
+    console.log(
+      `Skipped Weksa speech for repo identity ${input.identity.id} message ${input.messageId}: no fresh human listener signal for configured Aquarium voice channel.`,
+    );
     return;
   }
   if (!input.identity.faceStatePath) {

@@ -116,6 +116,7 @@ const envSchema = z.object({
   REPO_FACE_DISCORD_VOICE_CHANNEL_ID: optionalNonEmptyString,
   REPO_FACE_DISCORD_VOICE_OUTBOX_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-outbox.jsonl"),
   REPO_FACE_DISCORD_VOICE_PLAYED_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-played.jsonl"),
+  REPO_FACE_DISCORD_VOICE_PRESENCE_PATH: z.string().min(1).default(".voidbot/status/repo-face-voice-presence.json"),
   REPO_FACE_DISCORD_VOICE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   METAME_OWNER_VOICE_ENABLED: booleanFromEnv.default(false),
   METAME_OWNER_VOICE_SOURCE_CHANNEL_ID: optionalNonEmptyString,
@@ -207,6 +208,7 @@ export interface AppConfig {
     channelId?: string;
     outboxPath: string;
     playedPath: string;
+    presencePath: string;
     pollIntervalMs: number;
   };
   metameOwnerVoice: {
@@ -467,6 +469,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       channelId: parsed.REPO_FACE_DISCORD_VOICE_CHANNEL_ID,
       outboxPath: resolve(parsed.REPO_FACE_DISCORD_VOICE_OUTBOX_PATH),
       playedPath: resolve(parsed.REPO_FACE_DISCORD_VOICE_PLAYED_PATH),
+      presencePath: resolve(parsed.REPO_FACE_DISCORD_VOICE_PRESENCE_PATH),
       pollIntervalMs: parsed.REPO_FACE_DISCORD_VOICE_POLL_INTERVAL_MS,
     },
     metameOwnerVoice: {

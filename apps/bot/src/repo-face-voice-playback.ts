@@ -17,6 +17,7 @@ import {
   loadRepoFaceVoiceOutboxEntries,
   loadRepoFaceVoicePlayedIds,
   type RepoFaceVoiceOutboxEntry,
+  writeRepoFaceVoicePresenceSnapshot,
 } from "@voidbot/core";
 
 export interface RepoFaceVoicePlaybackOptions {
@@ -24,6 +25,7 @@ export interface RepoFaceVoicePlaybackOptions {
   channelId?: string;
   outboxPath: string;
   playedPath: string;
+  presencePath: string;
   pollIntervalMs: number;
 }
 
@@ -67,6 +69,22 @@ class RepoFaceVoicePlaybackRuntime {
       return;
     }
 
+    let channel: VoiceBasedChannel;
+    try {
+      channel = await this.resolveVoiceChannel();
+      const humanListenerCount = countHumanListeners(channel);
+      await writeRepoFaceVoicePresenceSnapshot(this.options.presencePath, {
+        schemaVersion: "voidbot.repo_face_voice_presence.v1",
+        channelId: channel.id,
+        observedAt: new Date().toISOString(),
+        humanListenerCount,
+        botListenerCount: channel.members.size - humanListenerCount,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Repo Face voice presence poll failed: ${message}`);
+      return;
+    }
     const entries = await loadRepoFaceVoiceOutboxEntries(this.options.outboxPath);
     if (entries.length === 0) {
       return;
@@ -88,7 +106,7 @@ class RepoFaceVoicePlaybackRuntime {
     this.active = true;
     try {
       const channel = await this.resolveVoiceChannel();
-      if (!hasHumanListener(channel)) {
+      if (countHumanListeners(channel) <= 0) {
         console.log(
           `Skipped repo Face voice playback for ${entry.id}: no human listeners in channel ${this.options.channelId}.`,
         );
@@ -153,6 +171,6 @@ class RepoFaceVoicePlaybackRuntime {
   }
 }
 
-function hasHumanListener(channel: VoiceBasedChannel): boolean {
-  return channel.members.some((member) => !member.user.bot);
+function countHumanListeners(channel: VoiceBasedChannel): number {
+  return channel.members.filter((member) => !member.user.bot).size;
 }
