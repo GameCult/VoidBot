@@ -10,7 +10,7 @@ import {
   type AudioPlayer,
   type VoiceConnection,
 } from "@discordjs/voice";
-import { ChannelType, type Client, type GuildBasedChannel } from "discord.js";
+import { ChannelType, type Client, type VoiceBasedChannel } from "discord.js";
 
 import {
   appendRepoFaceVoicePlayedEntry,
@@ -88,6 +88,12 @@ class RepoFaceVoicePlaybackRuntime {
     this.active = true;
     try {
       const channel = await this.resolveVoiceChannel();
+      if (!hasHumanListener(channel)) {
+        console.log(
+          `Skipped repo Face voice playback for ${entry.id}: no human listeners in channel ${this.options.channelId}.`,
+        );
+        return;
+      }
       const connection = await this.ensureConnection(channel);
       const resource = createAudioResource(entry.audioPath, {
         metadata: entry,
@@ -108,7 +114,7 @@ class RepoFaceVoicePlaybackRuntime {
     }
   }
 
-  private async resolveVoiceChannel(): Promise<GuildBasedChannel> {
+  private async resolveVoiceChannel(): Promise<VoiceBasedChannel> {
     const channel = await this.client.channels.fetch(this.options.channelId!);
     if (!channel || !("guild" in channel)) {
       throw new Error(`Configured voice channel ${this.options.channelId} was not found in a guild.`);
@@ -119,7 +125,7 @@ class RepoFaceVoicePlaybackRuntime {
     return channel;
   }
 
-  private async ensureConnection(channel: GuildBasedChannel): Promise<VoiceConnection> {
+  private async ensureConnection(channel: VoiceBasedChannel): Promise<VoiceConnection> {
     if (
       this.connection &&
       this.connection.joinConfig.channelId === channel.id &&
@@ -136,7 +142,17 @@ class RepoFaceVoicePlaybackRuntime {
       adapterCreator: channel.guild.voiceAdapterCreator,
       selfDeaf: false,
     });
+    this.connection.on("error", (error) => {
+      console.warn(`Repo Face voice connection error in channel ${channel.id}: ${error.message}`);
+      this.connection?.destroy();
+      this.connection = undefined;
+      this.active = false;
+    });
     await entersState(this.connection, VoiceConnectionStatus.Ready, 30_000);
     return this.connection;
   }
+}
+
+function hasHumanListener(channel: VoiceBasedChannel): boolean {
+  return channel.members.some((member) => !member.user.bot);
 }

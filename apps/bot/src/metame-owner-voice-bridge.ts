@@ -10,6 +10,7 @@ import {
   type RepoDiscordIdentityRegistry,
   WeksaSpeechClient,
 } from "@voidbot/core";
+import { ChannelType } from "discord.js";
 import type { Message } from "discord.js";
 
 const METAME_VOICE_DESIGN_PROMPT = [
@@ -51,6 +52,12 @@ export async function maybeMirrorOwnerAquariumMessageAsMetameVoice(input: {
   }
   if (!isRepoDiscordIdentityAllowedInChannel(metame, message.channelId)) {
     console.warn(`Skipped Metame owner voice bridge: ${metame.id} is not allowed in channel ${message.channelId}.`);
+    return;
+  }
+  if (!(await hasHumanListenerInAquariumVoice(message, config.repoFaceDiscordVoice.channelId))) {
+    console.log(
+      `Skipped Metame owner voice bridge for message ${message.id}: no human listeners in configured Aquarium voice channel.`,
+    );
     return;
   }
 
@@ -169,4 +176,24 @@ async function appendMetameOwnerVoiceState(input: {
     "",
   ].join("\n");
   await appendFile(input.statePath, `${header}${entry}`, "utf8");
+}
+
+async function hasHumanListenerInAquariumVoice(
+  message: Message,
+  voiceChannelId: string | undefined,
+): Promise<boolean> {
+  if (!message.guild || !voiceChannelId) {
+    return false;
+  }
+
+  const channel = await message.guild.channels.fetch(voiceChannelId).catch((error) => {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Could not inspect Aquarium voice channel ${voiceChannelId}: ${detail}`);
+    return null;
+  });
+  if (!channel || (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice)) {
+    return false;
+  }
+
+  return channel.members.some((member) => !member.user.bot);
 }
