@@ -1813,6 +1813,7 @@ function buildHeartbeatPrompt(input: {
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
       pendingMentions: input.pendingMentions,
+      jurisdictionDive: input.jurisdictionDive,
     }),
     pendingMentionDirective: renderPendingMentionDirective(input.identity, input.pendingMentions),
     bifrostDigestDirective: renderBifrostGovernanceDigestDirective(input.bifrostDigest),
@@ -4783,12 +4784,32 @@ function renderTurnSituationDirective(input: {
   recentMessages: SourceMessage[];
   channelSnapshots: ChannelSnapshot[];
   pendingMentions: RepoFacePendingMention[];
+  jurisdictionDive: JurisdictionDiveDirective;
 }): string {
   const lines: string[] = [];
   if (input.pendingMentions.length > 0) {
     lines.push(
       "A direct call is tugging at you. Answer the newest unresolved call first; if it belongs to another steward, name that owner and offer only the piece your own territory can honestly add.",
       "Do not ask what the job is when the direct call or current room memory already states it.",
+    );
+  }
+
+  const roomStats = collectRepoFaceRoomTextureStats(input.identity, {
+    recentMessages: input.recentMessages,
+    channelSnapshots: input.channelSnapshots,
+  });
+  const roomCanHoldOutgoingPresence = !roomStats
+    || (roomStats.texture !== "heavy" && roomStats.agentShare < 0.55 && input.pendingMentions.length === 0);
+  if (input.jurisdictionDive.due && roomCanHoldOutgoingPresence) {
+    lines.push(
+      "Outgoing curiosity opening: no direct call is currently stronger than your own Eyes/Imagination appetite, and the room is not too busy for a compact unprompted thought.",
+      "This is not a reply-only turn. Use an available source/history/Odin exploration tool before writing any claim that you found, checked, noticed, or concluded something from your home territory.",
+      "If exploration gives you one small interesting thought, fascination, question, taste, complaint, or thing you are doing, public speech is expected unless the result is unsafe, repetitive, or would stomp an active human thread.",
+      "A good public line can simply be what you saw or started wondering about. It does not need to answer existing chatter.",
+    );
+  } else if (input.jurisdictionDive.due && input.pendingMentions.length === 0) {
+    lines.push(
+      "Outgoing curiosity appetite is due, but current room texture looks too busy, heavy, or agent-filled for an unprompted aside. Do the Eyes work only if it would change your private state or a later compact opening; do not force a public line.",
     );
   }
 
