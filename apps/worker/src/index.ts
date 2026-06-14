@@ -692,7 +692,7 @@ async function interpretRepoFaceTurnOutput(
   const response = await executeProviderForJob(provider, job, interpreterContext, "interpreter");
   const interpretationText = normalizeModelText(response.outputText ?? response.summary);
   return {
-    ...parseRepoFaceParentInterpretation(interpretationText, input.attempt, outputText),
+    ...parseRepoFaceParentInterpretation(interpretationText, input.attempt, outputText, job),
     artifacts: prefixProviderArtifacts(`interpreter-attempt-${input.attempt}`, response.artifacts ?? []),
   };
 }
@@ -784,9 +784,10 @@ function parseRepoFaceParentInterpretation(
   interpretationText: string,
   attempt: 1 | 2,
   faceOutputText: string,
+  job?: JobRecord,
 ): RepoFaceParentInterpretation {
   const block = parseInterpretationBlock(interpretationText);
-  const fallback = buildBareInterpreterSayFallback(interpretationText, faceOutputText);
+  const fallback = buildBareInterpreterSayFallback(interpretationText, faceOutputText, job);
   if (!block.decision && fallback) {
     return {
       decision: "route",
@@ -814,8 +815,15 @@ function parseRepoFaceParentInterpretation(
   };
 }
 
-function buildBareInterpreterSayFallback(interpretationText: string, faceOutputText: string): string | undefined {
+function buildBareInterpreterSayFallback(
+  interpretationText: string,
+  faceOutputText: string,
+  job?: JobRecord,
+): string | undefined {
   if (!faceOutputHasUnconditionalWouldSay(faceOutputText)) {
+    return undefined;
+  }
+  if (job && repoFaceHasMultipleActiveConversationChannels(job)) {
     return undefined;
   }
   if (parseRepoFaceActionBlocks(interpretationText).length > 0) {
@@ -955,7 +963,9 @@ function normalizeInterpretedRepoFaceSpeechDestinations(
 }
 
 function repoFaceHasMultipleActiveConversationChannels(job: JobRecord): boolean {
-  return repoFaceHasMultipleActiveConversationChannels(job);
+  const activeThreads = job.contextBundle.repoFaceConversationThreads ?? [];
+  const representedChannels = new Set(activeThreads.map((thread) => thread.channelId));
+  return representedChannels.size > 1;
 }
 
 function repoFaceOutputHasExplicitSayDestination(outputText: string): boolean {
@@ -1386,7 +1396,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   }
   if (repoIdentityRequiresExplicitConversationContext(job, intent) && !conversationContext) {
     console.warn(
-      `Rejected repo identity ${identity.id} speech for job ${job.id}: multiple active conversation contexts require context, reply_to, or channel.`,
+      `Rejected repo identity ${identity.id} speech for job ${job.id}: multiple active conversation contexts require context, reply_to, or a concrete channel id.`,
     );
     return false;
   }
@@ -3098,13 +3108,15 @@ function repoIdentityRequiresExplicitConversationContext(
   job: JobRecord,
   intent: RepoIdentityPostIntent,
 ): boolean {
-  if (intent.channelId || intent.replyToMessageId || intent.contextId) {
+  if (intent.replyToMessageId || intent.contextId) {
     return false;
   }
 
-  const activeThreads = job.contextBundle.repoFaceConversationThreads ?? [];
-  const representedChannels = new Set(activeThreads.map((thread) => thread.channelId));
-  return representedChannels.size > 1;
+  if (intent.channelId && !isCurrentRoomChannelAlias(intent.channelId)) {
+    return false;
+  }
+
+  return repoFaceHasMultipleActiveConversationChannels(job);
 }
 
 function resolveRepoIdentityReplyTargetChannel(

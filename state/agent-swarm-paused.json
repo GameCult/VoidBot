@@ -1,5 +1,5 @@
 {
-  "paused": false,
-  "reason": "Resumed by Codex on 2026-06-09 after local runtime config disabled the expensive repo Face state-projector pass and reduced heartbeat selection to one job per tick. Watch scheduled pulses for clean exits before raising cadence.",
-  "updatedAt": "2026-06-09T15:00:00.0000000Z"
+  "paused": true,
+  "reason": "Paused by Codex on 2026-06-14 after repo Faces still routed source-channel context through channel: current_room into Aquarium. Keep paused until current_room is no longer accepted as explicit context when multiple active conversation contexts are visible.",
+  "updatedAt": "2026-06-14T18:55:00.0000000Z"
 }
