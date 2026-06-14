@@ -938,10 +938,13 @@ function normalizeInterpretedRepoFaceSpeechDestinations(
   if (input.job.command !== "repo-face-rumination") {
     return outputText;
   }
-  if (repoFaceOutputHasExplicitSayChannel(input.faceOutputText)) {
+  if (repoFaceOutputHasExplicitSayDestination(outputText) || repoFaceOutputHasExplicitSayDestination(input.faceOutputText)) {
     return outputText;
   }
   if (!input.job.guildContext?.channelId) {
+    return outputText;
+  }
+  if (repoFaceHasMultipleActiveConversationChannels(input.job)) {
     return outputText;
   }
 
@@ -951,10 +954,22 @@ function normalizeInterpretedRepoFaceSpeechDestinations(
   );
 }
 
-function repoFaceOutputHasExplicitSayChannel(outputText: string): boolean {
+function repoFaceHasMultipleActiveConversationChannels(job: JobRecord): boolean {
+  return repoFaceHasMultipleActiveConversationChannels(job);
+}
+
+function repoFaceOutputHasExplicitSayDestination(outputText: string): boolean {
   return parseRepoFaceActionBlocks(outputText).some((block) =>
     block.kind === "say" &&
-    Boolean(optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId))
+    Boolean(
+      optionalDslString(block.fields.channel) ??
+      optionalDslString(block.fields.channelId) ??
+      optionalDslString(block.fields.reply_to) ??
+      optionalDslString(block.fields.replyToMessageId) ??
+      optionalDslString(block.fields.context) ??
+      optionalDslString(block.fields.context_id) ??
+      optionalDslString(block.fields.contextId),
+    )
   );
 }
 
@@ -1362,13 +1377,32 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  const replyTargetChannelId = resolveRepoIdentityReplyTargetChannel(job, intent.replyToMessageId);
+  const conversationContext = resolveRepoIdentityConversationContext(job, intent.contextId);
+  if (intent.contextId && !conversationContext) {
+    console.warn(
+      `Rejected repo identity ${identity.id} speech for job ${job.id}: unknown conversation context "${intent.contextId}".`,
+    );
+    return false;
+  }
+  if (repoIdentityRequiresExplicitConversationContext(job, intent) && !conversationContext) {
+    console.warn(
+      `Rejected repo identity ${identity.id} speech for job ${job.id}: multiple active conversation contexts require context, reply_to, or channel.`,
+    );
+    return false;
+  }
+
+  const effectiveReplyToMessageId = intent.replyToMessageId ?? conversationContext?.messageId;
+  const replyTargetChannelId = resolveRepoIdentityReplyTargetChannel(job, effectiveReplyToMessageId);
   if (replyTargetChannelId && intent.channelId && normalizeChannelSelector(intent.channelId) !== normalizeChannelSelector(replyTargetChannelId)) {
     console.warn(
       `Coerced repo identity ${identity.id} speech for job ${job.id} from requested channel "${intent.channelId}" to reply target channel ${replyTargetChannelId}.`,
     );
   }
-  const requestedChannelId = replyTargetChannelId ?? intent.channelId ?? repoIdentityDefaultSpeechChannel(job);
+  const requestedChannelId = replyTargetChannelId
+    ?? conversationContext?.channelId
+    ?? intent.channelId
+    ?? repoIdentityConversationFocusChannel(job)
+    ?? repoIdentityDefaultSpeechChannel(job);
   const channelId = normalizeRepoIdentitySpeechChannel(identity, job, requestedChannelId);
   if (!channelId) {
     console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
@@ -1442,7 +1476,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     "--persona-name",
     identity.displayName,
     ...(identity.avatarUrl ? ["--persona-avatar-url", identity.avatarUrl] : []),
-    ...(intent.replyToMessageId ? ["--reply-to-message-id", intent.replyToMessageId] : []),
+    ...(effectiveReplyToMessageId ? ["--reply-to-message-id", effectiveReplyToMessageId] : []),
   ], { retries: 1 });
   if (!posted.messageId || !posted.transport) {
     throw new Error(`Bifrost Discord bridge returned no message receipt for job ${job.id}.`);
@@ -1451,7 +1485,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     identity,
     channelId,
     content,
-    replyToMessageId: intent.replyToMessageId,
+    replyToMessageId: effectiveReplyToMessageId,
     messageId: posted.messageId,
     transport: posted.transport,
   }).catch((error: unknown) => {
@@ -1463,7 +1497,7 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     identity,
     channelId,
     content,
-    replyToMessageId: intent.replyToMessageId,
+    replyToMessageId: effectiveReplyToMessageId,
     messageId: posted.messageId,
   });
   console.log(
@@ -3032,6 +3066,45 @@ function repoIdentityDefaultSpeechChannel(job: JobRecord): string | undefined {
   return job.guildContext?.channelId && !isOwnerDmChannelAlias(job.guildContext.channelId)
     ? job.guildContext.channelId
     : job.outputChannelId;
+}
+
+function repoIdentityConversationFocusChannel(job: JobRecord): string | undefined {
+  const focus = job.contextBundle.repoFaceConversationFocus;
+  if (!focus || focus.isCurrentRoom) {
+    return undefined;
+  }
+
+  const nonCurrentThreads = (job.contextBundle.repoFaceConversationThreads ?? [])
+    .filter((thread) => !thread.isCurrentRoom);
+  return nonCurrentThreads.length <= 1 || focus.reason === "pending_mention"
+    ? focus.channelId
+    : undefined;
+}
+
+function resolveRepoIdentityConversationContext(
+  job: JobRecord,
+  contextId: string | undefined,
+): NonNullable<JobRecord["contextBundle"]["repoFaceConversationThreads"]>[number] | undefined {
+  const normalized = contextId?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  return (job.contextBundle.repoFaceConversationThreads ?? [])
+    .find((thread) => thread.contextId === normalized);
+}
+
+function repoIdentityRequiresExplicitConversationContext(
+  job: JobRecord,
+  intent: RepoIdentityPostIntent,
+): boolean {
+  if (intent.channelId || intent.replyToMessageId || intent.contextId) {
+    return false;
+  }
+
+  const activeThreads = job.contextBundle.repoFaceConversationThreads ?? [];
+  const representedChannels = new Set(activeThreads.map((thread) => thread.channelId));
+  return representedChannels.size > 1;
 }
 
 function resolveRepoIdentityReplyTargetChannel(

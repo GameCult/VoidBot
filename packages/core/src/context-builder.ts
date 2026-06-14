@@ -4,6 +4,7 @@ import {
   type GuildContext,
   type InteractionMemoryProfile,
   type PromptImageAttachment,
+  type RepoFaceConversationFocus,
   type RetrievalResult,
   type SituationalSocialRead,
   type SourceGroundingHint,
@@ -18,6 +19,8 @@ export interface BuildContextInput {
   guildContext: GuildContext;
   recentMessages?: SourceMessage[];
   imageAttachments?: PromptImageAttachment[];
+  repoFaceConversationFocus?: RepoFaceConversationFocus;
+  repoFaceConversationThreads?: RepoFaceConversationFocus[];
   retrieval?: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
   situationalSocialRead?: SituationalSocialRead;
@@ -33,6 +36,8 @@ export class ContextBuilder {
       actor: input.actor,
       guildContext: input.guildContext,
       recentMessages: input.recentMessages ?? [],
+      repoFaceConversationFocus: input.repoFaceConversationFocus,
+      repoFaceConversationThreads: input.repoFaceConversationThreads,
       imageAttachments: input.imageAttachments,
       retrieval: input.retrieval ?? [],
       interactionMemory: input.interactionMemory,

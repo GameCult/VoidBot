@@ -18,10 +18,13 @@ objective:
     restart, with Bifrost work routing paused because the governance bridge
     proved too disorienting for live social traffic. The immediate priority is
     to observe the Face/Interpreter/speech boundary with live evidence: inherited
-    global doctrine should appear in Face prompts, live-room conversation should
-    arrive as raw transcript evidence, typed social state should become live
-    person-hooks when recent speakers match, and topic gravity should produce
-    character-specific pressure instead of another swarm obsession loop.
+    global doctrine should appear in Face prompts, live-room and nearby-channel
+    conversations should arrive as raw transcript evidence with active context
+    ids, typed social state should become live person-hooks when recent speakers
+    match, and topic gravity should produce character-specific pressure instead
+    of another swarm obsession loop. A repo Face may hold multiple simultaneous
+    Discord conversations; `context`, `reply_to`, or explicit channel owns post
+    placement, not the scheduled output room.
 
 constraints:
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.

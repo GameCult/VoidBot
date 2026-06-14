@@ -2,6 +2,7 @@ export const REPO_IDENTITY_POST_SENTINEL = "VOIDBOT_REPO_IDENTITY_POST:";
 
 export interface RepoIdentityPostIntent {
   identity?: string;
+  contextId?: string;
   channelId?: string;
   content: string;
   replyToMessageId?: string;
@@ -29,6 +30,7 @@ export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentit
       return [
         {
           identity: optionalDslString(block.fields.identity),
+          contextId: optionalDslString(block.fields.context) ?? optionalDslString(block.fields.context_id) ?? optionalDslString(block.fields.contextId),
           channelId: optionalDslString(block.fields.channel) ?? optionalDslString(block.fields.channelId),
           replyToMessageId: optionalDslString(block.fields.reply_to) ?? optionalDslString(block.fields.replyToMessageId),
           content,
@@ -51,6 +53,7 @@ export function parseRepoIdentityPostIntents(finalResponse: string): RepoIdentit
       }
       intents.push({
         identity: typeof parsed.identity === "string" ? parsed.identity.trim() : undefined,
+        contextId: typeof parsed.contextId === "string" ? parsed.contextId.trim() : undefined,
         channelId: typeof parsed.channelId === "string" ? parsed.channelId.trim() : undefined,
         replyToMessageId:
           typeof parsed.replyToMessageId === "string" ? parsed.replyToMessageId.trim() : undefined,

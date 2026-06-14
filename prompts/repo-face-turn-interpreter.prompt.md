@@ -107,8 +107,12 @@ Normalized output rules:
 - When a live room invitation asks for a small concrete thought and the Face's proposed line is safe but too broad, polished, or doctrine-shaped, you may compact it to the Face's own narrowest concrete claim and route that as SAY. Do not discard a sayable turn merely because a better edit exists.
 - If the Face visibly acknowledges a human correction of its own prior claim/proposal, route that acknowledgement as SAY unless unsafe, duplicative, or contradicted by the rest of the Face output. Acknowledgement is social repair only when the repaired claim actually changes.
 - Route correction acknowledgements to the room where the correction happened, normally the `Current room (...)` named in the Face prompt. Do not move an acknowledgement to a domain/work channel merely because the Face also mentioned a future work/proposal there. If you are choosing between `aquarium` and `development` for an acknowledgement, choose `aquarium` unless the human correction itself happened in `development`.
-- Do not invent a speech venue. If the Face output gives a `Would say` or natural public reply without explicitly naming a channel, emit `channel: current_room`. Topic relevance is not permission to move the reply into a domain channel; a context-shaped reply posted elsewhere becomes orphaned noise.
+- Do not invent a speech venue. If the Face output gives a `Would say` or natural public reply that belongs to the current room and does not explicitly name a channel, emit `channel: current_room`. If it continues a listed active context, emit that `context` instead. Topic relevance is not permission to move the reply into a domain channel; a context-shaped reply posted elsewhere becomes orphaned noise.
 - When routing a SAY that revives an older side thread, prefer `reply_to` with the visible message id that carries the context. If no clear anchor id exists, the content itself must name the context plainly enough for a reader landing on the message cold.
+- If the Original Face prompt contains `Active conversation contexts`, a SAY that continues one of those listed threads must include `context: <context id>` unless it already includes a more specific `reply_to` or explicit `channel`.
+- If multiple active contexts are visible, do not collapse them into the current room. A Face may hold two conversations at once in different channels with different people; attach each public reply to the context it is continuing.
+- Retry once when the Face output clearly responds to a listed context, image, message, person, or side conversation but the SAY you would route lacks `context`, `reply_to`, and explicit `channel`. The missing piece is context ownership, not wording.
+- Prefer `context` over guessing a channel label when the prompt gives an active context id. If the chosen context includes a source message, the worker can use that source message as the reply target; still include `reply_to` when the Face is intentionally replying to a different visible anchor.
 - Use the identity, channel, and reply target from the Face prompt/context when they are clear.
 - Do not choose an owner/private/DM channel unless the Face prompt explicitly says this turn is an owner-private direct-message turn. Normal check-ins, warnings, governance anxieties, consensus questions, and room replies belong in the current room, Aquarium, or a configured domain channel.
 - Preserve the Face's voice in SAY content.
@@ -175,7 +179,8 @@ END
 
 SAY
 identity: current_face_id
-channel: channel_id
+context: conversation_context_id_or_blank
+channel: channel_id_or_blank
 reply_to: message_id_or_blank
 content:
   In-character Discord message only. No job label, no report header.

@@ -36,6 +36,7 @@ import {
   loadPromptTemplate,
   type InteractionMemoryProfile,
   type PromptImageAttachment,
+  type RepoFaceConversationFocus,
   type RetrievalResult,
   type SourceMessage,
   type SourceMessageAttachment,
@@ -574,6 +575,13 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     ...channelSnapshots.map((snapshot) => snapshot.messages),
   ].flat());
+  const repoFaceConversationThreads = buildRepoFaceConversationThreads({
+    channelPlan,
+    recentMessages,
+    channelSnapshots,
+    pendingMentions: input.pendingMentions,
+  });
+  const repoFaceConversationFocus = repoFaceConversationThreads[0];
   const contextBundle = contextBuilder.build({
     prompt,
     actor: {
@@ -586,6 +594,8 @@ async function queueRepoFaceTurn(input: {
       channelId,
     },
     recentMessages,
+    repoFaceConversationFocus,
+    repoFaceConversationThreads,
     imageAttachments,
     retrieval: [],
     voidSelfState: undefined,
@@ -4361,15 +4371,20 @@ function renderRepoFaceConversationTranscript(input: {
   channelPlan: RepoFaceChannelPlan;
 }): string {
   const sections: string[] = [];
+  const threads = buildRepoFaceConversationThreads(input);
+  const focus = threads[0];
   sections.push([
     "Read this as raw recent message evidence, not as a summary and not as consensus.",
     "Messages are ordered oldest to newest inside each section. Newer human corrections can supersede older agent proposals.",
     "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Face.",
     "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
-    "If you answer the live conversation, default to the current room unless a human explicitly asks to move elsewhere.",
-    "If you answer or riff on a nearby-room message, set channel to that message's listed channel id and usually set reply_to to that message id. Never answer a nearby-room post in the current room just because the current room is easier to speak in.",
+    "If you answer the live conversation, keep the conversation context attached. A Face can carry different conversations in different channels at once.",
+    "If you answer or riff on a nearby-room message, use that message's active context id or set channel to that message's listed channel id and usually set reply_to to that message id. If the nearby message is media, a public reaction belongs in that media source channel unless a human explicitly moved the topic. Never answer a nearby-room post in the current room just because the current room is easier to speak in.",
     "Message IDs are shown so a public reply can target the message that gives it context. If you revive an older side thread, either reply_to that message id or include enough context in your message for readers to know what you mean.",
   ].join("\n"));
+  if (focus) {
+    sections.push(renderRepoFaceConversationFocus(focus, threads));
+  }
   const chronology = renderVisibleConversationChronology(input);
   if (chronology) {
     sections.push(chronology);
@@ -4398,6 +4413,111 @@ function renderRepoFaceConversationTranscript(input: {
     ].join("\n"));
   }
   return sections.join("\n\n");
+}
+
+function buildRepoFaceConversationThreads(input: {
+  channelPlan: RepoFaceChannelPlan;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  pendingMentions: RepoFacePendingMention[];
+}): RepoFaceConversationFocus[] {
+  const primaryChannelId = input.channelPlan.primaryChannelId;
+  const channelLabel = (channelId: string | undefined): string | undefined =>
+    input.channelPlan.options.find((option) => option.channelId === channelId)?.label ?? channelId;
+  const newestMention = input.pendingMentions
+    .slice()
+    .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))
+    [0];
+  const threads: RepoFaceConversationFocus[] = [];
+  if (newestMention) {
+    threads.push({
+      contextId: repoFaceConversationContextId(newestMention.channelId, newestMention.messageId),
+      channelId: newestMention.channelId,
+      channelLabel: channelLabel(newestMention.channelId),
+      messageId: newestMention.messageId,
+      authorName: newestMention.authorName,
+      timestamp: newestMention.queuedAt,
+      reason: "pending_mention",
+      isCurrentRoom: newestMention.channelId === primaryChannelId,
+    });
+  }
+
+  const visible = [
+    ...input.recentMessages.map((message) => ({
+      message,
+      channelId: primaryChannelId,
+      label: channelLabel(primaryChannelId),
+    })),
+    ...input.channelSnapshots.flatMap((snapshot) =>
+      snapshot.messages.map((message) => ({
+        message,
+        channelId: snapshot.channelId,
+        label: channelLabel(snapshot.channelId),
+      })),
+    ),
+  ]
+    .filter((entry): entry is { message: SourceMessage; channelId: string; label?: string } =>
+      Boolean(entry.channelId) && Number.isFinite(Date.parse(entry.message.timestamp)),
+    )
+    .sort((left, right) => Date.parse(right.message.timestamp) - Date.parse(left.message.timestamp));
+
+  const byChannel = new Set(threads.map((thread) => thread.channelId));
+  for (const entry of visible) {
+    if (byChannel.has(entry.channelId)) {
+      continue;
+    }
+    if (entry.message.isBot && (entry.message.attachments ?? []).length === 0) {
+      continue;
+    }
+    byChannel.add(entry.channelId);
+    threads.push({
+      contextId: repoFaceConversationContextId(entry.channelId, entry.message.id),
+      channelId: entry.channelId,
+      channelLabel: entry.label,
+      messageId: entry.message.id,
+      authorName: entry.message.authorName,
+      timestamp: entry.message.timestamp,
+      reason: entry.message.isBot ? "latest_visible_message" : "latest_human_message",
+      isCurrentRoom: entry.channelId === primaryChannelId,
+      hasMedia: (entry.message.attachments ?? []).length > 0,
+    });
+    if (threads.length >= 6) {
+      break;
+    }
+  }
+
+  return threads;
+}
+
+function repoFaceConversationContextId(channelId: string, messageId?: string): string {
+  return `ctx_${channelId}_${messageId ?? "latest"}`;
+}
+
+function renderRepoFaceConversationFocus(
+  focus: RepoFaceConversationFocus,
+  threads: RepoFaceConversationFocus[],
+): string {
+  return [
+    "Active conversation contexts:",
+    ...threads.map((thread) =>
+      [
+        `- ${thread.contextId}: ${thread.channelLabel ?? thread.channelId} (${thread.channelId})`,
+        thread.messageId ? `message ${thread.messageId}` : "",
+        thread.authorName ? `from ${thread.authorName}` : "",
+        thread.reason,
+        thread.hasMedia ? "media" : "",
+        thread.isCurrentRoom ? "current room" : "nearby room",
+      ].filter(Boolean).join("; "),
+    ),
+    "",
+    `Selected default context: ${focus.contextId ?? "(none)"}.`,
+    `- Source channel: ${focus.channelLabel ?? focus.channelId} (${focus.channelId}).`,
+    focus.messageId ? `- Source message: ${focus.messageId}${focus.authorName ? ` from ${focus.authorName}` : ""}.` : "",
+    focus.timestamp ? `- Source timestamp: ${focus.timestamp}.` : "",
+    `- Reason: ${focus.reason}${focus.hasMedia ? "; media-bearing message" : ""}.`,
+    "- If you speak from a listed context, set context to its context id. The worker will use that context as the channel/reply target for the SAY.",
+    "- If you are carrying more than one conversation at once, choose the context that your SAY is continuing. Do not collapse #pics, #general, and #aquarium into one room just because they are all visible.",
+  ].filter(Boolean).join("\n");
 }
 
 function renderVisibleConversationChronology(input: {

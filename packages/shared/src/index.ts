@@ -457,6 +457,8 @@ export interface ContextBundle {
   actor: Actor;
   guildContext: GuildContext;
   recentMessages: SourceMessage[];
+  repoFaceConversationFocus?: RepoFaceConversationFocus;
+  repoFaceConversationThreads?: RepoFaceConversationFocus[];
   imageAttachments?: PromptImageAttachment[];
   retrieval: RetrievalResult[];
   interactionMemory?: InteractionMemoryProfile;
@@ -465,6 +467,18 @@ export interface ContextBundle {
   stylePack?: StylePack;
   voidSelfState?: VoidSelfStateContext;
   createdAt: string;
+}
+
+export interface RepoFaceConversationFocus {
+  contextId?: string;
+  channelId: string;
+  channelLabel?: string;
+  messageId?: string;
+  authorName?: string;
+  timestamp?: string;
+  reason: "pending_mention" | "latest_human_message" | "latest_visible_message";
+  isCurrentRoom: boolean;
+  hasMedia?: boolean;
 }
 
 export interface JobApprovalRecord {
