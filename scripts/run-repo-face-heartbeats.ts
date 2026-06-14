@@ -742,6 +742,7 @@ function buildRepoFaceSpeakingPressure(
   const socialBondPressure = (typedState.faceAffect.socialBonds ?? [])
     .filter((entry) => entry.status === "active")
     .reduce((sum, entry) => sum + entry.intensity * 0.07, 0);
+  const relationshipStalenessPressure = repoFaceRelationshipStalenessPressure(typedState, now);
   const moodPressure = (typedState.faceAffect.moodDimensions ?? [])
     .reduce((sum, entry) => {
       const expressiveWeight = ["anger", "annoyance", "irritation", "envy", "pride", "smugness", "playfulness", "anxiety", "commandForce", "restlessness"].includes(entry.name)
@@ -758,7 +759,7 @@ function buildRepoFaceSpeakingPressure(
   const silencePressure = clamp(hoursSinceSpeech / 8, 0, 1);
   const sleepiness = sleepCycle.isNapping ? 0.22 : 0;
   const targetNeed = clamp(
-    0.12 + silencePressure * 0.18 + affectNeedPressure + statusReadPressure + socialBondPressure + moodPressure + agencyPressure + candidatePressure - recentSpeechDamping * 0.24 - sleepiness,
+    0.12 + silencePressure * 0.18 + affectNeedPressure + statusReadPressure + socialBondPressure + relationshipStalenessPressure + moodPressure + agencyPressure + candidatePressure - recentSpeechDamping * 0.24 - sleepiness,
     0,
     1,
   );
@@ -766,11 +767,37 @@ function buildRepoFaceSpeakingPressure(
 
   return {
     needToSpeak,
-    confessionPressure: round3(clamp((previous.confessionPressure ?? 0.2) * 0.7 + moodPressure * 0.42 + socialBondPressure * 0.18, 0, 1)),
-    noveltyPressure: round3(clamp((previous.noveltyPressure ?? 0.25) * 0.62 + affectNeedPressure * 0.35 + statusReadPressure * 0.24 + candidatePressure * 0.28, 0, 1)),
+    confessionPressure: round3(clamp((previous.confessionPressure ?? 0.2) * 0.7 + moodPressure * 0.42 + socialBondPressure * 0.18 + relationshipStalenessPressure * 0.18, 0, 1)),
+    noveltyPressure: round3(clamp((previous.noveltyPressure ?? 0.25) * 0.62 + affectNeedPressure * 0.35 + statusReadPressure * 0.24 + relationshipStalenessPressure * 0.22 + candidatePressure * 0.28, 0, 1)),
     recentSpeechDamping: round3(recentSpeechDamping),
     lastSpokeAt,
   };
+}
+
+function repoFaceRelationshipStalenessPressure(
+  typedState: VoidSelfStateTypedProjection,
+  now: Date,
+): number {
+  const nowMs = now.getTime();
+  const bondPressure = (typedState.faceAffect.socialBonds ?? [])
+    .filter((entry) => entry.status === "active" && entry.target.kind === "person")
+    .reduce((sum, entry) => {
+      const ageHours = ageHoursSince(entry.updatedAt, nowMs);
+      if (ageHours < 48) {
+        return sum;
+      }
+      return sum + clamp((ageHours - 48) / 120, 0, 1) * entry.intensity * 0.13;
+    }, 0);
+  const statusPressure = (typedState.faceAffect.statusReads ?? [])
+    .filter((entry) => !entry.retiredAt && entry.target.kind === "person")
+    .reduce((sum, entry) => {
+      const ageHours = ageHoursSince(entry.updatedAt, nowMs);
+      if (ageHours < 72) {
+        return sum;
+      }
+      return sum + clamp((ageHours - 72) / 144, 0, 1) * entry.intensity * 0.08;
+    }, 0);
+  return clamp(bondPressure + statusPressure, 0, 0.28);
 }
 
 function speakingPressuresEqual(
@@ -2566,6 +2593,11 @@ function renderRepoFaceStatePacket(
     ].join("\n"));
   }
 
+  const relationshipFreshnessFacts = renderRepoFaceRelationshipFreshnessFacts(name, state, registryIdentities);
+  if (relationshipFreshnessFacts) {
+    lines.push(relationshipFreshnessFacts);
+  }
+
   if (statusReads.length > 0) {
     lines.push([
       "Status in the swarm is part of the weather:",
@@ -2719,6 +2751,96 @@ function renderRepoFaceStatePacket(
   }
 
   return rejectLeakyMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
+}
+
+function renderRepoFaceRelationshipFreshnessFacts(
+  name: string,
+  state: VoidSelfStateTypedProjection,
+  registryIdentities: RepoDiscordIdentity[],
+): string | undefined {
+  const nowMs = Date.now();
+  const peerKeys = repoFacePeerSocialKeys(registryIdentities);
+  const staleBonds = (state.faceAffect.socialBonds ?? [])
+    .filter((bond) => bond.status === "active" && bond.target.kind === "person" && isRepoFacePeerTarget(bond.target, peerKeys))
+    .map((bond) => ({
+      target: targetLabel(bond.target),
+      kind: bond.stance,
+      intensity: bond.intensity,
+      ageHours: ageHoursSince(bond.updatedAt, nowMs),
+      summary: bond.summary,
+      action: bond.actionImplication,
+    }))
+    .filter((entry) => entry.ageHours >= 48)
+    .sort((left, right) => (right.ageHours * right.intensity) - (left.ageHours * left.intensity))
+    .slice(0, 5);
+  const staleReads = (state.faceAffect.statusReads ?? [])
+    .filter((read) => !read.retiredAt && read.target.kind === "person" && isRepoFacePeerTarget(read.target, peerKeys))
+    .map((read) => ({
+      target: targetLabel(read.target),
+      kind: read.status,
+      intensity: read.intensity,
+      ageHours: ageHoursSince(read.updatedAt, nowMs),
+      summary: read.summary,
+      action: read.actionImplication,
+    }))
+    .filter((entry) => entry.ageHours >= 72)
+    .sort((left, right) => (right.ageHours * right.intensity) - (left.ageHours * left.intensity))
+    .slice(0, 5);
+  const entries = [
+    ...staleBonds.map((entry) =>
+      `- ${entry.target}: ${entry.kind} bond has gone ${formatAgeHours(entry.ageHours)} without contact. ${asSentence(entry.summary)} Touch-base pull: ${asSentence(entry.action)}`,
+    ),
+    ...staleReads.map((entry) =>
+      `- ${entry.target}: ${entry.kind} status read has gone ${formatAgeHours(entry.ageHours)} without contact. ${asSentence(entry.summary)} Touch-base pull: ${asSentence(entry.action)}`,
+    ),
+  ].slice(0, 6);
+
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return [
+    `Relationship freshness pressure for ${name}:`,
+    ...entries,
+    "These are not commands to dump feelings. They are swarm social graph itch. A compact tease, check-in, challenge, compliment, question, or repair with another Face can be a successful public turn.",
+  ].join("\n");
+}
+
+function repoFacePeerSocialKeys(registryIdentities: RepoDiscordIdentity[]): Set<string> {
+  const keys = new Set<string>();
+  for (const identity of registryIdentities) {
+    for (const value of [identity.id, identity.displayName, identity.repoName]) {
+      const key = normalizeSocialLabel(value);
+      if (key.length > 0) {
+        keys.add(key);
+      }
+    }
+  }
+  return keys;
+}
+
+function isRepoFacePeerTarget(
+  target: { id: string; label?: string },
+  peerKeys: Set<string>,
+): boolean {
+  return [target.id, target.label]
+    .map(normalizeSocialLabel)
+    .some((key) => key.length > 0 && peerKeys.has(key));
+}
+
+function ageHoursSince(value: string | undefined, nowMs: number): number {
+  const then = Date.parse(value ?? "");
+  if (!Number.isFinite(then)) {
+    return 999;
+  }
+  return Math.max(0, (nowMs - then) / 3_600_000);
+}
+
+function formatAgeHours(hours: number): string {
+  if (hours >= 48) {
+    return `${Math.round(hours / 24)} days`;
+  }
+  return `${Math.round(hours)} hours`;
 }
 
 function cleanRepoFaceProjectorLoopVocabulary(
