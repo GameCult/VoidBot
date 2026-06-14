@@ -945,7 +945,10 @@ function normalizeInterpretedRepoFaceSpeechDestinations(
     return outputText;
   }
 
-  return rewriteRepoFaceSayChannels(outputText, "current_room");
+  return rewriteRepoFaceSayChannels(
+    outputText,
+    inferRepoFaceImplicitSpeechChannel(input.job, input.faceOutputText) ?? "current_room",
+  );
 }
 
 function repoFaceOutputHasExplicitSayChannel(outputText: string): boolean {
@@ -1000,6 +1003,51 @@ function rewriteRepoFaceSayChannels(outputText: string, channelSelector: string)
 
   insertChannelIfNeeded();
   return rewritten.join("\n");
+}
+
+function inferRepoFaceImplicitSpeechChannel(job: JobRecord, faceOutputText: string): string | undefined {
+  const channelLabels = extractPromptChannelLabelMap(job.contextBundle.prompt);
+  if (channelLabels.size === 0) {
+    return undefined;
+  }
+  const currentChannel = repoIdentityDefaultSpeechChannel(job);
+  const normalizedCurrent = normalizeChannelSelector(currentChannel);
+  const text = faceOutputText.toLowerCase();
+  for (const [label, channelId] of channelLabels) {
+    if (normalizeChannelSelector(channelId) === normalizedCurrent) {
+      continue;
+    }
+    const escaped = escapeRegExp(label.toLowerCase());
+    const patterns = [
+      new RegExp(`(?:in|from|to|inside)\\s+\`#?${escaped}\``),
+      new RegExp(`(?:in|from|to|inside)\\s+#${escaped}\\b`),
+      new RegExp(`\\b${escaped}\\s+(?:thread|post|message|conversation|room)\\b`),
+    ];
+    if (patterns.some((pattern) => pattern.test(text))) {
+      return channelId;
+    }
+  }
+  return undefined;
+}
+
+function extractPromptChannelLabelMap(prompt: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const line of prompt.split(/\r?\n/)) {
+    const current = line.match(/^Current room \(([^,()]+), channel (\d{5,})\)/i);
+    if (current) {
+      map.set(normalizeChannelSelector(current[1]), current[2]);
+      continue;
+    }
+    const nearby = line.match(/^Nearby ([^(]+) \(channel (\d{5,})\)/i);
+    if (nearby) {
+      map.set(normalizeChannelSelector(nearby[1]), nearby[2]);
+    }
+  }
+  return map;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseInterpretationBlock(interpretationText: string): Record<string, string> {
@@ -1314,7 +1362,13 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     return false;
   }
 
-  const requestedChannelId = intent.channelId ?? repoIdentityDefaultSpeechChannel(job);
+  const replyTargetChannelId = resolveRepoIdentityReplyTargetChannel(job, intent.replyToMessageId);
+  if (replyTargetChannelId && intent.channelId && normalizeChannelSelector(intent.channelId) !== normalizeChannelSelector(replyTargetChannelId)) {
+    console.warn(
+      `Coerced repo identity ${identity.id} speech for job ${job.id} from requested channel "${intent.channelId}" to reply target channel ${replyTargetChannelId}.`,
+    );
+  }
+  const requestedChannelId = replyTargetChannelId ?? intent.channelId ?? repoIdentityDefaultSpeechChannel(job);
   const channelId = normalizeRepoIdentitySpeechChannel(identity, job, requestedChannelId);
   if (!channelId) {
     console.warn(`Rejected repo identity ${identity.id} speech for job ${job.id}: no Discord channel was available.`);
@@ -2978,6 +3032,43 @@ function repoIdentityDefaultSpeechChannel(job: JobRecord): string | undefined {
   return job.guildContext?.channelId && !isOwnerDmChannelAlias(job.guildContext.channelId)
     ? job.guildContext.channelId
     : job.outputChannelId;
+}
+
+function resolveRepoIdentityReplyTargetChannel(
+  job: JobRecord,
+  replyToMessageId: string | undefined,
+): string | undefined {
+  const normalizedReplyId = replyToMessageId?.trim();
+  if (!normalizedReplyId) {
+    return undefined;
+  }
+
+  const primaryChannelId = repoIdentityDefaultSpeechChannel(job);
+  if (
+    primaryChannelId &&
+    job.contextBundle.recentMessages.some((message) => message.id === normalizedReplyId)
+  ) {
+    return primaryChannelId;
+  }
+
+  return extractPromptMessageChannelMap(job.contextBundle.prompt).get(normalizedReplyId);
+}
+
+function extractPromptMessageChannelMap(prompt: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const line of prompt.split(/\r?\n/)) {
+    const chronologyMatch = line.match(/\[[^\]]*?\bchannel\s+(\d{5,})\][\s\S]*?\(message\s+(\d{5,})\)/i);
+    if (chronologyMatch) {
+      map.set(chronologyMatch[2], chronologyMatch[1]);
+      continue;
+    }
+
+    const sectionMatch = line.match(/\(\s*channel\s+(\d{5,})\s*,\s*message\s+(\d{5,})\s*\)/i);
+    if (sectionMatch) {
+      map.set(sectionMatch[2], sectionMatch[1]);
+    }
+  }
+  return map;
 }
 
 function normalizeRepoIdentitySpeechChannel(

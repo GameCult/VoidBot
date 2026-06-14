@@ -4367,6 +4367,7 @@ function renderRepoFaceConversationTranscript(input: {
     "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Face.",
     "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
     "If you answer the live conversation, default to the current room unless a human explicitly asks to move elsewhere.",
+    "If you answer or riff on a nearby-room message, set channel to that message's listed channel id and usually set reply_to to that message id. Never answer a nearby-room post in the current room just because the current room is easier to speak in.",
     "Message IDs are shown so a public reply can target the message that gives it context. If you revive an older side thread, either reply_to that message id or include enough context in your message for readers to know what you mean.",
   ].join("\n"));
   const chronology = renderVisibleConversationChronology(input);
@@ -4385,15 +4386,15 @@ function renderRepoFaceConversationTranscript(input: {
     option.channelId === input.channelPlan.primaryChannelId
   )?.label ?? "current room";
   sections.push([
-    `Current room (${currentLabel}), oldest to newest:`,
-    ...formatConversationMessages(input.recentMessages, 15),
+    `Current room (${currentLabel}, channel ${input.channelPlan.primaryChannelId ?? "unknown"}), oldest to newest:`,
+    ...formatConversationMessages(input.recentMessages, 15, input.channelPlan.primaryChannelId),
   ].join("\n"));
   for (const snapshot of input.channelSnapshots) {
     const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
       "nearby room";
     sections.push([
-      `Nearby ${label}, oldest to newest:`,
-      ...formatConversationMessages(snapshot.messages, 6),
+      `Nearby ${label} (channel ${snapshot.channelId}), oldest to newest:`,
+      ...formatConversationMessages(snapshot.messages, 6, snapshot.channelId),
     ].join("\n"));
   }
   return sections.join("\n\n");
@@ -4404,18 +4405,18 @@ function renderVisibleConversationChronology(input: {
   channelSnapshots: ChannelSnapshot[];
   channelPlan: RepoFaceChannelPlan;
 }): string {
-  const byId = new Map<string, SourceMessage & { channelLabel: string }>();
+  const byId = new Map<string, SourceMessage & { channelLabel: string; channelId: string }>();
   const primaryLabel = input.channelPlan.options.find((option) =>
     option.channelId === input.channelPlan.primaryChannelId
   )?.label ?? "current room";
   for (const message of input.recentMessages) {
-    byId.set(message.id, { ...message, channelLabel: primaryLabel });
+    byId.set(message.id, { ...message, channelLabel: primaryLabel, channelId: input.channelPlan.primaryChannelId ?? "unknown" });
   }
   for (const snapshot of input.channelSnapshots) {
     const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
       "nearby room";
     for (const message of snapshot.messages) {
-      byId.set(message.id, { ...message, channelLabel: label });
+      byId.set(message.id, { ...message, channelLabel: label, channelId: snapshot.channelId });
     }
   }
 
@@ -4432,7 +4433,7 @@ function renderVisibleConversationChronology(input: {
     ...messages.map((message) => {
       const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
       const content = collapseWhitespace(message.content, 700) || "[no text]";
-      return `- [${message.channelLabel}] ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
+      return `- [${message.channelLabel} channel ${message.channelId}] ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
     }),
   ].join("\n");
 }
@@ -4487,14 +4488,15 @@ function renderRepoFaceRepoActivitySurface(
   }
 }
 
-function formatConversationMessages(messages: SourceMessage[], limit: number): string[] {
+function formatConversationMessages(messages: SourceMessage[], limit: number, channelId?: string): string[] {
   if (messages.length === 0) {
     return ["- No recent messages."];
   }
   return messages.slice(-limit).map((message) => {
     const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
     const content = collapseWhitespace(message.content, 900) || "[no text]";
-    return `- ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
+    const channelPrefix = channelId ? `channel ${channelId}, ` : "";
+    return `- ${speaker} (${channelPrefix}message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
   });
 }
 
