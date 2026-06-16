@@ -53,6 +53,9 @@ surfaces; Eve/CultUI is the presentation contract.
   provider at `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by
   `.voidbot/status/cultmesh/voidbot-swarm-state.cc`; any generated browser page
   is only a debug lowering of that provider surface.
+- The local orchestrator pulse publishes `voidbot.cultnet-rudp-stack-health`
+  over `cultnet.transport.rudp.v0` to Idunn after each pulse. The operations
+  watchdog remains a compatibility report, not the daemon liveness owner.
 
 ## Upgrade path
 

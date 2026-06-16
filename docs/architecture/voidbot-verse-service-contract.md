@@ -49,6 +49,12 @@ VoidBot surfaces as they become first-class Verse nodes.
 - Swarm presentation witness:
   `.voidbot/status/cultmesh/voidbot-swarm-state.cc`, written by
   `scripts/render-voidbot-swarm-dashboard.mjs`.
+- Idunn health witness:
+  `scripts/run-gamecult-orchestrator.ps1` publishes
+  `voidbot.cultnet-rudp-stack-health` over `cultnet.transport.rudp.v0` after
+  each orchestrator pulse. The health record reports the pulse summary for the
+  local stack; `scripts/check-voidbot-operations.ps1` remains a compatibility
+  probe and watchdog report, not the daemon liveness owner.
 - JSON status packets under `.voidbot/status/` are debug/export surfaces unless
   a specific runner owns them as command input. They are not durable canonical
   state.
@@ -127,7 +133,9 @@ Eve binding and the underlying typed state owners.
 
 1. Keep the current `voidbot.swarm` CultMesh publication healthy and discoverable
    through Odin.
-2. Add `.cc` witness/export documents for any remaining JSON-only command or
+2. Keep `voidbot.cultnet-rudp-stack-health` publishing from the orchestrator
+   pulse so Idunn consumes daemon-owned health before compatibility probes.
+3. Add `.cc` witness/export documents for any remaining JSON-only command or
    status surfaces before treating them as Verse state.
 3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while
    leaving VoidBot as the Discord compatibility carrier.

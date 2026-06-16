@@ -104,6 +104,36 @@ function Join-WindowsArguments {
   return (($Arguments | ForEach-Object { ConvertTo-WindowsArgument -Value ([string]$_) }) -join " ")
 }
 
+function Publish-IdunnRudpHealth {
+  param(
+    [Parameter(Mandatory = $true)] $Summary
+  )
+
+  $publisher = Join-Path $PSScriptRoot "publish-idunn-rudp-health.cjs"
+  if (-not (Test-Path -LiteralPath $publisher)) {
+    return
+  }
+
+  $endpoint = if ($env:VOIDBOT_IDUNN_RUDP_HEALTH) { $env:VOIDBOT_IDUNN_RUDP_HEALTH } else { "127.0.0.1:17870" }
+  $state = if ($Summary.ok) { "healthy" } else { "failed" }
+  $detail = "VoidBot orchestrator pulse ran $($Summary.ranCount) organ(s) in $($Summary.durationSeconds)s; ok=$($Summary.ok)"
+  try {
+    $nodeExe = (Get-Command node.exe -ErrorAction Stop).Source
+    $output = & $nodeExe $publisher `
+      --endpoint $endpoint `
+      --daemon "voidbot" `
+      --contract "voidbot.cultnet-rudp-stack-health" `
+      --state $state `
+      --detail $detail `
+      --observed-at $Summary.finishedAt 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      throw "publisher exited with code $LASTEXITCODE`: $($output -join [Environment]::NewLine)"
+    }
+  } catch {
+    $message = "[$([DateTime]::UtcNow.ToString("o"))] Idunn RUDP health publish failed: $($_.Exception.Message)"
+    Add-Content -LiteralPath (Join-Path $logDir "idunn-rudp-health.log") -Encoding UTF8 -Value $message
+  }
+}
 function Get-OrganState {
   param($State, [string] $Id)
   $property = $State.organs.PSObject.Properties[$Id]
@@ -403,6 +433,7 @@ try {
   }
   Write-JsonFile -Path (Join-Path $statusDir "gamecult-orchestrator-last-run.json") -Data $summary
   Write-JsonFile -Path $statePath -Data $state
+  Publish-IdunnRudpHealth -Summary $summary
 
   if (-not $summary.ok) {
     exit 1
