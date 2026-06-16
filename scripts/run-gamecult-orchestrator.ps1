@@ -134,6 +134,7 @@ function Publish-IdunnRudpHealth {
     Add-Content -LiteralPath (Join-Path $logDir "idunn-rudp-health.log") -Encoding UTF8 -Value $message
   }
 }
+
 function Get-OrganState {
   param($State, [string] $Id)
   $property = $State.organs.PSObject.Properties[$Id]
@@ -146,6 +147,19 @@ function Get-OrganState {
 function Set-OrganState {
   param($State, [string] $Id, $Value)
   $State.organs | Add-Member -NotePropertyName $Id -NotePropertyValue $Value -Force
+}
+
+function Set-SkippedOrganState {
+  param($State, $Organ, [datetime] $Now, [string] $Status, $LogPath = $null)
+  Set-OrganState -State $State -Id $Organ.Id -Value ([pscustomobject]@{
+    label = $Organ.Label
+    intervalMinutes = $Organ.IntervalMinutes
+    lastStartedAt = $Now.ToString("o")
+    lastFinishedAt = $Now.ToString("o")
+    lastExitCode = 0
+    lastStatus = $Status
+    lastLogPath = $LogPath
+  })
 }
 
 function Test-Due {
@@ -251,6 +265,25 @@ function Test-OrchestratorLock {
     return $false
   }
   $startedAt = [datetime]::Parse($lock.startedAt).ToUniversalTime()
+  $lockPid = if ($lock.PSObject.Properties["pid"]) { [int]$lock.pid } else { 0 }
+  $lockAgeMinutes = (([DateTime]::UtcNow) - $startedAt).TotalMinutes
+  if ($lockPid -gt 0) {
+    $lockProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $lockPid" -ErrorAction SilentlyContinue
+    if ($null -eq $lockProcess) {
+      Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+      return $false
+    }
+    if ($lockAgeMinutes -gt 2) {
+      $children = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        [int]$_.ParentProcessId -eq $lockPid -and $_.Name -ne "conhost.exe"
+      })
+      if ($children.Count -eq 0) {
+        Stop-Process -Id $lockPid -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+        return $false
+      }
+    }
+  }
   if ((([DateTime]::UtcNow) - $startedAt).TotalMinutes -gt 45) {
     Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
     return $false
@@ -302,6 +335,7 @@ try {
     "bifrost-dispatch" = $true
     "repo-face-heartbeats" = $true
     "void-mood-drift" = $true
+    "void-moderation-heartbeat" = $true
     "void-moderation-rumination" = $true
   }
   $onlySet = @{}
@@ -322,6 +356,15 @@ try {
       Cwd = $bifrostRoot
       Executable = $node
       Arguments = @((Join-Path $bifrostRoot "tools\dispatch-agent-requests.mjs"), "dispatch", "--repo", "*", "--max", "1")
+    },
+    [pscustomobject]@{
+      Id = "voidbot-swarm-surface"
+      Label = "VoidBot swarm surface"
+      IntervalMinutes = 1
+      TimeoutMinutes = 5
+      Cwd = $repoRoot
+      Executable = $node
+      Arguments = @((Join-Path $PSScriptRoot "render-voidbot-swarm-dashboard.mjs"))
     },
     [pscustomobject]@{
       Id = "repo-face-heartbeats"
@@ -345,7 +388,7 @@ try {
       Id = "void-moderation-heartbeat"
       Label = "Void rules moderation heartbeat"
       IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
-      TimeoutMinutes = 10
+      TimeoutMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_TIMEOUT_MINUTES" -Default 3 -Minimum 1
       Cwd = $repoRoot
       Executable = $powershell
       Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-moderator-rumination.ps1"), "-ModerationHeartbeatOnly")
@@ -376,15 +419,22 @@ try {
       continue
     }
     if ($organ.Id -eq "bifrost-dispatch" -and -not (Get-ConfigBool -Config $config -Name "BIFROST_DISPATCH_ENABLED" -Default $false)) {
-      Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
-        label = $organ.Label
-        intervalMinutes = $organ.IntervalMinutes
-        lastStartedAt = $now.ToString("o")
-        lastFinishedAt = $now.ToString("o")
-        lastExitCode = 0
-        lastStatus = "skipped_disabled"
-        lastLogPath = $null
-      })
+      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
+      Write-JsonFile -Path $statePath -Data $state
+      continue
+    }
+    if ($organ.Id -eq "void-moderation-heartbeat" -and -not (Get-ConfigBool -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_ENABLED" -Default $true)) {
+      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
+      Write-JsonFile -Path $statePath -Data $state
+      continue
+    }
+    if ($organ.Id -eq "void-moderation-rumination" -and -not (Get-ConfigBool -Config $config -Name "VOIDBOT_MODERATION_RUMINATION_ENABLED" -Default $true)) {
+      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
+      Write-JsonFile -Path $statePath -Data $state
+      continue
+    }
+    if ($organ.Id -eq "voidbot-operations-watchdog" -and -not (Get-ConfigBool -Config $config -Name "VOIDBOT_OPERATIONS_WATCHDOG_ENABLED" -Default $true)) {
+      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
       Write-JsonFile -Path $statePath -Data $state
       continue
     }
@@ -393,15 +443,7 @@ try {
     }
 
     if ($agentSwarmPaused -and $agentSwarmOrganIds.ContainsKey($organ.Id)) {
-      Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
-        label = $organ.Label
-        intervalMinutes = $organ.IntervalMinutes
-        lastStartedAt = $now.ToString("o")
-        lastFinishedAt = $now.ToString("o")
-        lastExitCode = 0
-        lastStatus = "skipped_agent_swarm_paused"
-        lastLogPath = $agentSwarmPausePath
-      })
+      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_agent_swarm_paused" -LogPath $agentSwarmPausePath
       Write-JsonFile -Path $statePath -Data $state
       continue
     }

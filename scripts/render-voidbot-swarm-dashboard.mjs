@@ -21,6 +21,12 @@ const eveBindingDocumentType = "gamecult.eve.interface_binding";
 const eveBindingSchemaId = "gamecult.eve.interface_binding.v1";
 const surfaceDocumentType = "gamecult.eve.surface_state";
 const surfaceSchemaId = "gamecult.eve.surface_state.v1";
+const providerCatalogDocumentType = "voidbot.provider_advertisement_catalog";
+const providerCatalogSchemaId = "voidbot.provider_advertisement_catalog.v0";
+const transportProfileDocumentType = "idunn.daemon_transport_profile";
+const transportProfileSchemaId = "idunn.daemon_transport_profile.v1";
+const commandBoundaryDocumentType = "idunn.command_boundary";
+const commandBoundarySchemaId = "idunn.command_boundary.v1";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -716,7 +722,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
       schemaId: providerAdvertisementSchemaId,
       schemaVersion: providerAdvertisementSchemaId,
       contentHash: providerAdvertisementSchemaId,
-      global: true,
+      global: false,
       name: "providerId",
       schema: { parse: parseObjectDocument("Eve provider advertisement") },
     });
@@ -736,24 +742,79 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
       schemaId: eveBindingSchemaId,
       schemaVersion: eveBindingSchemaId,
       contentHash: eveBindingSchemaId,
-      global: true,
+      global: false,
       name: "bindingId",
       schema: { parse: parseObjectDocument("Eve interface binding") },
     });
-    const node = await CultMesh.createNode(storePath, {
-      documents: [snapshotDefinition, providerDefinition, surfaceDefinition, eveBindingDefinition],
+    const providerCatalogDefinition = defineDocumentType({
+      type: providerCatalogDocumentType,
+      schemaName: providerCatalogDocumentType,
+      schemaId: providerCatalogSchemaId,
+      schemaVersion: providerCatalogSchemaId,
+      contentHash: providerCatalogSchemaId,
+      global: true,
+      schema: { parse: parseObjectDocument("VoidBot provider advertisement catalog") },
     });
-    const providerAdvertisement = buildProviderAdvertisement(snapshot);
+    const transportProfileDefinition = defineDocumentType({
+      type: transportProfileDocumentType,
+      schemaName: transportProfileDocumentType,
+      schemaId: transportProfileSchemaId,
+      schemaVersion: transportProfileSchemaId,
+      contentHash: transportProfileSchemaId,
+      global: false,
+      name: (value) => value?.profile_id || value?.daemon_id || "voidbot",
+      schema: { parse: parseObjectDocument("Idunn daemon transport profile") },
+    });
+    const commandBoundaryDefinition = defineDocumentType({
+      type: commandBoundaryDocumentType,
+      schemaName: commandBoundaryDocumentType,
+      schemaId: commandBoundarySchemaId,
+      schemaVersion: commandBoundarySchemaId,
+      contentHash: commandBoundarySchemaId,
+      global: false,
+      name: (value) => value?.boundary_id || value?.daemon_id || "voidbot",
+      schema: { parse: parseObjectDocument("Idunn command boundary") },
+    });
+    const node = await CultMesh.createNode(storePath, {
+      documents: [
+        snapshotDefinition,
+        providerDefinition,
+        surfaceDefinition,
+        eveBindingDefinition,
+        providerCatalogDefinition,
+        transportProfileDefinition,
+        commandBoundaryDefinition,
+      ],
+    });
+    const providerCatalog = loadProviderAdvertisementCatalog(snapshot);
+    const providerAdvertisements = buildLiveProviderAdvertisements(providerCatalog, snapshot);
+    const providerAdvertisement = providerAdvertisements.find((item) => item.providerId === providerId)
+      ?? buildProviderAdvertisement(snapshot);
     const eveBinding = buildEveInterfaceBinding(snapshot, eveState);
+    const commandBoundary = buildCommandBoundary(snapshot);
+    const transportProfile = buildTransportProfile(snapshot);
     await node.put(snapshotDefinition, "voidbot-swarm", snapshot);
-    await node.put(providerDefinition, providerId, providerAdvertisement);
+    await node.put(providerCatalogDefinition, "voidbot.providers", providerCatalog);
+    for (const advertisement of providerAdvertisements) {
+      await node.put(providerDefinition, advertisement.providerId, advertisement);
+    }
     await node.put(surfaceDefinition, providerId, eveState);
     await node.put(eveBindingDefinition, providerId, eveBinding);
+    await node.put(commandBoundaryDefinition, commandBoundary.boundary_id, commandBoundary);
+    await node.put(transportProfileDefinition, transportProfile.profile_id, transportProfile);
     await node.flush?.(true);
     return {
       writeStatus: "ok",
       storePath,
-      documents: [snapshotDocumentType, providerAdvertisementDocumentType, surfaceDocumentType, eveBindingDocumentType],
+      documents: [
+        snapshotDocumentType,
+        providerCatalogDocumentType,
+        providerAdvertisementDocumentType,
+        surfaceDocumentType,
+        eveBindingDocumentType,
+        commandBoundaryDocumentType,
+        transportProfileDocumentType,
+      ],
       providerId,
       verseId,
       eveBinding: {
@@ -845,6 +906,39 @@ function parseObjectDocument(label) {
   };
 }
 
+function loadProviderAdvertisementCatalog(snapshot) {
+  const fixturePath = resolve(repoRoot, "docs", "architecture", "voidbot-provider-advertisements.fixture.json");
+  const fixture = JSON.parse(readFileSync(fixturePath, "utf8"));
+  fixture.fixtureKind = "daemon-live-publication";
+  fixture.generatedAt = snapshot.generatedAt;
+  fixture.cultMeshKeys.liveSwarmStore = cultMeshStorePath;
+  return fixture;
+}
+
+function buildLiveProviderAdvertisements(catalog, snapshot) {
+  const providers = Array.isArray(catalog.providers) ? catalog.providers : [];
+  return providers.map((provider) => {
+    if (provider.providerId === providerId) {
+      return {
+        ...provider,
+        status: snapshot.summary?.state ?? provider.status ?? "unknown",
+        updatedAt: snapshot.generatedAt,
+        witnesses: Array.isArray(provider.witnesses)
+          ? provider.witnesses.map((witness) =>
+              witness.id === "voidbot.swarm_state_snapshot"
+                ? { ...witness, path: cultMeshStorePath }
+                : witness)
+          : provider.witnesses,
+      };
+    }
+
+    return {
+      ...provider,
+      updatedAt: snapshot.generatedAt,
+    };
+  });
+}
+
 function buildProviderAdvertisement(snapshot) {
   const endpoints = [
     primaryCultMeshEndpoint(),
@@ -881,6 +975,39 @@ function buildProviderAdvertisement(snapshot) {
       schemaId: eveBindingSchemaId,
       key: providerId,
     }],
+  };
+}
+
+function buildCommandBoundary(snapshot) {
+  return {
+    boundary_id: "command-boundary:voidbot",
+    daemon_id: "voidbot",
+    owner: "VoidBot local stack",
+    restart_authority: "E:\\Projects\\Odin\\scripts\\restart-voidbot.cmd",
+    deploy_authority: "none",
+    health_authority: "voidbot.cultnet-rudp-stack-health",
+    alarm_authority: "bifrost.operator-notification",
+    compatibility_commands: [
+      "E:\\Projects\\Odin\\scripts\\health-voidbot.cmd",
+      "E:\\Projects\\Odin\\scripts\\restart-voidbot.cmd",
+    ],
+    forbidden_authority: "Health commands, operations watchdog probes, static HTML lowerings, and Odin renderers do not own VoidBot provider state or restart truth.",
+    observed_at: snapshot.generatedAt,
+  };
+}
+
+function buildTransportProfile(snapshot) {
+  return {
+    profile_id: "transport:voidbot",
+    daemon_id: "voidbot",
+    target_transport: "cultnet.transport.rudp.v0",
+    current_transport: "daemon-published-rudp-health + daemon-owned-cultmesh-provider-store + compatibility.local-command fallback",
+    state: "partial-rudp-health-and-provider-store-live",
+    health_contract: "voidbot.cultnet-rudp-stack-health",
+    publication_schema: "gamecult.eve.provider_advertisement.v1 + idunn.command_boundary.v1 + idunn.daemon_transport_profile.v1",
+    compatibility_mechanism: "E:\\Projects\\Odin\\scripts\\health-voidbot.cmd + operations-health.json watchdog probe",
+    cut_line: `VoidBot now publishes provider advertisements, command boundary, and transport profile from ${cultMeshStorePath}; the remaining compatibility path is the local operations probe, which becomes fallback evidence only.`,
+    observed_at: snapshot.generatedAt,
   };
 }
 

@@ -375,7 +375,6 @@ async function main(): Promise<void> {
   state.lastTickAt = now.toISOString();
   if (!dryRun) {
     await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
-    publishSwarmDashboardSurface();
   }
   process.stdout.write(
     `${JSON.stringify({
@@ -5533,25 +5532,6 @@ async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
 async function writeHeartbeatState(path: string, state: FaceHeartbeatState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-}
-
-function publishSwarmDashboardSurface(): void {
-  const scriptPath = resolve(process.cwd(), "scripts", "render-voidbot-swarm-dashboard.mjs");
-  const result = spawnSync(process.execPath, [scriptPath], {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (result.status === 0) {
-    return;
-  }
-
-  const stderr = result.stderr?.trim();
-  const stdout = result.stdout?.trim();
-  const detail = [stderr, stdout].filter(Boolean).join("\n");
-  console.error(
-    `VoidBot swarm CultMesh surface publish failed with exit code ${result.status ?? "unknown"}${detail ? `:\n${detail}` : "."}`,
-  );
 }
 
 function migrateLegacyHeartbeatState(
