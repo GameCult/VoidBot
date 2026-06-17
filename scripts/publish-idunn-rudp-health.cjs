@@ -43,7 +43,15 @@ async function publishIdunnRudpHealth(publisher, health) {
 
   try {
     const connect = session.createConnect(Date.now(), new Uint8Array());
-    await receiveAccept(receiver, session, publisher.endpoint, connect, 5000);
+    await sendPacket(socket, publisher.endpoint, connect);
+    await receiveUntil(
+      receiver,
+      session,
+      publisher.endpoint,
+      (packet) => packet.packetType === "accept",
+      5000,
+      "accept",
+    );
 
     const record = {
       daemonId: publisher.daemonId,
@@ -91,31 +99,11 @@ async function publishIdunnRudpHealth(publisher, health) {
     await ack;
   } finally {
     receiver.close();
-    socket.close();
-  }
-}
-
-async function receiveAccept(receiver, session, endpoint, connectPacket, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  let nextConnectMs = 0;
-  while (Date.now() < deadline) {
-    const now = Date.now();
-    if (now >= nextConnectMs) {
-      await sendPacket(receiver.socket, endpoint, connectPacket);
-      nextConnectMs = now + 100;
-    }
     try {
-      const packet = await receiver.next(Math.min(100, deadline - now), "accept");
-      const result = session.receive(packet, Date.now());
-      if (result.reply) {
-        throw new Error("VoidBot RUDP health publisher received an unexpected reply-required packet.");
-      }
-      if (packet.packetType === "accept") return;
-    } catch (error) {
-      if (error.code !== "ETIMEDOUT") throw error;
-    }
+      socket.unref();
+    } catch {}
+    await closeSocket(socket);
   }
-  throw new Error(`timed out waiting for Idunn RUDP accept response after ${timeoutMs}ms`);
 }
 
 async function bindSocket(socket, endpoint) {
@@ -271,6 +259,23 @@ async function sendPacket(socket, endpoint, packet) {
       if (error) reject(error);
       else resolve();
     });
+  });
+}
+
+async function closeSocket(socket) {
+  await new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    socket.once("close", finish);
+    try {
+      socket.close(finish);
+    } catch {
+      finish();
+    }
   });
 }
 

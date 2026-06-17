@@ -697,6 +697,15 @@ $status.completedAt = (Get-Date).ToString("o")
 $status.ready = $true
 Write-StatusFile -Path $statusPath -Status $status
 
+$installOrchestratorTaskScript = Join-Path $PSScriptRoot "install-gamecult-orchestrator-task.ps1"
+if (Test-Path -LiteralPath $installOrchestratorTaskScript) {
+  Write-Host "Refreshing GameCult Local Orchestrator task..."
+  & $installOrchestratorTaskScript -RunNow
+  if ($LASTEXITCODE -ne 0) {
+    throw "install-gamecult-orchestrator-task.ps1 failed."
+  }
+}
+
 Write-Host "VoidBot stack is up."
 Write-Host "Status: $statusPath"
 Write-Host "Bot log: $botOut"

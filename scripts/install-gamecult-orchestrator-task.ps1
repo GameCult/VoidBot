@@ -11,7 +11,7 @@ $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $runnerScript = Join-Path $PSScriptRoot "run-gamecult-orchestrator.ps1"
-$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
+$hiddenLauncher = Join-Path $PSScriptRoot "start-gamecult-orchestrator-hidden.vbs"
 
 if ($IntervalMinutes -lt 1) {
   throw "IntervalMinutes must be at least 1."
@@ -26,7 +26,7 @@ if (-not (Test-Path -LiteralPath $hiddenLauncher)) {
 $startAt = (Get-Date).AddMinutes(1)
 $action = New-ScheduledTaskAction `
   -Execute "wscript.exe" `
-  -Argument "//B //nologo `"$hiddenLauncher`" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runnerScript`"" `
+  -Argument "//B //nologo `"$hiddenLauncher`"" `
   -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
