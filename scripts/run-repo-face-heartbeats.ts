@@ -602,7 +602,7 @@ async function queueRepoFaceTurn(input: {
   const requestMessageId = `agent-turn:${identity.id}:${input.queuedAt}`;
   const result = await input.storage.jobQueue.createJob({
     command: HEARTBEAT_COMMAND,
-    provider: "owner_codex",
+    provider: input.config.repoFaceHeartbeats.provider,
     runApprovalRequired: false,
     postApprovalRequired: false,
     requester: contextBundle.actor,

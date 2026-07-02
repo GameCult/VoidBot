@@ -89,6 +89,13 @@ const envSchema = z.object({
   STORAGE_ROOT: z.string().min(1).default(".voidbot"),
   ENABLED_PROVIDERS: z.string().min(1).default("owner_codex"),
   OWNER_CODEX_MODE: z.string().min(1).default("local_exec_owner_only"),
+  OPENAI_API_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  OPENAI_API_KEY: optionalNonEmptyString,
+  OPENAI_API_KEY_FILE: optionalNonEmptyString,
+  OPENAI_API_MODEL: z.string().min(1).default("gpt-4o-mini"),
+  OPENAI_API_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+  OPENAI_API_AUTH_HEADER: z.string().min(1).default("Authorization"),
+  OPENAI_API_MAX_COMPLETION_TOKENS: z.coerce.number().int().positive().default(4096),
   CODEX_EXECUTABLE: z.string().min(1).default("codex"),
   CODEX_EXEC_ARGS: z.string().default(""),
   CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
@@ -138,6 +145,7 @@ const envSchema = z.object({
   REPO_FACE_HEARTBEAT_IDLE_NAP_AFTER_MINUTES: z.coerce.number().positive().default(360),
   REPO_FACE_HEARTBEAT_SPEED_OVERRIDES: z.string().default(""),
   REPO_FACE_HEARTBEAT_HEAT_OVERRIDES: z.string().default(""),
+  REPO_FACE_HEARTBEAT_PROVIDER: z.string().min(1).default("owner_codex"),
   REPO_FACE_HEARTBEAT_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
   REPO_FACE_HEARTBEAT_CODEX_MODELS: z.string().default("gpt-5.4"),
   REPO_FACE_IMAGINATION_CODEX_MODEL: z.string().min(1).default("gpt-5.4"),
@@ -184,6 +192,15 @@ export interface AppConfig {
   databaseDsn: string;
   enabledProviders: ProviderName[];
   ownerCodexMode: OwnerCodexMode;
+  openAiApi: {
+    baseUrl: string;
+    apiKey?: string;
+    apiKeyFile?: string;
+    model: string;
+    timeoutMs: number;
+    authHeader: string;
+    maxCompletionTokens: number;
+  };
   codexExecutable: string;
   codexExecArgs: string[];
   codexModel: string;
@@ -236,6 +253,7 @@ export interface AppConfig {
     };
     speedOverrides: Record<string, number>;
     heatOverrides: Record<string, number>;
+    provider: ProviderName;
     codexModel?: string;
     codexModels: string[];
     imaginationCodexModel?: string;
@@ -333,6 +351,14 @@ function parseProviders(value: string): ProviderName[] {
   }
 
   return providers as ProviderName[];
+}
+
+function parseProvider(value: string): ProviderName {
+  const provider = value.trim();
+  if (!isProviderName(provider)) {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
+  return provider;
 }
 
 function parseRepoPrefixRules(value: string): Record<string, string[]> {
@@ -445,6 +471,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseDsn: parsed.DATABASE_DSN,
     enabledProviders: parseProviders(parsed.ENABLED_PROVIDERS),
     ownerCodexMode: parseOwnerCodexMode(parsed.OWNER_CODEX_MODE),
+    openAiApi: {
+      baseUrl: parsed.OPENAI_API_BASE_URL.replace(/\/+$/, ""),
+      apiKey: parsed.OPENAI_API_KEY,
+      apiKeyFile: parsed.OPENAI_API_KEY_FILE ? resolve(parsed.OPENAI_API_KEY_FILE) : undefined,
+      model: parsed.OPENAI_API_MODEL,
+      timeoutMs: parsed.OPENAI_API_TIMEOUT_MS,
+      authHeader: parsed.OPENAI_API_AUTH_HEADER,
+      maxCompletionTokens: parsed.OPENAI_API_MAX_COMPLETION_TOKENS,
+    },
     codexExecutable: parsed.CODEX_EXECUTABLE,
     codexExecArgs: parseList(parsed.CODEX_EXEC_ARGS),
     codexModel: parsed.CODEX_MODEL,
@@ -497,6 +532,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       },
       speedOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_SPEED_OVERRIDES),
       heatOverrides: parseNumericMap(parsed.REPO_FACE_HEARTBEAT_HEAT_OVERRIDES),
+      provider: parseProvider(parsed.REPO_FACE_HEARTBEAT_PROVIDER),
       codexModel: parsed.REPO_FACE_HEARTBEAT_CODEX_MODEL,
       codexModels: parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS).length > 0
         ? parseList(parsed.REPO_FACE_HEARTBEAT_CODEX_MODELS)

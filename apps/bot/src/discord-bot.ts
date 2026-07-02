@@ -206,7 +206,16 @@ export async function startBot(): Promise<void> {
         }),
       mcpServers: [buildVoidMcpServerConfig(process.cwd())],
     }),
-    new OpenAiApiProvider(config.enabledProviders.includes("openai_api")),
+    new OpenAiApiProvider({
+      enabled: config.enabledProviders.includes("openai_api"),
+      baseUrl: config.openAiApi.baseUrl,
+      apiKey: config.openAiApi.apiKey,
+      apiKeyFile: config.openAiApi.apiKeyFile,
+      model: config.openAiApi.model,
+      timeoutMs: config.openAiApi.timeoutMs,
+      authHeader: config.openAiApi.authHeader,
+      maxCompletionTokens: config.openAiApi.maxCompletionTokens,
+    }),
     new LocalLlmProvider({
       enabled: config.enabledProviders.includes("local_llm"),
       ownerDiscordId: config.ownerDiscordId,

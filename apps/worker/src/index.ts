@@ -231,7 +231,16 @@ async function buildProviderRegistry(systemMessagesCatalog: SystemMessageCatalog
         }),
       mcpServers: [buildVoidMcpServerConfig(process.cwd())],
     }),
-    new OpenAiApiProvider(config.enabledProviders.includes("openai_api")),
+    new OpenAiApiProvider({
+      enabled: config.enabledProviders.includes("openai_api"),
+      baseUrl: config.openAiApi.baseUrl,
+      apiKey: config.openAiApi.apiKey,
+      apiKeyFile: config.openAiApi.apiKeyFile,
+      model: config.openAiApi.model,
+      timeoutMs: config.openAiApi.timeoutMs,
+      authHeader: config.openAiApi.authHeader,
+      maxCompletionTokens: config.openAiApi.maxCompletionTokens,
+    }),
     new LocalLlmProvider({
       enabled: config.enabledProviders.includes("local_llm"),
       ownerDiscordId: config.ownerDiscordId,
@@ -1126,6 +1135,12 @@ function prefixProviderArtifacts(prefix: string, artifacts: ProviderArtifact[]):
 function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpreter"): Record<string, string> {
   if (job.command !== "repo-face-rumination") {
     return {};
+  }
+
+  if (job.provider === "openai_api") {
+    return {
+      model: config.openAiApi.model,
+    };
   }
 
   if (role === "face") {
