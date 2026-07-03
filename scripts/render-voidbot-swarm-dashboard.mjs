@@ -82,6 +82,14 @@ async function render() {
     },
   };
   const finalEveState = buildEveProviderState(finalSnapshot);
+  const finalCultMeshWrite = await writeCultMeshPublication(finalSnapshot, finalEveState, cultMeshStorePath, false);
+  if (requireCultMeshAdvertisement && finalCultMeshWrite.writeStatus !== "ok") {
+    throw new Error(`VoidBot swarm final CultMesh surface publish failed: ${finalCultMeshWrite.writeError ?? finalCultMeshWrite.writeStatus}`);
+  }
+  finalSnapshot.cultMesh = {
+    ...finalSnapshot.cultMesh,
+    ...finalCultMeshWrite,
+  };
 
   await writeFile(snapshotPath, `${JSON.stringify(finalSnapshot, null, 2)}\n`, "utf8");
   await writeFile(dashboardPath, renderHtml(finalSnapshot), "utf8");
@@ -732,7 +740,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
       schemaId: surfaceSchemaId,
       schemaVersion: surfaceSchemaId,
       contentHash: surfaceSchemaId,
-      global: true,
+      global: false,
       name: "providerId",
       schema: { parse: parseObjectDocument("Eve surface state") },
     });
@@ -987,8 +995,7 @@ function buildCommandBoundary(snapshot) {
     deploy_authority: "none",
     health_authority: "voidbot.cultnet-rudp-stack-health",
     alarm_authority: "bifrost.operator-notification",
-    compatibility_commands: [
-      "E:\\Projects\\Odin\\scripts\\health-voidbot.cmd",
+    command_lowerings: [
       "E:\\Projects\\Odin\\scripts\\restart-voidbot.cmd",
     ],
     forbidden_authority: "Health commands, operations watchdog probes, static HTML lowerings, and Odin renderers do not own VoidBot provider state or restart truth.",
@@ -1001,12 +1008,12 @@ function buildTransportProfile(snapshot) {
     profile_id: "transport:voidbot",
     daemon_id: "voidbot",
     target_transport: "cultnet.transport.rudp.v0",
-    current_transport: "daemon-published-rudp-health + daemon-owned-cultmesh-provider-store + compatibility.local-command fallback",
-    state: "partial-rudp-health-and-provider-store-live",
+    current_transport: "daemon-published-rudp-health + daemon-owned-cultmesh-provider-store",
+    state: "rudp-health-and-provider-store-live",
     health_contract: "voidbot.cultnet-rudp-stack-health",
     publication_schema: "gamecult.eve.provider_advertisement.v1 + idunn.command_boundary.v1 + idunn.daemon_transport_profile.v1",
-    compatibility_mechanism: "E:\\Projects\\Odin\\scripts\\health-voidbot.cmd + operations-health.json watchdog probe",
-    cut_line: `VoidBot now publishes provider advertisements, command boundary, and transport profile from ${cultMeshStorePath}; the remaining compatibility path is the local operations probe, which becomes fallback evidence only.`,
+    debug_mechanism: "operations-health.json debug witness only",
+    cut_line: `VoidBot publishes provider advertisements, command boundary, and transport profile from ${cultMeshStorePath}; local probes do not own daemon health or provider transport.`,
     observed_at: snapshot.generatedAt,
   };
 }
@@ -1108,9 +1115,17 @@ function buildEveProviderState(snapshot) {
   const summary = snapshot.summary ?? {};
   const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
   const upcoming = Array.isArray(snapshot.upcomingTurns) ? snapshot.upcomingTurns : [];
+  const activeTurns = Array.isArray(snapshot.activeTurns) ? snapshot.activeTurns : [];
+  const pendingMentions = Array.isArray(snapshot.pendingMentions) ? snapshot.pendingMentions : [];
+  const recentEvents = Array.isArray(snapshot.recentEvents) ? snapshot.recentEvents : [];
   const orchestrator = snapshot.orchestrator ?? {};
   const organs = Array.isArray(orchestrator.organs) ? orchestrator.organs : [];
   const watchdog = findSnapshotOrgan(organs, "voidbot-operations-watchdog") ?? findSnapshotOrgan(organs, "watchdog");
+  const repoFaceOrgan = findSnapshotOrgan(organs, "repo-face-heartbeats");
+  const selected = selectDashboardParticipant(snapshot, participants, upcoming);
+  const selectedLeaf = findDashboardLeaf(selected);
+  const counts = selected?.faceState?.counts ?? {};
+  const memoryCount = (counts.shortTerm ?? 0) + (counts.memories ?? 0) + (counts.incubation ?? 0);
   const nodes = [
     {
       id: "voidbot-swarm",
@@ -1143,16 +1158,34 @@ function buildEveProviderState(snapshot) {
     title: "VoidBot Swarm",
     version: Math.floor(Date.parse(snapshot.generatedAt ?? new Date().toISOString()) / 1000),
     updatedAt: snapshot.generatedAt,
-    selectedNodeId: "voidbot-swarm",
-    lutPreset: "terminal",
-    nodes,
-    surface: {
-      schema: "gamecult.eve.surface.v1",
-      id: "voidbot.swarm.surface",
-      title: "VoidBot Swarm",
-      root: eveNode("voidbot-cockpit", "cockpit", {
+      selectedNodeId: "voidbot-swarm",
+      lutPreset: "terminal",
+      nodes,
+      surface: {
+        schema: "gamecult.eve.surface.v1",
+        id: "voidbot.swarm.surface",
         title: "VoidBot Swarm",
-        status: summary.state ?? "unknown",
+        styles: {
+          tokens: {
+            colorBackground: "#03070d",
+            colorBackgroundTop: "#02060b",
+            colorBackgroundMid: "#06100f",
+            colorBackgroundBottom: "#08130f",
+            colorPanel: "rgba(6, 15, 19, 0.92)",
+            colorPanelAlt: "rgba(10, 36, 35, 0.96)",
+            colorPanelBorder: "rgba(142, 223, 176, 0.22)",
+            colorPanelBorderDeep: "rgba(142, 223, 176, 0.15)",
+            colorText: "#e8f3ee",
+            colorMuted: "#8fa79d",
+            colorAccent: "#ffae58",
+            colorAccentStrong: "#8efcff",
+            colorLink: "#8efcff",
+            fontMono: "\"Cascadia Mono\", Consolas, monospace",
+          },
+        },
+        root: eveNode("voidbot-cockpit", "cockpit", {
+          title: "VoidBot Swarm",
+          status: summary.state ?? "unknown",
         layout: {
           direction: "vertical",
           overflow: "scroll",
@@ -1167,75 +1200,120 @@ function buildEveProviderState(snapshot) {
           density: "continuous",
           viewportMode: "continuous-ops",
         },
-      }, [
-        eveNode("ctb-rail", "rail", {
-          title: "CTB order",
-          layout: { direction: "horizontal", overflow: "scroll-x", height: 112, gap: 8 },
+        }, [
+          eveNode("ctb-rail", "rail", {
+            title: "CTB order",
+            layout: { direction: "horizontal", overflow: "scroll-x", height: 112, gap: 8 },
         }, upcoming.slice(0, 14).map((turn, index) =>
           eveNode(`turn-${stableId(turn.identityId)}-${index}`, "avatar", {
             text: turn.displayName,
             assetUri: turn.avatarUrl,
             status: turnState(turn),
-            detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
-          }),
-        )),
-        eveNode("voidbot-ops-row", "row", {
-          title: "Operations",
-          layout: { direction: "horizontal", gap: 8, grow: 1 },
+              detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
+            }),
+          )),
+        eveNode("voidbot-top-grid", "grid", {
+          title: "Status",
+          columns: "repeat(auto-fit, minmax(190px, 1fr))",
+        }, [
+          eveMetric("mesh", "CultMesh", snapshot.cultMesh?.writeStatus ?? "pending"),
+          eveMetric("state", "Swarm", summary.state ?? "unknown"),
+          eveMetric("agents", "Agents", summary.participantCount ?? participants.length),
+          eveMetric("ready", "Ready", summary.readyNowCount ?? 0),
+          eveMetric("active", "Active", activeTurns.length || summary.activeTurnCount || 0),
+          eveMetric("mentions", "Mentions", pendingMentions.length || summary.pendingMentionCount || 0),
+        ]),
+        eveNode("voidbot-main", "row", {
+          title: "Swarm Cockpit",
+          layout: { direction: "horizontal", gap: 8, grow: 2, scroll: "y" },
+        }, [
+          eveNode("voidbot-inspector", "pane", { title: "Selected Face" }, selected ? [
+            eveNode(`selected-avatar-${stableId(selected.identityId)}`, "avatar", {
+              text: selected.displayName,
+              assetUri: selected.avatarUrl,
+              status: selected.activeJobId ? "active" : selected.restState?.isNapping ? "napping" : selected.status,
+              detail: `${selected.identityId} / ${selected.repoName}`,
+            }),
+            eveBar("turn", "Turn", minutesText(selected.nextTurnInMinutes), turnPercent(selected.nextTurnInMinutes)),
+            eveBar("memory", "Memory", String(memoryCount), Math.min(100, memoryCount * 5)),
+            eveBar("pressure", "Pressure", String(counts.pressures ?? 0), Math.min(100, (counts.pressures ?? 0) * 14)),
+            eveBar("heat", "Heat", formatNumber(selected.heat, 2), Math.min(100, (selected.heat ?? 0) * 34)),
+            eveNode("selected-description", "text", {
+              role: "caption",
+              text: selected.description ?? "No Face description registered.",
+            }),
+            eveNode("selected-channels", "list", { title: "Channels" }, (selected.channelPermissions ?? []).slice(0, 8).map((channel, index) =>
+              eveNode(`selected-channel-${index}`, "text", {
+                role: "mono",
+                text: `${channel.label ?? "channel"} x${formatNumber(channel.speedMultiplier ?? 1, 2)} ${channel.speechThreshold ?? "threshold"}\n${channel.topic ?? "no topic"}`,
+              }),
+            )),
+          ] : [
+            eveNode("selected-missing", "text", { text: "No selected Face." }),
+          ]),
+          eveNode("voidbot-state", "pane", { title: "State Detail" }, selectedLeaf ? [
+            eveNode("state-path", "text", { role: "mono", text: selectedLeaf.path ?? "state path" }),
+            eveNode("state-preview", "text", { role: "mono", text: selectedLeaf.detail ?? selectedLeaf.preview ?? "" }),
+          ] : [
+            eveNode("state-empty", "text", { text: selected?.faceState?.error ?? "No readable Face state leaf." }),
+          ]),
+          eveNode("voidbot-watchdog-pane", "pane", { title: "Operations" }, [
+            eveNode("watchdog-summary", "text", {
+              role: "mono",
+              text: `orchestrator ${orchestrator.state ?? "unknown"}  organs ${organs.length}\nmesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${shortIso(snapshot.cultMesh?.writtenAt ?? snapshot.generatedAt)}`,
+            }),
+            eveBar("watchdog", "Watchdog", watchdog?.lastStatus ?? "missing", statusFill(watchdog?.lastStatus)),
+            eveBar("repo-face-organ", "Faces", repoFaceOrgan?.lastStatus ?? "missing", statusFill(repoFaceOrgan?.lastStatus)),
+            ...organs
+              .slice()
+              .sort((left, right) => String(left.id ?? "").localeCompare(String(right.id ?? "")))
+              .slice(0, 7)
+              .map((organ) => eveNode(`watchdog-organ-${stableId(organ.id)}`, "text", {
+                role: "caption",
+                text: `${organ.label ?? organ.id ?? "organ"}: ${organ.lastStatus ?? "unknown"} / exit ${organ.lastExitCode ?? "?"}`,
+              })),
+          ]),
+        ]),
+        eveNode("voidbot-bottom", "grid", {
+          title: "Queues",
+          columns: "repeat(auto-fit, minmax(250px, 1fr))",
         }, [
           eveNode("upcoming-faces-pane", "pane", { title: "Next Faces" }, upcoming.slice(0, 10).map((turn, index) =>
             eveNode(`upcoming-face-${index}-${stableId(turn.identityId)}`, "text", {
               role: "mono",
-              text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(10, " ")} ${turnState(turn).padEnd(8, " ")} ${turn.repoName ?? "repo"}  spd ${formatNumber(turn.effectiveSpeed, 3)} heat ${formatNumber(turn.heat, 2)}`,
+              text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(12, " ")} ${turnState(turn).padEnd(8, " ")} ${turn.repoName ?? "repo"}  spd ${formatNumber(turn.effectiveSpeed, 3)} heat ${formatNumber(turn.heat, 2)}`,
             }),
           )),
-          eveNode("voidbot-watchdog-pane", "pane", { title: "VoidBot Watchdog" }, [
-            eveNode("watchdog-summary", "text", {
+          eveNode("pending-mentions-pane", "pane", { title: "Pending Mentions" }, pendingMentions.length
+            ? pendingMentions.slice(0, 8).map((mention, index) => eveNode(`pending-mention-${index}`, "text", {
               role: "mono",
-              text: `orchestrator ${orchestrator.state ?? "unknown"}  organs ${organs.length}`,
-            }),
-            watchdog
-              ? eveNode("watchdog-status", "text", {
-                role: "strong",
-                text: `watchdog ${watchdog.lastStatus ?? "unknown"} exit ${watchdog.lastExitCode ?? 0}\nlast ${shortIso(watchdog.lastFinishedAt ?? watchdog.lastStartedAt)}`,
-              })
-              : eveNode("watchdog-missing", "text", {
-                role: "caption",
-                text: "watchdog organ not present in snapshot",
-              }),
-            ...organs
-              .slice()
-              .sort((left, right) => {
-                const leftWatchdog = String(left.id ?? "").toLowerCase() === "voidbot-operations-watchdog" ? 0 : 1;
-                const rightWatchdog = String(right.id ?? "").toLowerCase() === "voidbot-operations-watchdog" ? 0 : 1;
-                return leftWatchdog - rightWatchdog || String(left.id ?? "").localeCompare(String(right.id ?? ""));
-              })
-              .slice(0, 7)
-              .map((organ) => eveNode(`watchdog-organ-${stableId(organ.id)}`, "text", {
-                role: "caption",
-                text: `${organ.label ?? organ.id ?? "organ"}: ${organ.lastStatus ?? "unknown"}`,
-              })),
-          ]),
-        ]),
-        eveNode("voidbot-workspace", "row", {
-          title: "Swarm State",
-          layout: { direction: "horizontal", gap: 8, grow: 2 },
-        }, [
-          eveNode("voidbot-summary", "text", {
-            role: "mono",
-            text: [
-              "VoidBot Swarm",
-              `${summary.state ?? "unknown"}  next ${summary.nextDisplayName ?? "none"}`,
-              `agents ${summary.participantCount ?? participants.length}  ready ${summary.readyNowCount ?? 0}  cadence x${summary.cadenceMultiplier ?? 1}`,
-              `mesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${snapshot.generatedAt}`,
-            ].join("\n"),
-          }),
-          eveNode("voidbot-participants", "list", { title: "Faces" }, participants.slice(0, 16).map((participant) =>
-            eveNode(`participant-${stableId(participant.identityId)}`, "row", {
-              title: participant.displayName,
-              detail: `${participant.repoName} / ${participant.status} / heat ${participant.heat ?? "?"}`,
+              text: `${mention.identityId ?? "face"} / ${shortIso(mention.createdAt)}\n${mention.prompt ?? ""}`,
+            }))
+            : [eveNode("pending-mentions-empty", "text", { text: "No pending mentions." })]),
+          eveNode("recent-events-pane", "pane", { title: "Recent Events" }, recentEvents.slice(0, 9).map((event, index) =>
+            eveNode(`recent-event-${index}`, "text", {
+              role: "mono",
+              text: `${event.type ?? "event"} ${event.identityId ?? ""} ${shortIso(event.observedAt)}\n${event.reason ?? event.statusPath ?? ""}`,
             }),
           )),
+          eveNode("voidbot-controls", "pane", { title: "Controls" }, [
+            eveNode("swarm-pause-status", "text", {
+              role: "mono",
+              text: `brake ${summary.paused ? "paused" : "unpaused"}\ncadence x${formatNumber(summary.cadenceMultiplier ?? 1, 2)}\nlatest request ${(snapshot.controls?.manualTurnRequests ?? [])[0]?.identityId ?? "none"}`,
+            }),
+            eveNode("swarm-command-surface", "control.button", {
+              label: summary.paused ? "Request unpause intent" : "Request pause intent",
+              command: summary.paused ? "swarm.unpause.intent" : "swarm.pause.intent",
+              transport: "cultmesh-binding",
+              providerId,
+            }),
+            eveNode("swarm-manual-turn", "control.button", {
+              label: `Request ${summary.nextDisplayName ?? "next Face"}`,
+              command: "swarm.manual_turn.intent",
+              transport: "cultmesh-binding",
+              identityId: summary.nextIdentityId ?? null,
+            }),
+          ]),
         ]),
       ]),
       assets: participants
@@ -1248,6 +1326,67 @@ function buildEveProviderState(snapshot) {
         })),
     },
   };
+}
+
+function eveMetric(id, label, value) {
+  return eveNode(`metric-${stableId(id)}`, "metric", {
+    label,
+    value: String(value ?? "unknown"),
+  });
+}
+
+function eveBar(id, label, value, percent) {
+  return eveNode(`bar-${stableId(id)}`, "bar", {
+    label,
+    value: String(value ?? "unknown"),
+    percent: clampPercent(percent),
+  });
+}
+
+function selectDashboardParticipant(snapshot, participants, upcoming) {
+  const preferredId = snapshot?.summary?.nextIdentityId ?? upcoming[0]?.identityId ?? participants[0]?.identityId;
+  return participants.find((participant) => participant.identityId === preferredId) ?? participants[0] ?? null;
+}
+
+function findDashboardLeaf(participant) {
+  const leaves = flattenDashboardLeaves(participant?.faceState?.tree ?? []);
+  if (!leaves.length) return null;
+  return leaves.find((leaf) =>
+    leaf.label !== "empty" && (
+      String(leaf.path ?? "").startsWith("thoughtMemory.shortTerm") ||
+      String(leaf.path ?? "").startsWith("thoughtMemory.memories") ||
+      String(leaf.path ?? "").startsWith("thoughtMemory.incubation") ||
+      String(leaf.path ?? "").startsWith("agencyPressure.pressures")
+    )) ?? leaves[0];
+}
+
+function flattenDashboardLeaves(nodes) {
+  const output = [];
+  const visit = (node) => {
+    if (!node) return;
+    if (node.kind === "leaf") output.push(node);
+    for (const child of node.children ?? []) visit(child);
+  };
+  for (const node of nodes ?? []) visit(node);
+  return output;
+}
+
+function turnPercent(value) {
+  if (typeof value !== "number") return 0;
+  return value <= 0 ? 100 : clampPercent(100 - value * 5);
+}
+
+function statusFill(value) {
+  const state = String(value || "missing").toLowerCase();
+  if (state === "ok" || state === "ready" || state === "skipped_disabled") return 100;
+  if (state === "running") return 82;
+  if (state === "warning" || state === "paused") return 46;
+  return 12;
+}
+
+function clampPercent(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : 0;
 }
 
 function eveNode(id, kind, props = {}, children = []) {
