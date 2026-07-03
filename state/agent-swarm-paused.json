@@ -1,5 +1,5 @@
 {
   "paused": true,
-  "reason": "Paused by Codex on 2026-06-14 after repo Faces still routed source-channel context through channel: current_room into Aquarium. Keep paused until current_room is no longer accepted as explicit context when multiple active conversation contexts are visible.",
-  "updatedAt": "2026-06-14T18:55:00.0000000Z"
+  "reason": "Re-paused by Codex on 2026-07-03 after MiMo quality gates passed but the live GameCult Local Orchestrator repeatedly reached repo-face-heartbeats and then failed to advance its status/lock summary. The model/provider path is good enough for more tests; the live scheduler handoff needs diagnosis before unattended turns.",
+  "updatedAt": "2026-07-03T01:31:12.1534400+01:00"
 }
