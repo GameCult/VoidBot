@@ -685,10 +685,10 @@ function renderValueDetail(value) {
 function projectPendingMention(mention) {
   return {
     identityId: stringOrNull(mention?.identityId),
-    sourceChannelId: stringOrNull(mention?.sourceChannelId),
-    sourceMessageId: stringOrNull(mention?.sourceMessageId),
-    createdAt: stringOrNull(mention?.createdAt),
-    prompt: truncate(String(mention?.prompt ?? mention?.content ?? ""), 220),
+    sourceChannelId: stringOrNull(mention?.sourceChannelId ?? mention?.channelId),
+    sourceMessageId: stringOrNull(mention?.sourceMessageId ?? mention?.messageId),
+    createdAt: stringOrNull(mention?.createdAt ?? mention?.queuedAt),
+    prompt: truncate(String(mention?.prompt ?? mention?.visiblePrompt ?? mention?.content ?? ""), 220),
   };
 }
 

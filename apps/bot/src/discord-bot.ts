@@ -335,7 +335,7 @@ export async function startBot(): Promise<void> {
 
     const isDirectMessage = !message.inGuild();
 
-    await ingestIfIndexed(
+    await safelyIngestIfIndexed("message-create",
       message,
       config.channelIndexing,
       ragPipeline,
@@ -502,7 +502,7 @@ export async function startBot(): Promise<void> {
       return;
     }
 
-    await ingestIfIndexed(
+    await safelyIngestIfIndexed("message-update",
       materializedMessage,
       config.channelIndexing,
       ragPipeline,
@@ -711,6 +711,17 @@ export async function startBot(): Promise<void> {
   });
 
   await client.login(config.botToken);
+}
+
+async function safelyIngestIfIndexed(
+  context: string,
+  ...args: Parameters<typeof ingestIfIndexed>
+): Promise<void> {
+  try {
+    await ingestIfIndexed(...args);
+  } catch (error) {
+    console.error(`[${context}] Discord archive ingest failed; continuing without indexing.`, error);
+  }
 }
 
 async function resolveRepliedRepoIdentity(
