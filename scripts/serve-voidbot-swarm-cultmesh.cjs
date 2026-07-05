@@ -1,0 +1,227 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { createRequire } = require("module");
+
+const repoRoot = path.resolve(__dirname, "..");
+const defaultStorePath = path.join(repoRoot, ".voidbot", "status", "cultmesh", "voidbot-swarm-state.cc");
+const defaultBind = "127.0.0.1:17873";
+const defaultOdinCultMeshUri = "cultmesh://odin/rendezvous/provider-catalog";
+const defaultOdinRudpEndpoint = "rudp://127.0.0.1:17871";
+const connectionId = 0x43554c54;
+const odinConnectionId = 0x0d1d0002;
+
+const args = parseArgs(process.argv.slice(2));
+const storePath = path.resolve(args.store || process.env.VOIDBOT_SWARM_CULTMESH_STORE || defaultStorePath);
+const bind = parseBind(args.bind || process.env.VOIDBOT_SWARM_CULTMESH_BIND || defaultBind);
+const odinCultMeshUri = args.odinCultMeshUri || args["odin-cultmesh-uri"] || process.env.VOIDBOT_ODIN_CULTMESH_URI || process.env.ODIN_CULTMESH_URI || defaultOdinCultMeshUri;
+const odinRudpEndpoint = args.odinRudpEndpoint || args["odin-rudp-endpoint"] || process.env.VOIDBOT_ODIN_RUDP || process.env.CULTMESH_URI_ODIN_RUDP || defaultOdinRudpEndpoint;
+const { CultMesh, CultNetDocumentRegistry, defineCultNetDocumentBinding, defineDocumentType } = loadCultRuntime();
+const documents = defineDocuments(defineDocumentType);
+const documentDefinitions = Object.values(documents);
+const bindings = {
+  provider: defineCultNetDocumentBinding({ definition: documents.provider }),
+  surface: defineCultNetDocumentBinding({ definition: documents.surface }),
+};
+const documentRegistry = new CultNetDocumentRegistry(
+  documentDefinitions.map((definition) => defineCultNetDocumentBinding({ definition })),
+);
+let server = null;
+let announceTimer = null;
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  process.exitCode = 1;
+});
+
+async function main() {
+  server = CultMesh.createRudpDocumentServer("voidbot-swarm-cultmesh", connectionId, {
+    bindHost: bind.host,
+    bindPort: bind.port,
+    documents: documentRegistry,
+    getCache: async () => {
+      if (!fs.existsSync(storePath)) {
+        throw new Error(`VoidBot swarm CultMesh store is missing at ${storePath}`);
+      }
+      const node = await CultMesh.createNode(storePath, {
+        documents: documentDefinitions,
+      });
+      return node.cache;
+    },
+    onError: (error) => {
+      console.error(`VoidBot swarm CultMesh/RUDP server error: ${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  await server.start();
+  console.log(`VoidBot swarm CultMesh/RUDP serving ${storePath} at rudp://${bind.host}:${bind.port}`);
+  announceToOdin().catch((error) => {
+    console.error(`VoidBot swarm Odin announcement failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  announceTimer = setInterval(() => {
+    announceToOdin().catch((error) => {
+      console.error(`VoidBot swarm Odin announcement failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }, 30_000);
+  announceTimer.unref?.();
+
+  const shutdown = () => {
+    try {
+      if (announceTimer) clearInterval(announceTimer);
+      server?.close?.();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}
+
+async function announceToOdin() {
+  const node = await CultMesh.createNode(storePath, {
+    documents: documentDefinitions,
+  });
+  const provider = node.get(documents.provider, "voidbot.swarm");
+  const surface = node.get(documents.surface, "voidbot.swarm");
+  if (!provider || !surface) {
+    throw new Error("VoidBot swarm store must contain provider and surface documents before announcing to Odin.");
+  }
+  const options = {
+    connectTimeoutMs: 2_000,
+    flushTimeoutMs: 150,
+    sourceRuntimeId: "voidbot-swarm-cultmesh",
+    sourceRole: "daemon-provider",
+    tags: ["voidbot", "eve", "cultmesh-rudp"],
+    resolveCultMeshRudpEndpoint: (uri) => String(uri || "").startsWith("cultmesh://odin/")
+      ? odinRudpEndpoint
+      : undefined,
+  };
+  await CultMesh.publishRudpDocumentOnce(
+    "voidbot-swarm-cultmesh",
+    odinConnectionId,
+    odinRudpEndpoint,
+    bindings.provider,
+    "voidbot.swarm",
+    provider,
+    options,
+  );
+  await CultMesh.publishRudpDocumentOnce(
+    "voidbot-swarm-cultmesh",
+    odinConnectionId,
+    odinRudpEndpoint,
+    bindings.surface,
+    "voidbot.swarm",
+    surface,
+    options,
+  );
+  console.log(`VoidBot swarm announced provider and surface documents to ${odinCultMeshUri}`);
+}
+
+function defineDocuments(defineDocumentType) {
+  const objectSchema = (label) => ({
+    parse(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`${label} must be an object.`);
+      }
+      return value;
+    },
+  });
+  return {
+    snapshot: defineDocumentType({
+      type: "voidbot.swarm_state_snapshot",
+      schemaName: "voidbot.swarm_state_snapshot",
+      schemaId: "voidbot.swarm_state_snapshot.v1",
+      schemaVersion: "voidbot.swarm_state_snapshot.v1",
+      global: true,
+      schema: objectSchema("VoidBot swarm snapshot"),
+    }),
+    provider: defineDocumentType({
+      type: "gamecult.eve.provider_advertisement",
+      schemaName: "gamecult.eve.provider_advertisement",
+      schemaId: "gamecult.eve.provider_advertisement.v1",
+      schemaVersion: "gamecult.eve.provider_advertisement.v1",
+      global: false,
+      name: (value) => value?.providerId || value?.provider?.id || "provider",
+      schema: objectSchema("Eve provider advertisement"),
+    }),
+    surface: defineDocumentType({
+      type: "gamecult.eve.surface_state",
+      schemaName: "gamecult.eve.surface_state",
+      schemaId: "gamecult.eve.surface_state.v1",
+      schemaVersion: "gamecult.eve.surface_state.v1",
+      global: false,
+      name: (value) => value?.providerId || value?.provider_id || "surface",
+      schema: objectSchema("Eve surface state"),
+    }),
+    binding: defineDocumentType({
+      type: "gamecult.eve.interface_binding",
+      schemaName: "gamecult.eve.interface_binding",
+      schemaId: "gamecult.eve.interface_binding.v1",
+      schemaVersion: "gamecult.eve.interface_binding.v1",
+      global: false,
+      name: (value) => value?.bindingId || value?.providerId || "interface",
+      schema: objectSchema("Eve interface binding"),
+    }),
+    providerCatalog: defineDocumentType({
+      type: "voidbot.provider_advertisement_catalog",
+      schemaName: "voidbot.provider_advertisement_catalog",
+      schemaId: "voidbot.provider_advertisement_catalog.v0",
+      schemaVersion: "voidbot.provider_advertisement_catalog.v0",
+      global: true,
+      schema: objectSchema("VoidBot provider advertisement catalog"),
+    }),
+    transportProfile: defineDocumentType({
+      type: "idunn.daemon_transport_profile",
+      schemaName: "idunn.daemon_transport_profile",
+      schemaId: "idunn.daemon_transport_profile.v1",
+      schemaVersion: "idunn.daemon_transport_profile.v1",
+      global: false,
+      name: (value) => value?.profile_id || value?.daemon_id || "voidbot",
+      schema: objectSchema("Idunn daemon transport profile"),
+    }),
+    commandBoundary: defineDocumentType({
+      type: "idunn.command_boundary",
+      schemaName: "idunn.command_boundary",
+      schemaId: "idunn.command_boundary.v1",
+      schemaVersion: "idunn.command_boundary.v1",
+      global: false,
+      name: (value) => value?.boundary_id || value?.daemon_id || "voidbot",
+      schema: objectSchema("Idunn command boundary"),
+    }),
+  };
+}
+
+function loadCultRuntime() {
+  const packageJson = path.resolve(repoRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json");
+  const requireCult = createRequire(packageJson);
+  const { CultMesh } = requireCult("./dist/index.js");
+  const { CultNetDocumentRegistry, defineCultNetDocumentBinding } = createRequire(path.resolve(repoRoot, "..", "CultLib", "packages", "cultnet-ts", "package.json"))("./dist/index.js");
+  const { defineDocumentType } = createRequire(path.resolve(repoRoot, "..", "CultLib", "packages", "cultcache-ts", "package.json"))("./dist/index.js");
+  return { CultMesh, CultNetDocumentRegistry, defineCultNetDocumentBinding, defineDocumentType };
+}
+
+function parseArgs(values) {
+  const parsed = {};
+  for (let index = 0; index < values.length; index += 1) {
+    const arg = values[index];
+    if (arg === "--store") parsed.store = values[++index];
+    else if (arg === "--bind") parsed.bind = values[++index];
+    else if (arg === "--odin-cultmesh-uri") parsed.odinCultMeshUri = values[++index];
+    else if (arg === "--odin-rudp-endpoint") parsed.odinRudpEndpoint = values[++index];
+  }
+  return parsed;
+}
+
+function parseBind(value) {
+  const text = String(value || "").trim();
+  const index = text.lastIndexOf(":");
+  if (index <= 0) throw new Error(`Bind address must be host:port, got ${value}`);
+  const host = text.slice(0, index);
+  const port = Number(text.slice(index + 1));
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Invalid port in bind address ${value}`);
+  }
+  return { host, port };
+}

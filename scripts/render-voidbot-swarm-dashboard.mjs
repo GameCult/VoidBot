@@ -31,6 +31,13 @@ const commandBoundarySchemaId = "idunn.command_boundary.v1";
 const args = parseArgs(process.argv.slice(2));
 
 const env = await readDotEnv(resolve(repoRoot, ".env"));
+const swarmCultMeshRudpEndpoint = String(
+  args.rudpEndpoint ||
+  args["rudp-endpoint"] ||
+  process.env.VOIDBOT_SWARM_CULTMESH_RUDP ||
+  env.VOIDBOT_SWARM_CULTMESH_RUDP ||
+  "rudp://127.0.0.1:17873",
+).trim();
 const storageRoot = resolveConfigPath(env.STORAGE_ROOT, defaultStorageRoot);
 const statusDir = resolve(storageRoot, "status");
 const heartbeatStatePath = resolveConfigPath(
@@ -931,6 +938,9 @@ function buildLiveProviderAdvertisements(catalog, snapshot) {
         ...provider,
         status: snapshot.summary?.state ?? provider.status ?? "unknown",
         updatedAt: snapshot.generatedAt,
+        endpoints: providerEndpoints(),
+        routes: providerRoutes(),
+        cultMeshAddress: primaryCultMeshEndpoint(),
         witnesses: Array.isArray(provider.witnesses)
           ? provider.witnesses.map((witness) =>
               witness.id === "voidbot.swarm_state_snapshot"
@@ -948,9 +958,7 @@ function buildLiveProviderAdvertisements(catalog, snapshot) {
 }
 
 function buildProviderAdvertisement(snapshot) {
-  const endpoints = [
-    primaryCultMeshEndpoint(),
-  ];
+  const endpoints = providerEndpoints();
   return {
     schemaVersion: providerAdvertisementSchemaId,
     providerId,
@@ -961,6 +969,8 @@ function buildProviderAdvertisement(snapshot) {
     status: snapshot.summary?.state ?? "unknown",
     updatedAt: snapshot.generatedAt,
     endpoints,
+    routes: providerRoutes(),
+    cultMeshAddress: primaryCultMeshEndpoint(),
     provider: providerManifest(),
     controlSurface: {
       primary: primaryCultMeshEndpoint(),
@@ -1008,12 +1018,13 @@ function buildTransportProfile(snapshot) {
     profile_id: "transport:voidbot",
     daemon_id: "voidbot",
     target_transport: "cultnet.transport.rudp.v0",
-    current_transport: "daemon-published-rudp-health + daemon-owned-cultmesh-provider-store",
-    state: "rudp-health-and-provider-store-live",
+    current_transport: "daemon-published-rudp-health + daemon-owned-cultmesh-rudp-provider",
+    state: "rudp-health-and-provider-cultmesh-live",
     health_contract: "voidbot.cultnet-rudp-stack-health",
     publication_schema: "gamecult.eve.provider_advertisement.v1 + idunn.command_boundary.v1 + idunn.daemon_transport_profile.v1",
     debug_mechanism: "operations-health.json debug witness only",
-    cut_line: `VoidBot publishes provider advertisements, command boundary, and transport profile from ${cultMeshStorePath}; local probes do not own daemon health or provider transport.`,
+    provider_document_route: swarmCultMeshRudpEndpoint,
+    cut_line: `VoidBot publishes provider advertisements, command boundary, transport profile, and Eve surface through ${primaryCultMeshEndpoint()} with direct CultMesh/RUDP document route ${swarmCultMeshRudpEndpoint}; local probes do not own daemon health or provider transport.`,
     observed_at: snapshot.generatedAt,
   };
 }
@@ -2489,6 +2500,29 @@ function redactSnapshot(snapshot) {
 
 function primaryCultMeshEndpoint() {
   return `cultmesh://${verseId}/eve/providers/${providerId}`;
+}
+
+function providerEndpoints() {
+  return [
+    {
+      id: "voidbot.swarm.cultmesh",
+      transport: "cultmesh",
+      address: primaryCultMeshEndpoint(),
+      role: "provider-canonical",
+      schemaId: providerAdvertisementSchemaId,
+    },
+    {
+      id: "voidbot.swarm.rudp.snapshot",
+      transport: "cultmesh-rudp",
+      address: swarmCultMeshRudpEndpoint,
+      role: "provider-cultmesh-rudp snapshot",
+      schemaId: surfaceSchemaId,
+    },
+  ];
+}
+
+function providerRoutes() {
+  return providerEndpoints();
 }
 
 async function readJsonFile(path) {
