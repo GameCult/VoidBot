@@ -143,9 +143,9 @@ Do not let Heimdall become receipt owner. Heimdall owns grants/capabilities; Bif
 
 Do not put canonical receipt history only in `.bifrost/provider-store.cc`. That store already mixes advertisements and command docs.
 
-## 2. Hermodr / Eve / Sai Live Provider Surface
+## 2. Eve / Sai VN Ownership And Live Surface
 
-Owner agent: Sai first, then Odin/Hermodr and Eve as consumers/lowerers.
+Owner agent: Eve if Ink/VN becomes platform functionality. Sai remains the static-site capability library unless that decision is explicitly reversed.
 
 Grounded repos:
 
@@ -169,18 +169,21 @@ Grounded source:
 
 ### Current Mechanism
 
-The contract is mostly ready. Odin owns discovery/schema/provider catalog. Hermodr already exposes browser lowering over Odin/CultMesh via `/hermodr/verse/catalog`, `/hermodr/surface/:providerId`, `/hermodr/document/:providerId`, and `/hermodr/commands/eve`. Eve already tries Hermodr live providers before local fixture providers. Sai already has a useful projection module in `src/eve.js` that emits `gamecult.eve.surface.v1` with `vn.stage`, `story.continue`, `story.choose`, `story.jump`, and `style.patch`.
+The contract is mostly ready, but the ownership pressure was previously described with the wrong body. Odin owns discovery/schema/provider catalog. Hermodr already exposes browser lowering over Odin/CultMesh via `/hermodr/verse/catalog`, `/hermodr/surface/:providerId`, `/hermodr/document/:providerId`, and `/hermodr/commands/eve`. Eve already tries Hermodr live providers before local fixture providers. Sai already has a useful projection module in `src/eve.js` that emits `gamecult.eve.surface.v1` with `vn.stage`, `story.continue`, `story.choose`, `story.jump`, and `style.patch`.
 
-The missing organ is Sai-owned provider runtime/state. `src/sai.js` owns browser-local Ink playback and choice/continue behavior, but it is not a daemon, not shared state, and not a receipt authority. The current Sai fixture under Eve is static surface-state, not provider truth.
+Sai's README is explicit: Sai owns static-site Ink loading, visual manifest interpretation, DOM rendering, static-site auto-init, and Eve projection. Sai explicitly does not own Eve/CultMesh transport or provider command acceptance. That means the missing organ is not "Sai daemon." The pressure comes from Eve's integration surface: Sai's `eve.js` exports `story.*` command envelopes and Eve's surface contract has already absorbed `vn.stage`, embedded Norn/TeX, scene placement, synchronized style, and story commands under "Sai VN Requirements."
+
+That is the split brain. Eve wants the VN/Ink affordance shape, but the live runtime owner is undecided. If Eve wants Ink functionality as a platform feature, Eve becomes the owner of portable story runtime semantics and command effects. Sai remains a web/static-site implementation and authoring-compatible projection path.
 
 ### Authority Map
 
 Owner:
 
-- Sai provider daemon owns story session state, accepted command effects, surface version, style tokens, and receipts.
+- If Ink/VN is platform functionality: Eve owns portable story session semantics, accepted `story.*` command effects, surface version rules, style token protocol, and command receipts.
+- If Ink/VN remains site-specific: the static-site/product provider owns story session state and wraps Sai as a library. Sai still does not become a daemon.
 - Odin owns discovery and aggregation only.
 - Hermodr owns browser lowering and command publication only.
-- Eve owns rendering semantics and command envelope shape only.
+- Sai owns browser/static-site Ink playback, visual manifest interpretation, and projection helpers.
 
 Inputs: compiled Ink JSON, Sai visual manifest, `gamecult.eve.command.v1` docs, optional style patches, CultMesh/Odin RUDP snapshot requests.
 
@@ -193,6 +196,8 @@ Invariants:
 - Hermodr cannot invent provider catalog entries;
 - Odin cannot synthesize Sai scene truth from snapshots;
 - Hermodr returning `202` is not command proof; provider receipt plus surface version change is proof.
+- Sai is not promoted into a daemon merely because Eve consumes Sai-shaped VN surfaces.
+- If Eve owns Ink/VN, there is one Eve-owned runtime contract; Sai becomes one implementation/projection, not a competing owner.
 
 Forbidden writers:
 
@@ -203,36 +208,58 @@ Forbidden writers:
 
 ### Implementation Plan
 
-1. Add a Sai provider daemon.
-   Likely file: `E:/Projects/Sai/src/provider-daemon.cjs`.
-   It loads `examples/static-site/story.ink.json` and `visual-manifest.json` for the first proof, uses `src/eve.js#createVisualNovelSurface`, and owns a session state. Start with the smallest coherent `.cc` or in-memory-plus-store path; do not make DOM playback the state owner.
+1. Decide ownership before implementation.
+   The coherent options are:
+   - Eve-native Ink/VN: Eve owns portable story runtime semantics and `story.*` command receipts. Sai is a static-site/web implementation and projection helper.
+   - Site-owned provider: the GameCult static site or a product-specific provider owns live session state and wraps Sai as a library.
 
-2. Publish provider-owned CultMesh documents.
-   Provider id candidate: `sai.visual_novel.survivor` or `gamecult.home.vn`.
-   Store candidate: `E:/Projects/Sai/.voidbot/status/cultmesh/sai-vn-provider.cc` or `E:/Projects/Sai/state/sai-vn-provider.cc`.
-   Advertisement must include schemas, witnesses, surface document, command route, command schemas, receipt schema, and receipt key pattern.
+   Do not build a Sai daemon as the default path. That contradicts Sai's own boundary.
 
-3. Let Odin discover Sai through existing paths.
-   Prefer live RUDP provider publication into Odin. For the first smoke only, an explicit `cultmesh-store:file://...` import is acceptable if it is marked smoke scaffolding. Do not add raw path discovery.
+2. If Eve owns Ink/VN, move the runtime contract into Eve.
+   Add an Eve story runtime contract that names the portable state and command model independently of Sai:
+   - `gamecult.eve.story_session.v1`
+   - `gamecult.eve.story_command.v1` or the existing `gamecult.eve.command.v1` with typed `story.*` operation descriptors
+   - `gamecult.eve.story_command_receipt.v1`
+   - `vn.stage` and related component semantics as Eve-owned primitives
 
-4. Extend Hermodr only if receipt visibility is missing.
+3. Keep Sai as an adapter/projection package.
+   Sai can expose reusable helpers for:
+   - loading compiled Ink in browser/static sites;
+   - interpreting visual manifests;
+   - projecting current story state into Eve `vn.stage`;
+   - constructing legacy-compatible `story.*` command envelopes.
+
+   Sai should not accept shared provider commands or own receipts unless the repo charter changes.
+
+4. Publish live provider-owned CultMesh documents from the actual owner.
+   If Eve owns the runtime, publish an Eve-owned dev provider. If the static site owns the runtime, publish a site-owned provider such as `gamecult.home.vn`. Advertisement must include schemas, witnesses, surface document, command route, command schemas, receipt schema, and receipt key pattern.
+
+5. Let Odin discover the provider through existing paths.
+   Prefer live RUDP provider publication into Odin. For the first smoke only, an explicit `cultmesh-store:file://...` import is acceptable if marked smoke scaffolding. Do not add raw path discovery.
+
+6. Extend Hermodr only if receipt visibility is missing.
    Existing `POST /hermodr/commands/eve` can publish command docs. Add a narrow receipt read/poll route only if needed. Hermodr must not apply the command or cache final state.
 
-5. Apply commands in Sai.
-   On `story.choose { index: 0 }`, Sai provider calls Ink `ChooseChoiceIndex(0)`, advances visible line, updates path/speaker/line/choices/variables, increments `version`, republishes `gamecult.eve.surface_state.v1`, and writes a receipt with `commandId`, `previousVersion`, `nextVersion`, status, timestamp, effect summary, and denial reason if any.
+7. Apply commands in the runtime owner.
+   On `story.choose { index: 0 }`, the owner advances story state, updates path/speaker/line/choices/variables, increments `version`, republishes `gamecult.eve.surface_state.v1`, and writes a receipt with `commandId`, `previousVersion`, `nextVersion`, status, timestamp, effect summary, and denial reason if any.
 
-6. Prove through browser.
-   Start Sai provider, Odin, and Hermodr. Open Eve browser through Hermodr, confirm Sai appears in `/hermodr/verse/catalog`, click a choice, then verify provider receipt and newer surface state through `/hermodr/surface/<providerId>`.
+8. Prove through browser.
+   Start the owning provider, Odin, and Hermodr. Open Eve browser through Hermodr, confirm provider appears in `/hermodr/verse/catalog`, click a choice, then verify provider receipt and newer surface state through `/hermodr/surface/<providerId>`.
 
 ### Likely Files To Touch
 
 Sai:
 
-- `E:/Projects/Sai/src/provider-daemon.cjs`
 - `E:/Projects/Sai/src/eve.js`
 - `E:/Projects/Sai/src/sai.js`
-- `E:/Projects/Sai/scripts/smoke-live-provider.mjs`
 - `E:/Projects/Sai/package.json`
+
+Eve, if Eve owns Ink/VN:
+
+- `E:/Projects/Eve/docs/surface-contract-v1.md`
+- `E:/Projects/Eve/packages/eve-browser-lowering/src/index.ts`
+- new Eve story runtime/contract files, exact path to be chosen after inspecting current package layout
+- new Eve story runtime smoke/parity fixture
 
 Odin:
 
@@ -246,7 +273,7 @@ Eve:
 
 ### Tests And Smokes
 
-Sai smoke:
+Runtime-owner smoke:
 
 - initial surface version N has first line and one choice;
 - publish `story.choose`;
@@ -269,12 +296,12 @@ Eve smoke:
 
 The task is not done until:
 
-1. Sai publishes live advertisement and surface into CultMesh.
+1. The actual owner, Eve or the site/product provider, publishes live advertisement and surface into CultMesh.
 2. Odin discovers it without raw path scraping.
 3. Hermodr lists it from `/hermodr/verse/catalog`.
 4. Eve browser renders it through `/hermodr/surface/<providerId>`.
-5. `story.choose` changes Sai-owned scene state.
-6. Sai writes provider-owned receipt.
+5. `story.choose` changes owner-held story state.
+6. The owner writes provider-owned receipt.
 7. Reloading the browser shows provider state, not repaired local UI state.
 
 ## 3. Heimdall Deadbolt / Revocation
