@@ -149,9 +149,11 @@ async function buildSnapshot() {
   const recentEvents = Array.isArray(heartbeat.value?.history)
     ? heartbeat.value.history.slice(-24).reverse().map(projectHistoryEvent)
     : [];
+  const recentMentionActivity = buildRecentMentionActivity(heartbeat.value?.history, pendingMentions);
   const controls = projectControls(heartbeat.value?.controls);
   const upcomingTurns = buildUpcomingTurns(participantSnapshots);
   const lastShuffle = findLastShuffleEvent(recentEvents);
+  const lastMentionActivity = recentMentionActivity[0] ?? null;
 
   return {
     schemaVersion: snapshotSchemaId,
@@ -188,6 +190,8 @@ async function buildSnapshot() {
       participantCount: participantSnapshots.length,
       activeTurnCount: activeTurns.length,
       pendingMentionCount: pendingMentions.length,
+      recentMentionActivityCount: recentMentionActivity.length,
+      lastMentionActivity,
       readyNowCount: readyNow.length,
       nextIdentityId: nextParticipant?.identityId ?? null,
       nextDisplayName: nextParticipant?.displayName ?? null,
@@ -204,6 +208,7 @@ async function buildSnapshot() {
     participants: participantSnapshots,
     activeTurns,
     pendingMentions: pendingMentions.map(projectPendingMention),
+    recentMentionActivity,
     orchestrator: {
       state: deriveOrchestratorState(organs),
       organs,
@@ -371,13 +376,91 @@ function projectHistoryEvent(event) {
   return {
     type: String(event?.type ?? "event"),
     identityId: stringOrNull(event?.identityId),
-    observedAt: stringOrNull(event?.observedAt ?? event?.queuedAt ?? event?.appliedAt),
+    observedAt: stringOrNull(event?.observedAt ?? event?.queuedAt ?? event?.consumedAt ?? event?.appliedAt),
     activeJobId: stringOrNull(event?.activeJobId),
     statusPath: stringOrNull(event?.statusPath),
     reason: stringOrNull(event?.reason),
     pendingMentionCount: numberOrNull(event?.pendingMentionCount),
+    mentionCount: numberOrNull(event?.mentionCount),
     nextTurnAt: numberOrNull(event?.nextTurnAt),
     recoveryMinutes: numberOrNull(event?.recoveryMinutes),
+  };
+}
+
+function buildRecentMentionActivity(history, pendingMentions) {
+  const activity = [];
+  for (const mention of pendingMentions ?? []) {
+    const projected = projectPendingMention(mention);
+    activity.push({
+      kind: "pending",
+      identityId: projected.identityId,
+      sourceChannelId: projected.sourceChannelId,
+      sourceMessageId: projected.sourceMessageId,
+      observedAt: projected.createdAt,
+      mentionCount: 1,
+      prompt: projected.prompt,
+    });
+  }
+
+  const events = Array.isArray(history) ? history : [];
+  for (let index = events.length - 1; index >= 0 && activity.length < 16; index -= 1) {
+    const event = events[index];
+    const type = String(event?.type ?? "");
+    if (type === "pending_mentions_consumed") {
+      const mentions = Array.isArray(event?.mentions) ? event.mentions.map(projectMentionEventEntry) : [];
+      activity.push({
+        kind: "consumed",
+        identityId: stringOrNull(event?.identityId),
+        observedAt: stringOrNull(event?.consumedAt ?? event?.queuedAt),
+        activeJobId: stringOrNull(event?.activeJobId),
+        requestMessageId: stringOrNull(event?.requestMessageId),
+        mentionCount: numberOrNull(event?.mentionCount) ?? mentions.length,
+        sourceChannelId: mentions[0]?.sourceChannelId ?? null,
+        sourceMessageId: mentions[0]?.sourceMessageId ?? null,
+        prompt: mentions[0]?.prompt ?? "",
+        mentions,
+      });
+    } else if (type === "pending_mention_queued" || type === "pending_mention_duplicate") {
+      activity.push({
+        kind: type === "pending_mention_duplicate" ? "duplicate_intake" : "intake",
+        identityId: stringOrNull(event?.identityId),
+        sourceChannelId: stringOrNull(event?.sourceChannelId ?? event?.channelId),
+        sourceMessageId: stringOrNull(event?.sourceMessageId ?? event?.messageId),
+        observedAt: stringOrNull(event?.queuedAt ?? event?.observedAt),
+        mentionCount: 1,
+        prompt: "",
+      });
+    } else if (
+      type === "queued" &&
+      typeof event?.pendingMentionCount === "number" &&
+      event.pendingMentionCount > 0
+    ) {
+      activity.push({
+        kind: "handled_job",
+        identityId: stringOrNull(event?.identityId),
+        observedAt: stringOrNull(event?.queuedAt ?? event?.observedAt),
+        activeJobId: stringOrNull(event?.activeJobId),
+        requestMessageId: stringOrNull(event?.requestMessageId),
+        mentionCount: numberOrNull(event?.pendingMentionCount),
+        prompt: "",
+      });
+    }
+  }
+
+  return activity
+    .sort((left, right) => timestampMs(right.observedAt) - timestampMs(left.observedAt))
+    .slice(0, 12);
+}
+
+function projectMentionEventEntry(mention) {
+  return {
+    id: stringOrNull(mention?.id),
+    sourceChannelId: stringOrNull(mention?.sourceChannelId ?? mention?.channelId),
+    sourceMessageId: stringOrNull(mention?.sourceMessageId ?? mention?.messageId),
+    authorId: stringOrNull(mention?.authorId),
+    authorName: stringOrNull(mention?.authorName),
+    createdAt: stringOrNull(mention?.createdAt ?? mention?.queuedAt),
+    prompt: truncate(String(mention?.prompt ?? mention?.visiblePrompt ?? mention?.content ?? ""), 220),
   };
 }
 
@@ -1069,6 +1152,8 @@ function buildEveInterfaceBinding(snapshot, eveState) {
       participantCount: snapshot.summary?.participantCount ?? 0,
       activeTurnCount: snapshot.summary?.activeTurnCount ?? 0,
       pendingMentionCount: snapshot.summary?.pendingMentionCount ?? 0,
+      recentMentionActivityCount: snapshot.summary?.recentMentionActivityCount ?? 0,
+      lastMentionActivity: snapshot.summary?.lastMentionActivity ?? null,
       nextIdentityId: snapshot.summary?.nextIdentityId ?? null,
       nextDisplayName: snapshot.summary?.nextDisplayName ?? null,
       lastTickAt: snapshot.summary?.lastTickAt ?? null,
@@ -1139,6 +1224,7 @@ function buildEveProviderState(snapshot) {
   const upcoming = Array.isArray(snapshot.upcomingTurns) ? snapshot.upcomingTurns : [];
   const activeTurns = Array.isArray(snapshot.activeTurns) ? snapshot.activeTurns : [];
   const pendingMentions = Array.isArray(snapshot.pendingMentions) ? snapshot.pendingMentions : [];
+  const recentMentionActivity = Array.isArray(snapshot.recentMentionActivity) ? snapshot.recentMentionActivity : [];
   const recentEvents = Array.isArray(snapshot.recentEvents) ? snapshot.recentEvents : [];
   const orchestrator = snapshot.orchestrator ?? {};
   const organs = Array.isArray(orchestrator.organs) ? orchestrator.organs : [];
@@ -1168,6 +1254,7 @@ function buildEveProviderState(snapshot) {
     repoFaceOrgan,
     swarmSurfaceOrgan,
     pendingMentions,
+    recentMentionActivity,
     activeTurns,
   });
   const nodes = [
@@ -1265,7 +1352,7 @@ function buildEveProviderState(snapshot) {
           eveMetric("agents", "Agents", summary.participantCount ?? participants.length),
           eveMetric("ready", "Ready", summary.readyNowCount ?? 0),
           eveMetric("active", "Active", activeTurns.length || summary.activeTurnCount || 0),
-          eveMetric("mentions", "Mentions", pendingMentions.length || summary.pendingMentionCount || 0),
+          eveMetric("mentions", "Mentions", mentionMetric(summary, recentMentionActivity)),
           eveMetric("mesh", "Mesh write", snapshot.cultMesh?.writeStatus ?? "pending"),
           eveMetric("provider", "Provider", route.serverStatus),
         ]),
@@ -1373,7 +1460,13 @@ function buildEveProviderState(snapshot) {
                 role: "mono",
                 text: `${mention.identityId ?? "face"} / ${shortIso(mention.createdAt)}\n${compactText(mention.prompt ?? "", 150)}`,
               }))
-              : [eveNode("pending-mentions-empty", "text", { text: "No pending mentions." })]),
+              : [eveNode("pending-mentions-empty", "text", { text: mentionEmptyText(summary, recentMentionActivity) })]),
+            ...recentMentionActivity.slice(0, 5).map((activity, index) =>
+              eveNode(`recent-mention-activity-${index}`, "text", {
+                role: "mono",
+                text: mentionActivityText(activity),
+              }),
+            ),
             ...recentEvents.slice(0, 4).map((event, index) =>
               eveNode(`recent-event-${index}`, "text", {
                 role: "mono",
@@ -1477,9 +1570,49 @@ function buildOperatorAlerts(snapshot, context) {
     alerts.push(`Watchdog is ${context.watchdog?.lastStatus ?? "missing"}.`);
   }
   if ((context.pendingMentions?.length ?? 0) > 0) alerts.push(`${context.pendingMentions.length} pending mention(s) need routing.`);
+  else if ((context.recentMentionActivity?.length ?? 0) > 0) {
+    const latest = context.recentMentionActivity[0];
+    alerts.push(`Pending mentions are empty; latest mention activity was ${latest.kind ?? "seen"} for ${latest.identityId ?? "unknown"} at ${shortIso(latest.observedAt)}.`);
+  }
   if ((context.activeTurns?.length ?? 0) > 0) alerts.push(`${context.activeTurns.length} active turn(s) are running.`);
   if (!alerts.length) alerts.push("No immediate operator alerts.");
   return alerts;
+}
+
+function mentionMetric(summary, recentMentionActivity) {
+  const pending = summary.pendingMentionCount ?? 0;
+  if (pending > 0) return `${pending} pending`;
+  const latest = recentMentionActivity?.[0] ?? summary.lastMentionActivity;
+  if (!latest) return "0 pending";
+  const count = latest.mentionCount ?? 1;
+  if (latest.kind === "consumed" || latest.kind === "handled_job") {
+    return `0 pending / ${count} handled`;
+  }
+  return `0 pending / ${latest.kind ?? "seen"}`;
+}
+
+function mentionEmptyText(summary, recentMentionActivity) {
+  const latest = recentMentionActivity?.[0] ?? summary.lastMentionActivity;
+  if (!latest) {
+    return "No pending mentions.";
+  }
+  return `No pending mentions. Recent activity: ${mentionActivitySummary(latest)}.`;
+}
+
+function mentionActivityText(activity) {
+  return `${mentionActivitySummary(activity)}\n${compactText(activity.prompt || activity.mentions?.[0]?.prompt || activity.activeJobId || activity.requestMessageId || "", 150)}`;
+}
+
+function mentionActivitySummary(activity) {
+  const label = activity.kind === "consumed"
+    ? "consumed"
+    : activity.kind === "handled_job"
+      ? "handled job"
+      : activity.kind === "duplicate_intake"
+        ? "duplicate intake"
+        : activity.kind ?? "activity";
+  const count = activity.mentionCount && activity.mentionCount > 1 ? ` x${activity.mentionCount}` : "";
+  return `${label}${count} ${activity.identityId ?? "face"} / ${shortIso(activity.observedAt)}`;
 }
 
 function compactPath(value, maxLength = 74) {
@@ -1597,6 +1730,11 @@ function shortIso(value) {
   if (!Number.isFinite(timestamp)) return "unknown";
   const date = new Date(timestamp);
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function timestampMs(value) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function findSnapshotOrgan(organs, needle) {
@@ -2650,6 +2788,20 @@ function redactSnapshot(snapshot) {
     identityId: mention.identityId,
     createdAt: mention.createdAt,
   }));
+  redacted.recentMentionActivity = redacted.recentMentionActivity.map((activity) => ({
+    kind: activity.kind,
+    identityId: activity.identityId,
+    observedAt: activity.observedAt,
+    mentionCount: activity.mentionCount,
+  }));
+  if (redacted.summary?.lastMentionActivity) {
+    redacted.summary.lastMentionActivity = {
+      kind: redacted.summary.lastMentionActivity.kind,
+      identityId: redacted.summary.lastMentionActivity.identityId,
+      observedAt: redacted.summary.lastMentionActivity.observedAt,
+      mentionCount: redacted.summary.lastMentionActivity.mentionCount,
+    };
+  }
   redacted.orchestrator.organs = redacted.orchestrator.organs.map((organ) => ({
     ...organ,
     lastLogPath: null,

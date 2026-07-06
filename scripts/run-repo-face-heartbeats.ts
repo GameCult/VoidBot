@@ -334,6 +334,25 @@ async function main(): Promise<void> {
           if (pendingMentions.length > 0) {
             const consumedIds = new Set(pendingMentions.map((entry) => entry.id));
             state.pendingMentions = state.pendingMentions.filter((entry) => !consumedIds.has(entry.id));
+            state.history.push({
+              type: "pending_mentions_consumed",
+              identityId: participant.identityId,
+              participantKind: participant.participantKind,
+              turnKind: participant.turnKind,
+              activeJobId: turn.activeJobId,
+              requestMessageId: turn.requestMessageId,
+              consumedAt: queuedAt,
+              mentionCount: pendingMentions.length,
+              mentions: pendingMentions.slice(-6).map((mention) => ({
+                id: mention.id,
+                channelId: mention.channelId,
+                messageId: mention.messageId,
+                authorId: mention.authorId,
+                authorName: mention.authorName,
+                queuedAt: mention.queuedAt,
+                visiblePrompt: collapseWhitespace(mention.visiblePrompt, 240),
+              })),
+            });
           }
           state.history.push({
             type: "queued",
