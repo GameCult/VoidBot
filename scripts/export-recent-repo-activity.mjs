@@ -386,13 +386,15 @@ function enrichCommit(repoPath, commit) {
       .map((line) => line.trim())
       .filter(Boolean);
     const summaryLine = statLines.find((line) => /files? changed|insertions?|deletions?/.test(line));
-    const changedPaths = statLines.filter((line) => !/files? changed|insertions?|deletions?/.test(line)).slice(0, 8);
+    const allChangedPaths = statLines.filter((line) => !/files? changed|insertions?|deletions?/.test(line));
+    const changedPaths = allChangedPaths.slice(0, 12);
 
     return {
       ...commit,
       diffstat: parseDiffstat(summaryLine),
       changedPaths,
       contentHints: buildCommitContentHints(repoPath, commit.hash, changedPaths),
+      doctrineDocuments: buildDoctrineDocuments(repoPath, commit.hash, allChangedPaths, commit.subject),
     };
   } catch {
     return {
@@ -412,8 +414,63 @@ function buildCommitContentHints(repoPath, commitHash, changedPaths) {
     .filter(Boolean);
 }
 
+function buildDoctrineDocuments(repoPath, commitHash, changedPaths, subject) {
+  const doctrinePaths = changedPaths
+    .filter((path) => isDoctrineDocumentPath(path, subject))
+    .slice(0, 4);
+
+  return doctrinePaths
+    .map((path) => buildDoctrineDocument(repoPath, commitHash, path))
+    .filter(Boolean);
+}
+
 function isHintableTextPath(path) {
   return /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ts|tsx|js|jsx|mjs|cjs|rs|cs|ps1|py|html|css|scss)$/i.test(path);
+}
+
+function isDoctrineDocumentPath(path, subject) {
+  if (!/\.(md|mdx|txt)$/i.test(path)) {
+    return false;
+  }
+
+  const normalized = path.replace(/\\/g, "/");
+  const pathLooksDoctrinal =
+    /(^|\/)(readme|docs?|notes|architecture|design|worldbuilding|lore|reference)\b/i.test(normalized) ||
+    /(architecture|doctrine|authority|policy|contract|conformance|ownership|lowering|renderless|runtime|daemon|cultmesh|eve|verse|client|surface|custody)/i.test(normalized);
+  const subjectLooksDoctrinal =
+    /(architecture|doctrine|authority|policy|contract|conformance|ownership|lowering|renderless|runtime|daemon|cultmesh|eve|verse|client|surface|custody)/i.test(subject ?? "");
+
+  return pathLooksDoctrinal || subjectLooksDoctrinal;
+}
+
+function buildDoctrineDocument(repoPath, commitHash, path) {
+  const currentText = readCommittedFile(repoPath, commitHash, path);
+  if (!currentText.trim()) {
+    return undefined;
+  }
+
+  const addedLines = readAddedLines(repoPath, commitHash, path);
+  const headings = readMarkdownHeadings(currentText).slice(0, 8);
+  const committedExcerpt = compactDoctrineExcerpt(currentText);
+
+  return {
+    path,
+    headings,
+    addedExcerpts: addedLines
+      .filter((line) => line.trim().length > 0 && !line.trim().startsWith("---"))
+      .slice(0, 16),
+    committedExcerpt,
+  };
+}
+
+function compactDoctrineExcerpt(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0)
+    .slice(0, 160);
+  const excerpt = lines.join("\n");
+  return excerpt.length > 6000 ? `${excerpt.slice(0, 6000).trimEnd()}\n[...]` : excerpt;
 }
 
 function buildFileContentHint(repoPath, commitHash, path) {

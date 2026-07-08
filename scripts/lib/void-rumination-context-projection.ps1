@@ -602,6 +602,7 @@ function Project-RepoCommitForRumination {
 
   $hash = Get-ObjectPropertyString -Value $Commit -Name "hash"
   $contentHints = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "contentHints"))
+  $doctrineDocuments = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "doctrineDocuments"))
   $authoredPublicArtifacts = @(Get-VoidAuthoredArtifactsFromContentHints -ContentHints $contentHints)
   return @{
     hash = if ($hash -and $hash.Length -gt 12) { $hash.Substring(0, 12) } else { $hash }
@@ -611,8 +612,40 @@ function Project-RepoCommitForRumination {
     diffstat = Get-ObjectPropertyValue -Value $Commit -Name "diffstat"
     changedPaths = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Commit -Name "changedPaths"))
     contentHints = $contentHints
+    doctrineDocuments = $doctrineDocuments
     authoredPublicArtifacts = $authoredPublicArtifacts
   }
+}
+
+function Test-RepoHasDoctrineDocument {
+  param($Repo)
+
+  $commits = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $Repo -Name "commits"))
+  foreach ($commit in $commits) {
+    $doctrineDocuments = @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $commit -Name "doctrineDocuments"))
+    if ($doctrineDocuments.Count -gt 0) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Test-RepoIsMovementCoverageLeader {
+  param($Repo)
+
+  $recent = Get-ObjectPropertyValue -Value $Repo -Name "recentCommitCount"
+  $windowRecent = Get-ObjectPropertyValue -Value $Repo -Name "windowRecentCommitCount"
+
+  if ((Test-RepoHasDoctrineDocument -Repo $Repo) -or (Test-RepoHasVoidAuthoredArtifact -Repo $Repo)) {
+    return $true
+  }
+
+  return (
+    $null -ne $recent -and [int]$recent -ge 3
+  ) -or (
+    $null -ne $windowRecent -and [int]$windowRecent -ge 6
+  )
 }
 
 function Test-RepoHasVoidAuthoredArtifact {
@@ -654,8 +687,14 @@ function Select-RuminationRepoActivity {
       } |
       Sort-Object -Property @{
         Expression = { if (Test-RepoHasVoidAuthoredArtifact -Repo $_) { 0 } else { 1 } }
+      }, @{
+        Expression = { if (Test-RepoIsMovementCoverageLeader -Repo $_) { 0 } else { 1 } }
+      }, @{
+        Expression = { if (Test-RepoHasDoctrineDocument -Repo $_) { 0 } else { 1 } }
+      }, @{
+        Expression = { -[int](Get-ObjectPropertyValue -Value $_ -Name "recentCommitCount") }
       } |
-      Select-Object -First 8
+      Select-Object -First 12
   )
   $projectedRepos = @(
     $freshRepos | ForEach-Object {
@@ -680,6 +719,26 @@ function Select-RuminationRepoActivity {
     generated = Project-RelativeTimestamp -Value $RepoActivity -Name "generatedAt" -Now $Now
     cursorMode = Get-ObjectPropertyString -Value $RepoActivity -Name "cursorMode"
     summary = if ($projectedRepos.Count -gt 0) { "New tracked repo commits crossed the saved repo-activity cursor." } else { "No new tracked repo commits crossed the saved repo-activity cursor." }
+    movementCoverage = @{
+      job = "Keep people apace of meaningful movement, not merely the latest commit. Coverage priority follows where the current movement is: heavy fresh commit volume, doctrine-bearing documents, authored public artifacts, or operator-named active lanes."
+      freshMovementLeaders = @(
+        $projectedRepos |
+          Where-Object {
+            Test-RepoIsMovementCoverageLeader -Repo $_
+          } |
+          ForEach-Object {
+            @{
+              repoName = Get-ObjectPropertyString -Value $_ -Name "repoName"
+              recentCommitCount = Get-ObjectPropertyValue -Value $_ -Name "recentCommitCount"
+              windowRecentCommitCount = Get-ObjectPropertyValue -Value $_ -Name "windowRecentCommitCount"
+              hasDoctrineDocuments = Test-RepoHasDoctrineDocument -Repo $_
+              latestSubject = Get-ObjectPropertyString -Value (Get-ObjectPropertyValue -Value $_ -Name "latestCommit") -Name "subject"
+            }
+          }
+      )
+      currentExamples = @("Aetheria", "AetheriaLore", "CultLib", "Eve", "Odin")
+      coverageRule = "If a fresh movement leader has doctrine, authority, runtime, client, CultMesh, or public-artifact work, read the doctrineDocuments/contentHints and either queue a coverage candidate or preserve a short-term memory explaining the new direction. If tomorrow's movement is Fensalir, Mimir, or another lane, it earns the same treatment. Do not let a repo cursor advance for movement the pass did not actually handle."
+    }
     freshRepos = $projectedRepos
   }
 }

@@ -269,10 +269,21 @@ function Invoke-CodexExec {
 function Get-RepoActivityCursorOperations {
   param(
     $RepoActivity,
-    [DateTime] $ObservedAt
+    [DateTime] $ObservedAt,
+    [string[]] $HandledRepoIds = @()
   )
 
   if ($null -eq $RepoActivity) {
+    return @()
+  }
+
+  $handledLookup = @{}
+  foreach ($repoId in @($HandledRepoIds)) {
+    if (-not [string]::IsNullOrWhiteSpace($repoId)) {
+      $handledLookup[$repoId.Trim().ToLowerInvariant()] = $true
+    }
+  }
+  if ($handledLookup.Count -eq 0) {
     return @()
   }
 
@@ -280,10 +291,13 @@ function Get-RepoActivityCursorOperations {
   return @(
     $repos |
       Where-Object {
+        $repoName = Get-ObjectPropertyString -Value $_ -Name "repoName"
         $repoStatus = Get-ObjectPropertyString -Value $_ -Name "status"
         $recentCount = Get-ObjectPropertyValue -Value $_ -Name "recentCommitCount"
         $latestCommit = Get-ObjectPropertyValue -Value $_ -Name "latestCommit"
-        $repoStatus -eq "ok" -and
+        -not [string]::IsNullOrWhiteSpace($repoName) -and
+          $handledLookup.ContainsKey($repoName.Trim().ToLowerInvariant()) -and
+          $repoStatus -eq "ok" -and
           $null -ne $recentCount -and
           [int]$recentCount -gt 0 -and
           $null -ne $latestCommit -and
@@ -302,6 +316,43 @@ function Get-RepoActivityCursorOperations {
         }
       }
   )
+}
+
+function Get-HandledRepoIdsFromOperations {
+  param($Operations)
+
+  $repoIds = New-Object System.Collections.Generic.HashSet[string]
+  foreach ($operation in @(Convert-ToValueArray -Value $Operations)) {
+    if ($null -eq $operation) {
+      continue
+    }
+
+    foreach ($propertyName in @("memory", "intervention", "pressure", "need", "bond", "statusRead")) {
+      $payload = Get-ObjectPropertyValue -Value $operation -Name $propertyName
+      if ($null -eq $payload) {
+        continue
+      }
+
+      $target = Get-ObjectPropertyValue -Value $payload -Name "target"
+      $targetKind = Get-ObjectPropertyString -Value $target -Name "kind"
+      $targetId = Get-ObjectPropertyString -Value $target -Name "id"
+      if ($targetKind -eq "repo" -and -not [string]::IsNullOrWhiteSpace($targetId)) {
+        [void]$repoIds.Add($targetId.Trim())
+      }
+
+      foreach ($tag in @(Convert-ToValueArray -Value (Get-ObjectPropertyValue -Value $payload -Name "tags"))) {
+        $tagText = ([string]$tag).Trim()
+        if ($tagText.StartsWith("repo:", [System.StringComparison]::OrdinalIgnoreCase)) {
+          $repoTag = $tagText.Substring("repo:".Length).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($repoTag)) {
+            [void]$repoIds.Add($repoTag)
+          }
+        }
+      }
+    }
+  }
+
+  return @($repoIds)
 }
 
 function Invoke-NodeJson {
@@ -1407,7 +1458,7 @@ if ($ModerationHeartbeatOnly) {
     $repoActivity = Invoke-NodeJson -Arguments @(
       $repoActivityScriptPath,
       "--hours", "96",
-      "--max-commits", "3",
+      "--max-commits", "8",
       "--read-only",
       "--state-path", $stateFilePath
     )
@@ -1623,7 +1674,13 @@ if (
 $repoCursorOperations = @()
 $disableRepoCursorAdvance = -not [string]::IsNullOrWhiteSpace($env:VOID_RUMINATION_DISABLE_REPO_CURSOR_ADVANCE)
 if (-not $ModerationHeartbeatOnly -and -not $NoPost -and -not $SkipModel -and -not $disableRepoCursorAdvance) {
-  $repoCursorOperations = @(Get-RepoActivityCursorOperations -RepoActivity $repoActivity -ObservedAt ([DateTime]::UtcNow))
+  $handledRepoIds = @(Get-HandledRepoIdsFromOperations -Operations $proposedOperations)
+  if ($handledRepoIds.Count -gt 0) {
+    Append-RunLog ("repo activity handled by operations: {0}" -f ($handledRepoIds -join ", "))
+  } else {
+    Append-RunLog "repo activity cursor advance skipped: no proposed operation handled a repo target."
+  }
+  $repoCursorOperations = @(Get-RepoActivityCursorOperations -RepoActivity $repoActivity -ObservedAt ([DateTime]::UtcNow) -HandledRepoIds $handledRepoIds)
   if ($repoCursorOperations.Count -gt 0) {
     Append-RunLog ("recording repo activity cursors: {0}" -f $repoCursorOperations.Count)
     foreach ($operation in $repoCursorOperations) {
