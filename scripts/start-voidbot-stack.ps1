@@ -419,9 +419,13 @@ function Ensure-OllamaEndpoint {
       throw "$Label is not reachable at $BaseUrl and the ollama CLI is not available."
     }
 
-    $stdoutLog = Join-Path $LogDir "ollama-local.log"
-    $stderrLog = Join-Path $LogDir "ollama-local.err.log"
-    $process = Start-Process -FilePath $ollamaCommand.Source -ArgumentList "serve" -WorkingDirectory $repoRoot -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -WindowStyle Hidden -PassThru
+    $baseUri = [Uri]$BaseUrl
+    $ollamaHost = if ($baseUri.IsDefaultPort) { $baseUri.Host } else { "$($baseUri.Host):$($baseUri.Port)" }
+    $logSlug = ($ollamaHost -replace '[^A-Za-z0-9_.-]', '-')
+    $stdoutLog = Join-Path $LogDir "ollama-local-$logSlug.log"
+    $stderrLog = Join-Path $LogDir "ollama-local-$logSlug.err.log"
+    $serveCommand = "set OLLAMA_HOST=$ollamaHost && `"$($ollamaCommand.Source)`" serve"
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $serveCommand) -WorkingDirectory $repoRoot -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -WindowStyle Hidden -PassThru
     $startedByScript = $true
     $processId = $process.Id
   }
