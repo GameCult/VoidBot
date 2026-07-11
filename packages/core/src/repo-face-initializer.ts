@@ -35,6 +35,16 @@ export interface RepoFaceInitializationResult {
 export async function ensureRepoFaceInitialized(
   options: RepoFaceInitializationOptions,
 ): Promise<RepoFaceInitializationResult> {
+  // Native Personas already own a canonical Persona document.  They are not
+  // newborn repo Faces, so treating `personaStatePath` as a CultCache store
+  // would corrupt their boundary (and makes MessagePack try to decode JSON).
+  if (options.identity.identityKind === "native_persona") {
+    return {
+      initialized: false,
+      skippedReason: "native_persona_state_owned_elsewhere",
+    };
+  }
+
   const repoPath = resolveRepoPath(options);
 
   if (!repoPath) {
