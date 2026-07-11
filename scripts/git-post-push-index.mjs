@@ -86,7 +86,7 @@ async function runWorker() {
   const sourceRepoRoot = process.env.SOURCE_REPO_ROOT
     ? resolve(process.env.SOURCE_REPO_ROOT)
     : undefined;
-  const repoPath = sourceRepoRoot ? join(sourceRepoRoot, args.repoName) : undefined;
+  const repoPath = undefined;
   const startedAt = new Date().toISOString();
 
   await writeStatus({
@@ -111,23 +111,6 @@ async function runWorker() {
       completedAt: new Date().toISOString(),
       exitCode: 1,
       logPath,
-      error: message,
-    });
-    process.exit(1);
-  }
-
-  if (!(await pathExists(repoPath))) {
-    const message = `Configured repo path does not exist: ${repoPath}`;
-    process.stderr.write(`${message}\n`);
-    await writeStatus({
-      state: "failed",
-      repoName: args.repoName,
-      pid: process.pid,
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: 1,
-      logPath,
-      repoPath,
       error: message,
     });
     process.exit(1);

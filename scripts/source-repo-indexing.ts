@@ -69,7 +69,8 @@ export async function indexSourceRepos(
 
   for (const repo of repos) {
     const scan = await crawlRepositoryDocuments(repo.repoPath, repo.repoName, {
-      includePathPrefixes: config.sourceRepoIncludePrefixes[repo.repoName],
+      includePathPrefixes: config.sourceRepoIncludePrefixes[repo.repoName]
+        ?? config.sourceRepoIncludePrefixes[repo.localRepoName],
     });
     const result = await pipeline.syncRepoDocuments(repo.repoName, scan.documents, {
       forceReindex: options.forceReindex,

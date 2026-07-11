@@ -7,7 +7,10 @@ const execFile = promisify(execFileCallback);
 const GAMECULT_ORIGIN_PATTERN = /github\.com[:/]GameCult\//i;
 
 export interface SourceRepoMatch {
+  /** Canonical GameCult upstream slug: the source archive identity. */
   repoName: string;
+  /** Local checkout label; diagnostic only, never an archive key. */
+  localRepoName: string;
   repoPath: string;
   gitDir: string;
 }
@@ -37,6 +40,7 @@ export async function discoverSourceRepos(
 
     repoMatches.push({
       repoName: entry.name,
+      localRepoName: entry.name,
       repoPath,
       gitDir,
     });
@@ -81,7 +85,13 @@ function selectCanonicalGameCultRepos(
   }
 
   return [...byOrigin.values()]
-    .map((entries) => chooseCanonicalRepo(entries))
+    .map((entries) => {
+      const canonical = chooseCanonicalRepo(entries);
+      return {
+        ...canonical,
+        repoName: repoNameFromOrigin(entries[0].originUrl),
+      };
+    })
     .sort((left, right) => left.repoName.localeCompare(right.repoName));
 }
 
@@ -94,7 +104,7 @@ function chooseCanonicalRepo(entries: Array<{ repo: SourceRepoMatch; originUrl: 
 }
 
 function canonicalRank(repo: SourceRepoMatch, remoteName: string): number {
-  if (repo.repoName.localeCompare(remoteName, undefined, { sensitivity: "accent" }) === 0) {
+  if (repo.localRepoName.localeCompare(remoteName, undefined, { sensitivity: "accent" }) === 0) {
     return 0;
   }
 
@@ -106,7 +116,7 @@ function normalizeOrigin(originUrl: string): string {
 }
 
 function repoNameFromOrigin(originUrl: string): string {
-  const normalized = normalizeOrigin(originUrl);
+  const normalized = originUrl.trim().replace(/\\/g, "/").replace(/\.git$/i, "");
   return normalized.slice(normalized.lastIndexOf("/") + 1);
 }
 
@@ -119,7 +129,10 @@ export function selectSourceRepos(
   }
 
   const lookup = new Map(
-    availableRepos.map((repo) => [repo.repoName.toLowerCase(), repo] as const),
+    availableRepos.flatMap((repo) => [
+      [repo.repoName.toLowerCase(), repo] as const,
+      [repo.localRepoName.toLowerCase(), repo] as const,
+    ]),
   );
   const selectedRepos: SourceRepoMatch[] = [];
   const missingRepoNames: string[] = [];
