@@ -13,6 +13,7 @@ import { type TextEmbedder, HashingTextEmbedder } from "./hash-embedder";
 const UPSERT_BATCH_SIZE = 256;
 const DELETE_BATCH_SIZE = 128;
 const COLLECTION_METADATA_VERSION = 1;
+const TRANSIENT_WRITE_ATTEMPTS = 4;
 
 type QdrantPayload = Schemas["Payload"];
 type QdrantPoint = Schemas["PointStruct"];
@@ -71,11 +72,11 @@ export class QdrantVectorStore implements VectorStore {
         }),
       );
 
-      await this.client.upsert(this.options.collectionName, {
+      await retryTransientWrite(() => this.client.upsert(this.options.collectionName, {
         wait: true,
         timeout: this.timeoutSeconds,
         points,
-      });
+      }));
     }
   }
 
@@ -91,11 +92,11 @@ export class QdrantVectorStore implements VectorStore {
       const batch = chunks.slice(index, index + UPSERT_BATCH_SIZE);
       const points = batch.map((chunk) => toQdrantPoint(chunk));
 
-      await this.client.upsert(this.options.collectionName, {
+      await retryTransientWrite(() => this.client.upsert(this.options.collectionName, {
         wait: true,
         timeout: this.timeoutSeconds,
         points,
-      });
+      }));
     }
   }
 
@@ -173,11 +174,11 @@ export class QdrantVectorStore implements VectorStore {
       return;
     }
 
-    await this.client.delete(this.options.collectionName, {
+    await retryTransientWrite(() => this.client.delete(this.options.collectionName, {
       wait: true,
       timeout: this.timeoutSeconds,
       filter,
-    });
+    }));
   }
 
   private async ensureCollection(
@@ -600,4 +601,25 @@ function appendExactMatch(
 
 function normalizePathPrefixFilter(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+async function retryTransientWrite<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= TRANSIENT_WRITE_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === TRANSIENT_WRITE_ATTEMPTS) {
+        throw error;
+      }
+
+      await new Promise<void>((resolvePromise) => {
+        setTimeout(resolvePromise, attempt * 1_000);
+      });
+    }
+  }
+
+  throw lastError;
 }
