@@ -12,6 +12,7 @@ import {
   ContextBuilder,
   createStateStorage,
   ensureRepoFaceInitialized,
+  getRepoFaceSourceRepoName,
   getRepoDiscordIdentityAllowedChannelIds,
   faceRegistryAsRepoDiscordRegistry,
   projectRepoFaceSleepCycleForNow,
@@ -3187,12 +3188,15 @@ async function renderRepoFaceCuriosityGraphFacts(
   try {
     const retrieval = createRepoFaceCuriosityRetrievalService(config);
     const nodesById = new Map<string, RepoFaceCuriosityNode>();
+    const sourceRepoName = getRepoFaceSourceRepoName(identity);
 
     for (const seed of seedQueries) {
       const [historyResults, sourceResults, homeSourceResults] = await Promise.all([
         retrieval.searchHistory(seed.query, 8),
         retrieval.searchRepositorySources(seed.query, 8),
-        retrieval.searchRepositorySources(seed.query, 6, { repoName: identity.repoName }),
+        sourceRepoName
+          ? retrieval.searchRepositorySources(seed.query, 6, { repoName: sourceRepoName })
+          : Promise.resolve([]),
       ]);
       for (const result of [...historyResults, ...sourceResults, ...homeSourceResults]) {
         const id = `${result.sourceKind}:${result.chunkId}`;

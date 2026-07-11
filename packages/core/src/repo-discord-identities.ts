@@ -7,6 +7,7 @@ const repoDiscordIdentitySchema = z.object({
   id: z.string().trim().min(1),
   identityKind: z.enum(["repo_face", "native_persona"]).default("repo_face"),
   repoName: z.string().trim().min(1),
+  sourceRepoName: z.string().trim().min(1).optional(),
   displayName: z.string().trim().min(1).max(80),
   repoPath: z.string().trim().min(1).optional(),
   roleId: z.string().trim().min(1).optional(),
@@ -154,6 +155,16 @@ export function resolveRepoFaceStatePath(
   return resolve(storageRoot, "private", "repo-faces", `${sanitizePathSegment(identity.id)}.cc`);
 }
 
+/**
+ * The searchable source corpus is explicit. A native Persona's public label
+ * must never accidentally become a repository-index filter.
+ */
+export function getRepoFaceSourceRepoName(identity: RepoDiscordIdentity): string | undefined {
+  return identity.identityKind === "repo_face"
+    ? identity.sourceRepoName ?? identity.repoName
+    : undefined;
+}
+
 export function findCrossRepoJurisdictionMentions(
   identity: RepoDiscordIdentity,
   registry: RepoDiscordIdentityRegistry,
@@ -208,6 +219,7 @@ function normalizeRepoDiscordIdentities(
       id: identity.id.trim(),
       identityKind: identity.identityKind,
       repoName: identity.repoName.trim(),
+      sourceRepoName: identity.sourceRepoName?.trim(),
       displayName: identity.displayName.trim().slice(0, 80),
       repoPath: identity.repoPath?.trim(),
       roleId: identity.roleId?.trim(),

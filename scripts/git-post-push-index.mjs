@@ -134,24 +134,23 @@ async function runWorker() {
   }
 
   try {
-    const child =
-      process.platform === "win32"
-        ? spawn(
-            "cmd.exe",
-            ["/d", "/s", "/c", "npm.cmd", "run", "rag:index-sources", "--", "--repo", args.repoName],
-            {
-              cwd: voidbotRoot,
-              windowsHide: true,
-              env: process.env,
-              stdio: ["ignore", "pipe", "pipe"],
-            },
-          )
-        : spawn("npm", ["run", "rag:index-sources", "--", "--repo", args.repoName], {
-            cwd: voidbotRoot,
-            windowsHide: true,
-            env: process.env,
-            stdio: ["ignore", "pipe", "pipe"],
-          });
+    const tsxCliPath = join(voidbotRoot, "node_modules", "tsx", "dist", "cli.mjs");
+    if (!(await pathExists(tsxCliPath))) {
+      throw new Error(
+        `VoidBot's repo-local tsx runtime is missing at ${tsxCliPath}; run npm ci in ${voidbotRoot} before retrying source indexing.`,
+      );
+    }
+
+    const child = spawn(
+      process.execPath,
+      [tsxCliPath, join(voidbotRoot, "scripts", "index-source-repos.ts"), "--repo", args.repoName],
+      {
+        cwd: voidbotRoot,
+        windowsHide: true,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
 
     child.stdout.on("data", (chunk) => {
       process.stdout.write(chunk);
