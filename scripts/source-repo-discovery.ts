@@ -1,5 +1,10 @@
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+
+const execFile = promisify(execFileCallback);
+const GAMECULT_ORIGIN_PATTERN = /github\.com[:/]GameCult\//i;
 
 export interface SourceRepoMatch {
   repoName: string;
@@ -37,8 +42,72 @@ export async function discoverSourceRepos(
     });
   }
 
-  repoMatches.sort((left, right) => left.repoName.localeCompare(right.repoName));
-  return repoMatches;
+  const approved = await Promise.all(
+    repoMatches.map(async (repo) => ({
+      repo,
+      originUrl: await readOriginUrl(repo.repoPath),
+    })),
+  );
+
+  return selectCanonicalGameCultRepos(approved);
+}
+
+async function readOriginUrl(repoPath: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFile("git", ["-C", repoPath, "remote", "get-url", "origin"], {
+      windowsHide: true,
+    });
+    const originUrl = stdout.trim();
+    return originUrl.length > 0 ? originUrl : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function selectCanonicalGameCultRepos(
+  candidates: Array<{ repo: SourceRepoMatch; originUrl?: string }>,
+): SourceRepoMatch[] {
+  const byOrigin = new Map<string, Array<{ repo: SourceRepoMatch; originUrl: string }>>();
+
+  for (const candidate of candidates) {
+    if (!candidate.originUrl || !GAMECULT_ORIGIN_PATTERN.test(candidate.originUrl)) {
+      continue;
+    }
+
+    const originKey = normalizeOrigin(candidate.originUrl);
+    const entries = byOrigin.get(originKey) ?? [];
+    entries.push({ repo: candidate.repo, originUrl: candidate.originUrl });
+    byOrigin.set(originKey, entries);
+  }
+
+  return [...byOrigin.values()]
+    .map((entries) => chooseCanonicalRepo(entries))
+    .sort((left, right) => left.repoName.localeCompare(right.repoName));
+}
+
+function chooseCanonicalRepo(entries: Array<{ repo: SourceRepoMatch; originUrl: string }>): SourceRepoMatch {
+  const remoteName = repoNameFromOrigin(entries[0].originUrl);
+  return entries
+    .slice()
+    .sort((left, right) => canonicalRank(left.repo, remoteName) - canonicalRank(right.repo, remoteName)
+      || left.repo.repoName.localeCompare(right.repo.repoName))[0].repo;
+}
+
+function canonicalRank(repo: SourceRepoMatch, remoteName: string): number {
+  if (repo.repoName.localeCompare(remoteName, undefined, { sensitivity: "accent" }) === 0) {
+    return 0;
+  }
+
+  return repo.gitDir.replace(/\\/g, "/").toLowerCase().endsWith("/.git") ? 1 : 2;
+}
+
+function normalizeOrigin(originUrl: string): string {
+  return originUrl.trim().replace(/\\/g, "/").replace(/\.git$/i, "").toLowerCase();
+}
+
+function repoNameFromOrigin(originUrl: string): string {
+  const normalized = normalizeOrigin(originUrl);
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
 }
 
 export function selectSourceRepos(
