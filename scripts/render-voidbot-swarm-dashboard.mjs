@@ -1180,6 +1180,15 @@ function buildEveInterfaceBinding(snapshot, eveState) {
         field: "controlIntent.pause",
       },
     }, {
+      id: "swarm.heat",
+      label: "Set heat",
+      command: "set-heat",
+      writes: {
+        documentType: eveBindingDocumentType,
+        key: providerId,
+        field: "controlIntent.globalHeat",
+      },
+    }, {
       id: "swarm.cadence",
       label: "Set cadence",
       command: "set-cadence-multiplier",
@@ -1331,7 +1340,8 @@ function buildEveProviderState(snapshot) {
           status: summary.state ?? "unknown",
         layout: {
           direction: "vertical",
-          overflow: "scroll",
+          overflowX: "hidden",
+          overflowY: "auto",
           gap: 8,
           padding: 8,
           grow: 5,
@@ -1344,30 +1354,42 @@ function buildEveProviderState(snapshot) {
           viewportMode: "continuous-ops",
         },
         }, [
-          eveNode("ctb-rail", "rail", {
-            title: "CTB order",
-            layout: { direction: "horizontal", overflowX: "auto", height: 96, gap: 6, padding: 6 },
-        }, upcoming.slice(0, 12).map((turn, index) =>
-          eveNode(`turn-${stableId(turn.identityId)}-${index}`, "avatar", {
-            text: turn.displayName,
-            assetUri: turn.avatarUrl,
-            status: turnState(turn),
-              detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
-            }),
-          )),
-        eveNode("voidbot-command-strip", "grid", {
-          columns: "repeat(auto-fit, minmax(170px, 1fr))",
-          layout: { gap: 6 },
-        }, [
-          eveMetric("state", "Swarm", summary.state ?? "unknown"),
-          eveMetric("next", "Next", `${summary.nextDisplayName ?? "none"} / ${minutesText(summary.nextTurnInMinutes)}`),
-          eveMetric("agents", "Agents", summary.participantCount ?? participants.length),
-          eveMetric("ready", "Ready", summary.readyNowCount ?? 0),
-          eveMetric("active", "Active", activeTurns.length || summary.activeTurnCount || 0),
-          eveMetric("mentions", "Mentions", mentionMetric(summary, recentMentionActivity)),
-          eveMetric("mesh", "Mesh write", snapshot.cultMesh?.writeStatus ?? "pending"),
-          eveMetric("provider", "Provider", route.serverStatus),
-        ]),
+          eveNode("ctb-command-row", "row", {
+            layout: { direction: "horizontal", gap: 8, alignItems: "stretch", overflowX: "hidden" },
+          }, [
+            eveNode("ctb-rail", "rail", {
+              title: "CTB order",
+              layout: { direction: "horizontal", overflowX: "auto", overflowY: "hidden", height: 96, gap: 6, padding: 6, grow: 1 },
+            }, upcoming.slice(0, 12).map((turn, index) =>
+              eveNode(`turn-${stableId(turn.identityId)}-${index}`, "avatar", {
+                text: turn.displayName,
+                assetUri: turn.avatarUrl,
+                status: turnState(turn),
+                detail: `${turn.repoName ?? "repo"} / ${minutesText(turn.nextTurnInMinutes)}`,
+              }),
+            )),
+            eveNode("swarm-heat-control", "pane", { title: "Heat", density: "compact", layout: { width: 220, minWidth: 220 } }, [
+              eveNode("swarm-heat-value", "text", {
+                role: "mono",
+                text: `${formatNumber(summary.globalHeat, 2)}\nlow 0.05  ·  nominal 1.00  ·  hot 2.00`,
+              }),
+              eveNode("swarm-heat-slider", "control.slider", {
+                label: "Swarm heat",
+                bind: "voidbot.swarm.globalHeat",
+                command: "swarm.set_heat",
+                transport: "cultmesh-binding",
+                providerId,
+                value: summary.globalHeat ?? 1,
+                min: 0.05,
+                max: 2,
+                step: 0.05,
+              }),
+            ]),
+          ]),
+        eveNode("voidbot-status-line", "text", {
+          role: "mono",
+          text: `${summary.state ?? "unknown"}  ·  ${summary.participantCount ?? participants.length} agents  ·  ${activeTurns.length || summary.activeTurnCount || 0} active  ·  ${summary.readyNowCount ?? 0} ready  ·  ${mentionMetric(summary, recentMentionActivity)}  ·  mesh ${snapshot.cultMesh?.writeStatus ?? "pending"} / ${route.serverStatus}`,
+        }),
         eveNode("voidbot-operator-deck", "grid", {
           columns: "minmax(260px, 0.95fr) minmax(320px, 1.15fr) minmax(280px, 1fr) minmax(260px, 0.9fr)",
           layout: { gap: 8, alignItems: "stretch" },
@@ -1382,7 +1404,6 @@ function buildEveProviderState(snapshot) {
             eveBar("turn", "Turn", minutesText(selected.nextTurnInMinutes), turnPercent(selected.nextTurnInMinutes)),
             eveBar("memory", "Memory", String(memoryCount), Math.min(100, memoryCount * 5)),
             eveBar("pressure", "Pressure", String(pressureCount), Math.min(100, pressureCount * 14)),
-            eveBar("heat", "Heat", formatNumber(selected.heat, 2), Math.min(100, (selected.heat ?? 0) * 34)),
             eveNode("selected-description", "text", {
               role: "caption",
               text: compactText(selected.description ?? "No Face description registered.", 210),
@@ -1391,10 +1412,6 @@ function buildEveProviderState(snapshot) {
             eveNode("selected-missing", "text", { text: "No selected Face." }),
           ]),
           eveNode("voidbot-live-queue", "pane", { title: "Live Queue", density: "compact" }, [
-            eveNode("live-queue-next", "text", {
-              role: "mono",
-              text: `next ${summary.nextDisplayName ?? "none"}  ${minutesText(summary.nextTurnInMinutes)}\nclock ${formatNumber(summary.initiativeClock, 2)}  recovery ${minutesText(summary.baseRecoveryMinutes)}  heat ${formatNumber(summary.globalHeat, 2)}  cadence x${formatNumber(summary.cadenceMultiplier ?? 1, 2)}`,
-            }),
             ...liveQueue.map((turn, index) => eveNode(`live-queue-${index}-${stableId(turn.identityId)}`, "text", {
               role: "mono",
               text: `${String(index + 1).padStart(2, " ")} ${String(turn.operatorState ?? turnState(turn)).padEnd(6, " ")} ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(14, " ")} ${minutesText(turn.nextTurnInMinutes).padEnd(8, " ")} ${turn.repoName ?? "repo"}`,
@@ -1487,21 +1504,15 @@ function buildEveProviderState(snapshot) {
             ),
           ]),
         ]),
-        eveNode("voidbot-main", "row", {
-          title: "Swarm Cockpit",
-          layout: { direction: "horizontal", gap: 8, overflowX: "auto" },
+        eveNode("voidbot-context", "grid", {
+          columns: "minmax(0, 1fr)",
+          layout: { gap: 8, overflowX: "hidden" },
         }, [
           eveNode("selected-channels", "pane", { title: "Channels", density: "compact" }, (selected?.channelPermissions ?? []).slice(0, 8).map((channel, index) =>
               eveNode(`selected-channel-${index}`, "text", {
                 role: "mono",
                 text: `${channel.label ?? "channel"} x${formatNumber(channel.speedMultiplier ?? 1, 2)} ${channel.speechThreshold ?? "threshold"}\n${channel.topic ?? "no topic"}`,
               }),
-          )),
-          eveNode("upcoming-faces-pane", "pane", { title: "Next Faces" }, upcoming.slice(0, 10).map((turn, index) =>
-            eveNode(`upcoming-face-${index}-${stableId(turn.identityId)}`, "text", {
-              role: "mono",
-              text: `${String(index + 1).padStart(2, " ")}. ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(12, " ")} ${turnState(turn).padEnd(8, " ")} ${turn.repoName ?? "repo"}  spd ${formatNumber(turn.effectiveSpeed, 3)} heat ${formatNumber(turn.heat, 2)}`,
-            }),
           )),
         ]),
       ]),

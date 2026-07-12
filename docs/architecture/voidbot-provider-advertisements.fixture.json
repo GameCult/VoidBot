@@ -678,6 +678,12 @@
           "advertisedOnly": true
         },
         {
+          "id": "swarm.set_heat",
+          "mode": "side-effecting",
+          "purpose": "Set the global CTB heat multiplier through the provider-owned command boundary.",
+          "advertisedOnly": true
+        },
+        {
           "id": "swarm.set_cadence_multiplier",
           "mode": "side-effecting",
           "purpose": "Update scheduler cadence through the provider-owned command boundary.",

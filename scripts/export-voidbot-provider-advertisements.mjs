@@ -182,6 +182,7 @@ function buildCatalog() {
       commands: [
         command("swarm.inspect", "read-only", "Load the current CTB and selected Face state surface."),
         command("swarm.set_pause", "side-effecting", "Set the repo-controlled swarm pause flag through the provider-owned command boundary."),
+        command("swarm.set_heat", "side-effecting", "Set the global CTB heat multiplier through the provider-owned command boundary."),
         command("swarm.set_cadence_multiplier", "side-effecting", "Update scheduler cadence through the provider-owned command boundary."),
         command("swarm.force_turn", "side-effecting", "Queue a manual turn request through the provider-owned command boundary."),
       ],
