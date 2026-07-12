@@ -264,6 +264,8 @@ function buildUpcomingTurns(participants) {
     nextTurnInMinutes: participant.nextTurnInMinutes,
     effectiveSpeed: participant.effectiveSpeed,
     heat: participant.heat,
+    dynamicHeat: participant.dynamicHeat,
+    responsePressure: participant.responsePressure,
     lane: index % 3,
     timelinePosition: participant.activeJobId ? 0 : Math.min(100, Math.max(0, ((Math.max(0, participant.nextTurnInMinutes ?? 0)) / maxMinutes) * 100)),
   }));
@@ -331,6 +333,16 @@ function projectParticipant(participant, pendingMentions, initiativeClock, ident
     status: String(participant.status ?? "unknown"),
     currentLoad: numberOrNull(participant.currentLoad),
     heat: numberOrNull(participant.heat),
+    dynamicHeat: numberOrNull(participant.dynamicHeat),
+    responsePressure: numberOrNull(participant.responsePressure),
+    responsePressureEvidence: Array.isArray(participant.responsePressureEvidence)
+      ? participant.responsePressureEvidence.slice(0, 6).map((entry) => ({
+        messageId: stringOrNull(entry?.messageId),
+        observedAt: stringOrNull(entry?.observedAt),
+        similarity: numberOrNull(entry?.similarity),
+        contribution: numberOrNull(entry?.contribution),
+      }))
+      : [],
     effectiveSpeed: numberOrNull(participant.effectiveSpeed),
     initiativeSpeed: numberOrNull(participant.initiativeSpeed),
     nextTurnAt,
@@ -2431,6 +2443,8 @@ function renderHtml(snapshot) {
         statBar("Memory", number(memoryCount), Math.min(100, memoryCount * 7), "cool") +
         statBar("Pressure", number(counts.pressures || 0), Math.min(100, (counts.pressures || 0) * 14), (counts.pressures || 0) > 4 ? "hot" : "") +
         statBar("Heat", number(agent.heat), Math.min(100, (agent.heat || 0) * 34), (agent.heat || 0) > 1.5 ? "hot" : "") +
+        statBar("Response", number(agent.responsePressure), Math.min(100, (agent.responsePressure || 0) * 100), (agent.responsePressure || 0) > 0.6 ? "hot" : "") +
+        statBar("Dynamic", number(agent.dynamicHeat), Math.min(100, (agent.dynamicHeat || 0) * 40), (agent.dynamicHeat || 0) > 1.5 ? "hot" : "") +
         statBar("Load", number(agent.currentLoad), Math.min(100, (agent.currentLoad || 0) * 100), (agent.currentLoad || 0) > 0.7 ? "hot" : "") +
         statBar("Speed", number(agent.effectiveSpeed), Math.min(100, (agent.effectiveSpeed || 0) * 34), "") +
       "</div><div class=\\"inspector-lore\\"><p>" + esc(agent.description || "No Face description registered.") + "</p><div class=\\"channel-list\\">" + (agent.channelPermissions || []).map((channel) => "<div class=\\"channel-chip\\"><strong>" + esc(channel.label || "channel") + "</strong><span>x" + esc(number(channel.speedMultiplier || 1)) + "</span><span class=\\"muted\\">" + esc(channel.topic || "no topic") + "</span><span class=\\"mono muted\\">" + esc(channel.speechThreshold || "threshold") + "</span></div>").join("") + "</div></div></section>";
@@ -2767,6 +2781,7 @@ function redactSnapshot(snapshot) {
     ...participant,
     activeJobId: participant.activeJobId ? "active" : null,
     constraints: [],
+    responsePressureEvidence: [],
     constraintCount: participant.constraintCount,
     description: participant.description ? truncate(participant.description, 220) : null,
     faceStatePath: null,

@@ -20,6 +20,7 @@ import {
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
+  projectRepoFaceResponsePressure,
   type RepoFaceRestSnapshot,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
@@ -29,8 +30,10 @@ import {
 import {
   createTextEmbedder,
   createVectorStores,
+  embedAffinityCards,
   normalizeText,
   RetrievalService,
+  scoreAffinityMessages,
 } from "@voidbot/rag";
 import {
   type EmbeddingChunk,
@@ -61,6 +64,15 @@ interface FaceHeartbeatParticipant {
   status: "active" | "blocked" | "withdrawn" | "offscreen";
   groups: string[];
   heat: number;
+  dynamicHeat: number;
+  responsePressure: number;
+  responsePressureEvidence: Array<{
+    messageId: string;
+    observedAt: string;
+    similarity: number;
+    contribution: number;
+  }>;
+  semanticInterruptReceipts: string[];
   effectiveSpeed: number;
   baseRecoveryMinutes: number;
   nextTurnAt: number;
@@ -99,6 +111,7 @@ interface IdleCoolingSnapshot {
   recoveryMinutes: number;
   lastUnpromptedTurnQueuedAt?: string;
   nextUnpromptedTurnAllowedAt?: string;
+  observedHumanMessages: Array<SourceMessage & { channelId: string }>;
 }
 
 interface StaleActiveTurn {
@@ -269,6 +282,15 @@ async function main(): Promise<void> {
     state,
     now,
   });
+  await applySemanticResponsePressure({
+    state,
+    specs: buildParticipantSpecs(registry.identities),
+    messages: idleCooling.observedHumanMessages,
+    restStates,
+    completedThisTick,
+    config,
+    now,
+  });
 
   const selected = selectReadyParticipants(
     state,
@@ -297,6 +319,8 @@ async function main(): Promise<void> {
         nextTurnAt: participant.nextTurnAt,
         recoveryMinutes,
         heat: participant.heat,
+        dynamicHeat: participant.dynamicHeat,
+        responsePressure: participant.responsePressure,
         effectiveSpeed: participant.effectiveSpeed,
         pendingMentionCount: pendingMentions.length,
       });
@@ -366,6 +390,8 @@ async function main(): Promise<void> {
             initiativeClock: state.initiativeClock,
             frozen: true,
             heat: participant.heat,
+            dynamicHeat: participant.dynamicHeat,
+            responsePressure: participant.responsePressure,
             effectiveSpeed: participant.effectiveSpeed,
             pendingMentionCount: pendingMentions.length,
           });
@@ -382,6 +408,8 @@ async function main(): Promise<void> {
             initiativeClock: state.initiativeClock,
             reason: turn.failureReason,
             heat: participant.heat,
+            dynamicHeat: participant.dynamicHeat,
+            responsePressure: participant.responsePressure,
             effectiveSpeed: participant.effectiveSpeed,
           });
         }
@@ -406,7 +434,11 @@ async function main(): Promise<void> {
       selected: selected.map((entry) => entry.identityId),
       queued: queuedIdentityIds,
       statePath: config.repoFaceHeartbeats.statePath,
-      idleCooling,
+      idleCooling: {
+        ...idleCooling,
+        observedHumanMessages: undefined,
+        observedHumanMessageCount: idleCooling.observedHumanMessages.length,
+      },
     })}\n`,
   );
 }
@@ -1457,7 +1489,8 @@ function reconcileParticipants(
     const speed = initiativeSpeedFor(spec, speedOverrides) * spec.channelSpeedMultiplier;
     const groups = initiativeGroupsFor(spec);
     const heat = heatFor(spec, groups, globalHeat, heatOverrides);
-    const effectiveSpeed = clamp(speed * heat, 0.1, 12);
+    const dynamicHeat = Number.isFinite(current?.dynamicHeat) ? current.dynamicHeat : 1;
+    const effectiveSpeed = clamp(speed * heat * dynamicHeat, 0.1, 12);
     const nextTurnAt = Number.isFinite(current?.nextTurnAt)
       ? current.nextTurnAt
       : initiativeClock + ((baseRecoveryMinutes / count) * index);
@@ -1471,6 +1504,10 @@ function reconcileParticipants(
         initiativeSpeed: speed,
         groups,
         heat,
+        dynamicHeat,
+        responsePressure: Number.isFinite(current.responsePressure) ? current.responsePressure : 0,
+        responsePressureEvidence: Array.isArray(current.responsePressureEvidence) ? current.responsePressureEvidence : [],
+        semanticInterruptReceipts: Array.isArray(current.semanticInterruptReceipts) ? current.semanticInterruptReceipts : [],
         effectiveSpeed,
         baseRecoveryMinutes,
         nextTurnAt,
@@ -1502,6 +1539,10 @@ function reconcileParticipants(
       status: hasChannel ? "active" : "blocked",
       groups,
       heat,
+      dynamicHeat: 1,
+      responsePressure: 0,
+      responsePressureEvidence: [],
+      semanticInterruptReceipts: [],
       effectiveSpeed,
       baseRecoveryMinutes,
       nextTurnAt,
@@ -1624,6 +1665,142 @@ function selectReadyParticipants(
   return [...mentioned, ...cooled].slice(0, maxJobs);
 }
 
+async function applySemanticResponsePressure(input: {
+  state: FaceHeartbeatState;
+  specs: ParticipantSpec[];
+  messages: Array<SourceMessage & { channelId: string }>;
+  restStates: Map<string, RepoFaceRestSnapshot>;
+  completedThisTick: Set<string>;
+  config: ReturnType<typeof loadConfig>;
+  now: Date;
+}): Promise<void> {
+  const specs = input.specs.filter((spec) => {
+    const participant = input.state.participants.find((entry) => entry.identityId === spec.id);
+    return Boolean(
+      spec.identity &&
+      spec.participantKind !== "system_agent" &&
+      participant?.status === "active" &&
+      participant.currentLoad < 1 &&
+      !input.completedThisTick.has(participant.identityId) &&
+      input.restStates.get(participant.identityId)?.isNapping !== true,
+    );
+  });
+  const recentMessages = input.messages
+    .filter((message) => !message.isBot && message.content.trim().length > 0)
+    .filter((message) => input.now.getTime() - Date.parse(message.timestamp) <= 3 * 60 * 60_000)
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+    .slice(0, 24);
+
+  if (specs.length === 0 || recentMessages.length === 0) {
+    for (const participant of input.state.participants) {
+      participant.dynamicHeat = 1;
+      participant.responsePressure = 0;
+      participant.responsePressureEvidence = [];
+      participant.effectiveSpeed = clamp(participant.initiativeSpeed * participant.heat, 0.1, 12);
+    }
+    return;
+  }
+
+  try {
+    const embedder = createTextEmbedder({
+      backend: input.config.ragEmbeddingBackend,
+      hashDimensions: input.config.ragEmbeddingDimensions,
+      ollamaBaseUrl: input.config.ragOllamaBaseUrl,
+      ollamaModel: input.config.ragOllamaModel,
+      ollamaTimeoutMs: input.config.ragOllamaTimeoutMs,
+    });
+    const cards = await embedAffinityCards(embedder, specs.map((spec) => ({
+      id: spec.id,
+      text: renderInitiativeAffinityCard(spec),
+    })));
+    const scores = await scoreAffinityMessages(embedder, cards, recentMessages.map((message) => ({
+      id: message.id,
+      text: message.content,
+      observedAt: message.timestamp,
+    })));
+    const projections = projectRepoFaceResponsePressure({
+      participants: input.state.participants
+        .filter((participant) => specs.some((spec) => spec.id === participant.identityId))
+        .map((participant) => ({
+        identityId: participant.identityId,
+        interruptThreshold: participant.interruptThreshold,
+      })),
+      evidence: scores.flatMap((score) => {
+        const spec = specs.find((entry) => entry.id === score.cardId);
+        const message = recentMessages.find((entry) => entry.id === score.messageId);
+        if (!spec || !message || !spec.allowedChannelIds.includes(message.channelId)) {
+          return [];
+        }
+        return [{
+          identityId: score.cardId,
+          messageId: score.messageId,
+          observedAt: score.observedAt,
+          similarity: score.similarity,
+        }];
+      }),
+      now: input.now,
+      maxAwakened: Math.min(3, specs.length),
+    });
+
+    for (const participant of input.state.participants) {
+      const projection = projections.find((entry) => entry.identityId === participant.identityId);
+      participant.responsePressure = projection?.pressure ?? 0;
+      participant.responsePressureEvidence = projection?.evidence ?? [];
+      participant.dynamicHeat = clamp(1 + participant.responsePressure * 1.5, 1, 2.5);
+      participant.effectiveSpeed = clamp(
+        participant.initiativeSpeed * participant.heat * participant.dynamicHeat,
+        0.1,
+        12,
+      );
+      const unseenInterruptEvidence = projection?.interrupt
+        ? projection.evidence.find((entry) => !participant.semanticInterruptReceipts.includes(entry.messageId))
+        : undefined;
+      if (unseenInterruptEvidence && participant.currentLoad < 1) {
+        participant.nextTurnAt = Math.min(participant.nextTurnAt, input.state.initiativeClock);
+        participant.semanticInterruptReceipts = mergeStrings(
+          participant.semanticInterruptReceipts,
+          unseenInterruptEvidence.messageId,
+        ).slice(-40);
+        input.state.history.push({
+          type: "semantic_response_interrupt",
+          identityId: participant.identityId,
+          messageId: unseenInterruptEvidence.messageId,
+          pressure: participant.responsePressure,
+          similarity: unseenInterruptEvidence.similarity,
+          contribution: unseenInterruptEvidence.contribution,
+          observedAt: unseenInterruptEvidence.observedAt,
+          projectedAt: input.now.toISOString(),
+        });
+      }
+    }
+  } catch (error) {
+    for (const participant of input.state.participants) {
+      participant.dynamicHeat = 1;
+      participant.responsePressure = 0;
+      participant.responsePressureEvidence = [];
+      participant.effectiveSpeed = clamp(participant.initiativeSpeed * participant.heat, 0.1, 12);
+    }
+    input.state.history.push({
+      type: "semantic_response_pressure_unavailable",
+      observedAt: input.now.toISOString(),
+      reason: collapseWhitespace(error instanceof Error ? error.message : String(error), 300),
+    });
+  }
+}
+
+function renderInitiativeAffinityCard(spec: ParticipantSpec): string {
+  const identity = spec.identity;
+  return [
+    `${spec.displayName} is the Persona steward of ${spec.repoName}.`,
+    identity?.description,
+    ...(identity?.channelPermissions ?? []).flatMap((permission) => [
+      permission.topic,
+      permission.label,
+      permission.posture,
+    ]),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join("\n");
+}
+
 function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Date): void {
   const lastTickMs = Date.parse(state.lastTickAt ?? "");
   if (!Number.isFinite(lastTickMs)) {
@@ -1710,11 +1887,9 @@ async function readIdleCoolingSnapshot(input: {
     idleAfterMinutes: policy.idleAfterMinutes,
     recoveryMinutes: policy.recoveryMinutes,
     lastUnpromptedTurnQueuedAt: newestUnpromptedTurnQueuedAt(input.state),
+    observedHumanMessages: [] as Array<SourceMessage & { channelId: string }>,
   };
 
-  if (!policy.enabled) {
-    return { ...base, reason: "disabled" };
-  }
   if (!input.config.botToken) {
     return { ...base, reason: "missing_discord_bot_token" };
   }
@@ -1735,6 +1910,9 @@ async function readIdleCoolingSnapshot(input: {
         if (message.isBot || !message.content.trim()) {
           continue;
         }
+        if (!base.observedHumanMessages.some((entry) => entry.id === message.id)) {
+          base.observedHumanMessages.push({ ...message, channelId });
+        }
         const timestampMs = Date.parse(message.timestamp);
         const newestMs = Date.parse(newestHumanActivityAt ?? "");
         if (Number.isFinite(timestampMs) && (!Number.isFinite(newestMs) || timestampMs > newestMs)) {
@@ -1751,6 +1929,14 @@ async function readIdleCoolingSnapshot(input: {
   const nextUnpromptedTurnAllowedAt = Number.isFinite(lastUnpromptedTurnQueuedMs)
     ? new Date(lastUnpromptedTurnQueuedMs + policy.recoveryMinutes * 60_000).toISOString()
     : undefined;
+
+  if (!policy.enabled) {
+    return {
+      ...base,
+      reason: fetchErrors.length > 0 ? "disabled_with_activity_fetch_failure" : "disabled",
+      lastHumanActivityAt: newestHumanActivityAt,
+    };
+  }
 
   if (!newestHumanActivityAt) {
     return {
@@ -5584,6 +5770,14 @@ function migrateLegacyHeartbeatState(
       status: participant.status ?? "active",
       groups: participant.groups ?? [],
       heat: Number.isFinite(participant.heat) ? participant.heat : 1,
+      dynamicHeat: Number.isFinite(participant.dynamicHeat) ? participant.dynamicHeat : 1,
+      responsePressure: Number.isFinite(participant.responsePressure) ? participant.responsePressure : 0,
+      responsePressureEvidence: Array.isArray(participant.responsePressureEvidence)
+        ? participant.responsePressureEvidence
+        : [],
+      semanticInterruptReceipts: Array.isArray(participant.semanticInterruptReceipts)
+        ? participant.semanticInterruptReceipts
+        : [],
       effectiveSpeed: Number.isFinite(participant.effectiveSpeed) ? participant.effectiveSpeed : speed,
       baseRecoveryMinutes,
       nextTurnAt: minutesUntilReady,

@@ -1,4 +1,5 @@
 export * from "./embedder-factory";
+export * from "./affinity-projection";
 export * from "./history-ingester";
 export * from "./history-retrieval";
 export * from "./discord-log-importer";
