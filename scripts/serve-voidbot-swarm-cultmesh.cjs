@@ -26,6 +26,7 @@ const documentDefinitions = Object.values(documents);
 const bindings = {
   provider: defineCultNetDocumentBinding({ definition: documents.provider }),
   surface: defineCultNetDocumentBinding({ definition: documents.surface }),
+  commandReceipt: defineCultNetDocumentBinding({ definition: documents.commandReceipt }),
 };
 const documentRegistry = new CultNetDocumentRegistry(
   documentDefinitions.map((definition) => defineCultNetDocumentBinding({ definition })),
@@ -101,6 +102,28 @@ async function applySwarmCommand(document) {
   await node.put(documents.swarmControl, "voidbot-swarm", control);
   await node.flush?.(true);
   console.log(`Applied swarm heat ${control.globalHeat} from ${control.commandId}`);
+  return {
+    binding: bindings.commandReceipt,
+    recordKey: control.commandId,
+    value: {
+      schema: "gamecult.eve.command_receipt.v1",
+      receiptId: `voidbot.swarm:${control.commandId}`,
+      commandId: control.commandId,
+      command: command.command,
+      state: "reconciled",
+      ownerRepo: "VoidBot",
+      authority: "voidbot.swarm_control_state.v1:voidbot-swarm",
+      providerId: command.providerId,
+      surfaceId: command.surfaceId || "voidbot.swarm.surface",
+      sourceVersion: Date.parse(control.updatedAt),
+      issuedAtUtc: control.updatedAt,
+      message: `Swarm heat applied at ${control.globalHeat}.`,
+      diagnostics: [{ binding: "voidbot.swarm.globalHeat", value: control.globalHeat }],
+    },
+    sourceRuntimeId: "voidbot-swarm-cultmesh",
+    sourceRole: "swarm-control-owner",
+    tags: ["eve", "command-receipt", "swarm-control"],
+  };
 }
 
 async function announceToOdin() {
@@ -222,6 +245,15 @@ function defineDocuments(defineDocumentType) {
       global: false,
       name: (value) => value?.commandId || value?.command_id || "swarm-command",
       schema: objectSchema("Eve command"),
+    }),
+    commandReceipt: defineDocumentType({
+      type: "gamecult.eve.command_receipt",
+      schemaName: "gamecult.eve.command_receipt",
+      schemaId: "gamecult.eve.command_receipt.v1",
+      schemaVersion: "gamecult.eve.command_receipt.v1",
+      global: false,
+      name: (value) => value?.commandId || value?.receiptId || "command-receipt",
+      schema: objectSchema("Eve command receipt"),
     }),
     swarmControl: defineDocumentType({
       type: "voidbot.swarm_control_state",
