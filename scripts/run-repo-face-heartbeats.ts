@@ -3,6 +3,7 @@ import "dotenv/config";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
 
@@ -254,8 +255,10 @@ async function main(): Promise<void> {
     });
   }
 
+  const swarmControl = await readSwarmControlState();
+  const globalHeat = swarmControl?.globalHeat ?? config.repoFaceHeartbeats.globalHeat;
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
-  state.globalHeat = config.repoFaceHeartbeats.globalHeat;
+  state.globalHeat = globalHeat;
   const completedThisTick = new Set<string>();
   state.participants = reconcileParticipants(
     state.participants,
@@ -265,7 +268,7 @@ async function main(): Promise<void> {
     config.repoFaceHeartbeats.heatOverrides,
     state.initiativeClock,
     config.repoFaceHeartbeats.baseRecoveryMinutes,
-    config.repoFaceHeartbeats.globalHeat,
+    globalHeat,
   ).map((participant) =>
     applyActiveTurnFreeze(
       participant,
@@ -5697,6 +5700,44 @@ function projectCharacterDescription(description: string | undefined): string | 
 function recoveryFor(participant: FaceHeartbeatParticipant): number {
   const loadPenalty = 1 + participant.currentLoad * 0.75;
   return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.1);
+}
+
+async function readSwarmControlState(): Promise<{ globalHeat: number } | null> {
+  const controlStorePath = resolve(
+    process.env.VOIDBOT_SWARM_CONTROL_STORE || ".voidbot/private/swarm-controls.cc",
+  );
+  try {
+    const packageJson = resolve(process.cwd(), "..", "CultLib", "packages", "cultmesh-ts", "package.json");
+    const requireCult = createRequire(packageJson);
+    const { CultMesh } = requireCult("./dist/index.js");
+    const { defineDocumentType } = createRequire(
+      resolve(process.cwd(), "..", "CultLib", "packages", "cultcache-ts", "package.json"),
+    )("./dist/index.js");
+    const definition = defineDocumentType({
+      type: "voidbot.swarm_control_state",
+      schemaName: "voidbot.swarm_control_state",
+      schemaId: "voidbot.swarm_control_state.v1",
+      schemaVersion: "voidbot.swarm_control_state.v1",
+      global: false,
+      name: () => "voidbot-swarm",
+      schema: {
+        parse(value: unknown) {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            throw new Error("VoidBot swarm control state must be an object.");
+          }
+          return value;
+        },
+      },
+    });
+    const node = await CultMesh.createNode(controlStorePath, { documents: [definition] });
+    const value = node.get(definition, "voidbot-swarm") as { globalHeat?: unknown } | undefined;
+    const globalHeat = Number(value?.globalHeat);
+    return Number.isFinite(globalHeat) && globalHeat >= 0.05 && globalHeat <= 2
+      ? { globalHeat }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {

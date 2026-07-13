@@ -1359,8 +1359,8 @@ function buildEveProviderState(snapshot) {
           }, [
             eveNode("ctb-rail", "rail", {
               title: "CTB order",
-              layout: { direction: "horizontal", overflowX: "auto", overflowY: "hidden", height: 96, gap: 6, padding: 6, grow: 1 },
-            }, upcoming.slice(0, 12).map((turn, index) =>
+              layout: { direction: "horizontal", overflow: "hidden", height: 96, gap: 6, padding: 6, grow: 1 },
+            }, upcoming.slice(0, 8).map((turn, index) =>
               eveNode(`turn-${stableId(turn.identityId)}-${index}`, "avatar", {
                 text: turn.displayName,
                 assetUri: turn.avatarUrl,
@@ -2859,6 +2859,16 @@ function providerEndpoints() {
       address: swarmCultMeshRudpEndpoint,
       role: "provider-cultmesh-rudp snapshot",
       schemaId: surfaceSchemaId,
+    },
+    {
+      id: "voidbot.swarm.command",
+      transport: "cultmesh-rudp",
+      uri: "cultmesh://voidbot.local/commands/swarm",
+      address: swarmCultMeshRudpEndpoint.replace(/^rudp:\/\//, ""),
+      connectionId: 0x43554c54,
+      role: "provider-command",
+      tags: ["command", "swarm"],
+      schemaId: "gamecult.eve.command.v1",
     },
   ];
 }

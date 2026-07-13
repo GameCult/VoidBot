@@ -7,6 +7,7 @@ const { createRequire } = require("module");
 
 const repoRoot = path.resolve(__dirname, "..");
 const defaultStorePath = path.join(repoRoot, ".voidbot", "status", "cultmesh", "voidbot-swarm-state.cc");
+const defaultControlStorePath = path.join(repoRoot, ".voidbot", "private", "swarm-controls.cc");
 const defaultBind = "127.0.0.1:17873";
 const defaultOdinCultMeshUri = "cultmesh://odin/rendezvous/provider-catalog";
 const defaultOdinRudpEndpoint = "rudp://127.0.0.1:17871";
@@ -15,6 +16,7 @@ const odinConnectionId = 0x0d1d0002;
 
 const args = parseArgs(process.argv.slice(2));
 const storePath = path.resolve(args.store || process.env.VOIDBOT_SWARM_CULTMESH_STORE || defaultStorePath);
+const controlStorePath = path.resolve(args.controlStore || process.env.VOIDBOT_SWARM_CONTROL_STORE || defaultControlStorePath);
 const bind = parseBind(args.bind || process.env.VOIDBOT_SWARM_CULTMESH_BIND || defaultBind);
 const odinCultMeshUri = args.odinCultMeshUri || args["odin-cultmesh-uri"] || process.env.VOIDBOT_ODIN_CULTMESH_URI || process.env.ODIN_CULTMESH_URI || defaultOdinCultMeshUri;
 const odinRudpEndpoint = args.odinRudpEndpoint || args["odin-rudp-endpoint"] || process.env.VOIDBOT_ODIN_RUDP || process.env.CULTMESH_URI_ODIN_RUDP || defaultOdinRudpEndpoint;
@@ -53,6 +55,7 @@ async function main() {
     onError: (error) => {
       console.error(`VoidBot swarm CultMesh/RUDP server error: ${error instanceof Error ? error.message : String(error)}`);
     },
+    onDocumentPutRaw: applySwarmCommand,
   });
 
   await server.start();
@@ -77,6 +80,27 @@ async function main() {
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+}
+
+async function applySwarmCommand(document) {
+  if (document.schemaId !== "gamecult.eve.command.v1") return;
+  const command = document.payload;
+  if (!command || command.providerId !== "voidbot.swarm" || command.command !== "swarm.set_heat") return;
+  const value = Number(command.payload?.value);
+  if (!Number.isFinite(value) || value < 0.05 || value > 2) {
+    throw new Error(`swarm.set_heat value must be between 0.05 and 2, got ${command.payload?.value}`);
+  }
+  const node = await CultMesh.createNode(controlStorePath, { documents: [documents.swarmControl] });
+  const control = {
+    schemaVersion: "voidbot.swarm_control_state.v1",
+    globalHeat: Math.round(value * 100) / 100,
+    commandId: command.commandId,
+    updatedAt: new Date().toISOString(),
+    updatedBy: command.clientId || command.publishedBy || "unknown",
+  };
+  await node.put(documents.swarmControl, "voidbot-swarm", control);
+  await node.flush?.(true);
+  console.log(`Applied swarm heat ${control.globalHeat} from ${control.commandId}`);
 }
 
 async function announceToOdin() {
@@ -190,6 +214,24 @@ function defineDocuments(defineDocumentType) {
       name: (value) => value?.boundary_id || value?.daemon_id || "voidbot",
       schema: objectSchema("Idunn command boundary"),
     }),
+    eveCommand: defineDocumentType({
+      type: "gamecult.eve.command",
+      schemaName: "gamecult.eve.command",
+      schemaId: "gamecult.eve.command.v1",
+      schemaVersion: "gamecult.eve.command.v1",
+      global: false,
+      name: (value) => value?.commandId || value?.command_id || "swarm-command",
+      schema: objectSchema("Eve command"),
+    }),
+    swarmControl: defineDocumentType({
+      type: "voidbot.swarm_control_state",
+      schemaName: "voidbot.swarm_control_state",
+      schemaId: "voidbot.swarm_control_state.v1",
+      schemaVersion: "voidbot.swarm_control_state.v1",
+      global: false,
+      name: () => "voidbot-swarm",
+      schema: objectSchema("VoidBot swarm control state"),
+    }),
   };
 }
 
@@ -207,6 +249,7 @@ function parseArgs(values) {
   for (let index = 0; index < values.length; index += 1) {
     const arg = values[index];
     if (arg === "--store") parsed.store = values[++index];
+    else if (arg === "--control-store") parsed.controlStore = values[++index];
     else if (arg === "--bind") parsed.bind = values[++index];
     else if (arg === "--odin-cultmesh-uri") parsed.odinCultMeshUri = values[++index];
     else if (arg === "--odin-rudp-endpoint") parsed.odinRudpEndpoint = values[++index];
