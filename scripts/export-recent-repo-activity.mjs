@@ -244,16 +244,51 @@ function readTrackedRepoNames(archivePath, requestedRepoNames) {
 
 function readAvailableRepos(sourceRepoRoot) {
   const lookup = new Map();
+  const canonicalCandidates = new Map();
 
   for (const entry of readdirSync(sourceRepoRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) {
       continue;
     }
 
-    lookup.set(entry.name.toLowerCase(), resolve(sourceRepoRoot, entry.name));
+    const repoPath = resolve(sourceRepoRoot, entry.name);
+    lookup.set(entry.name.toLowerCase(), repoPath);
+
+    const canonicalRepoName = readCanonicalGameCultRepoName(repoPath);
+    if (!canonicalRepoName) {
+      continue;
+    }
+
+    const key = canonicalRepoName.toLowerCase();
+    const candidates = canonicalCandidates.get(key) ?? [];
+    candidates.push({ localRepoName: entry.name, repoPath, canonicalRepoName });
+    canonicalCandidates.set(key, candidates);
+  }
+
+  for (const [key, candidates] of canonicalCandidates) {
+    candidates.sort((left, right) => {
+      const leftExact = left.localRepoName.toLowerCase() === left.canonicalRepoName.toLowerCase() ? 0 : 1;
+      const rightExact = right.localRepoName.toLowerCase() === right.canonicalRepoName.toLowerCase() ? 0 : 1;
+      return leftExact - rightExact || left.localRepoName.localeCompare(right.localRepoName);
+    });
+    lookup.set(key, candidates[0].repoPath);
   }
 
   return lookup;
+}
+
+function readCanonicalGameCultRepoName(repoPath) {
+  try {
+    const originUrl = execFileSync(
+      "git",
+      ["-C", repoPath, "remote", "get-url", "origin"],
+      { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    const match = originUrl.match(/github\.com[:/]GameCult\/([^/]+?)(?:\.git)?$/i);
+    return match?.[1] || null;
+  } catch {
+    return null;
+  }
 }
 
 function inspectRepoActivity({ repoName, repoPath, sinceIso, maxCommits, cursorEntry }) {

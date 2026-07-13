@@ -4773,13 +4773,18 @@ function renderRepoFaceRepoActivitySurface(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
 ): string {
+  const sourceRepoName = getRepoFaceSourceRepoName(identity);
+  if (!sourceRepoName) {
+    return "- This Persona has no source repository configured; no repo activity was requested.";
+  }
+
   const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
   const result = spawnSync(
     process.execPath,
     [
       resolve("scripts", "export-recent-repo-activity.mjs"),
       "--repos",
-      identity.repoName,
+      sourceRepoName,
       "--state-path",
       statePath,
       "--read-only",
@@ -4800,7 +4805,7 @@ function renderRepoFaceRepoActivitySurface(
   if (result.status !== 0) {
     const detail = `${result.stdout}\n${result.stderr}`.trim().slice(-600);
     return [
-      `- Recent ${identity.repoName} activity could not be read for this turn.`,
+      `- Recent ${sourceRepoName} activity could not be read for this turn.`,
       detail ? `- Reader error: ${collapseWhitespace(detail, 500)}` : "- Reader error: no diagnostic output.",
       "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
     ].join("\n");
@@ -4809,10 +4814,10 @@ function renderRepoFaceRepoActivitySurface(
   try {
     const parsed = JSON.parse(result.stdout) as { digest?: unknown };
     const digest = typeof parsed.digest === "string" ? parsed.digest.trim() : "";
-    return digest || `- No recent ${identity.repoName} activity was reported.`;
+    return digest || `- No recent ${sourceRepoName} activity was reported.`;
   } catch {
     return [
-      `- Recent ${identity.repoName} activity output was not parseable.`,
+      `- Recent ${sourceRepoName} activity output was not parseable.`,
       `- Raw output: ${collapseWhitespace(result.stdout, 500)}`,
       "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
     ].join("\n");
