@@ -168,21 +168,21 @@ async function projectAcceptedHeat(control) {
   await node.put(documents.swarmControl, "voidbot-swarm", control);
   await node.flush?.(true);
   await liveProviderSession?.upsertPublication?.(controlPublication(control));
-  await queueOperatorViewPublication();
+  await queueOperatorViewPublication(control);
 }
 
-function queueOperatorViewPublication() {
+function queueOperatorViewPublication(control) {
   operatorPublishChain = operatorPublishChain
-    .then(publishCurrentOperatorView)
+    .then(() => publishCurrentOperatorView(control))
     .catch((error) => console.error(`VoidBot swarm operator view publication failed: ${error instanceof Error ? error.message : String(error)}`));
   return operatorPublishChain;
 }
 
-async function publishCurrentOperatorView() {
+async function publishCurrentOperatorView(controlOverride) {
   const { control: _controlPath, ...jsonInputPaths } = operatorInputPaths;
   const inputs = await readSwarmOperatorInputs(jsonInputPaths);
-  const controlNode = await CultMesh.createNode(controlStorePath, { documents: [documents.swarmControl] });
-  const control = controlNode.get(documents.swarmControl, "voidbot-swarm");
+  const controlNode = controlOverride ? null : await CultMesh.createNode(controlStorePath, { documents: [documents.swarmControl] });
+  const control = controlOverride ?? controlNode?.get(documents.swarmControl, "voidbot-swarm");
   const view = projectSwarmOperatorView({
     ...inputs,
     control,
@@ -225,6 +225,7 @@ async function startLiveProviderSession() {
     commandHandlers: {},
   });
   await session.start();
+  console.log(`VoidBot swarm provider session ${session.state.status} as ${session.identity.providerId}${session.state.lastError ? `: ${session.state.lastError}` : ""}`);
   return session;
 }
 

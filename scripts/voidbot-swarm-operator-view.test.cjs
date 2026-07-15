@@ -15,7 +15,7 @@ test("projects bounded operator state and lets control own heat", () => {
       lastTickAt: "2026-07-15T10:00:00.000Z",
       pendingMentions: [{ identityId: "eve" }],
       participants: [
-        { identityId: "eve", displayName: "Eve", status: "active", nextTurnInMinutes: 3 },
+        { identityId: "eve", displayName: "Eve", status: "active", nextTurnInMinutes: 3, heat: 1.2 },
         { identityId: "odin", displayName: "Odin", status: "active", activeJobId: "job-1", nextTurnInMinutes: 8 },
       ],
     },
