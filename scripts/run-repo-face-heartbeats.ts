@@ -12,7 +12,6 @@ import {
   buildEpiphanyIdentityRegistry,
   ContextBuilder,
   createStateStorage,
-  ensureRepoFaceInitialized,
   getRepoFaceSourceRepoName,
   getRepoDiscordIdentityAllowedChannelIds,
   faceRegistryAsRepoDiscordRegistry,
@@ -554,17 +553,6 @@ async function queueRepoFaceTurn(input: {
   }
 
   const contextBuilder = new ContextBuilder();
-  if (identity.identityKind !== "native_persona") {
-    await ensureRepoFaceInitialized({
-      identity,
-      storageRoot: input.config.storageRoot,
-      sourceRepoRoot: input.config.sourceRepoRoot,
-      epiphanyAgentRoot: input.config.epiphanyAgentRoot,
-      workspaceRoot: process.cwd(),
-      birthMode: input.config.repoFaceBirthMode,
-      birthExecutor: input.config.repoFaceBirthExecutor,
-    });
-  }
   const recentMessages = await fetchRecentDiscordMessages({
     botToken: input.config.botToken,
     channelId,

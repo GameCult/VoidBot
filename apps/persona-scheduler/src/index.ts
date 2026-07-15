@@ -58,7 +58,6 @@ function scheduleNext(): void {
     await runTick();
     scheduleNext();
   }, intervalMs);
-  timer.unref();
 }
 
 async function shutdown(signal: string): Promise<void> {

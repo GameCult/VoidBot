@@ -15,7 +15,6 @@ import {
   OllamaSituationalSocialReadInferer,
   PermissionEngine,
   createStateStorage,
-  ensureRepoFaceInitialized,
   faceRegistryAsRepoDiscordRegistry,
   findRepoDiscordIdentityByPersonaName,
   findRepoDiscordIdentityByRoleIds,
@@ -431,15 +430,6 @@ export async function startBot(): Promise<void> {
             console.log(`Ignored empty repo Face mention ${message.id} for ${identity.id}.`);
             continue;
           }
-          const faceInitialization = await ensureRepoFaceInitialized({
-            identity,
-            storageRoot: config.storageRoot,
-            sourceRepoRoot: config.sourceRepoRoot,
-            epiphanyAgentRoot: config.epiphanyAgentRoot,
-            workspaceRoot: process.cwd(),
-            birthMode: config.repoFaceBirthMode,
-            birthExecutor: config.repoFaceBirthExecutor,
-          });
           const queuedMention = await queueRepoFaceMention({
             statePath: config.repoFaceHeartbeats.statePath,
             identity,
@@ -454,9 +444,7 @@ export async function startBot(): Promise<void> {
             queuedCount += 1;
           }
           console.log(
-            `Queued repo Face mention ${message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending). Birth status: ${
-              faceInitialization.birthStatusPath ?? faceInitialization.skippedReason ?? "unknown"
-            }`,
+            `Queued repo Face mention ${message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending).`,
           );
         }
         if (queuedCount === 0) {
