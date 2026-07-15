@@ -39,6 +39,7 @@
     "agents:mimo-nibu-crashout-smoke": "node scripts/smoke-mimo-nibu-crashout.mjs",
     "agents:speech-boundary-smoke": "tsx scripts/smoke-repo-face-speech-boundary.ts",
     "agents:heartbeat-response-pressure-fixture": "tsx scripts/smoke-repo-face-response-pressure.ts",
+    "agents:initiative-engine-smoke": "tsx scripts/smoke-persona-initiative-engine.ts",
     "agents:memory-projection-smoke": "node scripts/smoke-repo-face-memory-projection.mjs",
     "agents:shared-documents-smoke": "tsx scripts/smoke-repo-face-shared-documents.ts",
     "agents:shared-documents-mcp-smoke": "node scripts/smoke-repo-face-shared-documents-mcp.mjs",

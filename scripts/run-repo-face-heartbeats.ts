@@ -45,6 +45,13 @@ import {
   type SourceMessage,
   type SourceMessageAttachment,
 } from "@voidbot/shared";
+import {
+  advanceInitiativeClockFromWallClock,
+  applyPendingMentionPriority,
+  countPendingMentionsByIdentity,
+  rescheduleStaleOverdueParticipants,
+  selectReadyParticipants,
+} from "../apps/persona-scheduler/src/initiative-engine";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
@@ -1435,70 +1442,6 @@ function applyActiveTurnFreeze(
   };
 }
 
-function selectReadyParticipants(
-  state: FaceHeartbeatState,
-  maxJobs: number,
-  completedThisTick: Set<string>,
-  restStates: Map<string, RepoFaceRestSnapshot>,
-  idleCooling: IdleCoolingSnapshot,
-): FaceHeartbeatParticipant[] {
-  const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
-  const eligible = state.participants
-    .filter((participant) => {
-      const pendingMentionCount = pendingMentionCounts.get(participant.identityId) ?? 0;
-      const restState = restStates.get(participant.identityId);
-      return (
-        participant.status === "active" &&
-        participant.currentLoad < 1 &&
-        !completedThisTick.has(participant.identityId) &&
-        !(
-          participant.participantKind === "repo_face" &&
-          pendingMentionCount === 0 &&
-          restState?.isNapping === true
-        )
-      );
-    });
-
-  if (eligible.length === 0) {
-    return [];
-  }
-
-  const ready = eligible
-    .filter((participant) => participant.nextTurnAt <= state.initiativeClock)
-    .sort((left, right) => {
-      const pendingDelta =
-        (pendingMentionCounts.get(right.identityId) ?? 0) -
-        (pendingMentionCounts.get(left.identityId) ?? 0);
-      if (pendingDelta !== 0) {
-        return pendingDelta;
-      }
-      const readyDelta = left.nextTurnAt - right.nextTurnAt;
-      if (readyDelta !== 0) {
-        return readyDelta;
-      }
-      if (right.reactionBias !== left.reactionBias) {
-        return right.reactionBias - left.reactionBias;
-      }
-      if (right.effectiveSpeed !== left.effectiveSpeed) {
-        return right.effectiveSpeed - left.effectiveSpeed;
-      }
-      return left.identityId.localeCompare(right.identityId);
-    });
-
-  if (!idleCooling.enabled || !idleCooling.active) {
-    return ready.slice(0, maxJobs);
-  }
-
-  const mentioned = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) > 0);
-  const unprompted = ready.filter((participant) => (pendingMentionCounts.get(participant.identityId) ?? 0) === 0);
-  const coolingAllowsUnpromptedTurn =
-    !idleCooling.nextUnpromptedTurnAllowedAt ||
-    Date.parse(idleCooling.nextUnpromptedTurnAllowedAt) <= Date.now();
-  const cooled = coolingAllowsUnpromptedTurn && mentioned.length < maxJobs ? unprompted.slice(0, 1) : [];
-
-  return [...mentioned, ...cooled].slice(0, maxJobs);
-}
-
 async function applySemanticResponsePressure(input: {
   state: FaceHeartbeatState;
   specs: ParticipantSpec[];
@@ -1635,58 +1578,6 @@ function renderInitiativeAffinityCard(spec: ParticipantSpec): string {
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0).join("\n");
 }
 
-function advanceInitiativeClockFromWallClock(state: FaceHeartbeatState, now: Date): void {
-  const lastTickMs = Date.parse(state.lastTickAt ?? "");
-  if (!Number.isFinite(lastTickMs)) {
-    return;
-  }
-
-  const elapsedMinutes = (now.getTime() - lastTickMs) / 60_000;
-  if (elapsedMinutes <= 0) {
-    return;
-  }
-
-  const boundedElapsedMinutes = Math.min(elapsedMinutes, 60);
-  state.initiativeClock = round3(state.initiativeClock + boundedElapsedMinutes);
-}
-
-function rescheduleStaleOverdueParticipants(state: FaceHeartbeatState): void {
-  const activeParticipants = state.participants.filter((participant) => participant.status === "active");
-  const count = Math.max(activeParticipants.length, 1);
-  let rescheduledCount = 0;
-
-  activeParticipants.forEach((participant, index) => {
-    const staleThreshold = Math.max(participant.baseRecoveryMinutes, 15);
-    if (participant.nextTurnAt >= state.initiativeClock - staleThreshold) {
-      return;
-    }
-
-    participant.nextTurnAt = round3(state.initiativeClock + (participant.baseRecoveryMinutes / count) * index);
-    rescheduledCount += 1;
-  });
-
-  if (rescheduledCount > 0) {
-    state.history.push({
-      type: "wall_clock_resync",
-      rescheduledCount,
-      initiativeClock: state.initiativeClock,
-    });
-  }
-}
-
-function applyPendingMentionPriority(state: FaceHeartbeatState): void {
-  const pendingMentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
-  for (const participant of state.participants) {
-    if (
-      participant.status === "active" &&
-      participant.currentLoad < 1 &&
-      (pendingMentionCounts.get(participant.identityId) ?? 0) > 0
-    ) {
-      participant.nextTurnAt = Math.min(participant.nextTurnAt, state.initiativeClock);
-    }
-  }
-}
-
 function pendingMentionsForParticipant(
   state: FaceHeartbeatState,
   identityId: string,
@@ -1694,16 +1585,6 @@ function pendingMentionsForParticipant(
   return state.pendingMentions
     .filter((mention) => mention.identityId === identityId)
     .sort((left, right) => Date.parse(left.queuedAt) - Date.parse(right.queuedAt));
-}
-
-function countPendingMentionsByIdentity(
-  pendingMentions: RepoFacePendingMention[],
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const mention of pendingMentions) {
-    counts.set(mention.identityId, (counts.get(mention.identityId) ?? 0) + 1);
-  }
-  return counts;
 }
 
 async function readIdleCoolingSnapshot(input: {
