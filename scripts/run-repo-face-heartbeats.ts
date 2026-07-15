@@ -51,7 +51,7 @@ import {
   countPendingMentionsByIdentity,
   rescheduleStaleOverdueParticipants,
   selectReadyParticipants,
-} from "../apps/persona-scheduler/src/initiative-engine";
+} from "../apps/persona-scheduler/dist/initiative-engine.js";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";

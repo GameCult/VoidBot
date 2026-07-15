@@ -6,7 +6,7 @@ import {
   selectReadyParticipants,
   type InitiativeParticipant,
   type InitiativeState,
-} from "../apps/persona-scheduler/src/initiative-engine";
+} from "../apps/persona-scheduler/dist/initiative-engine.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
