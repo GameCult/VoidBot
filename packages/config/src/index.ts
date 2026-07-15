@@ -137,7 +137,7 @@ const envSchema = z.object({
   BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
   VOIDBOT_MODERATION_HEARTBEAT_ENABLED: booleanFromEnv.default(false),
-  REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
+  REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.cc"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
   REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
   REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK: z.coerce.number().int().min(1).max(8).default(3),
@@ -540,7 +540,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     voidModerationHeartbeatEnabled: parsed.VOIDBOT_MODERATION_HEARTBEAT_ENABLED,
     repoFaceHeartbeats: {
       enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
-      statePath: resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH),
+      statePath: canonicalSchedulerStatePath(resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH)),
       taskName: parsed.REPO_FACE_HEARTBEAT_TASK_NAME,
       intervalMinutes: parsed.REPO_FACE_HEARTBEAT_INTERVAL_MINUTES,
       maxJobsPerTick: parsed.REPO_FACE_HEARTBEAT_MAX_JOBS_PER_TICK,
@@ -652,4 +652,10 @@ function requireWhenEnabled(enabled: boolean, value: string | undefined, message
     return value;
   }
   throw new Error(message);
+}
+
+function canonicalSchedulerStatePath(path: string): string {
+  if (path.toLowerCase().endsWith(".cc")) return path;
+  if (path.toLowerCase().endsWith(".json")) return `${path.slice(0, -5)}.cc`;
+  return `${path}.cc`;
 }

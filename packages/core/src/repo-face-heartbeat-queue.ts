@@ -104,7 +104,19 @@ export async function queueAgentHeartbeatMention(input: {
 }
 
 export function resolveRepoFaceMentionInboxDirectory(statePath: string): string {
-  return `${statePath}.mentions`;
+  return `${resolveRepoFaceHeartbeatStatePath(statePath)}.mentions`;
+}
+
+export function resolveRepoFaceHeartbeatStatePath(statePath: string): string {
+  const resolved = resolve(statePath);
+  if (resolved.toLowerCase().endsWith(".cc")) return resolved;
+  if (resolved.toLowerCase().endsWith(".json")) return `${resolved.slice(0, -5)}.cc`;
+  return `${resolved}.cc`;
+}
+
+export function resolveRepoFaceHeartbeatDebugProjectionPath(statePath: string): string {
+  const canonical = resolveRepoFaceHeartbeatStatePath(statePath);
+  return `${canonical.slice(0, -3)}.json`;
 }
 
 export async function readRepoFaceMentionInbox(statePath: string): Promise<RepoFacePendingMention[]> {

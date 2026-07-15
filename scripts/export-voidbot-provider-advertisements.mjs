@@ -176,7 +176,8 @@ function buildCatalog() {
       ],
       witnesses: [
         witness("voidbot.swarm_state_snapshot", ".voidbot/status/cultmesh/voidbot-swarm-state.cc", "scripts/render-voidbot-swarm-dashboard.mjs", ["voidbot.swarm_state_snapshot", "gamecult.eve.provider_advertisement", "gamecult.eve.surface_state", "gamecult.eve.interface_binding"]),
-        witness("voidbot.repo_face_heartbeat_state", ".voidbot/status/repo-face-heartbeats.json", "VoidBot CTB scheduler", ["debug/status source"]),
+        witness("voidbot.repo_face_heartbeat_state", ".voidbot/status/repo-face-heartbeats.cc", "VoidBot CTB scheduler", ["canonical typed scheduler state"]),
+        witness("voidbot.repo_face_heartbeat_debug_projection", ".voidbot/status/repo-face-heartbeats.json", "VoidBot CTB scheduler", ["derived debug/status projection", "not mutation authority"]),
         witness("voidbot.orchestrator_state", ".voidbot/status/gamecult-orchestrator.json", "GameCult Local Orchestrator", ["debug/status source"]),
       ],
       commands: [

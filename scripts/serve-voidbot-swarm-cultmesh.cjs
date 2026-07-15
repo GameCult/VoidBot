@@ -25,11 +25,17 @@ const args = parseArgs(process.argv.slice(2));
 const storePath = path.resolve(args.store || process.env.VOIDBOT_SWARM_CULTMESH_STORE || defaultStorePath);
 const controlStorePath = path.resolve(args.controlStore || process.env.VOIDBOT_SWARM_CONTROL_STORE || defaultControlStorePath);
 const operatorInputPaths = {
-  heartbeat: path.resolve(process.env.REPO_FACE_HEARTBEAT_STATE_PATH || path.join(repoRoot, ".voidbot", "status", "repo-face-heartbeats.json")),
+  heartbeat: schedulerDebugProjectionPath(process.env.REPO_FACE_HEARTBEAT_STATE_PATH || path.join(repoRoot, ".voidbot", "status", "repo-face-heartbeats.cc")),
   orchestrator: path.resolve(process.env.VOIDBOT_ORCHESTRATOR_STATE_PATH || path.join(repoRoot, ".voidbot", "status", "gamecult-orchestrator.json")),
   pause: path.resolve(process.env.VOIDBOT_SWARM_PAUSE_STATE_PATH || path.join(repoRoot, "state", "agent-swarm-paused.json")),
   control: controlStorePath,
 };
+
+function schedulerDebugProjectionPath(configuredPath) {
+  const resolved = path.resolve(configuredPath);
+  if (resolved.toLowerCase().endsWith(".cc")) return `${resolved.slice(0, -3)}.json`;
+  return resolved;
+}
 const bind = parseBind(args.bind || process.env.VOIDBOT_SWARM_CULTMESH_BIND || defaultBind);
 const odinCultMeshUri = args.odinCultMeshUri || args["odin-cultmesh-uri"] || process.env.VOIDBOT_ODIN_CULTMESH_URI || process.env.ODIN_CULTMESH_URI || defaultOdinCultMeshUri;
 const odinRudpEndpoint = args.odinRudpEndpoint || args["odin-rudp-endpoint"] || process.env.VOIDBOT_ODIN_RUDP || process.env.CULTMESH_URI_ODIN_RUDP || defaultOdinRudpEndpoint;

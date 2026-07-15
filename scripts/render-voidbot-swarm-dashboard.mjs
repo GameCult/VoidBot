@@ -45,7 +45,7 @@ const swarmCultMeshRudpEndpoint = String(
 const storageRoot = resolveConfigPath(env.STORAGE_ROOT, defaultStorageRoot);
 const statusDir = resolve(storageRoot, "status");
 const heartbeatStatePath = resolveConfigPath(
-  env.REPO_FACE_HEARTBEAT_STATE_PATH,
+  schedulerDebugProjectionPath(env.REPO_FACE_HEARTBEAT_STATE_PATH),
   resolve(statusDir, "repo-face-heartbeats.json"),
 );
 const orchestratorPath = resolve(statusDir, "gamecult-orchestrator.json");
@@ -2934,6 +2934,13 @@ async function readDotEnv(path) {
     }
   } catch {}
   return values;
+}
+
+function schedulerDebugProjectionPath(value) {
+  if (!value) return value;
+  const resolved = resolve(value);
+  if (resolved.toLowerCase().endsWith(".cc")) return `${resolved.slice(0, -3)}.json`;
+  return resolved;
 }
 
 function resolveConfigPath(value, fallback) {

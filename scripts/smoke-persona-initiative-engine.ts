@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   queueAgentHeartbeatMention,
   readRepoFaceMentionInbox,
+  resolveRepoFaceHeartbeatDebugProjectionPath,
+  resolveRepoFaceHeartbeatStatePath,
   type CreateJobInput,
   type JobQueue,
   type RepoDiscordIdentity,
@@ -32,6 +34,7 @@ import {
   type InitiativeState,
 } from "../apps/persona-scheduler/dist/initiative-engine.js";
 import {
+  newPersonaSchedulerState,
   readPersonaSchedulerState,
   writePersonaSchedulerState,
 } from "../apps/persona-scheduler/dist/state-store.js";
@@ -468,15 +471,18 @@ try {
   await writePersonaSchedulerState(statePath, absent);
   const persisted = await readPersonaSchedulerState(statePath);
   assert.equal(persisted.participants[0].identityId, "persisted", "atomic scheduler persistence round-trips its state");
-  assert.ok((await readFile(statePath, "utf8")).endsWith("\n"), "the promoted state is a complete inspectable document");
+  assert.ok((await readFile(resolveRepoFaceHeartbeatDebugProjectionPath(statePath), "utf8")).endsWith("\n"), "the JSON witness remains a complete inspectable projection");
+  await writeFile(resolveRepoFaceHeartbeatDebugProjectionPath(statePath), `${JSON.stringify(newPersonaSchedulerState())}\n`, "utf8");
+  assert.equal((await readPersonaSchedulerState(statePath)).participants[0].identityId, "persisted", "the derived JSON witness cannot override canonical CultCache state");
 
-  await writeFile(statePath, "{broken", "utf8");
+  await writeFile(resolveRepoFaceHeartbeatStatePath(statePath), "{broken", "utf8");
   await assert.rejects(
     readPersonaSchedulerState(statePath),
     /refusing to replace it with empty state/,
     "malformed persistent state must fail closed instead of erasing the scheduler mind",
   );
 
+  await rm(resolveRepoFaceHeartbeatStatePath(statePath), { force: true });
   await writeFile(statePath, JSON.stringify({
     schemaVersion: "legacy",
     baseIntervalMinutes: 90,
@@ -487,7 +493,8 @@ try {
   const migrated = await readPersonaSchedulerState(statePath, Date.parse("2026-07-15T20:00:00.000Z"));
   assert.equal(migrated.baseRecoveryMinutes, 30, "legacy cadence migrates under the scheduler store owner");
   assert.equal(migrated.participants[0].participantKind, "repo_face", "legacy participants receive current scheduling anatomy");
-  assert.equal(migrated.history.at(-1)?.type, "migrated", "migration leaves a durable state witness");
+  assert.ok(migrated.history.some((entry) => entry.type === "migrated"), "schema migration leaves a durable state witness");
+  assert.equal(migrated.history.at(-1)?.type, "storage_migrated", "JSON-to-CultCache migration names the storage authority change");
 
   const mentionStatePath = join(stateDirectory, "mentions.json");
   const mentionInput = {

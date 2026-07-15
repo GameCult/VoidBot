@@ -710,10 +710,19 @@
         },
         {
           "id": "voidbot.repo_face_heartbeat_state",
+          "path": ".voidbot/status/repo-face-heartbeats.cc",
+          "owner": "VoidBot CTB scheduler",
+          "contains": [
+            "canonical typed scheduler state"
+          ]
+        },
+        {
+          "id": "voidbot.repo_face_heartbeat_debug_projection",
           "path": ".voidbot/status/repo-face-heartbeats.json",
           "owner": "VoidBot CTB scheduler",
           "contains": [
-            "debug/status source"
+            "derived debug/status projection",
+            "not mutation authority"
           ]
         },
         {
