@@ -19,7 +19,6 @@ import {
   applyVoidSelfStateOperation,
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
-  REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
   projectRepoFaceResponsePressure,
   type RepoFaceRestSnapshot,
   resolveRepoFaceStatePath,
@@ -56,57 +55,18 @@ import {
   recordTurnStarted,
   rescheduleStaleOverdueParticipants,
   selectReadyParticipants,
+  type InitiativeParticipant as FaceHeartbeatParticipant,
   type ParticipantSpec as SchedulerParticipantSpec,
 } from "../apps/persona-scheduler/dist/initiative-engine.js";
+import {
+  readPersonaSchedulerState as readHeartbeatState,
+  writePersonaSchedulerState as writeHeartbeatState,
+  type PersonaSchedulerState as FaceHeartbeatState,
+} from "../apps/persona-scheduler/dist/state-store.js";
 
-const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
 const HEARTBEAT_COMMAND = "repo-face-rumination";
 const MIN_STALE_ACTIVE_JOB_MS = 45 * 60_000;
 const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
-
-interface FaceHeartbeatParticipant {
-  identityId: string;
-  participantKind: "repo_face" | "native_persona" | "system_agent";
-  turnKind: "repo_face_rumination" | "void_moderation";
-  repoName: string;
-  displayName: string;
-  initiativeSpeed: number;
-  reactionBias: number;
-  interruptThreshold: number;
-  currentLoad: number;
-  status: "active" | "blocked" | "withdrawn" | "offscreen";
-  groups: string[];
-  heat: number;
-  dynamicHeat: number;
-  responsePressure: number;
-  responsePressureEvidence: Array<{
-    messageId: string;
-    observedAt: string;
-    similarity: number;
-    contribution: number;
-  }>;
-  semanticInterruptReceipts: string[];
-  effectiveSpeed: number;
-  baseRecoveryMinutes: number;
-  nextTurnAt: number;
-  lastTurnAt?: number;
-  activeTurnStartedAt?: number;
-  activeJobId?: string;
-  lastQueuedAt?: string;
-  queuedCount: number;
-  constraints: string[];
-}
-
-interface FaceHeartbeatState {
-  schemaVersion: typeof HEARTBEAT_SCHEMA_VERSION;
-  initiativeClock: number;
-  baseRecoveryMinutes: number;
-  globalHeat: number;
-  lastTickAt?: string;
-  participants: FaceHeartbeatParticipant[];
-  history: Array<Record<string, unknown>>;
-  pendingMentions: RepoFacePendingMention[];
-}
 
 interface ActiveTurnScan {
   active: Map<string, string>;
@@ -5280,139 +5240,6 @@ async function readSwarmControlState(): Promise<{ globalHeat: number } | null> {
   } catch {
     return null;
   }
-}
-
-async function readHeartbeatState(path: string): Promise<FaceHeartbeatState> {
-  try {
-    const raw = await readFile(path, "utf8");
-    const parsed = JSON.parse(stripLeadingBom(raw)) as Partial<FaceHeartbeatState> & {
-      baseIntervalMinutes?: number;
-      participants?: Array<Partial<FaceHeartbeatParticipant> & { nextReadyAt?: string }>;
-    };
-    if (parsed.schemaVersion === HEARTBEAT_SCHEMA_VERSION) {
-      return {
-        schemaVersion: HEARTBEAT_SCHEMA_VERSION,
-        initiativeClock: Number.isFinite(parsed.initiativeClock) ? parsed.initiativeClock : 0,
-        baseRecoveryMinutes: Number.isFinite(parsed.baseRecoveryMinutes) ? parsed.baseRecoveryMinutes : 10,
-        globalHeat: Number.isFinite(parsed.globalHeat) ? parsed.globalHeat : 1,
-        lastTickAt: parsed.lastTickAt,
-        participants: Array.isArray(parsed.participants) ? parsed.participants as FaceHeartbeatParticipant[] : [],
-        history: Array.isArray(parsed.history) ? parsed.history : [],
-        pendingMentions: Array.isArray(parsed.pendingMentions)
-          ? parsed.pendingMentions.filter(isRepoFacePendingMention)
-          : [],
-      };
-    }
-    if (Array.isArray(parsed.participants)) {
-      return migrateLegacyHeartbeatState(parsed);
-    }
-  } catch {
-    // fall through to a new state
-  }
-
-  return {
-    schemaVersion: HEARTBEAT_SCHEMA_VERSION,
-    initiativeClock: 0,
-    baseRecoveryMinutes: 10,
-    globalHeat: 1,
-    participants: [],
-    history: [],
-    pendingMentions: [],
-  };
-}
-
-async function writeHeartbeatState(path: string, state: FaceHeartbeatState): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-}
-
-function migrateLegacyHeartbeatState(
-  parsed: Partial<FaceHeartbeatState> & {
-    baseIntervalMinutes?: number;
-    participants?: Array<Partial<FaceHeartbeatParticipant> & { nextReadyAt?: string }>;
-  },
-): FaceHeartbeatState {
-  const nowMs = Date.now();
-  const legacyBase = Number.isFinite(parsed.baseIntervalMinutes) ? parsed.baseIntervalMinutes : 30;
-  const baseRecoveryMinutes = Math.max(5, legacyBase / 3);
-  const participants = (parsed.participants ?? []).map((participant, index) => {
-    const speed = Number.isFinite(participant.initiativeSpeed) ? participant.initiativeSpeed : 1;
-    const legacyReadyMs = participant.nextReadyAt ? Date.parse(participant.nextReadyAt) : NaN;
-    const minutesUntilReady = Number.isFinite(legacyReadyMs)
-      ? Math.max(0, (legacyReadyMs - nowMs) / 60_000)
-      : index * baseRecoveryMinutes;
-
-    return {
-      identityId: participant.identityId ?? `legacy-face-${index + 1}`,
-      repoName: participant.repoName ?? "unknown",
-      displayName: participant.displayName ?? participant.identityId ?? `Legacy Face ${index + 1}`,
-      initiativeSpeed: speed,
-      reactionBias: Number.isFinite(participant.reactionBias) ? participant.reactionBias : 0.4,
-      interruptThreshold: Number.isFinite(participant.interruptThreshold) ? participant.interruptThreshold : 0.6,
-      currentLoad: Number.isFinite(participant.currentLoad) ? participant.currentLoad : 0,
-      status: participant.status ?? "active",
-      groups: participant.groups ?? [],
-      heat: Number.isFinite(participant.heat) ? participant.heat : 1,
-      dynamicHeat: Number.isFinite(participant.dynamicHeat) ? participant.dynamicHeat : 1,
-      responsePressure: Number.isFinite(participant.responsePressure) ? participant.responsePressure : 0,
-      responsePressureEvidence: Array.isArray(participant.responsePressureEvidence)
-        ? participant.responsePressureEvidence
-        : [],
-      semanticInterruptReceipts: Array.isArray(participant.semanticInterruptReceipts)
-        ? participant.semanticInterruptReceipts
-        : [],
-      effectiveSpeed: Number.isFinite(participant.effectiveSpeed) ? participant.effectiveSpeed : speed,
-      baseRecoveryMinutes,
-      nextTurnAt: minutesUntilReady,
-      lastTurnAt: participant.lastTurnAt,
-      activeTurnStartedAt: participant.activeTurnStartedAt,
-      activeJobId: participant.activeJobId,
-      lastQueuedAt: participant.lastQueuedAt,
-      queuedCount: Number.isFinite(participant.queuedCount) ? participant.queuedCount : 0,
-      constraints: participant.constraints ?? [
-        "Migrated from wall-clock repo Face turn state.",
-      ],
-    } satisfies FaceHeartbeatParticipant;
-  });
-
-  return {
-    schemaVersion: HEARTBEAT_SCHEMA_VERSION,
-    initiativeClock: 0,
-    baseRecoveryMinutes,
-    globalHeat: 1,
-    lastTickAt: parsed.lastTickAt,
-    participants,
-    pendingMentions: Array.isArray(parsed.pendingMentions)
-      ? parsed.pendingMentions.filter(isRepoFacePendingMention)
-      : [],
-    history: [
-      ...(Array.isArray(parsed.history) ? parsed.history : []),
-      {
-        type: "migrated",
-        fromSchemaVersion: parsed.schemaVersion ?? "unknown",
-        migratedAt: new Date().toISOString(),
-        participantCount: participants.length,
-      },
-    ].slice(-80),
-  };
-}
-
-function isRepoFacePendingMention(value: unknown): value is RepoFacePendingMention {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.identityId === "string" &&
-    typeof record.channelId === "string" &&
-    typeof record.messageId === "string" &&
-    typeof record.authorId === "string" &&
-    typeof record.content === "string" &&
-    typeof record.visiblePrompt === "string" &&
-    typeof record.queuedAt === "string"
-  );
 }
 
 function channelSpeedMultiplierFor(identity: RepoDiscordIdentity): number {

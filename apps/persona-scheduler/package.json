@@ -6,6 +6,7 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "@voidbot/config": "0.1.0",
+    "@voidbot/core": "0.1.0",
     "dotenv": "^16.4.0"
   }
 }

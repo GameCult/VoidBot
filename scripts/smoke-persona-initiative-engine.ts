@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   advanceInitiativeClockFromWallClock,
@@ -12,6 +15,10 @@ import {
   type InitiativeParticipant,
   type InitiativeState,
 } from "../apps/persona-scheduler/dist/initiative-engine.js";
+import {
+  readPersonaSchedulerState,
+  writePersonaSchedulerState,
+} from "../apps/persona-scheduler/dist/state-store.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -149,5 +156,38 @@ const inspected = participant("inspected", 69);
 recordDryRunSelection(inspected, queueState, "2026-07-15T21:02:00.000Z", 0);
 assert.equal(inspected.nextTurnAt, 100, "dry-run selection uses the same recovery ownership without claiming active load");
 assert.equal(inspected.currentLoad, 0, "inspection cannot impersonate a live job");
+
+const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
+try {
+  const statePath = join(stateDirectory, "scheduler.json");
+  const absent = await readPersonaSchedulerState(statePath);
+  assert.equal(absent.initiativeClock, 0, "an absent scheduler store starts one explicit new state");
+  absent.participants.push(participant("persisted", 7));
+  await writePersonaSchedulerState(statePath, absent);
+  const persisted = await readPersonaSchedulerState(statePath);
+  assert.equal(persisted.participants[0].identityId, "persisted", "atomic scheduler persistence round-trips its state");
+  assert.ok((await readFile(statePath, "utf8")).endsWith("\n"), "the promoted state is a complete inspectable document");
+
+  await writeFile(statePath, "{broken", "utf8");
+  await assert.rejects(
+    readPersonaSchedulerState(statePath),
+    /refusing to replace it with empty state/,
+    "malformed persistent state must fail closed instead of erasing the scheduler mind",
+  );
+
+  await writeFile(statePath, JSON.stringify({
+    schemaVersion: "legacy",
+    baseIntervalMinutes: 90,
+    participants: [{ identityId: "legacy", repoName: "Legacy", displayName: "Legacy" }],
+    pendingMentions: [],
+    history: [],
+  }), "utf8");
+  const migrated = await readPersonaSchedulerState(statePath, Date.parse("2026-07-15T20:00:00.000Z"));
+  assert.equal(migrated.baseRecoveryMinutes, 30, "legacy cadence migrates under the scheduler store owner");
+  assert.equal(migrated.participants[0].participantKind, "repo_face", "legacy participants receive current scheduling anatomy");
+  assert.equal(migrated.history.at(-1)?.type, "migrated", "migration leaves a durable state witness");
+} finally {
+  await rm(stateDirectory, { recursive: true, force: true });
+}
 
 process.stdout.write("Persona initiative engine smoke passed.\n");
