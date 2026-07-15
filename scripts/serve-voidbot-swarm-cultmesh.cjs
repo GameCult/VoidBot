@@ -4,6 +4,12 @@
 const fs = require("fs");
 const path = require("path");
 const { createRequire } = require("module");
+const {
+  operatorViewPublication,
+  projectSwarmOperatorView,
+  readSwarmOperatorInputs,
+  watchSwarmOperatorInputs,
+} = require("./voidbot-swarm-operator-view.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const defaultStorePath = path.join(repoRoot, ".voidbot", "status", "cultmesh", "voidbot-swarm-state.cc");
@@ -17,6 +23,12 @@ const odinConnectionId = 0x0d1d0002;
 const args = parseArgs(process.argv.slice(2));
 const storePath = path.resolve(args.store || process.env.VOIDBOT_SWARM_CULTMESH_STORE || defaultStorePath);
 const controlStorePath = path.resolve(args.controlStore || process.env.VOIDBOT_SWARM_CONTROL_STORE || defaultControlStorePath);
+const operatorInputPaths = {
+  heartbeat: path.resolve(process.env.REPO_FACE_HEARTBEAT_STATE_PATH || path.join(repoRoot, ".voidbot", "status", "repo-face-heartbeats.json")),
+  orchestrator: path.resolve(process.env.VOIDBOT_ORCHESTRATOR_STATE_PATH || path.join(repoRoot, ".voidbot", "status", "gamecult-orchestrator.json")),
+  pause: path.resolve(process.env.VOIDBOT_SWARM_PAUSE_STATE_PATH || path.join(repoRoot, "state", "agent-swarm-paused.json")),
+  control: controlStorePath,
+};
 const bind = parseBind(args.bind || process.env.VOIDBOT_SWARM_CULTMESH_BIND || defaultBind);
 const odinCultMeshUri = args.odinCultMeshUri || args["odin-cultmesh-uri"] || process.env.VOIDBOT_ODIN_CULTMESH_URI || process.env.ODIN_CULTMESH_URI || defaultOdinCultMeshUri;
 const odinRudpEndpoint = args.odinRudpEndpoint || args["odin-rudp-endpoint"] || process.env.VOIDBOT_ODIN_RUDP || process.env.CULTMESH_URI_ODIN_RUDP || defaultOdinRudpEndpoint;
@@ -42,6 +54,8 @@ const documentRegistry = new CultNetDocumentRegistry(
 let server = null;
 let announceTimer = null;
 let liveProviderSession = null;
+let stopOperatorWatch = null;
+let operatorPublishChain = Promise.resolve();
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.stack || error.message : String(error));
@@ -71,6 +85,8 @@ async function main() {
 
   await server.start();
   liveProviderSession = await startLiveProviderSession();
+  await publishCurrentOperatorView();
+  stopOperatorWatch = watchSwarmOperatorInputs(operatorInputPaths, queueOperatorViewPublication);
   console.log(`VoidBot swarm CultMesh/RUDP serving ${storePath} at rudp://${bind.host}:${bind.port}`);
   announceToOdin().catch((error) => {
     console.error(`VoidBot swarm Odin announcement failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -86,6 +102,7 @@ async function main() {
     try {
       if (announceTimer) clearInterval(announceTimer);
       server?.close?.();
+      stopOperatorWatch?.();
       void liveProviderSession?.stop?.();
     } finally {
       process.exit(0);
@@ -151,6 +168,33 @@ async function projectAcceptedHeat(control) {
   await node.put(documents.swarmControl, "voidbot-swarm", control);
   await node.flush?.(true);
   await liveProviderSession?.upsertPublication?.(controlPublication(control));
+  await queueOperatorViewPublication();
+}
+
+function queueOperatorViewPublication() {
+  operatorPublishChain = operatorPublishChain
+    .then(publishCurrentOperatorView)
+    .catch((error) => console.error(`VoidBot swarm operator view publication failed: ${error instanceof Error ? error.message : String(error)}`));
+  return operatorPublishChain;
+}
+
+async function publishCurrentOperatorView() {
+  const { control: _controlPath, ...jsonInputPaths } = operatorInputPaths;
+  const inputs = await readSwarmOperatorInputs(jsonInputPaths);
+  const controlNode = await CultMesh.createNode(controlStorePath, { documents: [documents.swarmControl] });
+  const control = controlNode.get(documents.swarmControl, "voidbot-swarm");
+  const view = projectSwarmOperatorView({
+    ...inputs,
+    control,
+    route: {
+      providerStatus: liveProviderSession ? "connected" : "local-only",
+      endpoint: `rudp://${bind.host}:${bind.port}`,
+    },
+  });
+  const node = await CultMesh.createNode(storePath, { documents: documentDefinitions });
+  await node.put(documents.swarmOperatorView, "voidbot-swarm", view);
+  await node.flush?.(true);
+  await liveProviderSession?.upsertPublication?.(operatorViewPublication(view));
 }
 
 async function startLiveProviderSession() {
@@ -331,6 +375,15 @@ function defineDocuments(defineDocumentType) {
       global: false,
       name: () => "voidbot-swarm",
       schema: objectSchema("VoidBot swarm control state"),
+    }),
+    swarmOperatorView: defineDocumentType({
+      type: "voidbot.swarm_operator_view",
+      schemaName: "voidbot.swarm_operator_view",
+      schemaId: "voidbot.swarm_operator_view.v1",
+      schemaVersion: "voidbot.swarm_operator_view.v1",
+      global: false,
+      name: () => "voidbot-swarm",
+      schema: objectSchema("VoidBot swarm operator view"),
     }),
   };
 }
