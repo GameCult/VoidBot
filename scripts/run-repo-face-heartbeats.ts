@@ -115,7 +115,6 @@ async function main(): Promise<void> {
     });
     if (!dryRun) {
       await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
-      publishSwarmDashboardSurface();
     }
     process.stdout.write(
       `${JSON.stringify({
@@ -139,7 +138,6 @@ async function main(): Promise<void> {
       reason: "repo_face_heartbeats_disabled",
     });
     await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
-    publishSwarmDashboardSurface();
     return;
   }
 
