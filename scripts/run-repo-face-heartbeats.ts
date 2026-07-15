@@ -1,11 +1,10 @@
 import "dotenv/config";
 
-import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, extname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
@@ -34,7 +33,6 @@ import {
   type RepoFaceConversationFocus,
   type RetrievalResult,
   type SourceMessage,
-  type SourceMessageAttachment,
 } from "@voidbot/shared";
 import {
   advanceInitiativeClockFromWallClock,
@@ -62,9 +60,13 @@ import {
   type IdleCoolingSnapshot,
 } from "../apps/persona-scheduler/dist/discord-activity-source.js";
 import { readSemanticPressure } from "../apps/persona-scheduler/dist/semantic-pressure-source.js";
+import {
+  fetchChannelSnapshots,
+  fetchRecentDiscordMessages,
+  type ChannelSnapshot,
+} from "../apps/persona-scheduler/dist/turn-context-source.js";
 
 const HEARTBEAT_COMMAND = "repo-face-rumination";
-const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 interface RepoFaceChannelPlan {
   primaryChannelId?: string;
@@ -108,11 +110,6 @@ interface BifrostGovernanceComment {
   stance: string;
   bodyMarkdown: string;
   createdAt: string;
-}
-
-interface ChannelSnapshot {
-  channelId: string;
-  messages: SourceMessage[];
 }
 
 async function main(): Promise<void> {
@@ -773,191 +770,6 @@ function sleepCyclesEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-async function fetchRecentDiscordMessages(input: {
-  botToken?: string;
-  channelId: string;
-  limit: number;
-  ignoreBotMessages?: boolean;
-}): Promise<SourceMessage[]> {
-  if (!input.botToken) {
-    return [];
-  }
-
-  const url = new URL(`https://discord.com/api/v10/channels/${input.channelId}/messages`);
-  url.searchParams.set("limit", String(Math.max(1, Math.min(input.limit, 25))));
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bot ${input.botToken}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Discord recent message fetch failed with ${response.status}: ${await response.text()}`);
-  }
-
-  const messages = await response.json() as DiscordApiMessage[];
-  const sourceMessages = await Promise.all(messages
-    .filter((message) => !(input.ignoreBotMessages && message.author.bot === true))
-    .map(async (message) => {
-      const attachments = await materializeDiscordAttachments({
-        channelId: input.channelId,
-        message,
-      });
-      return {
-        id: message.id,
-        authorId: message.author.id,
-        authorName: message.author.global_name ?? message.member?.nick ?? message.author.username,
-        content: message.content,
-        timestamp: message.timestamp,
-        isBot: message.author.bot === true,
-        ...(attachments.length > 0 ? { attachments } : {}),
-      };
-    }));
-  return sourceMessages
-    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
-}
-
-async function fetchChannelSnapshots(input: {
-  botToken?: string;
-  channelIds: string[];
-  primaryChannelId: string;
-  limit: number;
-  bifrostDiscordChannelId?: string;
-}): Promise<ChannelSnapshot[]> {
-  const snapshots: ChannelSnapshot[] = [];
-  for (const channelId of input.channelIds.filter((entry) => entry !== input.primaryChannelId).slice(0, 5)) {
-    try {
-      snapshots.push({
-        channelId,
-        messages: await fetchRecentDiscordMessages({
-          botToken: input.botToken,
-          channelId,
-          limit: input.limit,
-          ignoreBotMessages: channelId === input.bifrostDiscordChannelId,
-        }),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      snapshots.push({
-        channelId,
-        messages: [{
-          id: `snapshot-error:${channelId}`,
-          authorId: "voidbot",
-          authorName: "VoidBot",
-          content: `Could not read recent channel context: ${message}`,
-          timestamp: new Date().toISOString(),
-          isBot: true,
-        }],
-      });
-    }
-  }
-  return snapshots;
-}
-
-async function materializeDiscordAttachments(input: {
-  channelId: string;
-  message: DiscordApiMessage;
-}): Promise<SourceMessageAttachment[]> {
-  const attachments = input.message.attachments ?? [];
-  if (attachments.length === 0) {
-    return [];
-  }
-
-  const materialized: SourceMessageAttachment[] = [];
-  for (const attachment of attachments.slice(0, 4)) {
-    const kind = isDiscordImageAttachment(attachment) ? "image" : "other";
-    let localPath: string | undefined;
-    if (kind === "image" && isWithinFaceImageSizeLimit(attachment)) {
-      localPath = await cacheDiscordImageAttachment({
-        channelId: input.channelId,
-        messageId: input.message.id,
-        attachment,
-      });
-    }
-    materialized.push({
-      kind,
-      id: attachment.id,
-      filename: attachment.filename,
-      contentType: attachment.content_type,
-      url: attachment.url,
-      proxyUrl: attachment.proxy_url,
-      size: typeof attachment.size === "number" ? attachment.size : undefined,
-      width: typeof attachment.width === "number" ? attachment.width : undefined,
-      height: typeof attachment.height === "number" ? attachment.height : undefined,
-      localPath,
-    });
-  }
-  return materialized;
-}
-
-function isWithinFaceImageSizeLimit(attachment: DiscordApiAttachment): boolean {
-  return typeof attachment.size !== "number" || attachment.size <= MAX_FACE_IMAGE_ATTACHMENT_BYTES;
-}
-
-function isDiscordImageAttachment(attachment: DiscordApiAttachment): boolean {
-  const contentType = attachment.content_type?.toLowerCase() ?? "";
-  if (contentType.startsWith("image/")) {
-    return true;
-  }
-  return /\.(png|jpe?g|gif|webp)$/i.test(attachment.filename ?? attachment.url ?? "");
-}
-
-async function cacheDiscordImageAttachment(input: {
-  channelId: string;
-  messageId: string;
-  attachment: DiscordApiAttachment;
-}): Promise<string | undefined> {
-  const sourceUrl = input.attachment.url ?? input.attachment.proxy_url;
-  if (!sourceUrl) {
-    return undefined;
-  }
-  const safeExtension = normalizedImageExtension(input.attachment);
-  const fileStem = [
-    input.messageId,
-    input.attachment.id ?? createHash("sha256").update(sourceUrl).digest("hex").slice(0, 12),
-  ].join("-");
-  const directory = resolve(".voidbot", "media", "discord-images", input.channelId);
-  const localPath = resolve(directory, `${fileStem}${safeExtension}`);
-  try {
-    await stat(localPath);
-    return localPath;
-  } catch {
-    // Cache miss. Fall through to fetch.
-  }
-
-  try {
-    const response = await fetch(sourceUrl);
-    if (!response.ok) {
-      return undefined;
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    await mkdir(directory, { recursive: true });
-    await writeFile(localPath, Buffer.from(arrayBuffer));
-    return localPath;
-  } catch {
-    return undefined;
-  }
-}
-
-function normalizedImageExtension(attachment: DiscordApiAttachment): string {
-  const fromName = extname(attachment.filename ?? "").toLowerCase();
-  if (/^\.(png|jpe?g|gif|webp)$/.test(fromName)) {
-    return fromName;
-  }
-  const contentType = attachment.content_type?.toLowerCase();
-  switch (contentType) {
-    case "image/jpeg":
-      return ".jpg";
-    case "image/gif":
-      return ".gif";
-    case "image/webp":
-      return ".webp";
-    case "image/png":
-    default:
-      return ".png";
-  }
-}
-
 async function fetchBifrostGovernanceDigest(input: {
   bifrostRoot: string;
   repoName: string;
@@ -1018,33 +830,6 @@ async function fetchBifrostGovernanceDigest(input: {
       }],
     };
   }
-}
-
-interface DiscordApiMessage {
-  id: string;
-  content: string;
-  timestamp: string;
-  attachments?: DiscordApiAttachment[];
-  author: {
-    id: string;
-    username: string;
-    global_name?: string | null;
-    bot?: boolean;
-  };
-  member?: {
-    nick?: string | null;
-  };
-}
-
-interface DiscordApiAttachment {
-  id?: string;
-  filename?: string;
-  content_type?: string;
-  size?: number;
-  url?: string;
-  proxy_url?: string;
-  width?: number | null;
-  height?: number | null;
 }
 
 async function startVoidModerationTurn(input: {

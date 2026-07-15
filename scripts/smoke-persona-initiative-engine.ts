@@ -33,6 +33,10 @@ import {
   newestUnpromptedTurnQueuedAt,
   readDiscordActivitySnapshot,
 } from "../apps/persona-scheduler/dist/discord-activity-source.js";
+import {
+  fetchChannelSnapshots,
+  fetchRecentDiscordMessages,
+} from "../apps/persona-scheduler/dist/turn-context-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -232,6 +236,47 @@ assert.equal(pressureState.participants[0].dynamicHeat, 2.2, "the engine owns pr
 assert.deepEqual(pressureState.participants[0].semanticInterruptReceipts, ["pressure-message"], "semantic interruption is consumed exactly once by scheduler state");
 assert.equal(pressureState.participants[1].responsePressure, 0, "missing projections explicitly cool stale pressure");
 assert.equal(pressureState.history.at(-1)?.type, "semantic_response_interrupt", "the state owner records the semantic transition");
+
+const contextMessages = await fetchRecentDiscordMessages({
+  botToken: "test-token",
+  channelId: "aquarium",
+  limit: 15,
+  ignoreBotMessages: true,
+  fetchImpl: async () => new Response(JSON.stringify([
+    {
+      id: "newer",
+      author: { id: "human-2", username: "Second" },
+      content: "second",
+      timestamp: "2026-07-15T21:00:00.000Z",
+      attachments: [{ id: "text", filename: "note.txt", url: "https://example.invalid/note.txt" }],
+    },
+    {
+      id: "ignored-bot",
+      author: { id: "bot", username: "Mirror", bot: true },
+      content: "mirror",
+      timestamp: "2026-07-15T20:59:00.000Z",
+    },
+    {
+      id: "older",
+      author: { id: "human-1", username: "First", global_name: "First Human" },
+      content: "first",
+      timestamp: "2026-07-15T20:58:00.000Z",
+    },
+  ]), { status: 200, headers: { "content-type": "application/json" } }),
+});
+assert.deepEqual(contextMessages.map((message) => message.id), ["older", "newer"], "turn context is raw chronological Discord evidence with configured bot mirrors removed");
+assert.equal(contextMessages[1].attachments?.[0].kind, "other", "non-image attachments remain inspectable without becoming media-cache writes");
+
+const failedSnapshot = await fetchChannelSnapshots({
+  botToken: "test-token",
+  channelIds: ["primary", "nearby"],
+  primaryChannelId: "primary",
+  limit: 6,
+  now: new Date("2026-07-15T21:00:00.000Z"),
+  fetchImpl: async () => new Response("nope", { status: 503 }),
+});
+assert.equal(failedSnapshot[0].messages[0].id, "snapshot-error:nearby", "nearby-channel failure is returned as explicit evidence rather than aborting the turn");
+assert.equal(failedSnapshot[0].messages[0].timestamp, "2026-07-15T21:00:00.000Z", "context-source failure witnesses use the caller's observation clock");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {
