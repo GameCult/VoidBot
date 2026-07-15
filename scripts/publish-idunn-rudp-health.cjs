@@ -1,6 +1,7 @@
 "use strict";
 
 const dgram = require("dgram");
+const fs = require("fs");
 const path = require("path");
 
 const cultLibRoot = process.env.VOIDBOT_CULTLIB_ROOT
@@ -17,7 +18,9 @@ const {
   encodeRudpPacket,
 } = require("cultnet-ts");
 
-const { encode } = require(path.join(cultLibPackages, "cultnet-ts", "node_modules", "@msgpack", "msgpack"));
+const cultNetMsgpack = path.join(cultLibPackages, "cultnet-ts", "node_modules", "@msgpack", "msgpack");
+const rootMsgpack = path.join(cultLibRoot, "node_modules", "@msgpack", "msgpack");
+const { encode } = require(fs.existsSync(cultNetMsgpack) ? cultNetMsgpack : rootMsgpack);
 
 const CULTNET_RUDP_PROTOCOL_ID = "cultnet.transport.rudp.v0";
 const IDUNN_HEALTH_RUDP_CONNECTION_ID = 0x1d0d0001;
