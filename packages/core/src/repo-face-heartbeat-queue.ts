@@ -1,6 +1,13 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { resolve } from "node:path";
+
+import {
+  CultCache,
+  SingleFileMessagePackBackingStore,
+  defineDocumentType,
+} from "cultcache-ts";
+import { z } from "zod";
 
 import {
   type RepoDiscordIdentity,
@@ -20,6 +27,24 @@ export interface RepoFacePendingMention {
   visiblePrompt: string;
   queuedAt: string;
 }
+
+const pendingMentionSchema = z.object({
+  id: z.string().trim().min(1),
+  identityId: z.string().trim().min(1),
+  channelId: z.string().trim().min(1),
+  messageId: z.string().trim().min(1),
+  authorId: z.string().trim().min(1),
+  authorName: z.string().nullish().transform((value) => value ?? undefined),
+  content: z.string(),
+  visiblePrompt: z.string(),
+  queuedAt: z.string().trim().min(1),
+}).strict();
+
+const pendingMentionDefinition = defineDocumentType({
+  type: "voidbot.persona_attention_command",
+  schema: pendingMentionSchema,
+  name: "id",
+});
 
 export async function queueRepoFaceMention(input: {
   statePath: string;
@@ -49,39 +74,71 @@ export async function queueAgentHeartbeatMention(input: {
   visiblePrompt: string;
   queuedAt?: string;
 }): Promise<{ queued: boolean; pendingCount: number }> {
-  const state = await readHeartbeatQueueState(input.statePath);
   const id = `${input.identityId}:${input.channelId}:${input.messageId}`;
-  const existing = state.pendingMentions.find((entry) => entry.id === id);
-
-  if (!existing) {
-    state.pendingMentions.push({
-      id,
-      identityId: input.identityId,
-      channelId: input.channelId,
-      messageId: input.messageId,
-      authorId: input.authorId,
-      authorName: input.authorName,
-      content: input.content,
-      visiblePrompt: input.visiblePrompt,
-      queuedAt: input.queuedAt ?? new Date().toISOString(),
-    });
-  }
-
-  state.history.push({
-    type: existing ? "pending_mention_duplicate" : "pending_mention_queued",
+  const command = pendingMentionSchema.parse({
+    id,
     identityId: input.identityId,
     channelId: input.channelId,
     messageId: input.messageId,
+    authorId: input.authorId,
+    authorName: input.authorName,
+    content: input.content,
+    visiblePrompt: input.visiblePrompt,
     queuedAt: input.queuedAt ?? new Date().toISOString(),
   });
-  state.history = state.history.slice(-80);
-
-  await writeHeartbeatQueueState(input.statePath, state);
+  const inboxDirectory = resolveRepoFaceMentionInboxDirectory(input.statePath);
+  await mkdir(inboxDirectory, { recursive: true });
+  const commandPath = resolve(inboxDirectory, mentionFileName(command));
+  const existing = await readMentionDocument(commandPath);
+  if (!existing) {
+    const cache = mentionCache(commandPath);
+    await cache.put(pendingMentionDefinition, command.id, command);
+  }
+  const pendingCount = (await readRepoFaceMentionInbox(input.statePath))
+    .filter((entry) => entry.identityId === input.identityId).length;
 
   return {
     queued: !existing,
-    pendingCount: state.pendingMentions.filter((entry) => entry.identityId === input.identityId).length,
+    pendingCount,
   };
+}
+
+export function resolveRepoFaceMentionInboxDirectory(statePath: string): string {
+  return `${statePath}.mentions`;
+}
+
+export async function readRepoFaceMentionInbox(statePath: string): Promise<RepoFacePendingMention[]> {
+  const directory = resolveRepoFaceMentionInboxDirectory(statePath);
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) return [];
+    throw error;
+  }
+  const mentions = await Promise.all(
+    names.filter((name) => name.endsWith(".cc")).map((name) => readMentionDocument(resolve(directory, name))),
+  );
+  return mentions.filter((mention): mention is RepoFacePendingMention => Boolean(mention))
+    .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
+}
+
+export async function acknowledgeRepoFaceMentionInbox(statePath: string, mentionIds: Iterable<string>): Promise<void> {
+  const directory = resolveRepoFaceMentionInboxDirectory(statePath);
+  const ids = new Set(mentionIds);
+  if (ids.size === 0) return;
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) return;
+    throw error;
+  }
+  await Promise.all(names.filter((name) => name.endsWith(".cc")).map(async (name) => {
+    const path = resolve(directory, name);
+    const mention = await readMentionDocument(path);
+    if (mention && ids.has(mention.id)) await rm(path, { force: true });
+  }));
 }
 
 export function findRepoDiscordIdentityByTextAddress(
@@ -127,50 +184,28 @@ export function stripRepoIdentityTextAddress(
   return content.trim();
 }
 
-interface HeartbeatQueueState {
-  schemaVersion: string;
-  initiativeClock: number;
-  baseRecoveryMinutes: number;
-  globalHeat: number;
-  lastTickAt?: string;
-  participants: unknown[];
-  history: Array<Record<string, unknown>>;
-  pendingMentions: RepoFacePendingMention[];
+function mentionCache(path: string): CultCache {
+  return CultCache.builder()
+    .withDocumentType(pendingMentionDefinition)
+    .withGenericStore(new SingleFileMessagePackBackingStore(path))
+    .build();
 }
 
-async function readHeartbeatQueueState(path: string): Promise<HeartbeatQueueState> {
+async function readMentionDocument(path: string): Promise<RepoFacePendingMention | undefined> {
+  const cache = mentionCache(path);
   try {
-    const parsed = JSON.parse(stripLeadingBom(await readFile(path, "utf8"))) as Partial<HeartbeatQueueState>;
-    return {
-      schemaVersion: typeof parsed.schemaVersion === "string"
-        ? parsed.schemaVersion
-        : REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
-      initiativeClock: Number.isFinite(parsed.initiativeClock) ? parsed.initiativeClock as number : 0,
-      baseRecoveryMinutes: Number.isFinite(parsed.baseRecoveryMinutes) ? parsed.baseRecoveryMinutes as number : 4,
-      globalHeat: Number.isFinite(parsed.globalHeat) ? parsed.globalHeat as number : 1,
-      lastTickAt: typeof parsed.lastTickAt === "string" ? parsed.lastTickAt : undefined,
-      participants: Array.isArray(parsed.participants) ? parsed.participants : [],
-      history: Array.isArray(parsed.history) ? parsed.history : [],
-      pendingMentions: Array.isArray(parsed.pendingMentions)
-        ? parsed.pendingMentions.filter(isPendingMention)
-        : [],
-    };
-  } catch {
-    return {
-      schemaVersion: REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
-      initiativeClock: 0,
-      baseRecoveryMinutes: 4,
-      globalHeat: 1,
-      participants: [],
-      history: [],
-      pendingMentions: [],
-    };
+    await cache.pullAllBackingStores();
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) return undefined;
+    throw error;
   }
+  return cache.getAll(pendingMentionDefinition)[0];
 }
 
-async function writeHeartbeatQueueState(path: string, state: HeartbeatQueueState): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+function mentionFileName(mention: RepoFacePendingMention): string {
+  const identity = mention.identityId.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "persona";
+  const digest = createHash("sha256").update(mention.id).digest("hex").slice(0, 20);
+  return `${identity}--${digest}.cc`;
 }
 
 function textStartsWithIdentityAddress(content: string, identity: RepoDiscordIdentity): boolean {
@@ -188,24 +223,6 @@ function textContainsIdentityMention(content: string, identity: RepoDiscordIdent
     .some((candidate) => containsStandaloneToken(content, candidate));
 }
 
-function isPendingMention(value: unknown): value is RepoFacePendingMention {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.identityId === "string" &&
-    typeof record.channelId === "string" &&
-    typeof record.messageId === "string" &&
-    typeof record.authorId === "string" &&
-    typeof record.content === "string" &&
-    typeof record.visiblePrompt === "string" &&
-    typeof record.queuedAt === "string"
-  );
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -215,6 +232,6 @@ function containsStandaloneToken(text: string, token: string): boolean {
   return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}([^\\p{L}\\p{N}_]|$)`, "iu").test(text);
 }
 
-function stripLeadingBom(input: string): string {
-  return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
+function isNodeError(error: unknown, code: string): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === code);
 }

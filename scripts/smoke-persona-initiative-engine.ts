@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  queueAgentHeartbeatMention,
+  readRepoFaceMentionInbox,
+} from "@voidbot/core";
+
+import {
   advanceInitiativeClockFromWallClock,
   applyActiveTurnFreeze,
   applyPendingMentionPriority,
@@ -186,6 +191,28 @@ try {
   assert.equal(migrated.baseRecoveryMinutes, 30, "legacy cadence migrates under the scheduler store owner");
   assert.equal(migrated.participants[0].participantKind, "repo_face", "legacy participants receive current scheduling anatomy");
   assert.equal(migrated.history.at(-1)?.type, "migrated", "migration leaves a durable state witness");
+
+  const mentionStatePath = join(stateDirectory, "mentions.json");
+  const mentionInput = {
+    statePath: mentionStatePath,
+    identityId: "nibu",
+    channelId: "aquarium",
+    messageId: "message-1",
+    authorId: "human-1",
+    content: "Nibu, look at this.",
+    visiblePrompt: "Look at this.",
+    queuedAt: "2026-07-15T20:03:00.000Z",
+  };
+  const firstMention = await queueAgentHeartbeatMention(mentionInput);
+  const duplicateMention = await queueAgentHeartbeatMention(mentionInput);
+  assert.equal(firstMention.queued, true, "the bot creates one immutable attention command");
+  assert.equal(duplicateMention.queued, false, "the typed inbox deduplicates the same Discord source message");
+  assert.equal((await readRepoFaceMentionInbox(mentionStatePath)).length, 1, "mention ingress is a typed inbox, not a scheduler-state rewrite");
+  const withMention = await readPersonaSchedulerState(mentionStatePath);
+  assert.equal(withMention.pendingMentions[0].identityId, "nibu", "the scheduler store alone ingests attention commands");
+  await writePersonaSchedulerState(mentionStatePath, withMention);
+  assert.equal((await readRepoFaceMentionInbox(mentionStatePath)).length, 0, "inbox acknowledgement follows durable scheduler commit");
+  assert.equal((await readPersonaSchedulerState(mentionStatePath)).pendingMentions.length, 1, "acknowledgement cannot erase pending attention");
 } finally {
   await rm(stateDirectory, { recursive: true, force: true });
 }

@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
+  acknowledgeRepoFaceMentionInbox,
+  readRepoFaceMentionInbox,
   REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
   type RepoFacePendingMention,
 } from "@voidbot/core";
@@ -25,7 +27,7 @@ export async function readPersonaSchedulerState(path: string, nowMs = Date.now()
   try {
     raw = await readFile(path, "utf8");
   } catch (error) {
-    if (isNodeError(error, "ENOENT")) return newPersonaSchedulerState();
+    if (isNodeError(error, "ENOENT")) return mergeMentionInbox(path, newPersonaSchedulerState());
     throw error;
   }
 
@@ -40,7 +42,7 @@ export async function readPersonaSchedulerState(path: string, nowMs = Date.now()
     if (!Array.isArray(parsed.participants)) {
       throw new Error(`Persona scheduler state at ${path} has no participants array.`);
     }
-    return {
+    return mergeMentionInbox(path, {
       schemaVersion: REPO_FACE_HEARTBEAT_SCHEMA_VERSION,
       initiativeClock: finiteOr(parsed.initiativeClock, 0),
       baseRecoveryMinutes: finiteOr(parsed.baseRecoveryMinutes, 10),
@@ -51,10 +53,10 @@ export async function readPersonaSchedulerState(path: string, nowMs = Date.now()
       pendingMentions: Array.isArray(parsed.pendingMentions)
         ? parsed.pendingMentions.filter(isRepoFacePendingMention)
         : [],
-    };
+    });
   }
 
-  if (Array.isArray(parsed.participants)) return migrateLegacyHeartbeatState(parsed, nowMs);
+  if (Array.isArray(parsed.participants)) return mergeMentionInbox(path, migrateLegacyHeartbeatState(parsed, nowMs));
   throw new Error(`Persona scheduler state at ${path} has unsupported schema ${String(parsed.schemaVersion ?? "unknown")}.`);
 }
 
@@ -64,9 +66,37 @@ export async function writePersonaSchedulerState(path: string, state: PersonaSch
   try {
     await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     await rename(temporaryPath, path);
+    await acknowledgeRepoFaceMentionInbox(path, durableMentionIds(state));
   } finally {
     await rm(temporaryPath, { force: true }).catch(() => undefined);
   }
+}
+
+async function mergeMentionInbox(path: string, state: PersonaSchedulerState): Promise<PersonaSchedulerState> {
+  const known = durableMentionIds(state);
+  const incoming = await readRepoFaceMentionInbox(path);
+  const added = incoming.filter((mention) => !known.has(mention.id));
+  if (added.length > 0) {
+    state.pendingMentions.push(...added);
+    state.history.push({
+      type: "pending_mentions_ingested",
+      ingestedAt: new Date().toISOString(),
+      mentionCount: added.length,
+      mentionIds: added.map((mention) => mention.id),
+    });
+  }
+  return state;
+}
+
+function durableMentionIds(state: PersonaSchedulerState): Set<string> {
+  const ids = new Set(state.pendingMentions.map((mention) => mention.id));
+  for (const entry of state.history) {
+    if (entry.type !== "pending_mentions_consumed" || !Array.isArray(entry.mentions)) continue;
+    for (const mention of entry.mentions) {
+      if (mention && typeof mention === "object" && "id" in mention && typeof mention.id === "string") ids.add(mention.id);
+    }
+  }
+  return ids;
 }
 
 export function newPersonaSchedulerState(): PersonaSchedulerState {
