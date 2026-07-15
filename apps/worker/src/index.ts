@@ -1927,10 +1927,28 @@ function loadBifrostCultMeshRuntime(): {
   }> };
   defineDocumentType: (definition: Record<string, unknown>) => unknown;
 } {
+  if (process.env.VOIDBOT_CULTLIB_ROOT) {
+    try {
+      const cultMeshPackage = resolve(process.env.VOIDBOT_CULTLIB_ROOT, "packages", "cultmesh-ts", "package.json");
+      const cultCachePackage = resolve(process.env.VOIDBOT_CULTLIB_ROOT, "packages", "cultcache-ts", "package.json");
+      const { CultMesh } = createRequire(cultMeshPackage)("./dist/index.js") as {
+        CultMesh?: { createNode: (storePath: string, options: unknown) => Promise<{
+          put: (definition: unknown, key: string, value: unknown) => Promise<void>;
+          get: (definition: unknown, key: string) => unknown;
+          flush?: () => Promise<void>;
+          cache?: { pullAllBackingStores?: () => Promise<void> };
+        }> };
+      };
+      const { defineDocumentType } = createRequire(cultCachePackage)("./dist/index.js") as {
+        defineDocumentType?: (definition: Record<string, unknown>) => unknown;
+      };
+      if (CultMesh && defineDocumentType) {
+        return { CultMesh, defineDocumentType };
+      }
+    } catch {
+    }
+  }
   const candidates = [
-    ...(process.env.VOIDBOT_CULTLIB_ROOT
-      ? [resolve(process.env.VOIDBOT_CULTLIB_ROOT, "packages", "cultmesh-ts", "package.json")]
-      : []),
     resolve(config.bifrostRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
     resolve(config.bifrostRoot, "..", "CultMeshTS", "package.json"),
   ];
