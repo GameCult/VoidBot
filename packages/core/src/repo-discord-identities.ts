@@ -153,7 +153,10 @@ export function resolveRepoFaceStatePath(
     return resolve(identity.faceStatePath);
   }
 
-  if (identity.personaStatePath) {
+  // Native Persona documents are identity/rehydration projections, not the
+  // mutable CultCache mind used by turn operations. Keep those authorities
+  // separate even when a legacy registry supplies only personaStatePath.
+  if (identity.identityKind !== "native_persona" && identity.personaStatePath) {
     return resolve(identity.personaStatePath);
   }
 
