@@ -3,9 +3,12 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const requireCult = createRequire(resolve(repoRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"));
+const cultLibRoot = process.env.VOIDBOT_CULTLIB_ROOT
+  ? resolve(process.env.VOIDBOT_CULTLIB_ROOT)
+  : resolve(repoRoot, "..", "CultLib-dev-runtime");
+const requireCult = createRequire(resolve(cultLibRoot, "packages", "cultmesh-ts", "package.json"));
 const { CultMesh } = requireCult("./dist/index.js");
-const { defineDocumentType } = createRequire(resolve(repoRoot, "..", "CultLib", "packages", "cultcache-ts", "package.json"))("./dist/index.js");
+const { defineDocumentType } = createRequire(resolve(cultLibRoot, "packages", "cultcache-ts", "package.json"))("./dist/index.js");
 const value = Number(process.argv[2] ?? 0.75);
 if (!Number.isFinite(value) || value < 0.05 || value > 2) throw new Error("Heat must be between 0.05 and 2.");
 

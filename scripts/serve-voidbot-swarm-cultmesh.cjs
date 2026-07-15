@@ -127,7 +127,7 @@ async function applySwarmCommand(document) {
       sourceVersion: Date.parse(control.updatedAt),
       issuedAtUtc: control.updatedAt,
       message: `Swarm heat applied at ${control.globalHeat}.`,
-      diagnostics: [{ code: "state-published", pointerId: "summary.globalHeat" }],
+      diagnostics: [{ code: "state-published", pointerId: "globalHeat" }],
     },
     sourceRuntimeId: "voidbot-swarm-cultmesh",
     sourceRole: "swarm-control-owner",
