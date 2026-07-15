@@ -6,7 +6,10 @@ import { join } from "node:path";
 import {
   queueAgentHeartbeatMention,
   readRepoFaceMentionInbox,
+  type CreateJobInput,
+  type JobQueue,
 } from "@voidbot/core";
+import type { JobRecord } from "@voidbot/shared";
 
 import {
   advanceInitiativeClockFromWallClock,
@@ -43,6 +46,7 @@ import {
   fetchRecentDiscordMessages,
 } from "../apps/persona-scheduler/dist/turn-context-source.js";
 import { readBifrostGovernanceDigest } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
+import { submitPersonaTurn } from "../apps/persona-scheduler/dist/turn-actuator.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -342,6 +346,34 @@ const malformedBifrostDigest = await readBifrostGovernanceDigest({
 });
 assert.equal(malformedBifrostDigest.topics[0].id, "bifrost-digest-parse-error", "malformed provider output becomes an explicit typed error topic");
 assert.equal(malformedBifrostDigest.generatedAt, "2026-07-15T21:00:00.000Z", "provider failure witnesses use the caller's observation clock");
+
+const submittedJobs: CreateJobInput[] = [];
+const turnReceipt = await submitPersonaTurn({
+  jobQueue: {
+    async createJob(input) {
+      submittedJobs.push(input);
+      return { created: true, job: { id: "job-1" } as JobRecord };
+    },
+  } satisfies Pick<JobQueue, "createJob">,
+  provider: "owner_codex",
+  identityId: "nibu",
+  queuedAt: "2026-07-15T21:03:00.000Z",
+  channelId: "aquarium",
+  prompt: "Persona prompt",
+  recentMessages: contextMessages,
+  conversationFocus: { channelId: "aquarium", reason: "latest_human_message", isCurrentRoom: true },
+  conversationThreads: [],
+  imageAttachments: [],
+});
+assert.deepEqual(turnReceipt, {
+  created: true,
+  activeJobId: "job-1",
+  requestMessageId: "agent-turn:nibu:2026-07-15T21:03:00.000Z",
+}, "the turn actuator returns only its queue receipt");
+assert.equal(submittedJobs[0].command, "repo-face-rumination", "the actuator owns the worker command contract");
+assert.equal(submittedJobs[0].initialState, "approved", "Persona turns enter the canonical queue through one approval policy");
+assert.equal(submittedJobs[0].contextBundle.recentMessages.length, 2, "the actuator lowers supplied evidence into the worker context bundle");
+assert.equal(submittedJobs[0].requester.id, "voidbot-agent-turn", "the actuator owns the worker-facing actor identity");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {

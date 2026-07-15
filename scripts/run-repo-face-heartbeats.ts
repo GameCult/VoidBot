@@ -9,7 +9,6 @@ import { dirname, resolve } from "node:path";
 import { loadConfig } from "@voidbot/config";
 import {
   buildEpiphanyIdentityRegistry,
-  ContextBuilder,
   createStateStorage,
   getRepoFaceSourceRepoName,
   getRepoDiscordIdentityAllowedChannelIds,
@@ -73,8 +72,7 @@ import {
   readBifrostGovernanceDigest,
   type BifrostGovernanceDigest,
 } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
-
-const HEARTBEAT_COMMAND = "repo-face-rumination";
+import { submitPersonaTurn } from "../apps/persona-scheduler/dist/turn-actuator.js";
 
 interface RepoFaceChannelPlan {
   primaryChannelId?: string;
@@ -410,7 +408,6 @@ async function queueRepoFaceTurn(input: {
     return { created: false, failureReason: "No CTB turn channel is configured for this Persona." };
   }
 
-  const contextBuilder = new ContextBuilder();
   const recentMessages = await fetchRecentDiscordMessages({
     botToken: input.config.botToken,
     channelId,
@@ -482,43 +479,23 @@ async function queueRepoFaceTurn(input: {
     pendingMentions: input.pendingMentions,
   });
   const repoFaceConversationFocus = repoFaceConversationThreads[0];
-  const contextBundle = contextBuilder.build({
-    prompt,
-    actor: {
-      id: "voidbot-agent-turn",
-      displayName: "VoidBot Agent Turn",
-      isAdmin: true,
-      isBot: true,
-    },
-    guildContext: {
-      channelId,
-    },
-    recentMessages,
-    repoFaceConversationFocus,
-    repoFaceConversationThreads,
-    imageAttachments,
-    retrieval: [],
-    voidSelfState: undefined,
-  });
-  const requestMessageId = `agent-turn:${identity.id}:${input.queuedAt}`;
-  const result = await input.storage.jobQueue.createJob({
-    command: HEARTBEAT_COMMAND,
+  const result = await submitPersonaTurn({
+    jobQueue: input.storage.jobQueue,
     provider: input.config.repoFaceHeartbeats.provider,
-    runApprovalRequired: false,
-    postApprovalRequired: false,
-    requester: contextBundle.actor,
-    guildContext: contextBundle.guildContext,
+    identityId: identity.id,
+    queuedAt: input.queuedAt,
+    channelId,
     prompt,
-    contextBundle,
-    outputChannelId: channelId,
-    requestMessageId,
-    initialState: "approved",
+    recentMessages,
+    conversationFocus: repoFaceConversationFocus,
+    conversationThreads: repoFaceConversationThreads,
+    imageAttachments,
   });
 
   return {
     created: result.created,
-    activeJobId: result.job.id,
-    requestMessageId,
+    activeJobId: result.activeJobId,
+    requestMessageId: result.requestMessageId,
   };
 }
 
