@@ -58,6 +58,7 @@ import {
   readAgentSwarmPause,
   readSwarmControlState,
 } from "../apps/persona-scheduler/dist/control-source.js";
+import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -388,6 +389,7 @@ assert.equal(submittedJobs[0].requester.id, "voidbot-agent-turn", "the actuator 
 
 const routedIdentity = {
   id: "nibu",
+  identityKind: "repo_face",
   repoName: "AetheriaLore",
   displayName: "Nibu",
   allowedChannelIds: ["legacy"],
@@ -430,6 +432,32 @@ try {
 } finally {
   await rm(controlDirectory, { recursive: true, force: true });
 }
+
+let repoActivityArgs: string[] = [];
+const repoActivity = readRepoActivity({
+  identity: routedIdentity,
+  storageRoot: "state-root",
+  cwd: "workspace",
+  runExporter: (_scriptPath, args) => {
+    repoActivityArgs = args;
+    return { status: 0, stdout: JSON.stringify({ digest: "- Fresh repo motion." }) };
+  },
+});
+assert.deepEqual(repoActivity, { status: "ok", sourceRepoName: "AetheriaLore", digest: "- Fresh repo motion." }, "repo activity crosses the source boundary as facts, not prompt prose");
+assert.ok(repoActivityArgs.includes("--read-only"), "Persona turns cannot advance the repo activity cursor while observing body context");
+assert.deepEqual(repoActivityArgs.slice(-4), ["--hours", "96", "--max-commits", "5"], "the source owns one bounded activity window");
+const failedRepoActivity = readRepoActivity({
+  identity: routedIdentity,
+  storageRoot: "state-root",
+  runExporter: () => ({ status: 1, stderr: "reader failed" }),
+});
+assert.deepEqual(failedRepoActivity, { status: "unavailable", sourceRepoName: "AetheriaLore", detail: "reader failed" }, "activity process failure is an explicit observation");
+const malformedRepoActivity = readRepoActivity({
+  identity: routedIdentity,
+  storageRoot: "state-root",
+  runExporter: () => ({ status: 0, stdout: "not-json" }),
+});
+assert.equal(malformedRepoActivity.status, "malformed", "malformed activity output cannot impersonate current repo truth");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {

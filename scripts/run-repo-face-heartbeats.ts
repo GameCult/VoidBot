@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -83,6 +83,10 @@ import {
   readAgentSwarmPause,
   readSwarmControlState,
 } from "../apps/persona-scheduler/dist/control-source.js";
+import {
+  readRepoActivity,
+  type RepoActivityObservation,
+} from "../apps/persona-scheduler/dist/repo-activity-source.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -415,7 +419,7 @@ async function queueRepoFaceTurn(input: {
   );
   const repoActivitySurface = identity.identityKind === "native_persona"
     ? renderNativePersonaBodySurface(identity)
-    : renderRepoFaceRepoActivitySurface(identity, input.config);
+    : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = renderRepoFaceConversationTranscript({
     identity,
@@ -917,7 +921,9 @@ async function assembleRepoFaceTurnPrompt(input: {
         roomContext,
         humanPronounGuidance,
       );
-  const repoActivitySurface = renderRepoFaceRepoActivitySurface(identity, input.config);
+  const repoActivitySurface = renderRepoActivityObservation(
+    readRepoActivity({ identity, storageRoot: input.config.storageRoot }),
+  );
   const semanticMemoryRecallSurface = await renderRepoFaceSemanticMemoryRecallForTurn(
     identity,
     input.config,
@@ -3570,59 +3576,25 @@ function renderVisibleConversationChronology(input: {
   ].join("\n");
 }
 
-function renderRepoFaceRepoActivitySurface(
-  identity: RepoDiscordIdentity,
-  config: ReturnType<typeof loadConfig>,
-): string {
-  const sourceRepoName = getRepoFaceSourceRepoName(identity);
-  if (!sourceRepoName) {
+function renderRepoActivityObservation(observation: RepoActivityObservation): string {
+  if (observation.status === "unconfigured") {
     return "- This Persona has no source repository configured; no repo activity was requested.";
   }
-
-  const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
-  const result = spawnSync(
-    process.execPath,
-    [
-      resolve("scripts", "export-recent-repo-activity.mjs"),
-      "--repos",
-      sourceRepoName,
-      "--state-path",
-      statePath,
-      "--read-only",
-      "--hours",
-      "96",
-      "--max-commits",
-      "5",
-    ],
-    {
-      cwd: process.cwd(),
-      env: process.env,
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 30_000,
-    },
-  );
-
-  if (result.status !== 0) {
-    const detail = `${result.stdout}\n${result.stderr}`.trim().slice(-600);
+  if (observation.status === "unavailable") {
     return [
-      `- Recent ${sourceRepoName} activity could not be read for this turn.`,
-      detail ? `- Reader error: ${collapseWhitespace(detail, 500)}` : "- Reader error: no diagnostic output.",
+      `- Recent ${observation.sourceRepoName} activity could not be read for this turn.`,
+      observation.detail ? `- Reader error: ${collapseWhitespace(observation.detail, 500)}` : "- Reader error: no diagnostic output.",
       "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
     ].join("\n");
   }
-
-  try {
-    const parsed = JSON.parse(result.stdout) as { digest?: unknown };
-    const digest = typeof parsed.digest === "string" ? parsed.digest.trim() : "";
-    return digest || `- No recent ${sourceRepoName} activity was reported.`;
-  } catch {
+  if (observation.status === "malformed") {
     return [
-      `- Recent ${sourceRepoName} activity output was not parseable.`,
-      `- Raw output: ${collapseWhitespace(result.stdout, 500)}`,
+      `- Recent ${observation.sourceRepoName} activity output was not parseable.`,
+      `- Raw output: ${collapseWhitespace(observation.raw, 500)}`,
       "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
     ].join("\n");
   }
+  return observation.digest || `- No recent ${observation.sourceRepoName} activity was reported.`;
 }
 
 function formatConversationMessages(messages: SourceMessage[], limit: number, channelId?: string): string[] {
