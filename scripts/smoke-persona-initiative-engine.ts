@@ -12,6 +12,7 @@ import {
   advanceInitiativeClockFromWallClock,
   applyActiveTurnFreeze,
   applyPendingMentionPriority,
+  applySemanticPressureProjection,
   reconcileParticipants,
   recordDryRunSelection,
   recordTurnFailedToStart,
@@ -204,6 +205,33 @@ assert.deepEqual(activitySnapshot.observedHumanMessages.map((message) => message
 assert.equal(activitySnapshot.active, false, "recent human activity keeps idle cooling inactive");
 assert.equal(activitySnapshot.idleForMinutes, 15, "idle duration is a neutral wall-clock observation");
 assert.equal(activitySnapshot.nextUnpromptedTurnAllowedAt, "2026-07-15T21:00:00.000Z", "the activity source derives the next unprompted window without mutating initiative");
+
+const pressureState: InitiativeState = {
+  initiativeClock: 50,
+  participants: [participant("awakened", 90), participant("unmoved", 90)],
+  pendingMentions: [],
+  history: [],
+};
+applySemanticPressureProjection({
+  state: pressureState,
+  projections: [{
+    identityId: "awakened",
+    pressure: 0.8,
+    interrupt: true,
+    evidence: [{
+      messageId: "pressure-message",
+      observedAt: "2026-07-15T20:59:00.000Z",
+      similarity: 0.9,
+      contribution: 0.8,
+    }],
+  }],
+  projectedAt: new Date("2026-07-15T21:00:00.000Z"),
+});
+assert.equal(pressureState.participants[0].nextTurnAt, 50, "only the initiative engine may turn semantic evidence into readiness");
+assert.equal(pressureState.participants[0].dynamicHeat, 2.2, "the engine owns pressure-derived recovery heat");
+assert.deepEqual(pressureState.participants[0].semanticInterruptReceipts, ["pressure-message"], "semantic interruption is consumed exactly once by scheduler state");
+assert.equal(pressureState.participants[1].responsePressure, 0, "missing projections explicitly cool stale pressure");
+assert.equal(pressureState.history.at(-1)?.type, "semantic_response_interrupt", "the state owner records the semantic transition");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {

@@ -65,6 +65,13 @@ export interface IdleCoolingPolicy {
   nextUnpromptedTurnAllowedAt?: string;
 }
 
+export interface SemanticPressureProjection {
+  identityId: string;
+  pressure: number;
+  interrupt: boolean;
+  evidence: InitiativeParticipant["responsePressureEvidence"];
+}
+
 export interface ReconcileParticipantsInput<TSpec extends ParticipantSpec = ParticipantSpec> {
   existing: InitiativeParticipant[];
   specs: TSpec[];
@@ -305,6 +312,51 @@ export function applyPendingMentionPriority(state: InitiativeState): void {
     if (participant.status === "active" && participant.currentLoad < 1 && (counts.get(participant.identityId) ?? 0) > 0) {
       participant.nextTurnAt = Math.min(participant.nextTurnAt, state.initiativeClock);
     }
+  }
+}
+
+export function applySemanticPressureProjection(input: {
+  state: InitiativeState;
+  projections: SemanticPressureProjection[];
+  projectedAt: Date;
+  unavailableReason?: string;
+}): void {
+  for (const participant of input.state.participants) {
+    const projection = input.projections.find((entry) => entry.identityId === participant.identityId);
+    participant.responsePressure = projection?.pressure ?? 0;
+    participant.responsePressureEvidence = projection?.evidence ?? [];
+    participant.dynamicHeat = clamp(1 + participant.responsePressure * 1.5, 1, 2.5);
+    participant.effectiveSpeed = clamp(
+      participant.initiativeSpeed * participant.heat * participant.dynamicHeat,
+      0.1,
+      12,
+    );
+    const unseenInterruptEvidence = projection?.interrupt
+      ? projection.evidence.find((entry) => !participant.semanticInterruptReceipts.includes(entry.messageId))
+      : undefined;
+    if (!unseenInterruptEvidence || participant.currentLoad >= 1) continue;
+    participant.nextTurnAt = Math.min(participant.nextTurnAt, input.state.initiativeClock);
+    participant.semanticInterruptReceipts = mergeStrings(
+      participant.semanticInterruptReceipts,
+      unseenInterruptEvidence.messageId,
+    ).slice(-40);
+    input.state.history.push({
+      type: "semantic_response_interrupt",
+      identityId: participant.identityId,
+      messageId: unseenInterruptEvidence.messageId,
+      pressure: participant.responsePressure,
+      similarity: unseenInterruptEvidence.similarity,
+      contribution: unseenInterruptEvidence.contribution,
+      observedAt: unseenInterruptEvidence.observedAt,
+      projectedAt: input.projectedAt.toISOString(),
+    });
+  }
+  if (input.unavailableReason) {
+    input.state.history.push({
+      type: "semantic_response_pressure_unavailable",
+      observedAt: input.projectedAt.toISOString(),
+      reason: input.unavailableReason,
+    });
   }
 }
 

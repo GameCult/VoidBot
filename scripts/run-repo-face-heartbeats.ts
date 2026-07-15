@@ -19,21 +19,13 @@ import {
   applyVoidSelfStateOperation,
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
-  projectRepoFaceResponsePressure,
   type RepoFaceRestSnapshot,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
-import {
-  createTextEmbedder,
-  createVectorStores,
-  embedAffinityCards,
-  normalizeText,
-  RetrievalService,
-  scoreAffinityMessages,
-} from "@voidbot/rag";
+import { createTextEmbedder, createVectorStores, normalizeText, RetrievalService } from "@voidbot/rag";
 import {
   type EmbeddingChunk,
   loadPromptTemplate,
@@ -48,6 +40,7 @@ import {
   advanceInitiativeClockFromWallClock,
   applyActiveTurnFreeze,
   applyPendingMentionPriority,
+  applySemanticPressureProjection,
   countPendingMentionsByIdentity,
   reconcileParticipants,
   recordDryRunSelection,
@@ -68,6 +61,7 @@ import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
 } from "../apps/persona-scheduler/dist/discord-activity-source.js";
+import { readSemanticPressure } from "../apps/persona-scheduler/dist/semantic-pressure-source.js";
 
 const HEARTBEAT_COMMAND = "repo-face-rumination";
 const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
@@ -240,14 +234,35 @@ async function main(): Promise<void> {
     history: state.history,
     now,
   });
-  await applySemanticResponsePressure({
-    state,
-    specs: participantSpecs,
+  const pressureCandidates = participantSpecs.flatMap((spec) => {
+    const participant = state.participants.find((entry) => entry.identityId === spec.id);
+    if (!spec.identity || spec.participantKind === "system_agent" || participant?.status !== "active"
+      || participant.currentLoad >= 1 || completedThisTick.has(participant.identityId)
+      || restStates.get(participant.identityId)?.isNapping === true) return [];
+    return [{
+      identityId: participant.identityId,
+      interruptThreshold: participant.interruptThreshold,
+      affinityText: renderInitiativeAffinityCard(spec),
+      allowedChannelIds: spec.allowedChannelIds,
+    }];
+  });
+  const pressure = await readSemanticPressure({
+    candidates: pressureCandidates,
     messages: idleCooling.observedHumanMessages,
-    restStates,
-    completedThisTick,
-    config,
     now,
+    embedding: {
+      backend: config.ragEmbeddingBackend,
+      hashDimensions: config.ragEmbeddingDimensions,
+      ollamaBaseUrl: config.ragOllamaBaseUrl,
+      ollamaModel: config.ragOllamaModel,
+      ollamaTimeoutMs: config.ragOllamaTimeoutMs,
+    },
+  });
+  applySemanticPressureProjection({
+    state,
+    projections: pressure.projections,
+    projectedAt: now,
+    unavailableReason: pressure.unavailableReason,
   });
 
   const selected = selectReadyParticipants(
@@ -1142,129 +1157,6 @@ async function wasTouchedAfter(path: string, timestampMs: number): Promise<boole
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
-}
-
-async function applySemanticResponsePressure(input: {
-  state: FaceHeartbeatState;
-  specs: ParticipantSpec[];
-  messages: Array<SourceMessage & { channelId: string }>;
-  restStates: Map<string, RepoFaceRestSnapshot>;
-  completedThisTick: Set<string>;
-  config: ReturnType<typeof loadConfig>;
-  now: Date;
-}): Promise<void> {
-  const specs = input.specs.filter((spec) => {
-    const participant = input.state.participants.find((entry) => entry.identityId === spec.id);
-    return Boolean(
-      spec.identity &&
-      spec.participantKind !== "system_agent" &&
-      participant?.status === "active" &&
-      participant.currentLoad < 1 &&
-      !input.completedThisTick.has(participant.identityId) &&
-      input.restStates.get(participant.identityId)?.isNapping !== true,
-    );
-  });
-  const recentMessages = input.messages
-    .filter((message) => !message.isBot && message.content.trim().length > 0)
-    .filter((message) => input.now.getTime() - Date.parse(message.timestamp) <= 3 * 60 * 60_000)
-    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
-    .slice(0, 24);
-
-  if (specs.length === 0 || recentMessages.length === 0) {
-    for (const participant of input.state.participants) {
-      participant.dynamicHeat = 1;
-      participant.responsePressure = 0;
-      participant.responsePressureEvidence = [];
-      participant.effectiveSpeed = clamp(participant.initiativeSpeed * participant.heat, 0.1, 12);
-    }
-    return;
-  }
-
-  try {
-    const embedder = createTextEmbedder({
-      backend: input.config.ragEmbeddingBackend,
-      hashDimensions: input.config.ragEmbeddingDimensions,
-      ollamaBaseUrl: input.config.ragOllamaBaseUrl,
-      ollamaModel: input.config.ragOllamaModel,
-      ollamaTimeoutMs: input.config.ragOllamaTimeoutMs,
-    });
-    const cards = await embedAffinityCards(embedder, specs.map((spec) => ({
-      id: spec.id,
-      text: renderInitiativeAffinityCard(spec),
-    })));
-    const scores = await scoreAffinityMessages(embedder, cards, recentMessages.map((message) => ({
-      id: message.id,
-      text: message.content,
-      observedAt: message.timestamp,
-    })));
-    const projections = projectRepoFaceResponsePressure({
-      participants: input.state.participants
-        .filter((participant) => specs.some((spec) => spec.id === participant.identityId))
-        .map((participant) => ({
-        identityId: participant.identityId,
-        interruptThreshold: participant.interruptThreshold,
-      })),
-      evidence: scores.flatMap((score) => {
-        const spec = specs.find((entry) => entry.id === score.cardId);
-        const message = recentMessages.find((entry) => entry.id === score.messageId);
-        if (!spec || !message || !spec.allowedChannelIds.includes(message.channelId)) {
-          return [];
-        }
-        return [{
-          identityId: score.cardId,
-          messageId: score.messageId,
-          observedAt: score.observedAt,
-          similarity: score.similarity,
-        }];
-      }),
-      now: input.now,
-      maxAwakened: Math.min(3, specs.length),
-    });
-
-    for (const participant of input.state.participants) {
-      const projection = projections.find((entry) => entry.identityId === participant.identityId);
-      participant.responsePressure = projection?.pressure ?? 0;
-      participant.responsePressureEvidence = projection?.evidence ?? [];
-      participant.dynamicHeat = clamp(1 + participant.responsePressure * 1.5, 1, 2.5);
-      participant.effectiveSpeed = clamp(
-        participant.initiativeSpeed * participant.heat * participant.dynamicHeat,
-        0.1,
-        12,
-      );
-      const unseenInterruptEvidence = projection?.interrupt
-        ? projection.evidence.find((entry) => !participant.semanticInterruptReceipts.includes(entry.messageId))
-        : undefined;
-      if (unseenInterruptEvidence && participant.currentLoad < 1) {
-        participant.nextTurnAt = Math.min(participant.nextTurnAt, input.state.initiativeClock);
-        participant.semanticInterruptReceipts = mergeStrings(
-          participant.semanticInterruptReceipts,
-          unseenInterruptEvidence.messageId,
-        ).slice(-40);
-        input.state.history.push({
-          type: "semantic_response_interrupt",
-          identityId: participant.identityId,
-          messageId: unseenInterruptEvidence.messageId,
-          pressure: participant.responsePressure,
-          similarity: unseenInterruptEvidence.similarity,
-          contribution: unseenInterruptEvidence.contribution,
-          observedAt: unseenInterruptEvidence.observedAt,
-          projectedAt: input.now.toISOString(),
-        });
-      }
-    }
-  } catch (error) {
-    for (const participant of input.state.participants) {
-      participant.dynamicHeat = 1;
-      participant.responsePressure = 0;
-      participant.responsePressureEvidence = [];
-      participant.effectiveSpeed = clamp(participant.initiativeSpeed * participant.heat, 0.1, 12);
-    }
-    input.state.history.push({
-      type: "semantic_response_pressure_unavailable",
-      observedAt: input.now.toISOString(),
-      reason: collapseWhitespace(error instanceof Error ? error.message : String(error), 300),
-    });
-  }
 }
 
 function renderInitiativeAffinityCard(spec: ParticipantSpec): string {
