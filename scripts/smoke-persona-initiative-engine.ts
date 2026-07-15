@@ -37,6 +37,7 @@ import {
   fetchChannelSnapshots,
   fetchRecentDiscordMessages,
 } from "../apps/persona-scheduler/dist/turn-context-source.js";
+import { readBifrostGovernanceDigest } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -277,6 +278,28 @@ const failedSnapshot = await fetchChannelSnapshots({
 });
 assert.equal(failedSnapshot[0].messages[0].id, "snapshot-error:nearby", "nearby-channel failure is returned as explicit evidence rather than aborting the turn");
 assert.equal(failedSnapshot[0].messages[0].timestamp, "2026-07-15T21:00:00.000Z", "context-source failure witnesses use the caller's observation clock");
+
+let bifrostArgs: string[] = [];
+const bifrostDigest = await readBifrostGovernanceDigest({
+  bifrostRoot: "Bifrost",
+  repoName: "VoidBot",
+  agentIdentity: "void",
+  runDigest: (_scriptPath, args) => {
+    bifrostArgs = args;
+    return { status: 0, stdout: JSON.stringify({ generatedAt: "2026-07-15T21:00:00.000Z", topics: [] }) };
+  },
+});
+assert.deepEqual(bifrostArgs, ["digest", "--repo", "VoidBot", "--agent", "void", "--limit", "6"], "the Bifrost source alone owns the governance CLI contract");
+assert.deepEqual(bifrostDigest.topics, [], "typed Bifrost governance facts cross the source boundary unchanged");
+const malformedBifrostDigest = await readBifrostGovernanceDigest({
+  bifrostRoot: "Bifrost",
+  repoName: "VoidBot",
+  agentIdentity: "void",
+  now: new Date("2026-07-15T21:00:00.000Z"),
+  runDigest: () => ({ status: 0, stdout: "not-json" }),
+});
+assert.equal(malformedBifrostDigest.topics[0].id, "bifrost-digest-parse-error", "malformed provider output becomes an explicit typed error topic");
+assert.equal(malformedBifrostDigest.generatedAt, "2026-07-15T21:00:00.000Z", "provider failure witnesses use the caller's observation clock");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {

@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -65,6 +65,10 @@ import {
   fetchRecentDiscordMessages,
   type ChannelSnapshot,
 } from "../apps/persona-scheduler/dist/turn-context-source.js";
+import {
+  readBifrostGovernanceDigest,
+  type BifrostGovernanceDigest,
+} from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
 
 const HEARTBEAT_COMMAND = "repo-face-rumination";
 
@@ -82,34 +86,6 @@ interface RepoFaceChannelOption {
   speechThreshold: "very_low" | "low" | "medium" | "high";
   speedMultiplier: number;
   posture?: string;
-}
-
-interface BifrostGovernanceDigest {
-  generatedAt: string;
-  topics: BifrostGovernanceTopic[];
-}
-
-interface BifrostGovernanceTopic {
-  id: string;
-  title: string;
-  jurisdictionRepoName: string;
-  jurisdictionAgentIdentity?: string;
-  status: string;
-  summaryMarkdown: string;
-  priority: number;
-  updatedAt: string;
-  approvedByAgent?: string;
-  dispatchRequestId?: string;
-  comments?: BifrostGovernanceComment[];
-}
-
-interface BifrostGovernanceComment {
-  id: string;
-  authorKind: string;
-  authorId: string;
-  stance: string;
-  bodyMarkdown: string;
-  createdAt: string;
 }
 
 async function main(): Promise<void> {
@@ -489,7 +465,7 @@ async function queueRepoFaceTurn(input: {
     bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
   });
   const bifrostDigest = input.config.repoFaceBifrostEnabled && identity.identityKind !== "native_persona"
-    ? await fetchBifrostGovernanceDigest({
+    ? await readBifrostGovernanceDigest({
         bifrostRoot: input.config.bifrostRoot,
         repoName: identity.repoName,
         agentIdentity: identity.id,
@@ -770,68 +746,6 @@ function sleepCyclesEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-async function fetchBifrostGovernanceDigest(input: {
-  bifrostRoot: string;
-  repoName: string;
-  agentIdentity: string;
-}): Promise<BifrostGovernanceDigest | undefined> {
-  const scriptPath = resolve(input.bifrostRoot, "tools", "governance-threads.mjs");
-  const result = spawnSync(
-    process.execPath,
-    [
-      scriptPath,
-      "digest",
-      "--repo", input.repoName,
-      "--agent", input.agentIdentity,
-      "--limit", "6",
-    ],
-    {
-      cwd: input.bifrostRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      timeout: 30000,
-    },
-  );
-
-  if (result.status !== 0) {
-    return {
-      generatedAt: new Date().toISOString(),
-      topics: [{
-        id: "bifrost-digest-error",
-        title: "Bifrost governance digest unavailable",
-        jurisdictionRepoName: input.repoName,
-        jurisdictionAgentIdentity: input.agentIdentity,
-        status: "error",
-        summaryMarkdown: `Could not read Bifrost governance digest: ${result.stderr || result.error?.message || result.stdout || "unknown failure"}`,
-        priority: 0,
-        updatedAt: new Date().toISOString(),
-        comments: [],
-      }],
-    };
-  }
-
-  try {
-    return JSON.parse(result.stdout) as BifrostGovernanceDigest;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      generatedAt: new Date().toISOString(),
-      topics: [{
-        id: "bifrost-digest-parse-error",
-        title: "Bifrost governance digest parse failure",
-        jurisdictionRepoName: input.repoName,
-        jurisdictionAgentIdentity: input.agentIdentity,
-        status: "error",
-        summaryMarkdown: `Could not parse Bifrost governance digest: ${message}`,
-        priority: 0,
-        updatedAt: new Date().toISOString(),
-        comments: [],
-      }],
-    };
-  }
-}
-
 async function startVoidModerationTurn(input: {
   queuedAt: string;
   storageRoot: string;
@@ -1072,7 +986,7 @@ async function assembleRepoFaceTurnPrompt(input: {
       bifrostDiscordChannelId: input.config.bifrostDiscordChannelId,
     }),
     input.config.repoFaceBifrostEnabled
-      ? fetchBifrostGovernanceDigest({
+      ? readBifrostGovernanceDigest({
           bifrostRoot: input.config.bifrostRoot,
           repoName: identity.repoName,
           agentIdentity: identity.id,
