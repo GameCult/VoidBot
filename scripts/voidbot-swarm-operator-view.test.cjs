@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { operatorViewPublication, projectSwarmOperatorView, readSwarmOperatorInputs } = require("./voidbot-swarm-operator-view.cjs");
+const { operatorViewPublication, projectSwarmOperatorView, readSwarmOperatorInputs, watchSwarmOperatorInputs } = require("./voidbot-swarm-operator-view.cjs");
 
 test("projects bounded operator state and lets control own heat", () => {
   const view = projectSwarmOperatorView({
@@ -67,6 +67,29 @@ test("reads source files independently and reports a missing owner", async () =>
     assert.equal(inputs.sources.orchestrator.readable, false);
     assert.equal(inputs.control, null);
   } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("watches atomic source replacement without polling", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "voidbot-operator-watch-"));
+  const target = path.join(root, "heartbeat.json");
+  await fs.writeFile(target, "{}");
+  let stop = () => {};
+  try {
+    const changed = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("source watcher did not observe replacement")), 2000);
+      stop = watchSwarmOperatorInputs({ heartbeat: target }, () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { debounceMs: 10 });
+    });
+    const replacement = path.join(root, "heartbeat.next.json");
+    await fs.writeFile(replacement, '{"state":"ready"}');
+    await fs.rename(replacement, target);
+    await changed;
+  } finally {
+    stop();
     await fs.rm(root, { recursive: true, force: true });
   }
 });

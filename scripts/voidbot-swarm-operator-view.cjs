@@ -129,7 +129,7 @@ async function readSwarmOperatorInputs(paths) {
 }
 
 function watchSwarmOperatorInputs(paths, onChange, { debounceMs = 75 } = {}) {
-  const watched = [...new Set(Object.values(paths).map(pathModule.resolve))];
+  const watched = [...new Set(Object.values(paths).map((value) => pathModule.resolve(value)))];
   const byDirectory = new Map();
   for (const path of watched) {
     const directory = pathModule.dirname(path);
