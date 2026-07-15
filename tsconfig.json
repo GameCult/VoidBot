@@ -24,7 +24,9 @@
     },
     {
       "path": "./apps/worker"
+    },
+    {
+      "path": "./apps/persona-scheduler"
     }
   ]
 }
-
