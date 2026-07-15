@@ -20,7 +20,15 @@ const controlStorePath = path.resolve(args.controlStore || process.env.VOIDBOT_S
 const bind = parseBind(args.bind || process.env.VOIDBOT_SWARM_CULTMESH_BIND || defaultBind);
 const odinCultMeshUri = args.odinCultMeshUri || args["odin-cultmesh-uri"] || process.env.VOIDBOT_ODIN_CULTMESH_URI || process.env.ODIN_CULTMESH_URI || defaultOdinCultMeshUri;
 const odinRudpEndpoint = args.odinRudpEndpoint || args["odin-rudp-endpoint"] || process.env.VOIDBOT_ODIN_RUDP || process.env.CULTMESH_URI_ODIN_RUDP || defaultOdinRudpEndpoint;
-const { CultMesh, CultNetDocumentRegistry, defineCultNetDocumentBinding, defineDocumentType } = loadCultRuntime();
+const {
+  CultMesh,
+  CultMeshMemoryProviderReceiptStore,
+  CultMeshProviderRudpTransport,
+  CultMeshProviderSession,
+  CultNetDocumentRegistry,
+  defineCultNetDocumentBinding,
+  defineDocumentType,
+} = loadCultRuntime();
 const documents = defineDocuments(defineDocumentType);
 const documentDefinitions = Object.values(documents);
 const bindings = {
@@ -33,6 +41,7 @@ const documentRegistry = new CultNetDocumentRegistry(
 );
 let server = null;
 let announceTimer = null;
+let liveProviderSession = null;
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.stack || error.message : String(error));
@@ -61,6 +70,7 @@ async function main() {
   });
 
   await server.start();
+  liveProviderSession = await startLiveProviderSession();
   console.log(`VoidBot swarm CultMesh/RUDP serving ${storePath} at rudp://${bind.host}:${bind.port}`);
   announceToOdin().catch((error) => {
     console.error(`VoidBot swarm Odin announcement failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -76,6 +86,7 @@ async function main() {
     try {
       if (announceTimer) clearInterval(announceTimer);
       server?.close?.();
+      void liveProviderSession?.stop?.();
     } finally {
       process.exit(0);
     }
@@ -139,6 +150,48 @@ async function projectAcceptedHeat(control) {
   const node = await CultMesh.createNode(storePath, { documents: documentDefinitions });
   await node.put(documents.swarmControl, "voidbot-swarm", control);
   await node.flush?.(true);
+  await liveProviderSession?.upsertPublication?.(controlPublication(control));
+}
+
+async function startLiveProviderSession() {
+  const endpoint = String(process.env.HERMODR_PROVIDER_SESSION_ENDPOINT || "").trim();
+  const sessionToken = String(process.env.HERMODR_PROVIDER_SESSION_TOKEN || "").trim();
+  if (!endpoint && !sessionToken) return null;
+  if (!endpoint || !sessionToken) {
+    throw new Error("HERMODR_PROVIDER_SESSION_ENDPOINT and HERMODR_PROVIDER_SESSION_TOKEN must be configured together.");
+  }
+  const controlNode = await CultMesh.createNode(controlStorePath, { documents: [documents.swarmControl] });
+  const control = controlNode.get(documents.swarmControl, "voidbot-swarm");
+  const transport = new CultMeshProviderRudpTransport({
+    endpoint,
+    runtimeId: "voidbot-swarm-live-provider",
+    connectionId,
+    sessionToken,
+  });
+  const session = new CultMeshProviderSession({
+    identity: {
+      providerId: "voidbot.swarm",
+      serviceInstanceId: "voidbot-swarm-live-provider",
+      endpointId: "voidbot.swarm.live.rudp",
+      verseId: "voidbot.local",
+    },
+    transport,
+    receiptStore: new CultMeshMemoryProviderReceiptStore(),
+    publications: control ? [controlPublication(control)] : [],
+    commandHandlers: {},
+  });
+  await session.start();
+  return session;
+}
+
+function controlPublication(control) {
+  return {
+    publicationId: "voidbot.swarm.control",
+    documentType: "voidbot.swarm_control_state",
+    schemaId: "voidbot.swarm_control_state.v1",
+    recordKey: "voidbot-swarm",
+    value: control,
+  };
 }
 
 async function announceToOdin() {
@@ -288,10 +341,23 @@ function loadCultRuntime() {
     : path.resolve(repoRoot, "..", "CultLib-dev-runtime");
   const packageJson = path.resolve(cultLibRoot, "packages", "cultmesh-ts", "package.json");
   const requireCult = createRequire(packageJson);
-  const { CultMesh } = requireCult("./dist/index.js");
+  const {
+    CultMesh,
+    CultMeshMemoryProviderReceiptStore,
+    CultMeshProviderRudpTransport,
+    CultMeshProviderSession,
+  } = requireCult("./dist/index.js");
   const { CultNetDocumentRegistry, defineCultNetDocumentBinding } = createRequire(path.resolve(cultLibRoot, "packages", "cultnet-ts", "package.json"))("./dist/index.js");
   const { defineDocumentType } = createRequire(path.resolve(cultLibRoot, "packages", "cultcache-ts", "package.json"))("./dist/index.js");
-  return { CultMesh, CultNetDocumentRegistry, defineCultNetDocumentBinding, defineDocumentType };
+  return {
+    CultMesh,
+    CultMeshMemoryProviderReceiptStore,
+    CultMeshProviderRudpTransport,
+    CultMeshProviderSession,
+    CultNetDocumentRegistry,
+    defineCultNetDocumentBinding,
+    defineDocumentType,
+  };
 }
 
 function parseArgs(values) {
