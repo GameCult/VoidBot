@@ -49,8 +49,10 @@ import {
   advanceInitiativeClockFromWallClock,
   applyPendingMentionPriority,
   countPendingMentionsByIdentity,
+  reconcileParticipants,
   rescheduleStaleOverdueParticipants,
   selectReadyParticipants,
+  type ParticipantSpec as SchedulerParticipantSpec,
 } from "../apps/persona-scheduler/dist/initiative-engine.js";
 
 const HEARTBEAT_SCHEMA_VERSION = REPO_FACE_HEARTBEAT_SCHEMA_VERSION;
@@ -266,16 +268,17 @@ async function main(): Promise<void> {
   state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
   state.globalHeat = globalHeat;
   const completedThisTick = new Set<string>();
-  state.participants = reconcileParticipants(
-    state.participants,
-    buildParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled),
-    config.repoFaceHeartbeats.defaultChannelId,
-    config.repoFaceHeartbeats.speedOverrides,
-    config.repoFaceHeartbeats.heatOverrides,
-    state.initiativeClock,
-    config.repoFaceHeartbeats.baseRecoveryMinutes,
+  const participantSpecs = buildParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled);
+  state.participants = reconcileParticipants({
+    existing: state.participants,
+    specs: participantSpecs,
+    defaultChannelId: config.repoFaceHeartbeats.defaultChannelId,
+    speedOverrides: config.repoFaceHeartbeats.speedOverrides,
+    heatOverrides: config.repoFaceHeartbeats.heatOverrides,
+    initiativeClock: state.initiativeClock,
+    baseRecoveryMinutes: config.repoFaceHeartbeats.baseRecoveryMinutes,
     globalHeat,
-  ).map((participant) =>
+  }).map((participant) =>
     applyActiveTurnFreeze(
       participant,
       activeTurnScan.active.get(participant.identityId),
@@ -293,7 +296,7 @@ async function main(): Promise<void> {
   });
   await applySemanticResponsePressure({
     state,
-    specs: buildParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled),
+    specs: participantSpecs,
     messages: idleCooling.observedHumanMessages,
     restStates,
     completedThisTick,
@@ -473,14 +476,7 @@ async function readAgentSwarmPause(): Promise<{ paused: boolean; path: string; r
   }
 }
 
-interface ParticipantSpec {
-  id: string;
-  participantKind: FaceHeartbeatParticipant["participantKind"];
-  turnKind: FaceHeartbeatParticipant["turnKind"];
-  repoName: string;
-  displayName: string;
-  allowedChannelIds: string[];
-  channelSpeedMultiplier: number;
+interface ParticipantSpec extends SchedulerParticipantSpec {
   identity?: RepoDiscordIdentity;
 }
 
@@ -1309,92 +1305,6 @@ async function readRecentLock(path: string, maxAgeMinutes: number): Promise<bool
   } catch {
     return false;
   }
-}
-
-function reconcileParticipants(
-  existing: FaceHeartbeatParticipant[],
-  specs: ParticipantSpec[],
-  defaultChannelId: string | undefined,
-  speedOverrides: Record<string, number>,
-  heatOverrides: Record<string, number>,
-  initiativeClock: number,
-  baseRecoveryMinutes: number,
-  globalHeat: number,
-): FaceHeartbeatParticipant[] {
-  const existingById = new Map(existing.map((entry) => [entry.identityId, entry]));
-  const count = Math.max(specs.length, 1);
-
-  return specs.map((spec, index) => {
-    const current = existingById.get(spec.id);
-    const hasChannel = spec.participantKind === "system_agent" || Boolean(spec.allowedChannelIds[0] || defaultChannelId);
-    const speed = initiativeSpeedFor(spec, speedOverrides) * spec.channelSpeedMultiplier;
-    const groups = initiativeGroupsFor(spec);
-    const heat = heatFor(spec, groups, globalHeat, heatOverrides);
-    const dynamicHeat = Number.isFinite(current?.dynamicHeat) ? current.dynamicHeat : 1;
-    const effectiveSpeed = clamp(speed * heat * dynamicHeat, 0.1, 12);
-    const nextTurnAt = Number.isFinite(current?.nextTurnAt)
-      ? current.nextTurnAt
-      : initiativeClock + ((baseRecoveryMinutes / count) * index);
-    if (current) {
-      return {
-        ...current,
-        participantKind: spec.participantKind,
-        turnKind: spec.turnKind,
-        repoName: spec.repoName,
-        displayName: spec.displayName,
-        initiativeSpeed: speed,
-        groups,
-        heat,
-        dynamicHeat,
-        responsePressure: Number.isFinite(current.responsePressure) ? current.responsePressure : 0,
-        responsePressureEvidence: Array.isArray(current.responsePressureEvidence) ? current.responsePressureEvidence : [],
-        semanticInterruptReceipts: Array.isArray(current.semanticInterruptReceipts) ? current.semanticInterruptReceipts : [],
-        effectiveSpeed,
-        baseRecoveryMinutes,
-        nextTurnAt,
-        constraints: mergeStrings(
-          mergeStrings(
-            current.constraints,
-            "Agent runtime uses CTB-style turns.",
-          ),
-          "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
-        ),
-        status: hasChannel
-          ? current.status === "withdrawn" || current.status === "blocked"
-            ? current.status
-            : "active"
-          : "blocked",
-      };
-    }
-
-    return {
-      identityId: spec.id,
-      participantKind: spec.participantKind,
-      turnKind: spec.turnKind,
-      repoName: spec.repoName,
-      displayName: spec.displayName,
-      initiativeSpeed: speed,
-      reactionBias: reactionBiasFor(spec),
-      interruptThreshold: interruptThresholdFor(spec),
-      currentLoad: 0,
-      status: hasChannel ? "active" : "blocked",
-      groups,
-      heat,
-      dynamicHeat: 1,
-      responsePressure: 0,
-      responsePressureEvidence: [],
-      semanticInterruptReceipts: [],
-      effectiveSpeed,
-      baseRecoveryMinutes,
-      nextTurnAt,
-      queuedCount: 0,
-      constraints: [
-        "Agent runtime uses CTB-style turns.",
-        "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
-        "Worker final summaries are not auto-posted as the base bot.",
-      ],
-    };
-  });
 }
 
 function applyActiveTurnFreeze(
@@ -5590,74 +5500,9 @@ function isRepoFacePendingMention(value: unknown): value is RepoFacePendingMenti
   );
 }
 
-function initiativeSpeedFor(
-  spec: ParticipantSpec,
-  speedOverrides: Record<string, number>,
-): number {
-  const override = speedOverrides[spec.id.toLowerCase()];
-  if (override !== undefined) {
-    return clamp(override, 0.35, 6);
-  }
-
-  if (spec.id === "void") {
-    return 1;
-  }
-
-  return clamp(0.85 + stableUnit(spec.id, "speed") * 0.45, 0.75, 1.3);
-}
-
 function channelSpeedMultiplierFor(identity: RepoDiscordIdentity): number {
   const multipliers = identity.channelPermissions.map((permission) => permission.speedMultiplier);
   return multipliers.length > 0 ? clamp(Math.max(...multipliers), 0.5, 3) : 1;
-}
-
-function initiativeGroupsFor(spec: ParticipantSpec): string[] {
-  return Array.from(new Set([
-    "all",
-    `kind:${spec.participantKind}`,
-    `turn:${spec.turnKind}`,
-    `identity:${normalizeKey(spec.id)}`,
-    `repo:${normalizeKey(spec.repoName)}`,
-    `display:${normalizeKey(spec.displayName)}`,
-    ...spec.allowedChannelIds.map((channelId) => `channel:${channelId}`),
-  ]));
-}
-
-function heatFor(
-  spec: ParticipantSpec,
-  groups: string[],
-  globalHeat: number,
-  heatOverrides: Record<string, number>,
-): number {
-  const keys = [
-    "all",
-    ...groups,
-    normalizeKey(spec.id),
-    normalizeKey(spec.repoName),
-    normalizeKey(spec.displayName),
-  ];
-  return clamp(
-    keys.reduce((heat, key) => heat * (heatOverrides[key] ?? 1), globalHeat),
-    0.05,
-    20,
-  );
-}
-
-function reactionBiasFor(spec: ParticipantSpec): number {
-  return spec.id === "void"
-    ? 0.55
-    : clamp(0.2 + stableUnit(spec.id, "reaction") * 0.55, 0.2, 0.75);
-}
-
-function interruptThresholdFor(spec: ParticipantSpec): number {
-  return spec.id === "void"
-    ? 0.5
-    : clamp(0.45 + stableUnit(spec.id, "threshold") * 0.35, 0.45, 0.8);
-}
-
-function stableUnit(id: string, salt: string): number {
-  const hex = createHash("sha1").update(`${id}:${salt}`).digest("hex").slice(0, 8);
-  return Number.parseInt(hex, 16) / 0xffffffff;
 }
 
 function mergeStrings(values: string[], value: string): string[] {

@@ -1,12 +1,46 @@
+import { createHash } from "node:crypto";
+
 export interface InitiativeParticipant {
   identityId: string;
   participantKind: "repo_face" | "native_persona" | "system_agent";
+  turnKind: "repo_face_rumination" | "void_moderation";
+  repoName: string;
+  displayName: string;
+  initiativeSpeed: number;
+  reactionBias: number;
+  interruptThreshold: number;
+  groups: string[];
+  heat: number;
+  dynamicHeat: number;
+  responsePressure: number;
+  responsePressureEvidence: Array<{
+    messageId: string;
+    observedAt: string;
+    similarity: number;
+    contribution: number;
+  }>;
+  semanticInterruptReceipts: string[];
+  effectiveSpeed: number;
+  baseRecoveryMinutes: number;
   status: "active" | "blocked" | "withdrawn" | "offscreen";
   currentLoad: number;
   nextTurnAt: number;
-  baseRecoveryMinutes: number;
-  reactionBias: number;
-  effectiveSpeed: number;
+  lastTurnAt?: number;
+  activeTurnStartedAt?: number;
+  activeJobId?: string;
+  lastQueuedAt?: string;
+  queuedCount: number;
+  constraints: string[];
+}
+
+export interface ParticipantSpec {
+  id: string;
+  participantKind: InitiativeParticipant["participantKind"];
+  turnKind: InitiativeParticipant["turnKind"];
+  repoName: string;
+  displayName: string;
+  allowedChannelIds: string[];
+  channelSpeedMultiplier: number;
 }
 
 export interface PendingMention {
@@ -29,6 +63,90 @@ export interface IdleCoolingPolicy {
   enabled: boolean;
   active: boolean;
   nextUnpromptedTurnAllowedAt?: string;
+}
+
+export interface ReconcileParticipantsInput<TSpec extends ParticipantSpec = ParticipantSpec> {
+  existing: InitiativeParticipant[];
+  specs: TSpec[];
+  defaultChannelId?: string;
+  speedOverrides: Record<string, number>;
+  heatOverrides: Record<string, number>;
+  initiativeClock: number;
+  baseRecoveryMinutes: number;
+  globalHeat: number;
+}
+
+export function reconcileParticipants(input: ReconcileParticipantsInput): InitiativeParticipant[] {
+  const existingById = new Map(input.existing.map((entry) => [entry.identityId, entry]));
+  const count = Math.max(input.specs.length, 1);
+
+  return input.specs.map((spec, index) => {
+    const current = existingById.get(spec.id);
+    const hasChannel = spec.participantKind === "system_agent" || Boolean(spec.allowedChannelIds[0] || input.defaultChannelId);
+    const speed = initiativeSpeedFor(spec, input.speedOverrides) * spec.channelSpeedMultiplier;
+    const groups = initiativeGroupsFor(spec);
+    const heat = heatFor(spec, groups, input.globalHeat, input.heatOverrides);
+    const dynamicHeat = Number.isFinite(current?.dynamicHeat) ? current!.dynamicHeat : 1;
+    const effectiveSpeed = clamp(speed * heat * dynamicHeat, 0.1, 12);
+    const nextTurnAt = Number.isFinite(current?.nextTurnAt)
+      ? current!.nextTurnAt
+      : input.initiativeClock + ((input.baseRecoveryMinutes / count) * index);
+
+    if (current) {
+      return {
+        ...current,
+        participantKind: spec.participantKind,
+        turnKind: spec.turnKind,
+        repoName: spec.repoName,
+        displayName: spec.displayName,
+        initiativeSpeed: speed,
+        groups,
+        heat,
+        dynamicHeat,
+        responsePressure: Number.isFinite(current.responsePressure) ? current.responsePressure : 0,
+        responsePressureEvidence: Array.isArray(current.responsePressureEvidence) ? current.responsePressureEvidence : [],
+        semanticInterruptReceipts: Array.isArray(current.semanticInterruptReceipts) ? current.semanticInterruptReceipts : [],
+        effectiveSpeed,
+        baseRecoveryMinutes: input.baseRecoveryMinutes,
+        nextTurnAt,
+        constraints: mergeStrings(
+          mergeStrings(current.constraints, "Agent runtime uses CTB-style turns."),
+          "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
+        ),
+        status: hasChannel
+          ? current.status === "withdrawn" || current.status === "blocked" ? current.status : "active"
+          : "blocked",
+      };
+    }
+
+    return {
+      identityId: spec.id,
+      participantKind: spec.participantKind,
+      turnKind: spec.turnKind,
+      repoName: spec.repoName,
+      displayName: spec.displayName,
+      initiativeSpeed: speed,
+      reactionBias: reactionBiasFor(spec),
+      interruptThreshold: interruptThresholdFor(spec),
+      currentLoad: 0,
+      status: hasChannel ? "active" : "blocked",
+      groups,
+      heat,
+      dynamicHeat: 1,
+      responsePressure: 0,
+      responsePressureEvidence: [],
+      semanticInterruptReceipts: [],
+      effectiveSpeed,
+      baseRecoveryMinutes: input.baseRecoveryMinutes,
+      nextTurnAt,
+      queuedCount: 0,
+      constraints: [
+        "Agent runtime uses CTB-style turns.",
+        "Wall-clock elapsed time advances initiative; heat changes recovery speed but does not fast-forward time.",
+        "Worker final summaries are not auto-posted as the base bot.",
+      ],
+    };
+  });
 }
 
 export function advanceInitiativeClockFromWallClock(state: InitiativeState, now: Date): void {
@@ -100,4 +218,53 @@ export function selectReadyParticipants<TParticipant extends InitiativeParticipa
 
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function initiativeSpeedFor(spec: ParticipantSpec, overrides: Record<string, number>): number {
+  const override = overrides[spec.id.toLowerCase()];
+  if (override !== undefined) return clamp(override, 0.35, 6);
+  if (spec.id === "void") return 1;
+  return clamp(0.85 + stableUnit(spec.id, "speed") * 0.45, 0.75, 1.3);
+}
+
+function initiativeGroupsFor(spec: ParticipantSpec): string[] {
+  return Array.from(new Set([
+    "all",
+    `kind:${spec.participantKind}`,
+    `turn:${spec.turnKind}`,
+    `identity:${normalizeKey(spec.id)}`,
+    `repo:${normalizeKey(spec.repoName)}`,
+    `display:${normalizeKey(spec.displayName)}`,
+    ...spec.allowedChannelIds.map((channelId) => `channel:${channelId}`),
+  ]));
+}
+
+function heatFor(spec: ParticipantSpec, groups: string[], globalHeat: number, overrides: Record<string, number>): number {
+  const keys = ["all", ...groups, normalizeKey(spec.id), normalizeKey(spec.repoName), normalizeKey(spec.displayName)];
+  return clamp(keys.reduce((heat, key) => heat * (overrides[key] ?? 1), globalHeat), 0.05, 20);
+}
+
+function reactionBiasFor(spec: ParticipantSpec): number {
+  return spec.id === "void" ? 0.55 : clamp(0.2 + stableUnit(spec.id, "reaction") * 0.55, 0.2, 0.75);
+}
+
+function interruptThresholdFor(spec: ParticipantSpec): number {
+  return spec.id === "void" ? 0.5 : clamp(0.45 + stableUnit(spec.id, "threshold") * 0.35, 0.45, 0.8);
+}
+
+function stableUnit(id: string, salt: string): number {
+  const hex = createHash("sha1").update(`${id}:${salt}`).digest("hex").slice(0, 8);
+  return Number.parseInt(hex, 16) / 0xffffffff;
+}
+
+function mergeStrings(values: string[], value: string): string[] {
+  return Array.from(new Set([...values, value]));
+}
+
+function normalizeKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Number(value.toFixed(3))));
 }
