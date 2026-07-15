@@ -3,7 +3,7 @@ import "dotenv/config";
 import { spawn } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
