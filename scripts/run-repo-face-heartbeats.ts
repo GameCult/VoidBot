@@ -262,7 +262,7 @@ async function main(): Promise<void> {
   const completedThisTick = new Set<string>();
   state.participants = reconcileParticipants(
     state.participants,
-    buildParticipantSpecs(registry.identities),
+    buildParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled),
     config.repoFaceHeartbeats.defaultChannelId,
     config.repoFaceHeartbeats.speedOverrides,
     config.repoFaceHeartbeats.heatOverrides,
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
   });
   await applySemanticResponsePressure({
     state,
-    specs: buildParticipantSpecs(registry.identities),
+    specs: buildParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled),
     messages: idleCooling.observedHumanMessages,
     restStates,
     completedThisTick,
@@ -478,17 +478,17 @@ interface ParticipantSpec {
   identity?: RepoDiscordIdentity;
 }
 
-function buildParticipantSpecs(identities: RepoDiscordIdentity[]): ParticipantSpec[] {
+function buildParticipantSpecs(identities: RepoDiscordIdentity[], includeVoid: boolean): ParticipantSpec[] {
   return [
-    {
+    ...(includeVoid ? [{
       id: "void",
-      participantKind: "system_agent",
-      turnKind: "void_moderation",
+      participantKind: "system_agent" as const,
+      turnKind: "void_moderation" as const,
       repoName: "VoidBot",
       displayName: "Void",
       allowedChannelIds: [],
       channelSpeedMultiplier: 1,
-    },
+    }] : []),
     ...identities.map((identity) => ({
       id: identity.id,
       participantKind: identity.identityKind === "native_persona"

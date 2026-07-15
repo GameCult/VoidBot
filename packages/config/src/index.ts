@@ -136,6 +136,7 @@ const envSchema = z.object({
   BIFROST_CULTMESH_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
+  VOIDBOT_MODERATION_HEARTBEAT_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
   REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
@@ -246,6 +247,7 @@ export interface AppConfig {
     timeoutMs: number;
     pumpEnabled: boolean;
   };
+  voidModerationHeartbeatEnabled: boolean;
   repoFaceHeartbeats: {
     enabled: boolean;
     statePath: string;
@@ -535,6 +537,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.BIFROST_CULTMESH_COMMAND_TIMEOUT_MS,
       pumpEnabled: parsed.BIFROST_CULTMESH_COMMAND_PUMP_ENABLED,
     },
+    voidModerationHeartbeatEnabled: parsed.VOIDBOT_MODERATION_HEARTBEAT_ENABLED,
     repoFaceHeartbeats: {
       enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
       statePath: resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH),
