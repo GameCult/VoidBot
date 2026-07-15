@@ -3,6 +3,11 @@ import { basename, resolve } from "node:path";
 
 import { z } from "zod";
 
+export const portablePersonaStatePathSchema = z.string().trim().min(1).refine(
+  (value) => !/^[A-Za-z]:[\\/]/.test(value) && !value.startsWith("/") && !value.startsWith("\\\\"),
+  "Persona state paths must be portable paths inside VoidBot storage, not host-absolute paths.",
+);
+
 const repoDiscordIdentitySchema = z.object({
   id: z.string().trim().min(1),
   identityKind: z.enum(["repo_face", "native_persona"]).default("repo_face"),
@@ -22,8 +27,8 @@ const repoDiscordIdentitySchema = z.object({
   })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
   avatarPath: z.string().trim().min(1).optional(),
-  faceStatePath: z.string().trim().min(1).optional(),
-  personaStatePath: z.string().trim().min(1).optional(),
+  faceStatePath: portablePersonaStatePathSchema.optional(),
+  personaStatePath: portablePersonaStatePathSchema.optional(),
   description: z.string().trim().min(1).optional(),
 });
 

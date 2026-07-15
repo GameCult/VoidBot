@@ -5,6 +5,7 @@ import {
   type RepoDiscordIdentity,
   type RepoDiscordIdentityRegistry,
   getRepoDiscordIdentityAllowedChannelIds,
+  portablePersonaStatePathSchema,
   resolveRepoFaceStatePath,
 } from "./repo-discord-identities";
 
@@ -53,8 +54,8 @@ const faceIdentitySchema = z.object({
   })).default([]),
   avatarUrl: z.string().trim().url().max(512).optional(),
   avatarPath: z.string().trim().min(1).optional(),
-  faceStatePath: z.string().trim().min(1).optional(),
-  personaStatePath: z.string().trim().min(1).optional(),
+  faceStatePath: portablePersonaStatePathSchema.optional(),
+  personaStatePath: portablePersonaStatePathSchema.optional(),
   description: z.string().trim().min(1).optional(),
   grants: z.array(agencyGrantSchema).default(["discussion", "rumination", "discord_text"]),
   jurisdictions: z.array(jurisdictionSchema).default([]),

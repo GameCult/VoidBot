@@ -1928,6 +1928,9 @@ function loadBifrostCultMeshRuntime(): {
   defineDocumentType: (definition: Record<string, unknown>) => unknown;
 } {
   const candidates = [
+    ...(process.env.VOIDBOT_CULTLIB_ROOT
+      ? [resolve(process.env.VOIDBOT_CULTLIB_ROOT, "packages", "cultmesh-ts", "package.json")]
+      : []),
     resolve(config.bifrostRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
     resolve(config.bifrostRoot, "..", "CultMeshTS", "package.json"),
   ];

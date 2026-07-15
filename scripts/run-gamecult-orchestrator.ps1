@@ -478,7 +478,6 @@ try {
   $agentSwarmPaused = Test-AgentSwarmPaused
   $agentSwarmOrganIds = @{
     "bifrost-dispatch" = $true
-    "repo-face-heartbeats" = $true
     "void-mood-drift" = $true
     "void-moderation-heartbeat" = $true
     "void-moderation-rumination" = $true
@@ -510,15 +509,6 @@ try {
       Cwd = $repoRoot
       Executable = $node
       Arguments = @((Join-Path $PSScriptRoot "render-voidbot-swarm-dashboard.mjs"))
-    },
-    [pscustomobject]@{
-      Id = "repo-face-heartbeats"
-      Label = "Repo Face CTB turns"
-      IntervalMinutes = Get-ConfigInt -Config $config -Name "REPO_FACE_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
-      TimeoutMinutes = 20
-      Cwd = $repoRoot
-      Executable = $powershell
-      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-repo-face-heartbeats.ps1"))
     },
     [pscustomobject]@{
       Id = "void-mood-drift"
