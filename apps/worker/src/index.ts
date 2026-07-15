@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -23,6 +24,7 @@ import {
   loadSystemMessageCatalog,
   resolveRepoFaceStatePath,
   resolveWeksaArtifactPath,
+  type RepoDiscordIdentity,
   type SystemMessageCatalog,
   WeksaSpeechClient,
   type WeksaMimoReceipt,
@@ -71,13 +73,18 @@ import {
 
 const config = loadConfig();
 const weksaSpeechClient = new WeksaSpeechClient({
-  baseUrl: config.repoFaceWeksaSpeech.daemonBaseUrl,
+  commandUri: config.repoFaceWeksaSpeech.commandUri,
+  repoRoot: config.repoFaceWeksaSpeech.repoRoot,
   timeoutMs: config.repoFaceWeksaSpeech.timeoutMs,
 });
 const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
 const REPO_IDENTITY_BIFROST_TOPIC_SENTINEL = "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC:";
+const BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE = "bifrost.bridge.discord_post_command";
+const BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID = "bifrost.bridge.discord_post_command.v1";
+const BIFROST_DISCORD_POST_RECEIPT_DOCUMENT_TYPE = "bifrost.bridge.discord_post_receipt";
+const BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID = "bifrost.bridge.discord_post_receipt.v1";
 const CURRENT_REPO_FACE_IDENTITY_SELECTORS = new Set([
   "face_id",
   "faceid",
@@ -240,6 +247,7 @@ async function buildProviderRegistry(systemMessagesCatalog: SystemMessageCatalog
       timeoutMs: config.openAiApi.timeoutMs,
       authHeader: config.openAiApi.authHeader,
       maxCompletionTokens: config.openAiApi.maxCompletionTokens,
+      toolbox: buildRetrievalToolbox(),
     }),
     new LocalLlmProvider({
       enabled: config.enabledProviders.includes("local_llm"),
@@ -347,6 +355,124 @@ async function buildProviderRegistry(systemMessagesCatalog: SystemMessageCatalog
       },
     }),
   ]);
+}
+
+function buildRetrievalToolbox() {
+  return {
+    listIndexedRepos: async () => {
+      const repos = await sourceArchiveRepository.listRepoSummaries();
+
+      return {
+        repoCount: repos.length,
+        repos,
+      };
+    },
+    searchHistory: async (input: {
+      query: string;
+      limit: number;
+      guildId?: string;
+      channelId?: string;
+      authorId?: string;
+    }) => {
+      const rawResults = await searchHistoryWithArchiveFallback({
+        retrievalService,
+        archiveRepository,
+        query: input.query,
+        limit: input.limit,
+        guildId: input.guildId,
+        channelId: input.channelId,
+        authorId: input.authorId,
+        preserveOverfetch: true,
+      });
+      const results = filterPromptEchoHistoryResults(rawResults, input.query);
+
+      return {
+        query: input.query,
+        resultCount: results.length,
+        results: formatHistoryResults(results),
+      };
+    },
+    getMessageContext: async (input: {
+      messageId: string;
+      before: number;
+      after: number;
+    }) => {
+      const messages = await archiveRepository.listContextWindow(
+        input.messageId,
+        input.before,
+        input.after,
+      );
+
+      return {
+        found: messages.length > 0,
+        messageId: input.messageId,
+        count: messages.length,
+        messages: messages.map((message) =>
+          formatArchivedMessageContext(message, input.messageId),
+        ),
+      };
+    },
+    searchSources: async (input: {
+      query: string;
+      limit: number;
+      repoName?: string;
+      pathPrefix?: string;
+      language?: string;
+    }) => {
+      const results = await retrievalService.searchRepositorySources(input.query, input.limit, {
+        repoName: input.repoName,
+        pathPrefix: input.pathPrefix,
+        language: input.language,
+      });
+
+      return {
+        query: input.query,
+        resultCount: results.length,
+        results: formatSourceResults(results),
+      };
+    },
+    getSourceContext: async (input: {
+      sourceId: string;
+      chunkIndex: number;
+      before: number;
+      after: number;
+    }) => {
+      const document = await sourceArchiveRepository.get(input.sourceId);
+
+      if (!document) {
+        return {
+          found: false,
+          sourceId: input.sourceId,
+          count: 0,
+          chunks: [],
+        };
+      }
+
+      const chunks = sourceDocumentIngester.buildContextWindow(
+        document,
+        input.chunkIndex,
+        input.before,
+        input.after,
+      );
+
+      return {
+        found: true,
+        sourceId: input.sourceId,
+        repoName: document.repoName,
+        path: document.path,
+        language: document.language,
+        count: chunks.length,
+        chunks: chunks.map((chunk) => ({
+          chunkId: chunk.chunkId,
+          chunkIndex: chunk.chunkIndex,
+          lineStart: chunk.lineStart,
+          lineEnd: chunk.lineEnd,
+          isAnchor: chunk.chunkIndex === input.chunkIndex,
+          text: chunk.text,
+        })),
+      };
+    },
+  };
 }
 
 async function processJob(job: JobRecord): Promise<void> {
@@ -595,6 +721,13 @@ async function executeRepoFaceJobWithInterpreter(
     : await interpretRepoFaceTurnOutput(provider, job, firstText, {
         attempt: 1,
       });
+  const firstRouteProblem = firstInterpretation.decision === "route"
+    ? validateRepoFaceRoutedOutput(firstInterpretation.routedOutput, job)
+    : undefined;
+  if (firstRouteProblem) {
+    firstInterpretation.decision = "retry";
+    firstInterpretation.reasons = [firstRouteProblem, ...firstInterpretation.reasons].slice(0, 4);
+  }
   if (firstInterpretation.decision === "route") {
     return routeRepoFaceInterpretedOutput(firstResponse, firstInterpretation, {
       job,
@@ -648,6 +781,13 @@ async function executeRepoFaceJobWithInterpreter(
     : await interpretRepoFaceTurnOutput(provider, job, retryText, {
         attempt: 2,
       });
+  const retryRouteProblem = retryInterpretation.decision === "route"
+    ? validateRepoFaceRoutedOutput(retryInterpretation.routedOutput, job)
+    : undefined;
+  if (retryRouteProblem) {
+    retryInterpretation.decision = "drop";
+    retryInterpretation.reasons = [retryRouteProblem, ...retryInterpretation.reasons].slice(0, 4);
+  }
   if (retryInterpretation.decision === "route") {
     return routeRepoFaceInterpretedOutput(retryResponse, retryInterpretation, {
       job,
@@ -971,6 +1111,38 @@ function normalizeInterpretedRepoFaceSpeechDestinations(
   );
 }
 
+function validateRepoFaceRoutedOutput(
+  outputText: string | undefined,
+  job: JobRecord,
+): string | undefined {
+  if (job.command !== "repo-face-rumination" || !outputText || !repoFaceHasMultipleActiveConversationChannels(job)) {
+    return undefined;
+  }
+
+  for (const block of parseRepoFaceActionBlocks(outputText)) {
+    if (block.kind !== "say") {
+      continue;
+    }
+    const context = optionalDslString(block.fields.context) ??
+      optionalDslString(block.fields.context_id) ??
+      optionalDslString(block.fields.contextId);
+    const replyTo = optionalDslString(block.fields.reply_to) ??
+      optionalDslString(block.fields.replyToMessageId);
+    const channel = optionalDslString(block.fields.channel) ??
+      optionalDslString(block.fields.channelId);
+    const normalizedChannel = normalizeChannelSelector(channel);
+    const hasConcreteChannel = Boolean(channel) &&
+      normalizedChannel !== "current_room" &&
+      normalizedChannel !== "currentroom";
+
+    if (!context && !replyTo && !hasConcreteChannel) {
+      return "Routed SAY lacks context, reply_to, or a concrete channel id while multiple active conversation contexts are visible.";
+    }
+  }
+
+  return undefined;
+}
+
 function repoFaceHasMultipleActiveConversationChannels(job: JobRecord): boolean {
   const activeThreads = job.contextBundle.repoFaceConversationThreads ?? [];
   const representedChannels = new Set(activeThreads.map((thread) => thread.channelId));
@@ -1137,14 +1309,23 @@ function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpret
     return {};
   }
 
+  const identityId = parseRepoIdentityIdFromRequestMessageId(job.requestMessageId)
+    ?? parseRepoIdentityIdFromPrompt(job.prompt);
+  const faceContext = {
+    repoFaceRole: role,
+    ...(identityId ? { repoFaceIdentity: identityId } : {}),
+  };
+
   if (job.provider === "openai_api") {
     return {
+      ...faceContext,
       model: config.openAiApi.model,
     };
   }
 
   if (role === "face") {
     return {
+      ...faceContext,
       model: config.repoFaceHeartbeats.turnCodexModel,
       ...(config.repoFaceHeartbeats.codexModelReasoningEffort
         ? { reasoningEffort: config.repoFaceHeartbeats.codexModelReasoningEffort }
@@ -1153,6 +1334,7 @@ function repoFaceHeartbeatCodexOptions(job: JobRecord, role: "face" | "interpret
   }
 
   return {
+    ...faceContext,
     ...(config.repoFaceHeartbeats.codexModel ? { model: config.repoFaceHeartbeats.codexModel } : {}),
     ...(config.repoFaceHeartbeats.codexModels.length > 0
       ? { models: config.repoFaceHeartbeats.codexModels.join(",") }
@@ -1491,18 +1673,13 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
   if (/\S(?:\.\.\.|…)$/.test(content)) {
     throw new Error(`Repo identity ${identity.id} SAY content appears mechanically truncated.`);
   }
-  const contentFile = await writeBifrostPayloadFile(job, `${identity.id}-discord-post.md`, content);
-  const posted = runBifrostBridge([
-    "discord-post",
-    "--channel-id",
+  const posted = await postRepoIdentityDiscordViaCultMeshCommand({
+    job,
+    identity,
     channelId,
-    "--content-file",
-    contentFile,
-    "--persona-name",
-    identity.displayName,
-    ...(identity.avatarUrl ? ["--persona-avatar-url", identity.avatarUrl] : []),
-    ...(effectiveReplyToMessageId ? ["--reply-to-message-id", effectiveReplyToMessageId] : []),
-  ], { retries: 1 });
+    content,
+    replyToMessageId: effectiveReplyToMessageId,
+  });
   if (!posted.messageId || !posted.transport) {
     throw new Error(`Bifrost Discord bridge returned no message receipt for job ${job.id}.`);
   }
@@ -1529,6 +1706,282 @@ async function postRepoIdentityIntent(job: JobRecord, intent: RepoIdentityPostIn
     `Posted repo identity ${identity.id} to Discord channel ${channelId} from job ${job.id} via ${posted.transport} message ${posted.messageId}.`,
   );
   return true;
+}
+
+async function postRepoIdentityDiscordViaCultMeshCommand(input: {
+  job: JobRecord;
+  identity: RepoDiscordIdentity;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+}): Promise<BifrostBridgeReceipt> {
+  assertBifrostCultMeshCommandUri(config.bifrostCultMesh.commandUri);
+  const commandId = buildBifrostDiscordCommandId(input);
+  const node = await openBifrostCommandNode(config.bifrostCultMesh.storePath);
+  const requestedAt = new Date().toISOString();
+  const command = {
+    schemaName: BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE,
+    schemaVersion: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
+    commandId,
+    command: "discord-post",
+    status: "pending",
+    requestedBy: "voidbot",
+    requestedAt,
+    updatedAt: requestedAt,
+    commandUri: config.bifrostCultMesh.commandUri,
+    source: {
+      kind: "voidbot.repo-face.say",
+      id: input.job.id,
+      jobId: input.job.id,
+      requestMessageId: input.job.requestMessageId,
+    },
+    actor: {
+      id: input.identity.id,
+      displayName: input.identity.displayName,
+      repoName: input.identity.repoName,
+    },
+    payload: {
+      identityId: input.identity.id,
+      channelId: input.channelId,
+      content: input.content,
+      personaName: input.identity.displayName,
+      personaAvatarUrl: input.identity.avatarUrl ?? "",
+      replyToMessageId: input.replyToMessageId ?? "",
+    },
+  };
+
+  await node.put(bifrostDiscordCommandDefinition(), commandId, command);
+  await node.flush?.();
+
+  if (config.bifrostCultMesh.pumpEnabled) {
+    pumpBifrostCultMeshCommand(commandId);
+  }
+
+  const receipt = await waitForBifrostDiscordReceipt(node, commandId, config.bifrostCultMesh.timeoutMs);
+  if (receipt.status !== "completed" || receipt.ok !== true) {
+    throw new Error(
+      `Bifrost CultMesh Discord command ${commandId} failed: ${bifrostString(receipt.error) || "no error detail"}`,
+    );
+  }
+  const messageId = bifrostString(receipt.messageId);
+  const transport = bifrostString(receipt.transport);
+  if (!messageId || !transport) {
+    throw new Error(`Bifrost CultMesh Discord command ${commandId} returned an incomplete receipt.`);
+  }
+  return {
+    action: "discord-post",
+    ok: true,
+    messageId,
+    transport: transport === "bot" || transport === "webhook" ? transport : "webhook",
+    url: bifrostString(receipt.url),
+  };
+}
+
+function buildBifrostDiscordCommandId(input: {
+  job: JobRecord;
+  identity: RepoDiscordIdentity;
+  channelId: string;
+  content: string;
+  replyToMessageId?: string;
+}): string {
+  const hash = createHash("sha1")
+    .update(JSON.stringify({
+      jobId: input.job.id,
+      identityId: input.identity.id,
+      channelId: input.channelId,
+      replyToMessageId: input.replyToMessageId ?? "",
+      content: input.content,
+    }))
+    .digest("hex")
+    .slice(0, 20);
+  return `voidbot-discord-${hash}`;
+}
+
+function assertBifrostCultMeshCommandUri(value: string): void {
+  if (!/^cultmesh:\/\/[^/]+\/commands\/discord-post(?:$|[/?#])/.test(value)) {
+    throw new Error(
+      `BIFROST_CULTMESH_COMMAND_URI must be a CultMesh Discord command URI, got "${value}".`,
+    );
+  }
+}
+
+async function openBifrostCommandNode(storePath: string): Promise<{
+  put: (definition: unknown, key: string, value: unknown) => Promise<void>;
+  get: (definition: unknown, key: string) => unknown;
+  flush?: () => Promise<void>;
+  cache?: { pullAllBackingStores?: () => Promise<void> };
+}> {
+  const { CultMesh } = loadBifrostCultMeshRuntime();
+  return CultMesh.createNode(storePath, {
+    documents: [
+      bifrostDiscordCommandDefinition(),
+      bifrostDiscordReceiptDefinition(),
+      bifrostGenericDocumentDefinition("gamecult.eve.provider_advertisement", "gamecult.eve.provider_advertisement.v1", "providerId"),
+      bifrostGenericDocumentDefinition("gamecult.eve.surface_state", "gamecult.eve.surface_state.v1", "providerId"),
+      bifrostGenericDocumentDefinition("gamecult.eve.interface_binding", "gamecult.eve.interface_binding.v1", "bindingId"),
+    ],
+  });
+}
+
+function pumpBifrostCultMeshCommand(commandId: string): void {
+  const processor = resolve(config.bifrostRoot, "tools", "cultmesh-bridge-commands.mjs");
+  const result = spawnSync(process.execPath, [
+    processor,
+    "process",
+    "--store",
+    config.bifrostCultMesh.storePath,
+    "--command-id",
+    commandId,
+  ], {
+    cwd: config.bifrostRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0 || result.error) {
+    throw new Error(`Bifrost CultMesh command processor failed. ${renderBridgeFailure(result, 1, 1)}`);
+  }
+}
+
+async function waitForBifrostDiscordReceipt(
+  node: { get: (definition: unknown, key: string) => unknown; cache?: { pullAllBackingStores?: () => Promise<void> } },
+  commandId: string,
+  timeoutMs: number,
+): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    await node.cache?.pullAllBackingStores?.();
+    const receipt = unwrapBifrostRecord(await node.get(bifrostDiscordReceiptDefinition(), commandId));
+    if (receipt) {
+      return receipt;
+    }
+    await delay(250);
+  }
+  throw new Error(`Timed out waiting for Bifrost CultMesh Discord receipt ${commandId}.`);
+}
+
+let bifrostDefinitions: {
+  command?: unknown;
+  receipt?: unknown;
+  generic: Map<string, unknown>;
+} | undefined;
+
+function bifrostDiscordCommandDefinition(): unknown {
+  const { defineDocumentType } = loadBifrostCultMeshRuntime();
+  bifrostDefinitions ??= { generic: new Map() };
+  bifrostDefinitions.command ??= defineDocumentType({
+    type: BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE,
+    schemaName: BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE,
+    schemaId: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
+    schemaVersion: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
+    contentHash: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
+    global: false,
+    name: "commandId",
+    schema: parseBifrostObjectDocument("Bifrost Discord post command"),
+  });
+  return bifrostDefinitions.command;
+}
+
+function bifrostDiscordReceiptDefinition(): unknown {
+  const { defineDocumentType } = loadBifrostCultMeshRuntime();
+  bifrostDefinitions ??= { generic: new Map() };
+  bifrostDefinitions.receipt ??= defineDocumentType({
+    type: BIFROST_DISCORD_POST_RECEIPT_DOCUMENT_TYPE,
+    schemaName: BIFROST_DISCORD_POST_RECEIPT_DOCUMENT_TYPE,
+    schemaId: BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID,
+    schemaVersion: BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID,
+    contentHash: BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID,
+    global: false,
+    name: "commandId",
+    schema: parseBifrostObjectDocument("Bifrost Discord post receipt"),
+  });
+  return bifrostDefinitions.receipt;
+}
+
+function bifrostGenericDocumentDefinition(type: string, schemaId: string, name: string): unknown {
+  const { defineDocumentType } = loadBifrostCultMeshRuntime();
+  bifrostDefinitions ??= { generic: new Map() };
+  const key = `${type}:${schemaId}:${name}`;
+  let definition = bifrostDefinitions.generic.get(key);
+  if (!definition) {
+    definition = defineDocumentType({
+      type,
+      schemaName: type,
+      schemaId,
+      schemaVersion: schemaId,
+      contentHash: schemaId,
+      global: false,
+      name,
+      schema: parseBifrostObjectDocument(type),
+    });
+    bifrostDefinitions.generic.set(key, definition);
+  }
+  return definition;
+}
+
+function loadBifrostCultMeshRuntime(): {
+  CultMesh: { createNode: (storePath: string, options: unknown) => Promise<{
+    put: (definition: unknown, key: string, value: unknown) => Promise<void>;
+    get: (definition: unknown, key: string) => unknown;
+    flush?: () => Promise<void>;
+    cache?: { pullAllBackingStores?: () => Promise<void> };
+  }> };
+  defineDocumentType: (definition: Record<string, unknown>) => unknown;
+} {
+  const candidates = [
+    resolve(config.bifrostRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
+    resolve(config.bifrostRoot, "..", "CultMeshTS", "package.json"),
+  ];
+
+  for (const packageJson of candidates) {
+    try {
+      const requireCult = createRequire(packageJson);
+      const { CultMesh } = requireCult("cultmesh-ts") as {
+        CultMesh?: { createNode: (storePath: string, options: unknown) => Promise<{
+          put: (definition: unknown, key: string, value: unknown) => Promise<void>;
+          get: (definition: unknown, key: string) => unknown;
+          flush?: () => Promise<void>;
+          cache?: { pullAllBackingStores?: () => Promise<void> };
+        }> };
+      };
+      const { defineDocumentType } = requireCult("cultcache-ts") as {
+        defineDocumentType?: (definition: Record<string, unknown>) => unknown;
+      };
+      if (CultMesh && defineDocumentType) {
+        return { CultMesh, defineDocumentType };
+      }
+    } catch {
+    }
+  }
+  throw new Error("CultMesh/CultCache packages are unavailable; cannot write Bifrost command documents.");
+}
+
+function parseBifrostObjectDocument(label: string): { parse: (value: unknown) => unknown } {
+  return {
+    parse(value: unknown): unknown {
+      if (!value || typeof value !== "object") {
+        throw new Error(`${label} must be an object.`);
+      }
+      return value;
+    },
+  };
+}
+
+function unwrapBifrostRecord(record: unknown): Record<string, unknown> | undefined {
+  const candidate = Array.isArray(record) && record.length === 1 ? record[0] : record;
+  const value = isBifrostRecord(candidate) && isBifrostRecord(candidate.value) ? candidate.value : candidate;
+  return isBifrostRecord(value) ? value : undefined;
+}
+
+function isBifrostRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function bifrostString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : value === undefined || value === null ? "" : String(value).trim();
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }
 
 async function resolveRepoIdentityForJobIntent(

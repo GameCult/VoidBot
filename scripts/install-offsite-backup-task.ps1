@@ -73,7 +73,7 @@ $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //nologo
 $trigger = New-ScheduledTaskTrigger -Daily -At $runAt
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 6)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
-$description = "Runs VoidBot offsite backup sync to the Qwen box. Interactive logon required so the SSH key material is available."
+$description = "Runs VoidBot offsite backup sync to the configured SSH target. Interactive logon required so the SSH key material is available."
 
 Register-ScheduledTask -TaskName $taskNameValue -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description $description -Force | Out-Null
 

@@ -2,8 +2,11 @@ node_modules/
 dist/
 .env
 .voidbot/
+.bifrost/
 coverage/
 *.log
 *.tsbuildinfo
+**/bin/
+**/obj/
 Thumbs.db
 .DS_Store

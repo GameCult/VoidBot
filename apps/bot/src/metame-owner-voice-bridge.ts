@@ -69,7 +69,8 @@ export async function maybeMirrorOwnerAquariumMessageAsMetameVoice(input: {
   });
 
   const client = new WeksaSpeechClient({
-    baseUrl: config.repoFaceWeksaSpeech.daemonBaseUrl,
+    commandUri: config.repoFaceWeksaSpeech.commandUri,
+    repoRoot: config.repoFaceWeksaSpeech.repoRoot,
     timeoutMs: config.repoFaceWeksaSpeech.timeoutMs,
   });
   try {

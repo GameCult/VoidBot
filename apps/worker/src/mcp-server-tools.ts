@@ -1,12 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import crypto from "node:crypto";
-import net from "node:net";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
 
 import { DEFAULT_RETRIEVAL_RESULT_LIMIT } from "@voidbot/shared";
 import { searchHistoryWithArchiveFallback } from "@voidbot/rag";
 import {
   applyRepoFacePostFatigueAfterSpeech,
+  createRepoFaceSharedDocument,
   applyVoidSelfStateOperation,
   buildVoidSelfStateContext,
   faceRegistryAsRepoDiscordRegistry,
@@ -14,9 +16,12 @@ import {
   isRepoDiscordIdentityAllowedInChannel,
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
+  listRepoFaceSharedDocuments,
   renderFaceIdentityDoctrine,
   resolveFaceStatePath,
   resolveRepoFaceStatePath,
+  resolveRepoFaceSharedDocumentsPath,
+  updateRepoFaceSharedDocument,
   VOID_SELF_STATE_SCHEMA_DOCUMENT_TYPES,
   VOID_SELF_STATE_SCHEMA_FINGERPRINT,
 } from "@voidbot/core";
@@ -32,17 +37,21 @@ import {
   type OdinInterfaceContextArgs,
   type OdinSurfaceArgs,
   type ApplyRepoFaceStateOperationArgs,
+  type CreateSharedDocumentArgs,
   type PostDiscordMessageArgs,
   type PostRepoIdentityMessageArgs,
   type RepoFaceStateArgs,
+  type ReadSharedDocumentArgs,
   type RuntimeInfoArgs,
   type SearchHistoryArgs,
   type SearchSourcesArgs,
   type SourceContextArgs,
+  type UpdateSharedDocumentArgs,
   formatArchivedMessage,
   formatHistoryResults,
   formatSourceResults,
   applyRepoFaceStateOperationInputSchema,
+  createSharedDocumentInputSchema,
   messageContextInputSchema,
   notifyOwnerInputSchema,
   odinEndpointInputSchema,
@@ -52,11 +61,13 @@ import {
   postDiscordMessageInputSchema,
   postRepoIdentityMessageInputSchema,
   repoFaceStateInputSchema,
+  readSharedDocumentInputSchema,
   renderJsonBlock,
   runtimeInfoInputSchema,
   searchHistoryInputSchema,
   searchSourcesInputSchema,
   sourceContextInputSchema,
+  updateSharedDocumentInputSchema,
 } from "./mcp-server-shared";
 
 const READ_ONLY_ANNOTATIONS = {
@@ -66,7 +77,8 @@ const READ_ONLY_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-const DEFAULT_ODIN_BASE_URL = "http://127.0.0.1:8797";
+const DEFAULT_ODIN_STORE_PATH = path.resolve(process.cwd(), "..", "Odin", "scratch", "odin", "odin.ccmp");
+const ODIN_SURFACE_KEY = "surface:gamecult.network.status";
 
 function isMcpToolAllowed(name: string): boolean {
   const raw = process.env.VOIDBOT_MCP_TOOL_ALLOWLIST?.trim();
@@ -136,22 +148,22 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (input: OdinEndpointArgs): Promise<CallToolResult> => {
-      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
-      const catalog = await fetchOdinProviderCatalog(odinBaseUrl);
+      const odinStorePath = resolveOdinStorePath(input.odinStorePath);
+      const catalog = await fetchOdinProviderCatalog(odinStorePath);
 
       return {
         content: [
           {
             type: "text",
             text: renderJsonBlock({
-              odinBaseUrl,
+              odinStorePath,
               providerCount: catalog.providers.length,
               providers: catalog.providers,
             }),
           },
         ],
         structuredContent: {
-          odinBaseUrl,
+          odinStorePath,
           providerCount: catalog.providers.length,
           providers: catalog.providers,
         },
@@ -169,8 +181,8 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (input: OdinEndpointArgs): Promise<CallToolResult> => {
-      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
-      const snapshot = await fetchOdinDeckSnapshot(odinBaseUrl);
+      const odinStorePath = resolveOdinStorePath(input.odinStorePath);
+      const snapshot = await fetchOdinSnapshot(odinStorePath);
       const verses = summarizeOdinVerses(snapshot);
 
       return {
@@ -178,7 +190,7 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              odinBaseUrl,
+              odinStorePath,
               providerId: snapshot.providerId,
               title: snapshot.title,
               version: snapshot.version,
@@ -189,7 +201,7 @@ export function registerVoidbotTools(
           },
         ],
         structuredContent: {
-          odinBaseUrl,
+          odinStorePath,
           providerId: snapshot.providerId,
           title: snapshot.title,
           version: snapshot.version,
@@ -211,8 +223,8 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (input: OdinSurfaceArgs): Promise<CallToolResult> => {
-      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
-      const snapshot = await fetchOdinDeckSnapshot(odinBaseUrl, input.providerId);
+      const odinStorePath = resolveOdinStorePath(input.odinStorePath);
+      const snapshot = await fetchOdinSnapshot(odinStorePath, input.providerId);
       const surfaceSummary = summarizeOdinSurface(snapshot);
 
       return {
@@ -220,7 +232,7 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              odinBaseUrl,
+              odinStorePath,
               providerId: snapshot.providerId,
               title: snapshot.title,
               version: snapshot.version,
@@ -231,7 +243,7 @@ export function registerVoidbotTools(
           },
         ],
         structuredContent: {
-          odinBaseUrl,
+          odinStorePath,
           providerId: snapshot.providerId,
           title: snapshot.title,
           version: snapshot.version,
@@ -253,8 +265,8 @@ export function registerVoidbotTools(
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async (input: OdinInterfaceContextArgs): Promise<CallToolResult> => {
-      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
-      const loaded = await loadOdinProviderInterface(odinBaseUrl, input.providerId);
+      const odinStorePath = resolveOdinStorePath(input.odinStorePath);
+      const loaded = await loadOdinProviderInterface(odinStorePath, input.providerId);
       const contextSummary = summarizeProviderInterface(loaded, {
         maxTextItems: input.maxTextItems ?? 32,
         maxTreeItems: input.maxTreeItems ?? 80,
@@ -265,13 +277,13 @@ export function registerVoidbotTools(
           {
             type: "text",
             text: renderJsonBlock({
-              odinBaseUrl,
+              odinStorePath,
               ...contextSummary,
             }),
           },
         ],
         structuredContent: {
-          odinBaseUrl,
+          odinStorePath,
           ...contextSummary,
         },
       };
@@ -283,7 +295,7 @@ export function registerVoidbotTools(
     {
       title: "Invoke Odin Interface Command",
       description:
-        "Send an explicit command through a provider-owned Eve/CultUI command boundary discovered via Odin. The command must be advertised by the provider interface. Odin is not the side-effect owner; this relays to the provider endpoint when the interface exposes a WebSocket command transport.",
+        "Inspect a provider-owned Eve/CultUI command boundary discovered via Odin. The command must be advertised by the provider interface; execution requires a CultMesh command document path and no longer tunnels through provider WebSockets.",
       inputSchema: odinInterfaceCommandInputSchema,
       annotations: {
         readOnlyHint: false,
@@ -293,8 +305,8 @@ export function registerVoidbotTools(
       },
     },
     async (input: OdinInterfaceCommandArgs): Promise<CallToolResult> => {
-      const odinBaseUrl = normalizeOdinBaseUrl(input.odinBaseUrl);
-      const loaded = await loadOdinProviderInterface(odinBaseUrl, input.providerId);
+      const odinStorePath = resolveOdinStorePath(input.odinStorePath);
+      const loaded = await loadOdinProviderInterface(odinStorePath, input.providerId);
       const command = findAdvertisedCommand(loaded, input.command);
 
       if (!command) {
@@ -316,50 +328,28 @@ export function registerVoidbotTools(
         };
       }
 
-      if (!loaded.source.startsWith("ws://")) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Provider ${input.providerId} is visible through ${loaded.source || "an unknown source"}, but this MCP relay only supports provider WebSocket command endpoints right now.`,
-            },
-          ],
-          structuredContent: {
-            sent: false,
-            reason: "unsupported_command_transport",
-            providerId: input.providerId,
-            command: input.command,
-            source: loaded.source,
-          },
-          isError: true,
-        };
-      }
-
-      const frame = input.frame ?? buildCommandFrame(input.providerId, command, input.payload ?? {});
-      const receipt = await sendProviderCommandFrame(loaded.source, frame, input.expectReceiptMs ?? 5000);
-
       return {
         content: [
           {
             type: "text",
             text: renderJsonBlock({
-              sent: true,
+              sent: false,
+              reason: "cultmesh_command_transport_required",
               providerId: input.providerId,
               source: loaded.source,
               command: input.command,
-              frame,
-              receipt,
+              advertisedCommand: command,
             }),
           },
         ],
         structuredContent: {
-          sent: true,
+          sent: false,
+          reason: "cultmesh_command_transport_required",
           providerId: input.providerId,
           source: loaded.source,
           command: input.command,
-          frame,
-          receipt,
         },
+        isError: true,
       };
     },
   );
@@ -996,6 +986,106 @@ export function registerVoidbotTools(
   );
 
   registerIfAllowed(
+    "read_shared_document",
+    {
+      title: "Read Shared Document",
+      description:
+        "List shared typed documents, or read one by documentId. These documents are visible to every repo Face and carry revision and author provenance.",
+      inputSchema: readSharedDocumentInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: ReadSharedDocumentArgs): Promise<CallToolResult> => {
+      const storePath = resolveRepoFaceSharedDocumentsPath(context.config.storageRoot);
+      const documents = await listRepoFaceSharedDocuments(storePath);
+      const requestedDocumentId = input.documentId?.trim().toLowerCase();
+      const selected = requestedDocumentId
+        ? documents.find((document) => document.documentId === requestedDocumentId)
+        : undefined;
+      if (input.documentId && !selected) {
+        return {
+          content: [{ type: "text", text: `Shared document "${input.documentId}" was not found.` }],
+          structuredContent: { found: false, documentId: input.documentId },
+          isError: true,
+        };
+      }
+      const result = input.documentId ? { storePath, document: selected } : { storePath, documents };
+      return {
+        content: [{ type: "text", text: renderJsonBlock(result) }],
+        structuredContent: result,
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "create_shared_document",
+    {
+      title: "Create Shared Document",
+      description:
+        "Create one shared typed document visible to every repo Face. The active Face identity is stamped by the server; arbitrary filesystem writes are not exposed.",
+      inputSchema: createSharedDocumentInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input: CreateSharedDocumentArgs): Promise<CallToolResult> => {
+      const actor = await resolveActiveRepoFaceForSharedTool(context);
+      if (!actor.identity) {
+        return actor.error;
+      }
+      const storePath = resolveRepoFaceSharedDocumentsPath(context.config.storageRoot);
+      const document = await createRepoFaceSharedDocument({
+        canonicalPath: storePath,
+        documentId: input.documentId,
+        title: input.title,
+        body: input.body,
+        actorId: actor.identity.id,
+      });
+      return {
+        content: [{ type: "text", text: renderJsonBlock({ created: true, storePath, document }) }],
+        structuredContent: { created: true, storePath, document },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "update_shared_document",
+    {
+      title: "Update Shared Document",
+      description:
+        "Replace one shared typed document body using its expected revision. Stale writes fail instead of overwriting another Face's update.",
+      inputSchema: updateSharedDocumentInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async (input: UpdateSharedDocumentArgs): Promise<CallToolResult> => {
+      const actor = await resolveActiveRepoFaceForSharedTool(context);
+      if (!actor.identity) {
+        return actor.error;
+      }
+      const storePath = resolveRepoFaceSharedDocumentsPath(context.config.storageRoot);
+      const document = await updateRepoFaceSharedDocument({
+        canonicalPath: storePath,
+        documentId: input.documentId,
+        title: input.title,
+        body: input.body,
+        expectedVersion: input.expectedVersion,
+        actorId: actor.identity.id,
+      });
+      return {
+        content: [{ type: "text", text: renderJsonBlock({ updated: true, storePath, document }) }],
+        structuredContent: { updated: true, storePath, document },
+      };
+    },
+  );
+
+  registerIfAllowed(
     "notify_owner",
     {
       title: "Notify Owner",
@@ -1091,6 +1181,20 @@ async function resolveRepoIdentityForTool(
   };
 }
 
+async function resolveActiveRepoFaceForSharedTool(context: VoidbotMcpContext) {
+  const identity = process.env.VOIDBOT_REPO_FACE_IDENTITY?.trim();
+  if (!identity) {
+    return {
+      error: {
+        content: [{ type: "text" as const, text: "Shared document mutation requires an active repo Face identity." }],
+        structuredContent: { applied: false, reason: "missing_active_face_identity" },
+        isError: true,
+      },
+    };
+  }
+  return resolveRepoIdentityForTool(context, identity);
+}
+
 async function recordRepoIdentityDeliveryReceipt(input: {
   context: VoidbotMcpContext;
   identity: NonNullable<ReturnType<typeof findRepoDiscordIdentity>>;
@@ -1157,55 +1261,115 @@ function identityForToolResult(
   };
 }
 
-function normalizeOdinBaseUrl(value: string | undefined): string {
-  return (value ?? process.env.ODIN_BASE_URL ?? DEFAULT_ODIN_BASE_URL).replace(/\/+$/, "");
+function resolveOdinStorePath(value: string | undefined): string {
+  return path.resolve(value ?? process.env.ODIN_CULTMESH_STORE ?? DEFAULT_ODIN_STORE_PATH);
 }
 
-async function fetchOdinProviderCatalog(odinBaseUrl: string): Promise<{ providers: Array<Record<string, unknown>> }> {
-  const response = await fetch(`${odinBaseUrl}/eve/deck/providers`);
-  if (!response.ok) {
-    throw new Error(`Odin provider catalog failed: HTTP ${response.status}`);
-  }
-  const payload = await response.json() as { providers?: unknown };
-  const providers = Array.isArray(payload.providers)
-    ? payload.providers.filter(isRecord)
-    : [];
+async function fetchOdinProviderCatalog(odinStorePath: string): Promise<{ providers: Array<Record<string, unknown>> }> {
+  const snapshot = await fetchOdinSnapshot(odinStorePath);
+  const providers = summarizeOdinSurface(snapshot).interfaces.map((entry) => ({
+    id: entry.providerId,
+    title: entry.title,
+    status: entry.status,
+    detail: entry.detail,
+    source: entry.source,
+    updatedAt: entry.updatedAt,
+  }));
   return { providers };
 }
 
-async function fetchOdinDeckSnapshot(
-  odinBaseUrl: string,
+async function fetchOdinSnapshot(
+  odinStorePath: string,
   providerId?: string,
 ): Promise<Record<string, unknown>> {
-  const deckUrl = new URL(odinBaseUrl);
-  deckUrl.protocol = deckUrl.protocol === "https:" ? "wss:" : "ws:";
-  deckUrl.pathname = "/eve/deck";
-  deckUrl.search = "";
-  const connection = await openWebSocketSnapshotSocket(deckUrl);
-  const { socket } = connection;
-  let pendingBuffer = connection.initialBuffer;
-  try {
-    if (providerId) {
-      sendClientWebSocketText(socket, JSON.stringify({ type: "open-provider", providerId }));
-    }
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const frame = await readServerWebSocketText(socket, 3000, pendingBuffer);
-      pendingBuffer = frame.remaining;
-      const message = frame.text;
-      const parsed = JSON.parse(message) as unknown;
-      if (!isRecord(parsed)) {
-        continue;
-      }
-      if (!providerId || parsed.providerId === providerId) {
-        return parsed;
-      }
-    }
-    throw new Error(providerId
-      ? `Odin did not publish provider ${providerId} in the snapshot window.`
-      : "Odin did not publish a deck snapshot.");
-  } finally {
-    socket.destroy();
+  const allSeer = await readOdinAllSeerSurface(odinStorePath);
+  if (!providerId) {
+    return allSeer;
   }
+  const provider = providerStateFromOdinSurface(allSeer, providerId);
+  if (!provider) {
+    throw new Error(`Odin CultMesh store does not currently expose provider interface ${providerId}.`);
+  }
+  return provider;
+}
+
+async function readOdinAllSeerSurface(odinStorePath: string): Promise<Record<string, unknown>> {
+  if (!existsSync(odinStorePath)) {
+    throw new Error(`Odin CultMesh store is missing: ${odinStorePath}`);
+  }
+  const { inspectCultCacheBytes } = loadCultCacheInspector();
+  const inspection = inspectCultCacheBytes(odinStorePath, readFileSync(odinStorePath));
+  const surfaceRecord = inspection.records.find((entry) =>
+    entry.schemaId === "gamecult.eve.surface_state.v1"
+    && entry.key === ODIN_SURFACE_KEY
+  );
+  const record = isRecord(surfaceRecord?.payloadPreview) ? surfaceRecord.payloadPreview : null;
+  if (!record) {
+    throw new Error(`Odin CultMesh store does not contain ${ODIN_SURFACE_KEY}.`);
+  }
+  return record;
+}
+
+function loadCultCacheInspector(): {
+  inspectCultCacheBytes: (
+    filePath: string,
+    bytes: Uint8Array,
+  ) => { records: Array<{ key: string; schemaId: string; payloadPreview: unknown }> };
+} {
+  const packageJsonCandidates = [
+    path.resolve(process.cwd(), "vendor", "cultcache-ts", "package.json"),
+    path.resolve(process.cwd(), "node_modules", "cultcache-ts", "package.json"),
+    path.resolve(process.cwd(), "..", "CultLib", "packages", "cultcache-ts", "package.json"),
+  ];
+
+  for (const packageJson of packageJsonCandidates) {
+    try {
+      const requireFromCandidate = createRequire(packageJson);
+      const loaded = requireFromCandidate("./dist/cult-cache-inspector.js") as {
+        inspectCultCacheBytes?: (
+          filePath: string,
+          bytes: Uint8Array,
+        ) => { records: Array<{ key: string; schemaId: string; payloadPreview: unknown }> };
+      };
+      if (loaded.inspectCultCacheBytes) {
+        return { inspectCultCacheBytes: loaded.inspectCultCacheBytes };
+      }
+    } catch {
+      // Try the next known CultCache runtime root.
+    }
+  }
+  throw new Error("CultCache inspector is unavailable; cannot read Odin provider state.");
+}
+
+function providerStateFromOdinSurface(
+  allSeer: Record<string, unknown>,
+  providerId: string,
+): Record<string, unknown> | null {
+  const interfaceNode = findOdinInterfaceNode(allSeer, providerId);
+  if (!interfaceNode) {
+    return null;
+  }
+  const props = isRecord(interfaceNode.props) ? interfaceNode.props : {};
+  const embeddedRoot = embeddedInterfaceRoot(interfaceNode);
+  return {
+    schema: "gamecult.eve.surface_state.v1",
+    providerId,
+    title: stringValue(props.title) || providerId,
+    version: props.version ?? allSeer.version ?? 0,
+    updatedAt: stringValue(props.updatedAt) || stringValue(allSeer.updatedAt),
+    selectedNodeId: stringValue(allSeer.selectedNodeId),
+    source: stringValue(props.source),
+    manifest: isRecord(props.manifest) ? props.manifest : null,
+    surface: {
+      schema: "gamecult.eve.surface.v1",
+      root: embeddedRoot ?? {
+        id: `${providerId}.unavailable`,
+        kind: "text",
+        props: { text: `Provider ${providerId} has no embedded Odin interface root.` },
+        children: [],
+      },
+    },
+  };
 }
 
 function summarizeOdinVerses(snapshot: Record<string, unknown>) {
@@ -1297,13 +1461,13 @@ interface LoadedOdinInterface {
   manifest: Record<string, unknown> | null;
   snapshot: Record<string, unknown>;
   root?: Record<string, unknown>;
-  loadedFrom: "provider-websocket" | "odin-embedded-interface";
+  loadedFrom: "odin-embedded-interface";
 }
 
 interface InterfaceCommandSummary {
   command: string;
   label: string;
-  source: "surface.commands" | "node.action" | "node.command";
+  source: "surface.commands" | "manifest.commands" | "node.action" | "node.command";
   nodeId?: string;
   transport?: string;
   frameTemplate?: unknown;
@@ -1312,10 +1476,10 @@ interface InterfaceCommandSummary {
 }
 
 async function loadOdinProviderInterface(
-  odinBaseUrl: string,
+  odinStorePath: string,
   providerId: string,
 ): Promise<LoadedOdinInterface> {
-  const odinSnapshot = await fetchOdinDeckSnapshot(odinBaseUrl);
+  const odinSnapshot = await fetchOdinSnapshot(odinStorePath);
   const interfaceNode = findOdinInterfaceNode(odinSnapshot, providerId);
   if (!interfaceNode) {
     throw new Error(`Odin does not currently expose provider interface ${providerId}.`);
@@ -1323,38 +1487,6 @@ async function loadOdinProviderInterface(
 
   const props = isRecord(interfaceNode.props) ? interfaceNode.props : {};
   const source = stringValue(props.source);
-  if (source.startsWith("ws://")) {
-    try {
-      const providerSnapshot = await fetchProviderDeckSnapshot(source, providerId);
-      return {
-        providerId,
-        title: stringValue(providerSnapshot.title) || stringValue(props.title) || providerId,
-        source,
-        status: stringValue(props.status),
-        detail: stringValue(props.detail),
-        manifest: isRecord(props.manifest) ? props.manifest : null,
-        snapshot: providerSnapshot,
-        root: getSurfaceRoot(providerSnapshot),
-        loadedFrom: "provider-websocket",
-      };
-    } catch (error) {
-      const embedded = embeddedInterfaceRoot(interfaceNode);
-      if (!embedded) {
-        throw error;
-      }
-      return {
-        providerId,
-        title: stringValue(props.title) || providerId,
-        source,
-        status: stringValue(props.status),
-        detail: `provider websocket failed; using Odin embedded root: ${error instanceof Error ? error.message : String(error)}`,
-        manifest: isRecord(props.manifest) ? props.manifest : null,
-        snapshot: odinSnapshot,
-        root: embedded,
-        loadedFrom: "odin-embedded-interface",
-      };
-    }
-  }
 
   return {
     providerId,
@@ -1367,30 +1499,6 @@ async function loadOdinProviderInterface(
     root: embeddedInterfaceRoot(interfaceNode),
     loadedFrom: "odin-embedded-interface",
   };
-}
-
-async function fetchProviderDeckSnapshot(
-  deckUrlText: string,
-  providerId: string,
-): Promise<Record<string, unknown>> {
-  const deckUrl = new URL(deckUrlText);
-  const connection = await openWebSocketSnapshotSocket(deckUrl);
-  const { socket } = connection;
-  let pendingBuffer = connection.initialBuffer;
-  try {
-    sendClientWebSocketText(socket, JSON.stringify({ type: "open-provider", providerId }));
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const frame = await readServerWebSocketText(socket, 3000, pendingBuffer);
-      pendingBuffer = frame.remaining;
-      const parsed = JSON.parse(frame.text) as unknown;
-      if (isRecord(parsed) && parsed.providerId === providerId) {
-        return parsed;
-      }
-    }
-    throw new Error(`Provider deck did not publish ${providerId}.`);
-  } finally {
-    socket.destroy();
-  }
 }
 
 function findOdinInterfaceNode(
@@ -1495,8 +1603,11 @@ function extractProviderCommands(loaded: LoadedOdinInterface): InterfaceCommandS
     : Array.isArray(loaded.snapshot.commands)
       ? loaded.snapshot.commands.filter(isRecord)
       : [];
+  const manifestCommands = Array.isArray(loaded.manifest?.commands)
+    ? loaded.manifest.commands.filter(isRecord)
+    : [];
 
-  for (const command of surfaceCommands) {
+  for (const command of [...surfaceCommands, ...manifestCommands]) {
     const commandName = stringValue(command.command) || stringValue(command.id);
     if (!commandName) {
       continue;
@@ -1504,7 +1615,7 @@ function extractProviderCommands(loaded: LoadedOdinInterface): InterfaceCommandS
     commands.push({
       command: commandName,
       label: stringValue(command.label) || commandName,
-      source: "surface.commands",
+      source: surfaceCommands.includes(command) ? "surface.commands" : "manifest.commands",
       transport: stringValue(command.transport),
       frameTemplate: command.frameTemplate,
       payloadSchema: command.payloadSchema,
@@ -1558,98 +1669,6 @@ function findAdvertisedCommand(
   return extractProviderCommands(loaded).find((entry) => entry.command === command);
 }
 
-function buildCommandFrame(
-  providerId: string,
-  command: InterfaceCommandSummary,
-  payload: Record<string, unknown>,
-): Record<string, unknown> {
-  if (isRecord(command.frameTemplate)) {
-    return materializeFrameTemplate(command.frameTemplate, payload);
-  }
-
-  return {
-    type: "surface-command",
-    schema: "gamecult.eve.command.v1",
-    providerId,
-    command: command.command,
-    payload,
-    nodeId: command.nodeId,
-  };
-}
-
-function materializeFrameTemplate(
-  template: Record<string, unknown>,
-  payload: Record<string, unknown>,
-): Record<string, unknown> {
-  const materialized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(template)) {
-    materialized[key] = materializeTemplateValue(value, payload);
-  }
-  return materialized;
-}
-
-function materializeTemplateValue(value: unknown, payload: Record<string, unknown>): unknown {
-  if (typeof value === "string") {
-    const exact = value.match(/^\$\{([A-Za-z0-9_.-]+)\??\}$/);
-    if (exact) {
-      return payload[exact[1]] ?? "";
-    }
-    return value.replace(/\$\{([A-Za-z0-9_.-]+)\??\}/g, (_match, key: string) =>
-      payload[key] === undefined || payload[key] === null ? "" : String(payload[key]),
-    );
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => materializeTemplateValue(entry, payload));
-  }
-  if (isRecord(value)) {
-    return materializeFrameTemplate(value, payload);
-  }
-  return value;
-}
-
-async function sendProviderCommandFrame(
-  deckUrlText: string,
-  frame: Record<string, unknown>,
-  expectReceiptMs: number,
-) {
-  const deckUrl = new URL(deckUrlText);
-  const connection = await openWebSocketSnapshotSocket(deckUrl);
-  const { socket } = connection;
-  let pendingBuffer = connection.initialBuffer;
-  try {
-    try {
-      const initial = await readServerWebSocketText(socket, 1000, pendingBuffer);
-      pendingBuffer = initial.remaining;
-    } catch {
-      // Some providers do not send an initial deck frame before commands.
-    }
-    sendClientWebSocketText(socket, JSON.stringify(frame));
-    if (expectReceiptMs <= 0) {
-      return {
-        received: false,
-        detail: "Command frame sent; receipt wait disabled.",
-      };
-    }
-    try {
-      const response = await readServerWebSocketText(socket, expectReceiptMs, pendingBuffer);
-      pendingBuffer = response.remaining;
-      const parsed = JSON.parse(response.text) as unknown;
-      return {
-        received: true,
-        frame: isRecord(parsed) ? parsed : response.text,
-        remainingBytes: pendingBuffer.length,
-      };
-    } catch (error) {
-      return {
-        received: false,
-        detail: error instanceof Error ? error.message : String(error),
-      };
-    }
-  } finally {
-    socket.destroy();
-  }
-}
-
 function getSurfaceRoot(snapshot: Record<string, unknown>): Record<string, unknown> | undefined {
   const surface = isRecord(snapshot.surface) ? snapshot.surface : undefined;
   return isRecord(surface?.root) ? surface.root : undefined;
@@ -1661,147 +1680,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : value === null || value === undefined ? "" : String(value);
-}
-
-function openWebSocketSnapshotSocket(url: URL): Promise<{ socket: net.Socket; initialBuffer: Buffer }> {
-  return new Promise((resolve, reject) => {
-    if (url.protocol === "wss:") {
-      reject(new Error("Odin WSS is not supported by this lightweight MCP snapshot client yet."));
-      return;
-    }
-    const port = Number(url.port || 80);
-    const socket = net.createConnection({ host: url.hostname, port, timeout: 3000 });
-    const key = crypto.randomBytes(16).toString("base64");
-    let buffer = Buffer.alloc(0);
-    socket.on("connect", () => {
-      socket.write([
-        `GET ${url.pathname || "/eve/deck"} HTTP/1.1`,
-        `Host: ${url.hostname}:${port}`,
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        `Sec-WebSocket-Key: ${key}`,
-        "Sec-WebSocket-Version: 13",
-        "",
-        "",
-      ].join("\r\n"));
-    });
-    socket.on("data", function onHandshake(chunk) {
-      buffer = Buffer.concat([buffer, chunk]);
-      const marker = buffer.indexOf("\r\n\r\n");
-      if (marker < 0) {
-        return;
-      }
-      const header = buffer.subarray(0, marker).toString("latin1");
-      if (!header.startsWith("HTTP/1.1 101")) {
-        reject(new Error(header.split(/\r?\n/)[0] || "Odin websocket handshake failed"));
-        socket.destroy();
-        return;
-      }
-      socket.off("data", onHandshake);
-      resolve({ socket, initialBuffer: buffer.subarray(marker + 4) });
-    });
-    socket.on("timeout", () => {
-      reject(new Error("Odin websocket connection timed out"));
-      socket.destroy();
-    });
-    socket.on("error", reject);
-  });
-}
-
-function sendClientWebSocketText(socket: net.Socket, text: string): void {
-  const payload = Buffer.from(text, "utf8");
-  const mask = crypto.randomBytes(4);
-  const header = [0x81];
-  if (payload.length < 126) {
-    header.push(0x80 | payload.length);
-  } else if (payload.length <= 0xffff) {
-    header.push(0x80 | 126, payload.length >> 8, payload.length & 0xff);
-  } else {
-    const length = Buffer.alloc(8);
-    length.writeBigUInt64BE(BigInt(payload.length));
-    header.push(0x80 | 127, ...length);
-  }
-  const masked = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
-  socket.write(Buffer.concat([Buffer.from(header), mask, masked]));
-}
-
-function readServerWebSocketText(
-  socket: net.Socket,
-  timeoutMs: number,
-  initialBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0),
-): Promise<{ text: string; remaining: Buffer<ArrayBufferLike> }> {
-  return new Promise((resolve, reject) => {
-    let buffer = initialBuffer;
-    const timer = setTimeout(() => cleanup(new Error("Timed out waiting for Odin deck frame")), timeoutMs);
-    function cleanup(error?: Error, value?: { text: string; remaining: Buffer<ArrayBufferLike> }) {
-      clearTimeout(timer);
-      socket.off("data", onData);
-      socket.off("error", onError);
-      if (error) {
-        reject(error);
-      } else {
-        resolve(value ?? { text: "", remaining: Buffer.alloc(0) });
-      }
-    }
-    function onError(error: Error) {
-      cleanup(error);
-    }
-    function onData(chunk: Buffer) {
-      buffer = Buffer.concat([buffer, chunk]);
-      readBufferedFrame();
-    }
-    function readBufferedFrame() {
-      const frame = tryReadWebSocketFrame(buffer);
-      if (!frame) {
-        return;
-      }
-      buffer = buffer.subarray(frame.consumed);
-      if (frame.opcode === 0x1) {
-        cleanup(undefined, {
-          text: frame.payload.toString("utf8"),
-          remaining: buffer,
-        });
-      } else if (frame.opcode === 0x8) {
-        cleanup(new Error("Odin websocket closed"));
-      }
-    }
-    socket.on("data", onData);
-    socket.on("error", onError);
-    readBufferedFrame();
-  });
-}
-
-function tryReadWebSocketFrame(buffer: Buffer): { opcode: number; payload: Buffer; consumed: number } | null {
-  if (buffer.length < 2) {
-    return null;
-  }
-  const opcode = buffer[0] & 0x0f;
-  const masked = Boolean(buffer[1] & 0x80);
-  let length = buffer[1] & 0x7f;
-  let offset = 2;
-  if (length === 126) {
-    if (buffer.length < offset + 2) {
-      return null;
-    }
-    length = buffer.readUInt16BE(offset);
-    offset += 2;
-  } else if (length === 127) {
-    if (buffer.length < offset + 8) {
-      return null;
-    }
-    length = Number(buffer.readBigUInt64BE(offset));
-    offset += 8;
-  }
-  const mask = masked ? buffer.subarray(offset, offset + 4) : null;
-  if (masked) {
-    offset += 4;
-  }
-  if (buffer.length < offset + length) {
-    return null;
-  }
-  let payload = buffer.subarray(offset, offset + length);
-  if (mask) {
-    payload = Buffer.from(payload.map((byte, index) => byte ^ mask[index % 4]));
-  }
-  return { opcode, payload, consumed: offset + length };
 }

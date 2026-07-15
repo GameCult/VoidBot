@@ -48,31 +48,46 @@ export const applyRepoFaceStateOperationInputSchema = {
   operation: z.record(z.unknown()),
 };
 
+export const readSharedDocumentInputSchema = {
+  documentId: z.string().min(1).max(120).optional(),
+};
+
+export const createSharedDocumentInputSchema = {
+  documentId: z.string().min(1).max(120),
+  title: z.string().min(1).max(240),
+  body: z.string().max(20_000),
+};
+
+export const updateSharedDocumentInputSchema = {
+  documentId: z.string().min(1).max(120),
+  title: z.string().min(1).max(240).optional(),
+  body: z.string().max(20_000),
+  expectedVersion: z.number().int().positive(),
+};
+
 export const runtimeInfoInputSchema = {};
 
 export const odinEndpointInputSchema = {
-  odinBaseUrl: z.string().url().optional(),
+  odinStorePath: z.string().min(1).optional(),
 };
 
 export const odinSurfaceInputSchema = {
-  odinBaseUrl: z.string().url().optional(),
+  odinStorePath: z.string().min(1).optional(),
   providerId: z.string().min(1).optional(),
 };
 
 export const odinInterfaceContextInputSchema = {
-  odinBaseUrl: z.string().url().optional(),
+  odinStorePath: z.string().min(1).optional(),
   providerId: z.string().min(1),
   maxTextItems: z.number().int().min(1).max(80).optional(),
   maxTreeItems: z.number().int().min(1).max(160).optional(),
 };
 
 export const odinInterfaceCommandInputSchema = {
-  odinBaseUrl: z.string().url().optional(),
+  odinStorePath: z.string().min(1).optional(),
   providerId: z.string().min(1),
   command: z.string().min(1),
   payload: z.record(z.unknown()).optional(),
-  frame: z.record(z.unknown()).optional(),
-  expectReceiptMs: z.number().int().min(0).max(15000).optional(),
 };
 
 export const searchSourcesInputSchema = {
@@ -132,33 +147,48 @@ export interface ApplyRepoFaceStateOperationArgs {
   operation: Record<string, unknown>;
 }
 
+export interface ReadSharedDocumentArgs {
+  documentId?: string;
+}
+
+export interface CreateSharedDocumentArgs {
+  documentId: string;
+  title: string;
+  body: string;
+}
+
+export interface UpdateSharedDocumentArgs {
+  documentId: string;
+  title?: string;
+  body: string;
+  expectedVersion: number;
+}
+
 export interface RuntimeInfoArgs {
   [key: string]: never;
 }
 
 export interface OdinEndpointArgs {
-  odinBaseUrl?: string;
+  odinStorePath?: string;
 }
 
 export interface OdinSurfaceArgs {
-  odinBaseUrl?: string;
+  odinStorePath?: string;
   providerId?: string;
 }
 
 export interface OdinInterfaceContextArgs {
-  odinBaseUrl?: string;
+  odinStorePath?: string;
   providerId: string;
   maxTextItems?: number;
   maxTreeItems?: number;
 }
 
 export interface OdinInterfaceCommandArgs {
-  odinBaseUrl?: string;
+  odinStorePath?: string;
   providerId: string;
   command: string;
   payload?: Record<string, unknown>;
-  frame?: Record<string, unknown>;
-  expectReceiptMs?: number;
 }
 
 export interface ListIndexedReposArgs {

@@ -15,6 +15,17 @@ $lockPath = Join-Path $statusDir "gamecult-orchestrator.lock"
 $agentSwarmPausePath = Join-Path $repoRoot "state\agent-swarm-paused.json"
 $hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-powershell.vbs"
 $bifrostRoot = "E:\Projects\Bifrost"
+$bootstrapLogPath = Join-Path $logDir "bootstrap.log"
+
+function Write-BootstrapLog {
+  param([string] $Message)
+  try {
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $line = "[{0}] pid={1} cwd={2} {3}" -f ([DateTime]::UtcNow.ToString("o")), $PID, (Get-Location).Path, $Message
+    Add-Content -LiteralPath $bootstrapLogPath -Encoding UTF8 -Value $line
+  } catch {
+  }
+}
 
 function Read-DotEnv {
   param([Parameter(Mandatory = $true)][string] $Path)
@@ -114,10 +125,15 @@ function Publish-IdunnRudpHealth {
     return
   }
 
-  $endpoint = if ($env:VOIDBOT_IDUNN_RUDP_HEALTH) { $env:VOIDBOT_IDUNN_RUDP_HEALTH } else { "127.0.0.1:17870" }
+  $endpoint = $env:VOIDBOT_IDUNN_RUDP_HEALTH
+  if ([string]::IsNullOrWhiteSpace($endpoint)) {
+    Write-BootstrapLog "skipping-idunn-health VOIDBOT_IDUNN_RUDP_HEALTH is not configured"
+    return
+  }
   $state = if ($Summary.ok) { "healthy" } else { "failed" }
   $detail = "VoidBot orchestrator pulse ran $($Summary.ranCount) organ(s) in $($Summary.durationSeconds)s; ok=$($Summary.ok)"
   try {
+    Write-BootstrapLog "publishing-idunn-health state=$state ran=$($Summary.ranCount) duration=$($Summary.durationSeconds)"
     $nodeExe = (Get-Command node.exe -ErrorAction Stop).Source
     $output = & $nodeExe $publisher `
       --endpoint $endpoint `
@@ -129,9 +145,106 @@ function Publish-IdunnRudpHealth {
     if ($LASTEXITCODE -ne 0) {
       throw "publisher exited with code $LASTEXITCODE`: $($output -join [Environment]::NewLine)"
     }
+    Write-BootstrapLog "published-idunn-health"
   } catch {
     $message = "[$([DateTime]::UtcNow.ToString("o"))] Idunn RUDP health publish failed: $($_.Exception.Message)"
     Add-Content -LiteralPath (Join-Path $logDir "idunn-rudp-health.log") -Encoding UTF8 -Value $message
+    Write-BootstrapLog "publish-idunn-health-failed $($_.Exception.Message)"
+  }
+}
+
+function Get-ConfigString {
+  param(
+    [hashtable] $Config,
+    [string] $Name,
+    [string] $Default
+  )
+  $raw = [Environment]::GetEnvironmentVariable($Name)
+  if ([string]::IsNullOrWhiteSpace($raw) -and $Config.ContainsKey($Name)) {
+    $raw = $Config[$Name]
+  }
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    return $Default
+  }
+  return $raw.Trim()
+}
+
+function Find-VoidBotSwarmCultMeshProcess {
+  param([string] $ScriptPath)
+  $escaped = $ScriptPath.Replace("\", "\\")
+  return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -eq "node.exe" -and
+    $_.CommandLine -and
+    ($_.CommandLine -like "*serve-voidbot-swarm-cultmesh.cjs*" -or $_.CommandLine -like "*$escaped*")
+  })
+}
+
+function Ensure-VoidBotSwarmCultMeshServer {
+  param(
+    [hashtable] $Config,
+    [string] $NodePath
+  )
+
+  $scriptPath = Join-Path $PSScriptRoot "serve-voidbot-swarm-cultmesh.cjs"
+  if (-not (Test-Path -LiteralPath $scriptPath)) {
+    throw "VoidBot swarm CultMesh server script is missing at $scriptPath."
+  }
+
+  $storePath = Get-ConfigString -Config $Config -Name "VOIDBOT_SWARM_CULTMESH_STORE" -Default (Join-Path $statusDir "cultmesh\voidbot-swarm-state.cc")
+  $storePath = [System.IO.Path]::GetFullPath($storePath)
+  if (-not (Test-Path -LiteralPath $storePath)) {
+    throw "VoidBot swarm CultMesh store is missing at $storePath."
+  }
+
+  $bind = Get-ConfigString -Config $Config -Name "VOIDBOT_SWARM_CULTMESH_BIND" -Default "127.0.0.1:17873"
+  $odinCultMeshUri = Get-ConfigString -Config $Config -Name "VOIDBOT_ODIN_CULTMESH_URI" -Default (
+    Get-ConfigString -Config $Config -Name "ODIN_CULTMESH_URI" -Default "cultmesh://odin/rendezvous/provider-catalog"
+  )
+  $odinRudpEndpoint = Get-ConfigString -Config $Config -Name "VOIDBOT_ODIN_RUDP" -Default (
+    Get-ConfigString -Config $Config -Name "CULTMESH_URI_ODIN_RUDP" -Default "rudp://127.0.0.1:17871"
+  )
+
+  $existing = @(Find-VoidBotSwarmCultMeshProcess -ScriptPath $scriptPath)
+  if ($existing.Count -gt 0) {
+    return [pscustomobject]@{
+      status = "already_running"
+      pid = [int]$existing[0].ProcessId
+      bind = $bind
+      storePath = $storePath
+      odinCultMeshUri = $odinCultMeshUri
+      odinRudpEndpoint = $odinRudpEndpoint
+    }
+  }
+
+  $stdoutPath = Join-Path $logDir "voidbot-swarm-cultmesh.stdout.log"
+  $stderrPath = Join-Path $logDir "voidbot-swarm-cultmesh.stderr.log"
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+  $arguments = @(
+    $scriptPath,
+    "--store", $storePath,
+    "--bind", $bind,
+    "--odin-cultmesh-uri", $odinCultMeshUri,
+    "--odin-rudp-endpoint", $odinRudpEndpoint
+  )
+  $process = Start-Process -FilePath $NodePath -ArgumentList $arguments -WorkingDirectory $repoRoot -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
+  Start-Sleep -Seconds 2
+  $process.Refresh()
+  if ($process.HasExited) {
+    $stdoutTail = if (Test-Path -LiteralPath $stdoutPath) { (Get-Content -LiteralPath $stdoutPath -Tail 40) -join "`n" } else { "" }
+    $stderrTail = if (Test-Path -LiteralPath $stderrPath) { (Get-Content -LiteralPath $stderrPath -Tail 40) -join "`n" } else { "" }
+    throw "VoidBot swarm CultMesh server exited early.`nSTDOUT:`n$stdoutTail`nSTDERR:`n$stderrTail"
+  }
+
+  return [pscustomobject]@{
+    status = "started"
+    pid = $process.Id
+    bind = $bind
+    storePath = $storePath
+    odinCultMeshUri = $odinCultMeshUri
+    odinRudpEndpoint = $odinRudpEndpoint
+    stdoutPath = $stdoutPath
+    stderrPath = $stderrPath
   }
 }
 
@@ -184,6 +297,7 @@ function Invoke-Organ {
   New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
   $startedAt = [DateTime]::UtcNow
+  Write-BootstrapLog "invoke-organ start id=$($Organ.Id) executable=$($Organ.Executable)"
   $exitCode = 0
   $timedOut = $false
   try {
@@ -200,6 +314,8 @@ function Invoke-Organ {
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     [void]$process.Start()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
 
     $timeoutSeconds = [Math]::Max(60, $Organ.TimeoutMinutes * 60)
     if (-not $process.WaitForExit($timeoutSeconds * 1000)) {
@@ -207,8 +323,8 @@ function Invoke-Organ {
       cmd /c "taskkill /PID $($process.Id) /T /F" | Out-Null
       $process.WaitForExit()
     }
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
     [System.IO.File]::WriteAllText($stdoutPath, $stdout, [System.Text.UTF8Encoding]::new($false))
     [System.IO.File]::WriteAllText($stderrPath, $stderr, [System.Text.UTF8Encoding]::new($false))
     $exitCode = if ($timedOut) { 124 } elseif ($null -eq $process.ExitCode) { 0 } else { $process.ExitCode }
@@ -242,6 +358,7 @@ function Invoke-Organ {
     $stderr.Trim()
   ) -join [Environment]::NewLine
   [System.IO.File]::WriteAllText($logPath, $combined.Trim(), [System.Text.UTF8Encoding]::new($false))
+  Write-BootstrapLog "invoke-organ finish id=$($Organ.Id) status=$(if ($timedOut) { 'timed_out' } elseif ($exitCode -eq 0) { 'ok' } else { 'failed' }) exit=$exitCode"
 
   return [pscustomobject]@{
     id = $Organ.Id
@@ -291,6 +408,31 @@ function Test-OrchestratorLock {
   return $true
 }
 
+function Acquire-OrchestratorLock {
+  $directory = Split-Path -Parent $lockPath
+  New-Item -ItemType Directory -Force -Path $directory | Out-Null
+
+  for ($attempt = 0; $attempt -lt 2; $attempt++) {
+    try {
+      $stream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)
+      $payload = @{
+        pid = $PID
+        startedAt = ([DateTime]::UtcNow).ToString("o")
+      } | ConvertTo-Json -Depth 4
+      $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($payload)
+      $stream.Write($bytes, 0, $bytes.Length)
+      $stream.Flush()
+      return $stream
+    } catch [System.IO.IOException] {
+      if (Test-OrchestratorLock) {
+        return $null
+      }
+    }
+  }
+
+  return $null
+}
+
 function Test-AgentSwarmPaused {
   if (-not (Test-Path -LiteralPath $agentSwarmPausePath)) {
     return $false
@@ -310,12 +452,15 @@ function Test-AgentSwarmPaused {
 }
 
 New-Item -ItemType Directory -Force -Path $statusDir, $logDir | Out-Null
-if (Test-OrchestratorLock) {
+Write-BootstrapLog "script-start only=$($Only -join ',') force=$Force"
+$lockHandle = Acquire-OrchestratorLock
+if ($null -eq $lockHandle) {
+  Write-BootstrapLog "lock-already-active"
   exit 0
 }
 
 $startedAt = [DateTime]::UtcNow
-Write-JsonFile -Path $lockPath -Data @{ pid = $PID; startedAt = $startedAt.ToString("o") }
+Write-BootstrapLog "lock-created path=$lockPath"
 
 try {
   $config = Read-DotEnv -Path (Join-Path $repoRoot ".env")
@@ -449,8 +594,9 @@ try {
     }
 
     $result = Invoke-Organ -Organ $organ -Now $now
+    $serverState = $null
     $runs += $result
-    Set-OrganState -State $state -Id $organ.Id -Value ([pscustomobject]@{
+    $organState = [pscustomobject]@{
       label = $organ.Label
       intervalMinutes = $organ.IntervalMinutes
       lastStartedAt = $result.startedAt
@@ -458,7 +604,11 @@ try {
       lastExitCode = $result.exitCode
       lastStatus = $result.status
       lastLogPath = $result.logPath
-    })
+    }
+    if ($null -ne $serverState) {
+      $organState | Add-Member -NotePropertyName cultMeshServer -NotePropertyValue $serverState -Force
+    }
+    Set-OrganState -State $state -Id $organ.Id -Value $organState
     Write-JsonFile -Path $statePath -Data $state
   }
 
@@ -475,11 +625,18 @@ try {
   }
   Write-JsonFile -Path (Join-Path $statusDir "gamecult-orchestrator-last-run.json") -Data $summary
   Write-JsonFile -Path $statePath -Data $state
+  Write-BootstrapLog "summary-written ok=$($summary.ok) ran=$($summary.ranCount)"
   Publish-IdunnRudpHealth -Summary $summary
 
   if (-not $summary.ok) {
+    Write-BootstrapLog "script-exit-failed"
     exit 1
   }
+  Write-BootstrapLog "script-exit-ok"
 } finally {
+  if ($null -ne $lockHandle) {
+    $lockHandle.Dispose()
+  }
   Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+  Write-BootstrapLog "lock-removed"
 }

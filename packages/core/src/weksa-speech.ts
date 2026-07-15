@@ -1,5 +1,6 @@
 export interface WeksaSpeechClientOptions {
-  baseUrl: string;
+  commandUri: string;
+  repoRoot: string;
   timeoutMs: number;
 }
 
@@ -42,69 +43,23 @@ export interface WeksaMimoReceipt {
 }
 
 export class WeksaSpeechClient {
-  private readonly baseUrl: string;
+  private readonly commandUri: string;
+  private readonly repoRoot: string;
   private readonly timeoutMs: number;
 
   constructor(options: WeksaSpeechClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.commandUri = options.commandUri;
+    this.repoRoot = options.repoRoot;
     this.timeoutMs = options.timeoutMs;
   }
 
   async renderRepoFaceSpeech(input: WeksaRepoFaceSpeechInput): Promise<WeksaMimoReceipt> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await fetch(`${this.baseUrl}/speech-provider/mimo/voicedesign`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          request_id: input.requestId ?? buildRequestId(input),
-          persona_state_path: input.personaStatePath,
-          speaker_agent_id: input.identityId,
-          thought_text: input.content,
-          spoken_text: input.content,
-          scene: input.scene ?? `Discord channel ${input.channelId}`,
-          addressee: input.addressee ?? "Discord room",
-          intent: input.content,
-          performance_register: input.performanceRegister ?? {
-            label: `${input.displayName} Discord voice`,
-            medium: "Discord voice channel playback",
-            delivery_archetype: `${input.displayName} speaks an approved VoidBot SAY line`,
-          },
-          delivery_controls: input.deliveryControls ?? [
-            "Discord-room conversational delivery",
-            "preserve the approved text exactly",
-            `repo Face for ${input.repoName}`,
-          ],
-          forbidden_traits: input.forbiddenTraits ?? [
-            "generic assistant voice",
-            "rewriting source meaning",
-            "changing the approved Discord text",
-          ],
-          voice_design_prompt: input.voiceDesignPrompt,
-          private_interpretation: input.privateInterpretation ??
-            "VoidBot already approved this SAY line for public text delivery; Weksa is only projecting it into spoken audio.",
-          intended_effect: input.intendedEffect ??
-            "Make the approved public Discord line audible without changing its meaning.",
-        }),
-      });
-
-      const text = await response.text();
-      if (!response.ok) {
-        throw new Error(`Weksa speech request failed with ${response.status}: ${text}`);
-      }
-      return JSON.parse(text) as WeksaMimoReceipt;
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Weksa speech request timed out after ${this.timeoutMs}ms.`);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
+    const requestId = input.requestId ?? buildRequestId(input);
+    void this.repoRoot;
+    void this.timeoutMs;
+    throw new Error(
+      `Weksa speech command ${requestId} requires CultMesh command document publication to ${this.commandUri}; the legacy direct sender has been removed.`,
+    );
   }
 }
 

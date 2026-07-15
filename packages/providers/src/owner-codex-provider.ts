@@ -417,7 +417,11 @@ export class OwnerCodexProvider implements ProviderAdapter {
         prompt: input.prompt,
         imagePaths: collectCodexImagePaths(input.request.contextBundle),
         mcpServers: input.command === "repo-face-rumination"
-          ? restrictMcpServersToRepoFaceExploration(this.options.mcpServers ?? [])
+          ? restrictMcpServersToRepoFaceExploration(
+              this.options.mcpServers ?? [],
+              getStringOption(input.request.options?.repoFaceIdentity),
+              getStringOption(input.request.options?.repoFaceRole),
+            )
           : this.options.mcpServers ?? [],
       });
       lastResult = result;
@@ -544,6 +548,8 @@ function getReasoningEffortOption(value: unknown): "none" | "low" | "medium" | "
 
 function restrictMcpServersToRepoFaceExploration(
   servers: NonNullable<OwnerCodexProviderOptions["mcpServers"]>,
+  identity?: string,
+  role?: string,
 ): NonNullable<OwnerCodexProviderOptions["mcpServers"]> {
   const allowedTools = [
     "search_history",
@@ -556,6 +562,7 @@ function restrictMcpServersToRepoFaceExploration(
     "get_odin_surface",
     "load_odin_interface_context",
     "invoke_odin_interface_command",
+    ...(role === "face" ? ["read_shared_document", "create_shared_document", "update_shared_document"] : []),
   ].join(",");
 
   return servers.map((server) => ({
@@ -563,6 +570,7 @@ function restrictMcpServersToRepoFaceExploration(
     env: {
       ...(server.env ?? {}),
       VOIDBOT_MCP_TOOL_ALLOWLIST: allowedTools,
+      ...(identity ? { VOIDBOT_REPO_FACE_IDENTITY: identity } : {}),
     },
   }));
 }

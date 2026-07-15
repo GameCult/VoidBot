@@ -1,5 +1,5 @@
 {
-  "paused": true,
-  "reason": "Re-paused by Codex on 2026-07-03 after MiMo quality gates passed but the live GameCult Local Orchestrator repeatedly reached repo-face-heartbeats and then failed to advance its status/lock summary. The model/provider path is good enough for more tests; the live scheduler handoff needs diagnosis before unattended turns.",
-  "updatedAt": "2026-07-03T01:31:12.1534400+01:00"
+  "paused": false,
+  "reason": "Unpaused by Codex on 2026-07-04 after Bifrost/Discord delivery was wired through typed CultMesh command/receipt documents and a bounded Weksa live-fire post completed visibly through the new route. Keep using CultMesh URIs and provider/interface command metadata; do not restore BIFROST_BRIDGE_BASE_URL/token shortcuts.",
+  "updatedAt": "2026-07-04T00:44:00.0000000+01:00"
 }

@@ -21,7 +21,11 @@ const IDUNN_HEALTH_RUDP_CONNECTION_ID = 0x1d0d0001;
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const endpoint = parseEndpoint(options.endpoint || process.env.VOIDBOT_IDUNN_RUDP_HEALTH || "127.0.0.1:17870");
+  const endpointValue = options.endpoint || process.env.VOIDBOT_IDUNN_RUDP_HEALTH;
+  if (!endpointValue || !String(endpointValue).trim()) {
+    throw new Error("VoidBot Idunn health publication requires --endpoint or VOIDBOT_IDUNN_RUDP_HEALTH; no localhost default is assumed.");
+  }
+  const endpoint = parseEndpoint(endpointValue);
   const daemonId = options.daemon || process.env.VOIDBOT_IDUNN_DAEMON || "voidbot";
   const healthContract = options.contract || process.env.VOIDBOT_IDUNN_HEALTH_CONTRACT || "voidbot.cultnet-rudp-stack-health";
   const state = options.state || "healthy";

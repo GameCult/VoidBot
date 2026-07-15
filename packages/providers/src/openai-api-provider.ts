@@ -10,6 +10,16 @@ import {
   type ProviderResponse,
 } from "@voidbot/shared";
 
+import {
+  executeToolCall,
+  buildToolDefinitions,
+} from "./local-llm-tools";
+import {
+  MAX_TOOL_TURNS,
+  type LocalLlmToolbox,
+  type ToolTraceRecord,
+} from "./local-llm-shared";
+
 export interface OpenAiApiProviderOptions {
   enabled: boolean;
   baseUrl: string;
@@ -19,17 +29,31 @@ export interface OpenAiApiProviderOptions {
   timeoutMs: number;
   authHeader: string;
   maxCompletionTokens: number;
+  toolbox?: LocalLlmToolbox;
 }
 
 interface ChatMessage {
-  role: "user" | "assistant" | "system";
-  content: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string | null;
+  tool_call_id?: string;
+  tool_calls?: ChatToolCall[];
+}
+
+interface ChatToolCall {
+  id?: string;
+  type?: "function";
+  function?: {
+    name?: unknown;
+    arguments?: unknown;
+  };
 }
 
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
       content?: unknown;
+      tool_calls?: unknown;
+      reasoning_content?: unknown;
     };
     finish_reason?: unknown;
   }>;
@@ -84,9 +108,15 @@ export class OpenAiApiProvider implements ProviderAdapter {
         content: request.contextBundle.prompt,
       },
     ];
+    const tools = this.options.toolbox ? buildToolDefinitions() : undefined;
+    const toolTrace: ToolTraceRecord[] = [];
+    let finalPayload: ChatCompletionResponse | undefined;
+    let finalRequestBody: Record<string, unknown> | undefined;
+    let outputText: string | undefined;
     const requestBody = {
       model,
       messages,
+      ...(tools ? { tools } : {}),
       stream: false,
       max_completion_tokens: readPositiveIntegerOption(request.options?.maxCompletionTokens) ??
         this.options.maxCompletionTokens,
@@ -96,25 +126,66 @@ export class OpenAiApiProvider implements ProviderAdapter {
 
     try {
       const apiKey = await this.loadApiKey();
-      const response = await fetch(`${normalizeBaseUrl(this.options.baseUrl)}/chat/completions`, {
-        method: "POST",
-        headers: this.buildHeaders(apiKey),
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      const responseText = await response.text();
+      for (let turn = 0; turn <= MAX_TOOL_TURNS; turn += 1) {
+        const currentRequestBody = {
+          ...requestBody,
+          messages,
+        };
+        finalRequestBody = currentRequestBody;
+        const response = await fetch(`${normalizeBaseUrl(this.options.baseUrl)}/chat/completions`, {
+          method: "POST",
+          headers: this.buildHeaders(apiKey),
+          body: JSON.stringify(currentRequestBody),
+          signal: controller.signal,
+        });
+        const responseText = await response.text();
 
-      if (!response.ok) {
-        throw new Error(
-          `OpenAI-compatible chat request failed with ${response.status}: ${redactSecret(responseText, apiKey).slice(0, 2000)}`,
-        );
+        if (!response.ok) {
+          throw new Error(
+            `OpenAI-compatible chat request failed with ${response.status}: ${redactSecret(responseText, apiKey).slice(0, 2000)}`,
+          );
+        }
+
+        const payload = JSON.parse(responseText) as ChatCompletionResponse;
+        finalPayload = payload;
+        const assistantMessage = normalizeAssistantMessage(payload);
+        messages.push(assistantMessage);
+        const toolCalls = assistantMessage.tool_calls ?? [];
+
+        if (toolCalls.length === 0) {
+          outputText = normalizeModelText(assistantMessage.content);
+          break;
+        }
+
+        if (!this.options.toolbox) {
+          outputText =
+            "The OpenAI-compatible model asked for tools, but this lane was not given any. That is a wiring problem.";
+          break;
+        }
+
+        if (turn >= MAX_TOOL_TURNS) {
+          outputText =
+            "The OpenAI-compatible model kept reaching for more archive context than this lane can chase in one pass. Ask more narrowly or use the deeper Codex lane.";
+          break;
+        }
+
+        for (const toolCall of toolCalls) {
+          const execution = await executeToolCall(
+            this.options.toolbox,
+            request.contextBundle,
+            toolCall,
+          );
+          toolTrace.push(execution.trace);
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id ?? `${execution.trace.tool}-${toolTrace.length}`,
+            content: JSON.stringify(execution.payload, null, 2),
+          });
+        }
       }
 
-      const payload = JSON.parse(responseText) as ChatCompletionResponse;
-      const outputText = normalizeModelText(payload.choices?.[0]?.message?.content);
-
       if (!outputText) {
-        const finishReason = normalizeModelText(payload.choices?.[0]?.finish_reason) ?? "unknown";
+        const finishReason = normalizeModelText(finalPayload?.choices?.[0]?.finish_reason) ?? "unknown";
         throw new Error(
           `OpenAI-compatible chat response did not include assistant content (finish_reason=${finishReason}).`,
         );
@@ -124,14 +195,15 @@ export class OpenAiApiProvider implements ProviderAdapter {
         status: "completed",
         summary: `OpenAI-compatible API response generated with ${model}.`,
         outputText,
-        artifacts: buildArtifacts(requestBody, payload),
+        artifacts: buildArtifacts(finalRequestBody ?? requestBody, finalPayload ?? {}, toolTrace),
         metadata: {
           model,
-          provider_model: normalizeModelText(payload.model) ?? model,
-          finish_reason: normalizeModelText(payload.choices?.[0]?.finish_reason) ?? "unknown",
-          prompt_tokens: readNumericMetadata(payload.usage?.prompt_tokens),
-          completion_tokens: readNumericMetadata(payload.usage?.completion_tokens),
-          total_tokens: readNumericMetadata(payload.usage?.total_tokens),
+          provider_model: normalizeModelText(finalPayload?.model) ?? model,
+          finish_reason: normalizeModelText(finalPayload?.choices?.[0]?.finish_reason) ?? "unknown",
+          tool_calls: String(toolTrace.length),
+          prompt_tokens: readNumericMetadata(finalPayload?.usage?.prompt_tokens),
+          completion_tokens: readNumericMetadata(finalPayload?.usage?.completion_tokens),
+          total_tokens: readNumericMetadata(finalPayload?.usage?.total_tokens),
         },
       };
     } catch (error) {
@@ -187,6 +259,7 @@ export class OpenAiApiProvider implements ProviderAdapter {
 function buildArtifacts(
   requestBody: Record<string, unknown>,
   payload: ChatCompletionResponse,
+  toolTrace: ToolTraceRecord[],
 ): ProviderArtifact[] {
   return [
     {
@@ -199,7 +272,38 @@ function buildArtifacts(
       contentType: "json",
       content: `${JSON.stringify(payload, null, 2)}\n`,
     },
+    {
+      name: "openai-api-tool-trace.json",
+      contentType: "json",
+      content: `${JSON.stringify(toolTrace, null, 2)}\n`,
+    },
   ];
+}
+
+function normalizeAssistantMessage(payload: ChatCompletionResponse): ChatMessage {
+  const message = payload.choices?.[0]?.message ?? {};
+  return {
+    role: "assistant",
+    content: normalizeModelText(message.content) ?? "",
+    tool_calls: normalizeChatToolCalls(message.tool_calls),
+  };
+}
+
+function normalizeChatToolCalls(value: unknown): ChatToolCall[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((call): call is ChatToolCall => {
+    if (typeof call !== "object" || call === null) {
+      return false;
+    }
+    const candidate = call as ChatToolCall;
+    return (
+      typeof candidate.function === "object" &&
+      candidate.function !== null &&
+      typeof candidate.function.name === "string"
+    );
+  });
 }
 
 function normalizeBaseUrl(value: string): string {

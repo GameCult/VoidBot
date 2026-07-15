@@ -116,7 +116,7 @@ const envSchema = z.object({
   REPO_FACE_GITHUB_ACTIONS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_BIFROST_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_WEKSA_SPEECH_ENABLED: booleanFromEnv.default(false),
-  WEKSA_DAEMON_BASE_URL: z.string().url().default("http://127.0.0.1:8813"),
+  WEKSA_CULTMESH_COMMAND_URI: optionalNonEmptyString,
   WEKSA_DAEMON_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   WEKSA_REPO_ROOT: z.string().min(1).default("E:/Projects/weksa"),
   REPO_FACE_DISCORD_VOICE_ENABLED: booleanFromEnv.default(false),
@@ -131,6 +131,10 @@ const envSchema = z.object({
   METAME_OWNER_VOICE_STATE_PATH: z.string().min(1).default(".voidbot/private/personas/metame/metame-owner-voice-sync.md"),
   BIFROST_ROOT: z.string().min(1).default("E:/Projects/Bifrost"),
   BIFROST_DISCORD_CHANNEL_ID: optionalNonEmptyString,
+  BIFROST_CULTMESH_COMMAND_URI: z.string().min(1).default("cultmesh://asgard.starfire.bifrost/commands/discord-post"),
+  BIFROST_CULTMESH_STORE_PATH: z.string().min(1).default("E:/Projects/Bifrost/.bifrost/provider-store.cc"),
+  BIFROST_CULTMESH_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
   REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.json"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
@@ -216,7 +220,7 @@ export interface AppConfig {
   repoFaceBifrostEnabled: boolean;
   repoFaceWeksaSpeech: {
     enabled: boolean;
-    daemonBaseUrl: string;
+    commandUri: string;
     timeoutMs: number;
     repoRoot: string;
   };
@@ -236,6 +240,12 @@ export interface AppConfig {
   };
   bifrostRoot: string;
   bifrostDiscordChannelId?: string;
+  bifrostCultMesh: {
+    commandUri: string;
+    storePath: string;
+    timeoutMs: number;
+    pumpEnabled: boolean;
+  };
   repoFaceHeartbeats: {
     enabled: boolean;
     statePath: string;
@@ -495,7 +505,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     repoFaceBifrostEnabled: parsed.REPO_FACE_BIFROST_ENABLED,
     repoFaceWeksaSpeech: {
       enabled: parsed.REPO_FACE_WEKSA_SPEECH_ENABLED,
-      daemonBaseUrl: parsed.WEKSA_DAEMON_BASE_URL.replace(/\/+$/, ""),
+      commandUri: requireWhenEnabled(
+        parsed.REPO_FACE_WEKSA_SPEECH_ENABLED,
+        parsed.WEKSA_CULTMESH_COMMAND_URI,
+        "WEKSA_CULTMESH_COMMAND_URI is required when REPO_FACE_WEKSA_SPEECH_ENABLED is true; provide the Odin-discovered Weksa CultMesh command URI.",
+      ),
       timeoutMs: parsed.WEKSA_DAEMON_TIMEOUT_MS,
       repoRoot: resolve(parsed.WEKSA_REPO_ROOT),
     },
@@ -515,6 +529,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     bifrostRoot: resolve(parsed.BIFROST_ROOT),
     bifrostDiscordChannelId: parsed.BIFROST_DISCORD_CHANNEL_ID,
+    bifrostCultMesh: {
+      commandUri: parsed.BIFROST_CULTMESH_COMMAND_URI,
+      storePath: resolve(parsed.BIFROST_CULTMESH_STORE_PATH),
+      timeoutMs: parsed.BIFROST_CULTMESH_COMMAND_TIMEOUT_MS,
+      pumpEnabled: parsed.BIFROST_CULTMESH_COMMAND_PUMP_ENABLED,
+    },
     repoFaceHeartbeats: {
       enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
       statePath: resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH),
@@ -619,4 +639,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       boostedMultiplier: parsed.VOID_USAGE_BOOST_MULTIPLIER,
     },
   };
+}
+
+function requireWhenEnabled(enabled: boolean, value: string | undefined, message: string): string {
+  if (!enabled) {
+    return value ?? "";
+  }
+  if (value) {
+    return value;
+  }
+  throw new Error(message);
 }

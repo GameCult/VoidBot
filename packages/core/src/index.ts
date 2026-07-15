@@ -11,6 +11,7 @@ export * from "./repo-face-heartbeat-queue";
 export * from "./repo-face-response-pressure";
 export * from "./repo-face-initializer";
 export * from "./repo-face-rest";
+export * from "./repo-face-shared-documents";
 export * from "./repo-face-voice-presence";
 export * from "./repo-face-voice-outbox";
 export * from "./situational-social-read";

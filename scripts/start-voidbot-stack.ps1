@@ -253,49 +253,64 @@ function Ensure-DockerOnPath {
   } -FailureMessage "Docker is installed but the daemon is not ready." -Attempts 45 -SleepSeconds 2
 }
 
-function Ensure-BifrostLocalStack {
+function Ensure-BifrostCultMeshCommandStore {
   param(
     [Parameter(Mandatory = $true)]
     [string] $BifrostRoot,
     [Parameter(Mandatory = $true)]
-    [string] $HealthUrl
+    [string] $StorePath,
+    [Parameter(Mandatory = $true)]
+    [string] $CommandUri
   )
 
-  if (Test-HttpEndpoint -Url $HealthUrl) {
-    return @{
-      root = $BifrostRoot
-      healthUrl = $HealthUrl
-      startedByScript = $false
-      healthy = $true
-    }
+  if ($CommandUri -notmatch '^cultmesh://[^/]+/commands/discord-post(?:$|[/?#])') {
+    throw "BIFROST_CULTMESH_COMMAND_URI must be a CultMesh Discord command URI, got '$CommandUri'."
   }
 
   if (-not (Test-Path $BifrostRoot)) {
     throw "Bifrost root does not exist at $BifrostRoot."
   }
 
-  $composeFile = Join-Path $BifrostRoot "compose.local.yaml"
-
-  if (-not (Test-Path $composeFile)) {
-    throw "Bifrost local compose file does not exist at $composeFile."
+  $processor = Join-Path $BifrostRoot "tools\cultmesh-bridge-commands.mjs"
+  if (-not (Test-Path $processor)) {
+    throw "Bifrost CultMesh command processor does not exist at $processor."
   }
 
-  Ensure-DockerOnPath
-
-  & docker compose -f $composeFile --project-directory $BifrostRoot up -d
-
-  if ($LASTEXITCODE -ne 0) {
-    throw "Docker Compose failed to start Bifrost."
+  $storeParent = Split-Path -Parent $StorePath
+  if (-not [string]::IsNullOrWhiteSpace($storeParent)) {
+    New-Item -ItemType Directory -Force -Path $storeParent | Out-Null
   }
 
-  Wait-Until -Condition { Test-HttpEndpoint -Url $HealthUrl } -FailureMessage "Bifrost did not become reachable at $HealthUrl in time." -Attempts 45 -SleepSeconds 2
+  $exportedByScript = $false
+  if (-not (Test-Path $StorePath)) {
+    $exporter = Join-Path $BifrostRoot "tools\provider-advertisement.mjs"
+    if (-not (Test-Path $exporter)) {
+      throw "Bifrost provider advertisement exporter does not exist at $exporter."
+    }
+
+    $nodeCommand = Get-Command node.exe -ErrorAction Stop
+    & $nodeCommand.Source $exporter export --out $StorePath
+
+    if ($LASTEXITCODE -ne 0) {
+      throw "Bifrost provider CultMesh store export failed."
+    }
+
+    $exportedByScript = $true
+  }
+
+  $storeItem = Get-Item -LiteralPath $StorePath -ErrorAction Stop
+  if ($storeItem.Length -le 0) {
+    throw "Bifrost provider CultMesh store is empty at $StorePath."
+  }
 
   return @{
     root = $BifrostRoot
-    composeFile = $composeFile
-    healthUrl = $HealthUrl
-    startedByScript = $true
+    commandUri = $CommandUri
+    storePath = $StorePath
+    processor = $processor
+    exportedByScript = $exportedByScript
     healthy = $true
+    healthAuthority = "cultmesh-command-store"
   }
 }
 
@@ -561,7 +576,8 @@ $localLlmBaseUrl = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_BASE_URL")) { $conf
 $localLlmModel = if ($config.ContainsKey("LOCAL_LLM_OLLAMA_MODEL")) { $config["LOCAL_LLM_OLLAMA_MODEL"] } else { "qwen3.5:9b" }
 $localLlmSocialReadModel = if ($config.ContainsKey("LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL") -and -not [string]::IsNullOrWhiteSpace($config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"])) { $config["LOCAL_LLM_SOCIAL_READ_OLLAMA_MODEL"] } else { $localLlmModel }
 $bifrostRoot = if ($config.ContainsKey("BIFROST_ROOT")) { [System.IO.Path]::GetFullPath($config["BIFROST_ROOT"]) } else { "E:\Projects\Bifrost" }
-$bifrostHealthUrl = if ($config.ContainsKey("BIFROST_HEALTH_URL")) { $config["BIFROST_HEALTH_URL"] } else { "http://127.0.0.1:5080/healthz" }
+$bifrostCultMeshCommandUri = if ($config.ContainsKey("BIFROST_CULTMESH_COMMAND_URI")) { $config["BIFROST_CULTMESH_COMMAND_URI"] } else { "cultmesh://asgard.starfire.bifrost/commands/discord-post" }
+$bifrostCultMeshStorePath = if ($config.ContainsKey("BIFROST_CULTMESH_STORE_PATH")) { [System.IO.Path]::GetFullPath($config["BIFROST_CULTMESH_STORE_PATH"]) } else { "E:\Projects\Bifrost\.bifrost\provider-store.cc" }
 
 if ($stateStorageBackend -eq "postgres") {
   $status.stage = "postgres"
@@ -637,7 +653,7 @@ if ($localLlmEnabled) {
 
 $status.stage = "bifrost"
 Write-StatusFile -Path $statusPath -Status $status
-$status.bifrost = Ensure-BifrostLocalStack -BifrostRoot $bifrostRoot -HealthUrl $bifrostHealthUrl
+$status.bifrost = Ensure-BifrostCultMeshCommandStore -BifrostRoot $bifrostRoot -StorePath $bifrostCultMeshStorePath -CommandUri $bifrostCultMeshCommandUri
 Write-StatusFile -Path $statusPath -Status $status
 
 $npmCommand = Get-Command npm.cmd -ErrorAction Stop
