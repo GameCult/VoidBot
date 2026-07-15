@@ -10,6 +10,7 @@ const {
   readSwarmOperatorInputs,
   watchSwarmOperatorInputs,
 } = require("./voidbot-swarm-operator-view.cjs");
+const { parseEndpoint: parseIdunnEndpoint, publishIdunnRudpHealth } = require("./publish-idunn-rudp-health.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const defaultStorePath = path.join(repoRoot, ".voidbot", "status", "cultmesh", "voidbot-swarm-state.cc");
@@ -32,6 +33,8 @@ const operatorInputPaths = {
 const bind = parseBind(args.bind || process.env.VOIDBOT_SWARM_CULTMESH_BIND || defaultBind);
 const odinCultMeshUri = args.odinCultMeshUri || args["odin-cultmesh-uri"] || process.env.VOIDBOT_ODIN_CULTMESH_URI || process.env.ODIN_CULTMESH_URI || defaultOdinCultMeshUri;
 const odinRudpEndpoint = args.odinRudpEndpoint || args["odin-rudp-endpoint"] || process.env.VOIDBOT_ODIN_RUDP || process.env.CULTMESH_URI_ODIN_RUDP || defaultOdinRudpEndpoint;
+const idunnHealthEndpoint = String(process.env.VOIDBOT_IDUNN_RUDP_HEALTH || "").trim();
+const idunnHealthIntervalMs = 30_000;
 const {
   CultMesh,
   CultMeshMemoryProviderReceiptStore,
@@ -56,6 +59,8 @@ let announceTimer = null;
 let liveProviderSession = null;
 let stopOperatorWatch = null;
 let operatorPublishChain = Promise.resolve();
+let idunnHealthTimer = null;
+let idunnHealthPublishChain = Promise.resolve();
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.stack || error.message : String(error));
@@ -97,10 +102,18 @@ async function main() {
     });
   }, 30_000);
   announceTimer.unref?.();
+  if (idunnHealthEndpoint) {
+    await queueIdunnHealthPublication();
+    idunnHealthTimer = setInterval(queueIdunnHealthPublication, idunnHealthIntervalMs);
+    idunnHealthTimer.unref?.();
+  } else {
+    console.log("VoidBot Idunn health publication is disabled because VOIDBOT_IDUNN_RUDP_HEALTH is not configured.");
+  }
 
   const shutdown = () => {
     try {
       if (announceTimer) clearInterval(announceTimer);
+      if (idunnHealthTimer) clearInterval(idunnHealthTimer);
       server?.close?.();
       stopOperatorWatch?.();
       void liveProviderSession?.stop?.();
@@ -110,6 +123,21 @@ async function main() {
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+}
+
+function queueIdunnHealthPublication() {
+  idunnHealthPublishChain = idunnHealthPublishChain
+    .then(() => publishIdunnRudpHealth({
+      endpoint: parseIdunnEndpoint(idunnHealthEndpoint),
+      daemonId: process.env.VOIDBOT_IDUNN_DAEMON || "voidbot",
+      healthContract: process.env.VOIDBOT_IDUNN_HEALTH_CONTRACT || "voidbot.cultnet-rudp-stack-health",
+    }, {
+      state: "healthy",
+      detail: "VoidBot swarm CultMesh publisher is serving retained runtime state.",
+      observedAt: new Date().toISOString(),
+    }))
+    .catch((error) => console.error(`VoidBot Idunn health publication failed: ${error instanceof Error ? error.message : String(error)}`));
+  return idunnHealthPublishChain;
 }
 
 async function publishCurrentControlState() {
