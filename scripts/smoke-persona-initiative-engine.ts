@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 
 import {
   advanceInitiativeClockFromWallClock,
+  applyActiveTurnFreeze,
   applyPendingMentionPriority,
   reconcileParticipants,
+  recordDryRunSelection,
+  recordTurnFailedToStart,
+  recordTurnStarted,
   selectReadyParticipants,
   type InitiativeParticipant,
   type InitiativeState,
@@ -103,5 +107,47 @@ assert.equal(reconciled[0].nextTurnAt, 44, "reconciliation preserves initiative 
 assert.equal(reconciled[0].initiativeSpeed, 3, "operator speed and channel multiplier are projected once");
 assert.equal(reconciled[0].heat, 0.6, "global and identity heat compose in the scheduler owner");
 assert.equal(reconciled[1].status, "blocked", "a new Face without any mouth fails closed");
+
+const freezeState: InitiativeState = {
+  initiativeClock: 50,
+  participants: [],
+  pendingMentions: [],
+  history: [],
+};
+const frozen = applyActiveTurnFreeze(participant("working", 40), "job-live", freezeState, new Set());
+assert.equal(frozen.currentLoad, 1, "an active queue witness freezes initiative");
+assert.equal(frozen.activeJobId, "job-live", "the scheduler records the external job witness without transferring ownership");
+assert.equal(frozen.activeTurnStartedAt, 50, "freeze begins at the scheduler clock when no earlier start exists");
+
+const completed = new Set<string>();
+const recovered = applyActiveTurnFreeze(frozen, undefined, freezeState, completed);
+assert.equal(recovered.currentLoad, 0, "loss of the active witness releases scheduler load");
+assert.equal(recovered.activeJobId, undefined, "completed work cannot remain an initiative owner");
+assert.equal(recovered.nextTurnAt, 80, "recovery begins after completion using scheduler-owned recovery math");
+assert.deepEqual([...completed], ["working"], "a just-completed participant cannot be selected in the same tick");
+assert.equal(freezeState.history.at(-1)?.type, "turn_completed", "the state machine records its own completion transition");
+
+const queueState: InitiativeState = { initiativeClock: 70, participants: [], pendingMentions: [], history: [] };
+const queued = participant("queued", 68);
+recordTurnStarted({
+  participant: queued,
+  state: queueState,
+  queuedAt: "2026-07-15T21:00:00.000Z",
+  activeJobId: "job-queued",
+  requestMessageId: "agent-turn:queued:test",
+  pendingMentionCount: 2,
+});
+assert.equal(queued.currentLoad, 1, "queue success freezes the participant through one scheduler commit");
+assert.equal(queued.queuedCount, 1, "queue success advances its counter once");
+assert.equal(queueState.history.at(-1)?.type, "queued", "queue success and its history witness share one owner");
+
+recordTurnFailedToStart({ participant: queued, state: queueState, queuedAt: "2026-07-15T21:01:00.000Z", reason: "actuator refused" });
+assert.equal(queued.currentLoad, 0, "queue failure cannot leave false scheduler load");
+assert.equal(queueState.history.at(-1)?.type, "turn_failed_to_start", "queue failure is recorded by the state owner");
+
+const inspected = participant("inspected", 69);
+recordDryRunSelection(inspected, queueState, "2026-07-15T21:02:00.000Z", 0);
+assert.equal(inspected.nextTurnAt, 100, "dry-run selection uses the same recovery ownership without claiming active load");
+assert.equal(inspected.currentLoad, 0, "inspection cannot impersonate a live job");
 
 process.stdout.write("Persona initiative engine smoke passed.\n");

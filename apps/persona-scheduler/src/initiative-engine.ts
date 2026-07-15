@@ -149,6 +149,133 @@ export function reconcileParticipants(input: ReconcileParticipantsInput): Initia
   });
 }
 
+export function applyActiveTurnFreeze<TParticipant extends InitiativeParticipant>(
+  participant: TParticipant,
+  activeJobId: string | undefined,
+  state: InitiativeState<TParticipant>,
+  completedThisTick: Set<string>,
+): TParticipant {
+  if (activeJobId) {
+    return {
+      ...participant,
+      currentLoad: 1,
+      activeJobId,
+      activeTurnStartedAt: participant.activeTurnStartedAt ?? participant.lastTurnAt ?? state.initiativeClock,
+    };
+  }
+
+  if (participant.currentLoad >= 1 || participant.activeTurnStartedAt !== undefined || participant.activeJobId) {
+    const completedTurnStartedAt = participant.activeTurnStartedAt ?? participant.lastTurnAt ?? state.initiativeClock;
+    const unfrozen = {
+      ...participant,
+      currentLoad: 0,
+      activeTurnStartedAt: undefined,
+      activeJobId: undefined,
+    };
+    const recoveryMinutes = recoveryFor(unfrozen);
+    unfrozen.nextTurnAt = Math.max(state.initiativeClock, completedTurnStartedAt) + recoveryMinutes;
+    completedThisTick.add(participant.identityId);
+    state.history.push({
+      type: "turn_completed",
+      identityId: participant.identityId,
+      completedAtClock: state.initiativeClock,
+      startedAtClock: completedTurnStartedAt,
+      nextTurnAt: unfrozen.nextTurnAt,
+      recoveryMinutes,
+      heat: participant.heat,
+      effectiveSpeed: participant.effectiveSpeed,
+    });
+    return unfrozen;
+  }
+
+  return { ...participant, currentLoad: 0 };
+}
+
+export function recordDryRunSelection(
+  participant: InitiativeParticipant,
+  state: InitiativeState,
+  queuedAt: string,
+  pendingMentionCount: number,
+): void {
+  const recoveryMinutes = recoveryFor(participant);
+  participant.lastQueuedAt = queuedAt;
+  participant.lastTurnAt = state.initiativeClock;
+  participant.queuedCount += 1;
+  participant.nextTurnAt = Math.max(state.initiativeClock, participant.nextTurnAt) + recoveryMinutes;
+  state.history.push({
+    type: "dry_run_selected",
+    identityId: participant.identityId,
+    queuedAt,
+    initiativeClock: state.initiativeClock,
+    nextTurnAt: participant.nextTurnAt,
+    recoveryMinutes,
+    heat: participant.heat,
+    dynamicHeat: participant.dynamicHeat,
+    responsePressure: participant.responsePressure,
+    effectiveSpeed: participant.effectiveSpeed,
+    pendingMentionCount,
+  });
+}
+
+export function recordTurnStarted(input: {
+  participant: InitiativeParticipant;
+  state: InitiativeState;
+  queuedAt: string;
+  activeJobId?: string;
+  requestMessageId?: string;
+  pendingMentionCount: number;
+}): void {
+  const { participant, state } = input;
+  participant.lastQueuedAt = input.queuedAt;
+  participant.activeTurnStartedAt = state.initiativeClock;
+  participant.activeJobId = input.activeJobId;
+  participant.lastTurnAt = state.initiativeClock;
+  participant.queuedCount += 1;
+  participant.currentLoad = 1;
+  state.history.push({
+    type: "queued",
+    identityId: participant.identityId,
+    participantKind: participant.participantKind,
+    turnKind: participant.turnKind,
+    activeJobId: input.activeJobId,
+    requestMessageId: input.requestMessageId,
+    queuedAt: input.queuedAt,
+    initiativeClock: state.initiativeClock,
+    frozen: true,
+    heat: participant.heat,
+    dynamicHeat: participant.dynamicHeat,
+    responsePressure: participant.responsePressure,
+    effectiveSpeed: participant.effectiveSpeed,
+    pendingMentionCount: input.pendingMentionCount,
+  });
+}
+
+export function recordTurnFailedToStart(input: {
+  participant: InitiativeParticipant;
+  state: InitiativeState;
+  queuedAt: string;
+  activeJobId?: string;
+  requestMessageId?: string;
+  reason: string;
+}): void {
+  input.participant.currentLoad = 0;
+  input.state.history.push({
+    type: "turn_failed_to_start",
+    identityId: input.participant.identityId,
+    participantKind: input.participant.participantKind,
+    turnKind: input.participant.turnKind,
+    activeJobId: input.activeJobId,
+    requestMessageId: input.requestMessageId,
+    queuedAt: input.queuedAt,
+    initiativeClock: input.state.initiativeClock,
+    reason: input.reason,
+    heat: input.participant.heat,
+    dynamicHeat: input.participant.dynamicHeat,
+    responsePressure: input.participant.responsePressure,
+    effectiveSpeed: input.participant.effectiveSpeed,
+  });
+}
+
 export function advanceInitiativeClockFromWallClock(state: InitiativeState, now: Date): void {
   const lastTickMs = Date.parse(state.lastTickAt ?? "");
   if (!Number.isFinite(lastTickMs)) return;
@@ -225,6 +352,11 @@ function initiativeSpeedFor(spec: ParticipantSpec, overrides: Record<string, num
   if (override !== undefined) return clamp(override, 0.35, 6);
   if (spec.id === "void") return 1;
   return clamp(0.85 + stableUnit(spec.id, "speed") * 0.45, 0.75, 1.3);
+}
+
+function recoveryFor(participant: InitiativeParticipant): number {
+  const loadPenalty = 1 + participant.currentLoad * 0.75;
+  return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.1);
 }
 
 function initiativeGroupsFor(spec: ParticipantSpec): string[] {

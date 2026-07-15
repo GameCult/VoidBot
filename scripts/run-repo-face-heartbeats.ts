@@ -47,9 +47,13 @@ import {
 } from "@voidbot/shared";
 import {
   advanceInitiativeClockFromWallClock,
+  applyActiveTurnFreeze,
   applyPendingMentionPriority,
   countPendingMentionsByIdentity,
   reconcileParticipants,
+  recordDryRunSelection,
+  recordTurnFailedToStart,
+  recordTurnStarted,
   rescheduleStaleOverdueParticipants,
   selectReadyParticipants,
   type ParticipantSpec as SchedulerParticipantSpec,
@@ -317,25 +321,8 @@ async function main(): Promise<void> {
     const queuedAt = new Date().toISOString();
     for (const participant of selected) {
       const pendingMentions = pendingMentionsForParticipant(state, participant.identityId);
-      const recoveryMinutes = recoveryFor(participant);
-      participant.lastQueuedAt = queuedAt;
-      participant.lastTurnAt = state.initiativeClock;
-      participant.queuedCount += 1;
-      participant.nextTurnAt = Math.max(state.initiativeClock, participant.nextTurnAt) + recoveryMinutes;
+      recordDryRunSelection(participant, state, queuedAt, pendingMentions.length);
       queuedIdentityIds.push(participant.identityId);
-      state.history.push({
-        type: "dry_run_selected",
-        identityId: participant.identityId,
-        queuedAt,
-        initiativeClock: state.initiativeClock,
-        nextTurnAt: participant.nextTurnAt,
-        recoveryMinutes,
-        heat: participant.heat,
-        dynamicHeat: participant.dynamicHeat,
-        responsePressure: participant.responsePressure,
-        effectiveSpeed: participant.effectiveSpeed,
-        pendingMentionCount: pendingMentions.length,
-      });
     }
   } else if (selected.length > 0) {
     const storage = await createStateStorage({
@@ -362,12 +349,14 @@ async function main(): Promise<void> {
 
         if (turn.created) {
           queuedIdentityIds.push(participant.identityId);
-          participant.lastQueuedAt = queuedAt;
-          participant.activeTurnStartedAt = state.initiativeClock;
-          participant.activeJobId = turn.activeJobId;
-          participant.lastTurnAt = state.initiativeClock;
-          participant.queuedCount += 1;
-          participant.currentLoad = 1;
+          recordTurnStarted({
+            participant,
+            state,
+            queuedAt,
+            activeJobId: turn.activeJobId,
+            requestMessageId: turn.requestMessageId,
+            pendingMentionCount: pendingMentions.length,
+          });
           if (pendingMentions.length > 0) {
             const consumedIds = new Set(pendingMentions.map((entry) => entry.id));
             state.pendingMentions = state.pendingMentions.filter((entry) => !consumedIds.has(entry.id));
@@ -391,38 +380,14 @@ async function main(): Promise<void> {
               })),
             });
           }
-          state.history.push({
-            type: "queued",
-            identityId: participant.identityId,
-            participantKind: participant.participantKind,
-            turnKind: participant.turnKind,
-            activeJobId: turn.activeJobId,
-            requestMessageId: turn.requestMessageId,
-            queuedAt,
-            initiativeClock: state.initiativeClock,
-            frozen: true,
-            heat: participant.heat,
-            dynamicHeat: participant.dynamicHeat,
-            responsePressure: participant.responsePressure,
-            effectiveSpeed: participant.effectiveSpeed,
-            pendingMentionCount: pendingMentions.length,
-          });
         } else if (turn.failureReason) {
-          participant.currentLoad = 0;
-          state.history.push({
-            type: "turn_failed_to_start",
-            identityId: participant.identityId,
-            participantKind: participant.participantKind,
-            turnKind: participant.turnKind,
+          recordTurnFailedToStart({
+            participant,
+            state,
+            queuedAt,
             activeJobId: turn.activeJobId,
             requestMessageId: turn.requestMessageId,
-            queuedAt,
-            initiativeClock: state.initiativeClock,
             reason: turn.failureReason,
-            heat: participant.heat,
-            dynamicHeat: participant.dynamicHeat,
-            responsePressure: participant.responsePressure,
-            effectiveSpeed: participant.effectiveSpeed,
           });
         }
       }
@@ -1305,51 +1270,6 @@ async function readRecentLock(path: string, maxAgeMinutes: number): Promise<bool
   } catch {
     return false;
   }
-}
-
-function applyActiveTurnFreeze(
-  participant: FaceHeartbeatParticipant,
-  activeJobId: string | undefined,
-  state: FaceHeartbeatState,
-  completedThisTick: Set<string>,
-): FaceHeartbeatParticipant {
-  if (activeJobId) {
-    return {
-      ...participant,
-      currentLoad: 1,
-      activeJobId,
-      activeTurnStartedAt: participant.activeTurnStartedAt ?? participant.lastTurnAt ?? state.initiativeClock,
-    };
-  }
-
-  if (participant.currentLoad >= 1 || participant.activeTurnStartedAt !== undefined || participant.activeJobId) {
-    const completedTurnStartedAt = participant.activeTurnStartedAt ?? participant.lastTurnAt ?? state.initiativeClock;
-    const unfrozen = {
-      ...participant,
-      currentLoad: 0,
-      activeTurnStartedAt: undefined,
-      activeJobId: undefined,
-    };
-    const recoveryMinutes = recoveryFor(unfrozen);
-    unfrozen.nextTurnAt = Math.max(state.initiativeClock, completedTurnStartedAt) + recoveryMinutes;
-    completedThisTick.add(participant.identityId);
-    state.history.push({
-      type: "turn_completed",
-      identityId: participant.identityId,
-      completedAtClock: state.initiativeClock,
-      startedAtClock: completedTurnStartedAt,
-      nextTurnAt: unfrozen.nextTurnAt,
-      recoveryMinutes,
-      heat: participant.heat,
-      effectiveSpeed: participant.effectiveSpeed,
-    });
-    return unfrozen;
-  }
-
-  return {
-    ...participant,
-    currentLoad: 0,
-  };
 }
 
 async function applySemanticResponsePressure(input: {
@@ -5322,11 +5242,6 @@ function projectCharacterDescription(description: string | undefined): string | 
     )
     .filter((part) => part.length > 0)
     .join(" ");
-}
-
-function recoveryFor(participant: FaceHeartbeatParticipant): number {
-  const loadPenalty = 1 + participant.currentLoad * 0.75;
-  return (participant.baseRecoveryMinutes * loadPenalty) / Math.max(participant.effectiveSpeed, 0.1);
 }
 
 async function readSwarmControlState(): Promise<{ globalHeat: number } | null> {
