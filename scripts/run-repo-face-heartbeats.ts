@@ -73,22 +73,13 @@ import {
   type BifrostGovernanceDigest,
 } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
 import { submitPersonaTurn } from "../apps/persona-scheduler/dist/turn-actuator.js";
-
-interface RepoFaceChannelPlan {
-  primaryChannelId?: string;
-  snapshotChannelIds: string[];
-  options: RepoFaceChannelOption[];
-  lowThresholdTopics: string[];
-}
-
-interface RepoFaceChannelOption {
-  channelId: string;
-  label: string;
-  topic: string;
-  speechThreshold: "very_low" | "low" | "medium" | "high";
-  speedMultiplier: number;
-  posture?: string;
-}
+import {
+  buildPersonaChannelPlan as buildChannelPlan,
+  newestPendingMentionChannel,
+  personaChannelSpeedMultiplier as channelSpeedMultiplierFor,
+  type PersonaChannelOption as RepoFaceChannelOption,
+  type PersonaChannelPlan as RepoFaceChannelPlan,
+} from "../apps/persona-scheduler/dist/turn-routing.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -3930,76 +3921,6 @@ function buildInspectionParticipant(
   };
 }
 
-function buildChannelPlan(
-  identity: RepoDiscordIdentity,
-  defaultChannelId?: string,
-  preferredChannelId?: string,
-): RepoFaceChannelPlan {
-  const explicit = identity.channelPermissions.map((permission): RepoFaceChannelOption => ({
-    channelId: permission.channelId,
-    label: permission.label ?? permission.channelId,
-    topic: permission.topic ?? "general",
-    speechThreshold: permission.speechThreshold,
-    speedMultiplier: permission.speedMultiplier,
-    posture: permission.posture,
-  }));
-  const explicitChannelIds = new Set(explicit.map((permission) => permission.channelId));
-  const legacy = identity.allowedChannelIds
-    .filter((channelId) => !explicitChannelIds.has(channelId))
-    .map((channelId): RepoFaceChannelOption => ({
-      channelId,
-      label: channelId === defaultChannelId ? "default" : channelId,
-      topic: channelId === defaultChannelId ? "casual Aquarium musing" : "registered channel",
-      speechThreshold: channelId === defaultChannelId ? "very_low" : "medium",
-      speedMultiplier: channelId === defaultChannelId ? 1.5 : 1,
-      posture: channelId === defaultChannelId
-        ? "Low-stakes casual chatter, half-formed fascinations, jokes, little observations, and friendly asides are welcome here."
-        : undefined,
-    }));
-  const fallback = explicit.length === 0 && legacy.length === 0 && defaultChannelId
-    ? [{
-        channelId: defaultChannelId,
-        label: "aquarium",
-        topic: "casual Aquarium musing",
-        speechThreshold: "very_low" as const,
-        speedMultiplier: 1.5,
-        posture: "Low-stakes casual chatter, half-formed fascinations, jokes, little observations, and friendly asides are welcome here.",
-      }]
-    : [];
-  const options = [...explicit, ...legacy, ...fallback];
-  const preferred = preferredChannelId
-    ? options.find((option) => option.channelId === preferredChannelId)
-    : undefined;
-  const defaultOption = defaultChannelId
-    ? options.find((option) => option.channelId === defaultChannelId)
-    : undefined;
-  const primary = preferred ?? defaultOption ?? options
-    .slice()
-    .sort((left, right) => thresholdRank(left.speechThreshold) - thresholdRank(right.speechThreshold))
-    [0];
-
-  return {
-    primaryChannelId: primary?.channelId,
-    snapshotChannelIds: [
-      ...new Set([
-        ...options.map((option) => option.channelId),
-        ...(preferredChannelId ? [preferredChannelId] : []),
-      ]),
-    ],
-    options,
-    lowThresholdTopics: options
-      .filter((option) => thresholdRank(option.speechThreshold) <= thresholdRank("low"))
-      .map((option) => option.topic),
-  };
-}
-
-function newestPendingMentionChannel(pendingMentions: RepoFacePendingMention[]): string | undefined {
-  return pendingMentions
-    .slice()
-    .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))
-    [0]?.channelId;
-}
-
 function renderChannelPermissionDirective(plan: RepoFaceChannelPlan): string {
   const options = plan.options.length > 0
     ? plan.options.map((option) =>
@@ -4391,19 +4312,6 @@ function normalizeForRepetition(value: string): string {
     .trim();
 }
 
-function thresholdRank(threshold: RepoFaceChannelOption["speechThreshold"]): number {
-  switch (threshold) {
-    case "very_low":
-      return 0;
-    case "low":
-      return 1;
-    case "medium":
-      return 2;
-    case "high":
-      return 3;
-  }
-}
-
 function collapseWhitespace(value: string, maxLength?: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return maxLength && normalized.length > maxLength
@@ -4566,11 +4474,6 @@ async function readSwarmControlState(): Promise<{ globalHeat: number } | null> {
   } catch {
     return null;
   }
-}
-
-function channelSpeedMultiplierFor(identity: RepoDiscordIdentity): number {
-  const multipliers = identity.channelPermissions.map((permission) => permission.speedMultiplier);
-  return multipliers.length > 0 ? clamp(Math.max(...multipliers), 0.5, 3) : 1;
 }
 
 function mergeStrings(values: string[], value: string): string[] {

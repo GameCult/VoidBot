@@ -8,6 +8,8 @@ import {
   readRepoFaceMentionInbox,
   type CreateJobInput,
   type JobQueue,
+  type RepoDiscordIdentity,
+  type RepoFacePendingMention,
 } from "@voidbot/core";
 import type { JobRecord } from "@voidbot/shared";
 
@@ -47,6 +49,11 @@ import {
 } from "../apps/persona-scheduler/dist/turn-context-source.js";
 import { readBifrostGovernanceDigest } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
 import { submitPersonaTurn } from "../apps/persona-scheduler/dist/turn-actuator.js";
+import {
+  buildPersonaChannelPlan,
+  newestPendingMentionChannel,
+  personaChannelSpeedMultiplier,
+} from "../apps/persona-scheduler/dist/turn-routing.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -374,6 +381,35 @@ assert.equal(submittedJobs[0].command, "repo-face-rumination", "the actuator own
 assert.equal(submittedJobs[0].initialState, "approved", "Persona turns enter the canonical queue through one approval policy");
 assert.equal(submittedJobs[0].contextBundle.recentMessages.length, 2, "the actuator lowers supplied evidence into the worker context bundle");
 assert.equal(submittedJobs[0].requester.id, "voidbot-agent-turn", "the actuator owns the worker-facing actor identity");
+
+const routedIdentity = {
+  id: "nibu",
+  repoName: "AetheriaLore",
+  displayName: "Nibu",
+  allowedChannelIds: ["legacy"],
+  channelPermissions: [{
+    channelId: "aquarium",
+    label: "Aquarium",
+    topic: "casual conversation",
+    speechThreshold: "very_low",
+    speedMultiplier: 4,
+  }, {
+    channelId: "lore",
+    label: "Lore",
+    topic: "setting work",
+    speechThreshold: "medium",
+    speedMultiplier: 1,
+  }],
+} as RepoDiscordIdentity;
+const channelPlan = buildPersonaChannelPlan(routedIdentity, "aquarium", "lore");
+assert.equal(channelPlan.primaryChannelId, "lore", "fresh direct attention chooses its permitted source room");
+assert.deepEqual(channelPlan.snapshotChannelIds, ["aquarium", "lore", "legacy"], "routing exposes one deduplicated evidence neighborhood");
+assert.deepEqual(channelPlan.lowThresholdTopics, ["casual conversation"], "prompt renderers consume routing policy instead of recomputing thresholds");
+assert.equal(personaChannelSpeedMultiplier(routedIdentity), 3, "scheduler speed projection uses the routing organ's bounded channel policy");
+assert.equal(newestPendingMentionChannel([
+  { identityId: "nibu", channelId: "older", queuedAt: "2026-07-15T20:00:00.000Z" },
+  { identityId: "nibu", channelId: "newer", queuedAt: "2026-07-15T21:00:00.000Z" },
+] as RepoFacePendingMention[]), "newer", "routing follows the newest pending room obligation");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {
