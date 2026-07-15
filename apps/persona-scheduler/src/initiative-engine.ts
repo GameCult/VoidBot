@@ -45,6 +45,13 @@ export interface ParticipantSpec {
 
 export interface PendingMention {
   identityId: string;
+  id?: string;
+  channelId?: string;
+  messageId?: string;
+  authorId?: string;
+  authorName?: string;
+  queuedAt?: string;
+  visiblePrompt?: string;
 }
 
 export interface InitiativeState<TParticipant extends InitiativeParticipant = InitiativeParticipant> {
@@ -154,6 +161,34 @@ export function reconcileParticipants(input: ReconcileParticipantsInput): Initia
       ],
     };
   });
+}
+
+export function reconcileInitiativeParticipants<TSpec extends ParticipantSpec>(input: {
+  state: InitiativeState;
+  specs: TSpec[];
+  defaultChannelId?: string;
+  speedOverrides: Record<string, number>;
+  heatOverrides: Record<string, number>;
+  baseRecoveryMinutes: number;
+  globalHeat: number;
+  activeTurns: Map<string, string>;
+  completedThisTick: Set<string>;
+}): void {
+  input.state.participants = reconcileParticipants({
+    existing: input.state.participants,
+    specs: input.specs,
+    defaultChannelId: input.defaultChannelId,
+    speedOverrides: input.speedOverrides,
+    heatOverrides: input.heatOverrides,
+    initiativeClock: input.state.initiativeClock,
+    baseRecoveryMinutes: input.baseRecoveryMinutes,
+    globalHeat: input.globalHeat,
+  }).map((participant) => applyActiveTurnFreeze(
+    participant,
+    input.activeTurns.get(participant.identityId),
+    input.state,
+    input.completedThisTick,
+  ));
 }
 
 export function applyActiveTurnFreeze<TParticipant extends InitiativeParticipant>(
@@ -315,6 +350,96 @@ export function applyPendingMentionPriority(state: InitiativeState): void {
   }
 }
 
+export function applySchedulerControls(input: {
+  state: InitiativeState;
+  baseRecoveryMinutes: number;
+  globalHeat: number;
+}): void {
+  Object.assign(input.state, {
+    baseRecoveryMinutes: input.baseRecoveryMinutes,
+    globalHeat: input.globalHeat,
+  });
+}
+
+export function recordSchedulerSkip(input: {
+  state: InitiativeState;
+  skippedAt: Date;
+  reason: string;
+  details?: Record<string, unknown>;
+}): void {
+  input.state.lastTickAt = input.skippedAt.toISOString();
+  input.state.history.push({
+    type: "skipped",
+    reason: input.reason,
+    skippedAt: input.state.lastTickAt,
+    ...input.details,
+  });
+  trimSchedulerHistory(input.state);
+}
+
+export function recordStaleActiveTurnRecoveries(input: {
+  state: InitiativeState;
+  recoveredAt: Date;
+  recoveries: Array<{
+    identityId: string;
+    jobId: string;
+    requestMessageId?: string;
+    state: string;
+    updatedAt: string;
+    ageMinutes: number;
+  }>;
+}): void {
+  for (const stale of input.recoveries) {
+    input.state.history.push({
+      type: "stale_active_turn_recovered",
+      identityId: stale.identityId,
+      activeJobId: stale.jobId,
+      requestMessageId: stale.requestMessageId,
+      jobState: stale.state,
+      jobUpdatedAt: stale.updatedAt,
+      ageMinutes: stale.ageMinutes,
+      recoveredAt: input.recoveredAt.toISOString(),
+    });
+  }
+}
+
+export function consumePendingMentions(input: {
+  state: InitiativeState;
+  participant: InitiativeParticipant;
+  mentions: PendingMention[];
+  consumedAt: string;
+  activeJobId?: string;
+  requestMessageId?: string;
+}): void {
+  if (input.mentions.length === 0) return;
+  const consumedIds = new Set(input.mentions.map((entry) => entry.id).filter((id): id is string => Boolean(id)));
+  input.state.pendingMentions = input.state.pendingMentions.filter((entry) => !entry.id || !consumedIds.has(entry.id));
+  input.state.history.push({
+    type: "pending_mentions_consumed",
+    identityId: input.participant.identityId,
+    participantKind: input.participant.participantKind,
+    turnKind: input.participant.turnKind,
+    activeJobId: input.activeJobId,
+    requestMessageId: input.requestMessageId,
+    consumedAt: input.consumedAt,
+    mentionCount: input.mentions.length,
+    mentions: input.mentions.slice(-6).map((mention) => ({
+      id: mention.id,
+      channelId: mention.channelId,
+      messageId: mention.messageId,
+      authorId: mention.authorId,
+      authorName: mention.authorName,
+      queuedAt: mention.queuedAt,
+      visiblePrompt: collapseWhitespace(mention.visiblePrompt ?? "", 240),
+    })),
+  });
+}
+
+export function finalizeSchedulerTick(state: InitiativeState, completedAt: Date): void {
+  state.lastTickAt = completedAt.toISOString();
+  trimSchedulerHistory(state);
+}
+
 export function applySemanticPressureProjection(input: {
   state: InitiativeState;
   projections: SemanticPressureProjection[];
@@ -397,6 +522,14 @@ export function selectReadyParticipants<TParticipant extends InitiativeParticipa
 
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function trimSchedulerHistory(state: InitiativeState, limit = 80): void {
+  state.history = state.history.slice(-limit);
+}
+
+function collapseWhitespace(value: string, maxLength: number): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function initiativeSpeedFor(spec: ParticipantSpec, overrides: Record<string, number>): number {

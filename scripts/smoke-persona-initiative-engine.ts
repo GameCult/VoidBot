@@ -12,9 +12,14 @@ import {
   advanceInitiativeClockFromWallClock,
   applyActiveTurnFreeze,
   applyPendingMentionPriority,
+  applySchedulerControls,
   applySemanticPressureProjection,
+  consumePendingMentions,
+  finalizeSchedulerTick,
   reconcileParticipants,
+  reconcileInitiativeParticipants,
   recordDryRunSelection,
+  recordSchedulerSkip,
   recordTurnFailedToStart,
   recordTurnStarted,
   selectReadyParticipants,
@@ -237,6 +242,43 @@ assert.equal(pressureState.participants[0].dynamicHeat, 2.2, "the engine owns pr
 assert.deepEqual(pressureState.participants[0].semanticInterruptReceipts, ["pressure-message"], "semantic interruption is consumed exactly once by scheduler state");
 assert.equal(pressureState.participants[1].responsePressure, 0, "missing projections explicitly cool stale pressure");
 assert.equal(pressureState.history.at(-1)?.type, "semantic_response_interrupt", "the state owner records the semantic transition");
+
+const commitState: InitiativeState = {
+  initiativeClock: 20,
+  participants: [participant("commit-owner", 25)],
+  pendingMentions: [{ identityId: "commit-owner", id: "mention-1", visiblePrompt: "  answer   this  " }],
+  history: [],
+};
+applySchedulerControls({ state: commitState, baseRecoveryMinutes: 45, globalHeat: 1.2 });
+assert.equal((commitState as InitiativeState & { baseRecoveryMinutes: number }).baseRecoveryMinutes, 45, "scheduler controls cross one engine commit primitive");
+consumePendingMentions({
+  state: commitState,
+  participant: commitState.participants[0],
+  mentions: commitState.pendingMentions,
+  consumedAt: "2026-07-15T21:00:00.000Z",
+});
+assert.equal(commitState.pendingMentions.length, 0, "only the engine consumes pending attention after queue success");
+assert.equal((commitState.history.at(-1)?.mentions as Array<{ visiblePrompt: string }>)[0].visiblePrompt, "answer this", "the durable consumption witness is bounded and normalized");
+finalizeSchedulerTick(commitState, new Date("2026-07-15T21:01:00.000Z"));
+assert.equal(commitState.lastTickAt, "2026-07-15T21:01:00.000Z", "tick finalization belongs to the state owner");
+
+const skippedState: InitiativeState = { initiativeClock: 0, participants: [], pendingMentions: [], history: [] };
+recordSchedulerSkip({ state: skippedState, skippedAt: new Date("2026-07-15T21:02:00.000Z"), reason: "paused" });
+assert.equal(skippedState.history[0].type, "skipped", "pause observations become scheduler history through an engine commit");
+
+const reconciledState: InitiativeState = { initiativeClock: 20, participants: [], pendingMentions: [], history: [] };
+reconcileInitiativeParticipants({
+  state: reconciledState,
+  specs: [{ id: "resident", participantKind: "repo_face", turnKind: "repo_face_rumination", repoName: "Resident", displayName: "Resident", allowedChannelIds: ["aquarium"], channelSpeedMultiplier: 1 }],
+  defaultChannelId: "aquarium",
+  speedOverrides: {},
+  heatOverrides: {},
+  baseRecoveryMinutes: 30,
+  globalHeat: 1,
+  activeTurns: new Map(),
+  completedThisTick: new Set(),
+});
+assert.deepEqual(reconciledState.participants.map((entry) => entry.identityId), ["resident"], "the engine commits reconciled participants instead of returning a second-writer patch");
 
 const contextMessages = await fetchRecentDiscordMessages({
   botToken: "test-token",

@@ -36,12 +36,16 @@ import {
 } from "@voidbot/shared";
 import {
   advanceInitiativeClockFromWallClock,
-  applyActiveTurnFreeze,
   applyPendingMentionPriority,
+  applySchedulerControls,
   applySemanticPressureProjection,
+  consumePendingMentions,
+  finalizeSchedulerTick,
   countPendingMentionsByIdentity,
-  reconcileParticipants,
+  reconcileInitiativeParticipants,
   recordDryRunSelection,
+  recordSchedulerSkip,
+  recordStaleActiveTurnRecoveries,
   recordTurnFailedToStart,
   recordTurnStarted,
   rescheduleStaleOverdueParticipants,
@@ -107,15 +111,12 @@ async function main(): Promise<void> {
   const pause = await readAgentSwarmPause();
   if (pause.paused) {
     const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
-    state.lastTickAt = new Date().toISOString();
-    state.history.push({
-      type: "skipped",
+    recordSchedulerSkip({
+      state,
+      skippedAt: new Date(),
       reason: "agent_swarm_paused",
-      skippedAt: state.lastTickAt,
-      pausePath: pause.path,
-      pauseReason: pause.reason,
+      details: { pausePath: pause.path, pauseReason: pause.reason },
     });
-    state.history = state.history.slice(-80);
     if (!dryRun) {
       await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
       publishSwarmDashboardSurface();
@@ -136,13 +137,11 @@ async function main(): Promise<void> {
 
   if (!config.repoFaceHeartbeats.enabled && !process.argv.includes("--force")) {
     const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
-    state.lastTickAt = new Date().toISOString();
-    state.history.push({
-      type: "skipped",
+    recordSchedulerSkip({
+      state,
+      skippedAt: new Date(),
       reason: "repo_face_heartbeats_disabled",
-      skippedAt: state.lastTickAt,
     });
-    state.history = state.history.slice(-80);
     await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
     publishSwarmDashboardSurface();
     return;
@@ -157,42 +156,24 @@ async function main(): Promise<void> {
   const activeTurnScan = dryRun
     ? { active: new Map<string, string>(), staleRecovered: [] }
     : await scanActivePersonaTurns(config);
-  for (const stale of activeTurnScan.staleRecovered) {
-    state.history.push({
-      type: "stale_active_turn_recovered",
-      identityId: stale.identityId,
-      activeJobId: stale.jobId,
-      requestMessageId: stale.requestMessageId,
-      jobState: stale.state,
-      jobUpdatedAt: stale.updatedAt,
-      ageMinutes: stale.ageMinutes,
-      recoveredAt: now.toISOString(),
-    });
-  }
+  recordStaleActiveTurnRecoveries({ state, recoveries: activeTurnScan.staleRecovered, recoveredAt: now });
 
   const swarmControl = await readSwarmControlState();
   const globalHeat = swarmControl?.globalHeat ?? config.repoFaceHeartbeats.globalHeat;
-  state.baseRecoveryMinutes = config.repoFaceHeartbeats.baseRecoveryMinutes;
-  state.globalHeat = globalHeat;
+  applySchedulerControls({ state, baseRecoveryMinutes: config.repoFaceHeartbeats.baseRecoveryMinutes, globalHeat });
   const completedThisTick = new Set<string>();
   const participantSpecs = buildParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled);
-  state.participants = reconcileParticipants({
-    existing: state.participants,
+  reconcileInitiativeParticipants({
+    state,
     specs: participantSpecs,
     defaultChannelId: config.repoFaceHeartbeats.defaultChannelId,
     speedOverrides: config.repoFaceHeartbeats.speedOverrides,
     heatOverrides: config.repoFaceHeartbeats.heatOverrides,
-    initiativeClock: state.initiativeClock,
     baseRecoveryMinutes: config.repoFaceHeartbeats.baseRecoveryMinutes,
     globalHeat,
-  }).map((participant) =>
-    applyActiveTurnFreeze(
-      participant,
-      activeTurnScan.active.get(participant.identityId),
-      state,
-      completedThisTick,
-    ),
-  );
+    activeTurns: activeTurnScan.active,
+    completedThisTick,
+  });
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
   const idleCooling = await readDiscordActivitySnapshot({
@@ -287,29 +268,14 @@ async function main(): Promise<void> {
             requestMessageId: turn.requestMessageId,
             pendingMentionCount: pendingMentions.length,
           });
-          if (pendingMentions.length > 0) {
-            const consumedIds = new Set(pendingMentions.map((entry) => entry.id));
-            state.pendingMentions = state.pendingMentions.filter((entry) => !consumedIds.has(entry.id));
-            state.history.push({
-              type: "pending_mentions_consumed",
-              identityId: participant.identityId,
-              participantKind: participant.participantKind,
-              turnKind: participant.turnKind,
-              activeJobId: turn.activeJobId,
-              requestMessageId: turn.requestMessageId,
-              consumedAt: queuedAt,
-              mentionCount: pendingMentions.length,
-              mentions: pendingMentions.slice(-6).map((mention) => ({
-                id: mention.id,
-                channelId: mention.channelId,
-                messageId: mention.messageId,
-                authorId: mention.authorId,
-                authorName: mention.authorName,
-                queuedAt: mention.queuedAt,
-                visiblePrompt: collapseWhitespace(mention.visiblePrompt, 240),
-              })),
-            });
-          }
+          consumePendingMentions({
+            state,
+            participant,
+            mentions: pendingMentions,
+            consumedAt: queuedAt,
+            activeJobId: turn.activeJobId,
+            requestMessageId: turn.requestMessageId,
+          });
         } else if (turn.failureReason) {
           recordTurnFailedToStart({
             participant,
@@ -326,8 +292,7 @@ async function main(): Promise<void> {
     }
   }
 
-  state.history = state.history.slice(-80);
-  state.lastTickAt = now.toISOString();
+  finalizeSchedulerTick(state, now);
   if (!dryRun) {
     await writeHeartbeatState(config.repoFaceHeartbeats.statePath, state);
   }
@@ -431,7 +396,7 @@ async function queueRepoFaceTurn(input: {
 }): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   const identity = input.registryIdentities.find((entry) => entry.id === input.participant.identityId);
   if (!identity) {
-    return { created: false };
+    return { created: false, failureReason: `No registered Persona identity exists for ${input.participant.identityId}.` };
   }
 
   const preferredChannelId = newestPendingMentionChannel(input.pendingMentions);
@@ -442,12 +407,7 @@ async function queueRepoFaceTurn(input: {
   );
   const channelId = channelPlan.primaryChannelId;
   if (!channelId) {
-    input.participant.status = "blocked";
-    input.participant.constraints = mergeStrings(
-      input.participant.constraints,
-      "No CTB turn channel is configured for this Face.",
-    );
-    return { created: false };
+    return { created: false, failureReason: "No CTB turn channel is configured for this Persona." };
   }
 
   const contextBuilder = new ContextBuilder();
