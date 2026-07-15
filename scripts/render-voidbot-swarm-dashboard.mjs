@@ -1256,6 +1256,14 @@ function providerManifest() {
 }
 
 function buildEveProviderState(snapshot) {
+  const operatorBinding = (targetProp, pointerId) => ({
+    targetProp,
+    pointerId,
+    sourceId: "voidbot.swarm_operator_view:voidbot-swarm",
+    schemaId: "voidbot.swarm_operator_view.v1",
+    routeKind: "cultmesh-rudp",
+    routeDescription: swarmCultMeshRudpEndpoint,
+  });
   const summary = snapshot.summary ?? {};
   const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [];
   const upcoming = Array.isArray(snapshot.upcomingTurns) ? snapshot.upcomingTurns : [];
@@ -1421,10 +1429,13 @@ function buildEveProviderState(snapshot) {
               }),
             ]),
           ]),
-        eveNode("voidbot-status-line", "text", {
-          role: "mono",
-          text: `${summary.state ?? "unknown"}  ·  ${summary.participantCount ?? participants.length} agents  ·  ${activeTurns.length || summary.activeTurnCount || 0} active  ·  ${summary.readyNowCount ?? 0} ready  ·  ${mentionMetric(summary, recentMentionActivity)}  ·  mesh ${snapshot.cultMesh?.writeStatus ?? "pending"} / ${route.serverStatus}`,
-        }),
+        eveNode("voidbot-status-metrics", "row", { layout: { direction: "horizontal", gap: 8 } }, [
+          eveNode("metric-swarm-state", "metric", { label: "Swarm", value: summary.state ?? "unknown", stateBindings: [operatorBinding("value", "summary.state")] }),
+          eveNode("metric-participants", "metric", { label: "Faces", value: summary.participantCount ?? participants.length, stateBindings: [operatorBinding("value", "summary.participantCount")] }),
+          eveNode("metric-active-turns", "metric", { label: "Active", value: activeTurns.length || summary.activeTurnCount || 0, stateBindings: [operatorBinding("value", "summary.activeTurnCount")] }),
+          eveNode("metric-ready-now", "metric", { label: "Ready", value: summary.readyNowCount ?? 0, stateBindings: [operatorBinding("value", "summary.readyNowCount")] }),
+          eveNode("metric-pending-mentions", "metric", { label: "Mentions", value: summary.pendingMentionCount ?? 0, stateBindings: [operatorBinding("value", "summary.pendingMentionCount")] }),
+        ]),
         eveNode("voidbot-operator-deck", "grid", {
           columns: "minmax(260px, 0.95fr) minmax(320px, 1.15fr) minmax(280px, 1fr) minmax(260px, 0.9fr)",
           layout: { gap: 8, alignItems: "stretch" },
@@ -1435,42 +1446,36 @@ function buildEveProviderState(snapshot) {
               assetUri: selected.avatarUrl,
               status: selected.activeJobId ? "active" : selected.restState?.isNapping ? "napping" : selected.status,
               detail: `${selected.identityId} / ${selected.repoName}`,
+              stateBindings: [
+                operatorBinding("text", "selectedFace.displayName"),
+                operatorBinding("assetUri", "selectedFace.avatarUri"),
+                operatorBinding("status", "selectedFace.status"),
+                operatorBinding("detail", "selectedFace.repoName"),
+              ],
             }),
-            eveBar("turn", "Turn", minutesText(selected.nextTurnInMinutes), turnPercent(selected.nextTurnInMinutes)),
-            eveBar("memory", "Memory", String(memoryCount), Math.min(100, memoryCount * 5)),
-            eveBar("pressure", "Pressure", String(pressureCount), Math.min(100, pressureCount * 14)),
+            eveNode("metric-selected-turn", "metric", { label: "Turn (min)", value: minutesText(selected.nextTurnInMinutes), stateBindings: [operatorBinding("value", "selectedFace.nextTurnInMinutes")] }),
+            eveNode("metric-selected-memory", "metric", { label: "Memory", value: String(memoryCount), stateBindings: [operatorBinding("value", "selectedFace.memoryCount")] }),
+            eveNode("metric-selected-pressure", "metric", { label: "Pressure", value: String(pressureCount), stateBindings: [operatorBinding("value", "selectedFace.pressureCount")] }),
             eveNode("selected-description", "text", {
               role: "caption",
               text: compactText(selected.description ?? "No Face description registered.", 210),
+              stateBindings: [operatorBinding("text", "selectedFace.description")],
             }),
           ] : [
             eveNode("selected-missing", "text", { text: "No selected Face." }),
           ]),
           eveNode("voidbot-live-queue", "pane", { title: "Live Queue", density: "compact" }, [
-            ...liveQueue.map((turn, index) => eveNode(`live-queue-${index}-${stableId(turn.identityId)}`, "text", {
-              role: "mono",
-              text: `${String(index + 1).padStart(2, " ")} ${String(turn.operatorState ?? turnState(turn)).padEnd(6, " ")} ${String(turn.displayName ?? turn.identityId ?? "face").padEnd(14, " ")} ${minutesText(turn.nextTurnInMinutes).padEnd(8, " ")} ${turn.repoName ?? "repo"}`,
-            })),
-            ...(liveQueue.length ? [] : [eveNode("live-queue-empty", "text", { text: "No active or near-ready turns." })]),
+            eveNode("live-queue-items", "list", { items: [], stateBindings: [operatorBinding("items", "queue")] }),
           ]),
           eveNode("voidbot-route-pane", "pane", { title: "CultMesh Route", density: "compact" }, [
-            eveNode("route-summary", "text", {
-              role: "mono",
-              text: route.text,
-            }),
-            eveBar("route-mesh-write", "Store write", snapshot.cultMesh?.writeStatus ?? "pending", statusFill(snapshot.cultMesh?.writeStatus)),
-            eveBar("route-provider", "RUDP provider", route.serverStatus, statusFill(route.serverStatus)),
-            eveBar("route-odin", "Odin route", route.odinStatus, statusFill(route.odinStatus)),
-            ...operatorAlerts.slice(0, 4).map((alert, index) => eveNode(`operator-alert-${index}`, "text", {
-              role: "caption",
-              text: alert,
-            })),
+            eveNode("metric-route-store", "metric", { label: "Store", value: snapshot.cultMesh?.writeStatus ?? "pending", stateBindings: [operatorBinding("value", "route.storeWriteStatus")] }),
+            eveNode("metric-route-provider", "metric", { label: "Provider", value: route.serverStatus, stateBindings: [operatorBinding("value", "route.providerStatus")] }),
+            eveNode("metric-route-odin", "metric", { label: "Odin", value: route.odinStatus, stateBindings: [operatorBinding("value", "route.odinStatus")] }),
+            eveNode("route-alerts", "list", { items: [], stateBindings: [operatorBinding("items", "route.alerts")] }),
           ]),
           eveNode("voidbot-controls", "pane", { title: "Controls", density: "compact" }, [
-            eveNode("swarm-pause-status", "text", {
-              role: "mono",
-              text: `brake ${summary.paused ? "paused" : "unpaused"}\ncadence x${formatNumber(summary.cadenceMultiplier ?? 1, 2)}\nlatest request ${(snapshot.controls?.manualTurnRequests ?? [])[0]?.identityId ?? "none"}`,
-            }),
+            eveNode("metric-swarm-brake", "metric", { label: "Brake", value: summary.paused ? "paused" : "open", stateBindings: [operatorBinding("value", "summary.paused")] }),
+            eveNode("metric-next-face", "metric", { label: "Next", value: summary.nextDisplayName ?? "none", stateBindings: [operatorBinding("value", "summary.nextDisplayName")] }),
             eveNode("swarm-command-surface", "control.button", {
               label: summary.paused ? "Request unpause intent" : "Request pause intent",
               command: summary.paused ? "swarm.unpause.intent" : "swarm.pause.intent",
