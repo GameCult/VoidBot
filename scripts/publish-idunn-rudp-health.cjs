@@ -17,7 +17,7 @@ const {
   encodeRudpPacket,
 } = require("cultnet-ts");
 
-const { encode } = require(path.join(cultLibRoot, "node_modules", "@msgpack", "msgpack"));
+const { encode } = require(path.join(cultLibPackages, "cultnet-ts", "node_modules", "@msgpack", "msgpack"));
 
 const CULTNET_RUDP_PROTOCOL_ID = "cultnet.transport.rudp.v0";
 const IDUNN_HEALTH_RUDP_CONNECTION_ID = 0x1d0d0001;
