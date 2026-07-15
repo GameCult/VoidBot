@@ -54,6 +54,10 @@ import {
   newestPendingMentionChannel,
   personaChannelSpeedMultiplier,
 } from "../apps/persona-scheduler/dist/turn-routing.js";
+import {
+  readAgentSwarmPause,
+  readSwarmControlState,
+} from "../apps/persona-scheduler/dist/control-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -410,6 +414,22 @@ assert.equal(newestPendingMentionChannel([
   { identityId: "nibu", channelId: "older", queuedAt: "2026-07-15T20:00:00.000Z" },
   { identityId: "nibu", channelId: "newer", queuedAt: "2026-07-15T21:00:00.000Z" },
 ] as RepoFacePendingMention[]), "newer", "routing follows the newest pending room obligation");
+
+const controlDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-controls-"));
+try {
+  const pausePath = join(controlDirectory, "pause.json");
+  assert.equal((await readAgentSwarmPause({ path: pausePath })).paused, false, "an absent pause witness leaves the resident scheduler running");
+  await writeFile(pausePath, "{broken", "utf8");
+  const malformedPause = await readAgentSwarmPause({ path: pausePath });
+  assert.equal(malformedPause.paused, true, "a present malformed pause witness fails closed");
+  assert.match(malformedPause.reason ?? "", /could not be parsed/, "the pause source explains its fail-closed observation");
+  await writeFile(pausePath, JSON.stringify({ paused: false, reason: "operator resumed" }), "utf8");
+  assert.deepEqual(await readAgentSwarmPause({ path: pausePath }), { paused: false, path: pausePath, reason: "operator resumed" }, "the pause source returns operator facts without touching scheduler state");
+  assert.deepEqual(await readSwarmControlState({ loadControl: () => ({ globalHeat: 1.75 }) }), { globalHeat: 1.75 }, "typed CultMesh heat is projected through the control source");
+  assert.equal(await readSwarmControlState({ loadControl: () => ({ globalHeat: 4 }) }), null, "out-of-contract heat fails closed before the engine sees it");
+} finally {
+  await rm(controlDirectory, { recursive: true, force: true });
+}
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {

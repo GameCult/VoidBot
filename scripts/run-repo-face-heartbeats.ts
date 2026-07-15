@@ -1,8 +1,7 @@
 import "dotenv/config";
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
@@ -80,6 +79,10 @@ import {
   type PersonaChannelOption as RepoFaceChannelOption,
   type PersonaChannelPlan as RepoFaceChannelPlan,
 } from "../apps/persona-scheduler/dist/turn-routing.js";
+import {
+  readAgentSwarmPause,
+  readSwarmControlState,
+} from "../apps/persona-scheduler/dist/control-source.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -302,27 +305,6 @@ async function main(): Promise<void> {
       },
     })}\n`,
   );
-}
-
-async function readAgentSwarmPause(): Promise<{ paused: boolean; path: string; reason?: string }> {
-  const path = resolve(process.cwd(), "state", "agent-swarm-paused.json");
-  try {
-    const parsed = JSON.parse(stripLeadingBom(await readFile(path, "utf8"))) as Record<string, unknown>;
-    return {
-      paused: parsed.paused !== false,
-      path,
-      reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
-    };
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return { paused: false, path };
-    }
-    return {
-      paused: true,
-      path,
-      reason: "Pause file exists but could not be parsed; failing closed.",
-    };
-  }
 }
 
 interface ParticipantSpec extends SchedulerParticipantSpec {
@@ -4436,44 +4418,6 @@ function projectCharacterDescription(description: string | undefined): string | 
     )
     .filter((part) => part.length > 0)
     .join(" ");
-}
-
-async function readSwarmControlState(): Promise<{ globalHeat: number } | null> {
-  const controlStorePath = resolve(
-    process.env.VOIDBOT_SWARM_CONTROL_STORE || ".voidbot/private/swarm-controls.cc",
-  );
-  try {
-    const packageJson = resolve(process.cwd(), "..", "CultLib", "packages", "cultmesh-ts", "package.json");
-    const requireCult = createRequire(packageJson);
-    const { CultMesh } = requireCult("./dist/index.js");
-    const { defineDocumentType } = createRequire(
-      resolve(process.cwd(), "..", "CultLib", "packages", "cultcache-ts", "package.json"),
-    )("./dist/index.js");
-    const definition = defineDocumentType({
-      type: "voidbot.swarm_control_state",
-      schemaName: "voidbot.swarm_control_state",
-      schemaId: "voidbot.swarm_control_state.v1",
-      schemaVersion: "voidbot.swarm_control_state.v1",
-      global: false,
-      name: () => "voidbot-swarm",
-      schema: {
-        parse(value: unknown) {
-          if (!value || typeof value !== "object" || Array.isArray(value)) {
-            throw new Error("VoidBot swarm control state must be an object.");
-          }
-          return value;
-        },
-      },
-    });
-    const node = await CultMesh.createNode(controlStorePath, { documents: [definition] });
-    const value = node.get(definition, "voidbot-swarm") as { globalHeat?: unknown } | undefined;
-    const globalHeat = Number(value?.globalHeat);
-    return Number.isFinite(globalHeat) && globalHeat >= 0.05 && globalHeat <= 2
-      ? { globalHeat }
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function mergeStrings(values: string[], value: string): string[] {
