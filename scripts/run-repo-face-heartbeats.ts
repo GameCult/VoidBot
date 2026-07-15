@@ -64,23 +64,13 @@ import {
   type PersonaSchedulerState as FaceHeartbeatState,
 } from "../apps/persona-scheduler/dist/state-store.js";
 import { scanActivePersonaTurns } from "../apps/persona-scheduler/dist/active-turn-source.js";
+import {
+  readDiscordActivitySnapshot,
+  type IdleCoolingSnapshot,
+} from "../apps/persona-scheduler/dist/discord-activity-source.js";
 
 const HEARTBEAT_COMMAND = "repo-face-rumination";
 const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
-
-interface IdleCoolingSnapshot {
-  enabled: boolean;
-  active: boolean;
-  reason?: string;
-  checkedChannelIds: string[];
-  lastHumanActivityAt?: string;
-  idleForMinutes?: number;
-  idleAfterMinutes: number;
-  recoveryMinutes: number;
-  lastUnpromptedTurnQueuedAt?: string;
-  nextUnpromptedTurnAllowedAt?: string;
-  observedHumanMessages: Array<SourceMessage & { channelId: string }>;
-}
 
 interface RepoFaceChannelPlan {
   primaryChannelId?: string;
@@ -238,10 +228,16 @@ async function main(): Promise<void> {
   );
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);
-  const idleCooling = await readIdleCoolingSnapshot({
-    config,
-    identities: registry.identities,
-    state,
+  const idleCooling = await readDiscordActivitySnapshot({
+    botToken: config.botToken,
+    channelIds: [
+      config.repoFaceHeartbeats.defaultChannelId,
+      config.bifrostDiscordChannelId,
+      ...config.indexedChannelIds,
+      ...registry.identities.flatMap((identity) => getRepoDiscordIdentityAllowedChannelIds(identity)),
+    ],
+    policy: config.repoFaceHeartbeats.idleCooling,
+    history: state.history,
     now,
   });
   await applySemanticResponsePressure({
@@ -1291,120 +1287,6 @@ function pendingMentionsForParticipant(
   return state.pendingMentions
     .filter((mention) => mention.identityId === identityId)
     .sort((left, right) => Date.parse(left.queuedAt) - Date.parse(right.queuedAt));
-}
-
-async function readIdleCoolingSnapshot(input: {
-  config: ReturnType<typeof loadConfig>;
-  identities: RepoDiscordIdentity[];
-  state: FaceHeartbeatState;
-  now: Date;
-}): Promise<IdleCoolingSnapshot> {
-  const policy = input.config.repoFaceHeartbeats.idleCooling;
-  const checkedChannelIds = collectIdleCoolingChannelIds(input.config, input.identities);
-  const base = {
-    enabled: policy.enabled,
-    active: false,
-    checkedChannelIds,
-    idleAfterMinutes: policy.idleAfterMinutes,
-    recoveryMinutes: policy.recoveryMinutes,
-    lastUnpromptedTurnQueuedAt: newestUnpromptedTurnQueuedAt(input.state),
-    observedHumanMessages: [] as Array<SourceMessage & { channelId: string }>,
-  };
-
-  if (!input.config.botToken) {
-    return { ...base, reason: "missing_discord_bot_token" };
-  }
-  if (checkedChannelIds.length === 0) {
-    return { ...base, reason: "no_watched_discord_channels" };
-  }
-
-  let newestHumanActivityAt: string | undefined;
-  const fetchErrors: string[] = [];
-  for (const channelId of checkedChannelIds) {
-    try {
-      const messages = await fetchRecentDiscordMessages({
-        botToken: input.config.botToken,
-        channelId,
-        limit: 10,
-      });
-      for (const message of messages) {
-        if (message.isBot || !message.content.trim()) {
-          continue;
-        }
-        if (!base.observedHumanMessages.some((entry) => entry.id === message.id)) {
-          base.observedHumanMessages.push({ ...message, channelId });
-        }
-        const timestampMs = Date.parse(message.timestamp);
-        const newestMs = Date.parse(newestHumanActivityAt ?? "");
-        if (Number.isFinite(timestampMs) && (!Number.isFinite(newestMs) || timestampMs > newestMs)) {
-          newestHumanActivityAt = message.timestamp;
-        }
-      }
-    } catch (error) {
-      fetchErrors.push(`${channelId}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  const lastUnpromptedTurnQueuedAt = base.lastUnpromptedTurnQueuedAt;
-  const lastUnpromptedTurnQueuedMs = Date.parse(lastUnpromptedTurnQueuedAt ?? "");
-  const nextUnpromptedTurnAllowedAt = Number.isFinite(lastUnpromptedTurnQueuedMs)
-    ? new Date(lastUnpromptedTurnQueuedMs + policy.recoveryMinutes * 60_000).toISOString()
-    : undefined;
-
-  if (!policy.enabled) {
-    return {
-      ...base,
-      reason: fetchErrors.length > 0 ? "disabled_with_activity_fetch_failure" : "disabled",
-      lastHumanActivityAt: newestHumanActivityAt,
-    };
-  }
-
-  if (!newestHumanActivityAt) {
-    return {
-      ...base,
-      active: true,
-      reason: fetchErrors.length > 0 ? "activity_fetch_failed_or_no_human_messages" : "no_recent_human_messages",
-      nextUnpromptedTurnAllowedAt,
-    };
-  }
-
-  const idleForMinutes = Math.max(0, (input.now.getTime() - Date.parse(newestHumanActivityAt)) / 60_000);
-  return {
-    ...base,
-    active: idleForMinutes >= policy.idleAfterMinutes,
-    reason: fetchErrors.length > 0 ? "partial_activity_fetch_failure" : undefined,
-    lastHumanActivityAt: newestHumanActivityAt,
-    idleForMinutes: round3(idleForMinutes),
-    nextUnpromptedTurnAllowedAt,
-  };
-}
-
-function collectIdleCoolingChannelIds(
-  config: ReturnType<typeof loadConfig>,
-  identities: RepoDiscordIdentity[],
-): string[] {
-  return Array.from(new Set([
-    config.repoFaceHeartbeats.defaultChannelId,
-    config.bifrostDiscordChannelId,
-    ...config.indexedChannelIds,
-    ...identities.flatMap((identity) => getRepoDiscordIdentityAllowedChannelIds(identity)),
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
-}
-
-function newestUnpromptedTurnQueuedAt(state: FaceHeartbeatState): string | undefined {
-  for (const entry of [...state.history].reverse()) {
-    if (entry.type !== "queued" && entry.type !== "dry_run_selected") {
-      continue;
-    }
-    if (typeof entry.queuedAt !== "string") {
-      continue;
-    }
-    if (typeof entry.pendingMentionCount === "number" && entry.pendingMentionCount > 0) {
-      continue;
-    }
-    return entry.queuedAt;
-  }
-  return undefined;
 }
 
 function buildHeartbeatPrompt(input: {

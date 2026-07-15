@@ -28,6 +28,10 @@ import {
   parsePersonaTurnIdentity,
   staleActiveTurnThresholdMs,
 } from "../apps/persona-scheduler/dist/active-turn-source.js";
+import {
+  newestUnpromptedTurnQueuedAt,
+  readDiscordActivitySnapshot,
+} from "../apps/persona-scheduler/dist/discord-activity-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -169,6 +173,37 @@ assert.equal(parsePersonaTurnIdentity("agent-turn:nibu:2026-07-15"), "nibu", "th
 assert.equal(parsePersonaTurnIdentity("unrelated:job"), undefined, "unrelated jobs cannot freeze Persona initiative");
 assert.equal(staleActiveTurnThresholdMs(20 * 60_000), 60 * 60_000, "runtime timeout expands the stale-claim boundary");
 assert.equal(staleActiveTurnThresholdMs(5 * 60_000), 45 * 60_000, "stale recovery never becomes an impatient repair loop");
+assert.equal(newestUnpromptedTurnQueuedAt([
+  { type: "queued", queuedAt: "2026-07-15T19:00:00.000Z", pendingMentionCount: 0 },
+  { type: "queued", queuedAt: "2026-07-15T20:00:00.000Z", pendingMentionCount: 1 },
+]), "2026-07-15T19:00:00.000Z", "direct attention cannot consume the unprompted-turn cooling window");
+
+const activitySnapshot = await readDiscordActivitySnapshot({
+  botToken: "test-token",
+  channelIds: ["aquarium", "aquarium", undefined],
+  policy: { enabled: true, idleAfterMinutes: 30, recoveryMinutes: 90 },
+  history: [{ type: "queued", queuedAt: "2026-07-15T19:30:00.000Z", pendingMentionCount: 0 }],
+  now: new Date("2026-07-15T21:00:00.000Z"),
+  fetchImpl: async () => new Response(JSON.stringify([
+    {
+      id: "bot-message",
+      author: { id: "bot", username: "VoidBot", bot: true },
+      content: "machine noise",
+      timestamp: "2026-07-15T20:55:00.000Z",
+    },
+    {
+      id: "human-message",
+      author: { id: "human", username: "Human", global_name: "Operator" },
+      content: "still here",
+      timestamp: "2026-07-15T20:45:00.000Z",
+    },
+  ]), { status: 200, headers: { "content-type": "application/json" } }),
+});
+assert.deepEqual(activitySnapshot.checkedChannelIds, ["aquarium"], "activity acquisition deduplicates its explicit watched channels");
+assert.deepEqual(activitySnapshot.observedHumanMessages.map((message) => message.id), ["human-message"], "bot output cannot impersonate human room activity");
+assert.equal(activitySnapshot.active, false, "recent human activity keeps idle cooling inactive");
+assert.equal(activitySnapshot.idleForMinutes, 15, "idle duration is a neutral wall-clock observation");
+assert.equal(activitySnapshot.nextUnpromptedTurnAllowedAt, "2026-07-15T21:00:00.000Z", "the activity source derives the next unprompted window without mutating initiative");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {
