@@ -24,6 +24,10 @@ import {
   readPersonaSchedulerState,
   writePersonaSchedulerState,
 } from "../apps/persona-scheduler/dist/state-store.js";
+import {
+  parsePersonaTurnIdentity,
+  staleActiveTurnThresholdMs,
+} from "../apps/persona-scheduler/dist/active-turn-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -161,6 +165,10 @@ const inspected = participant("inspected", 69);
 recordDryRunSelection(inspected, queueState, "2026-07-15T21:02:00.000Z", 0);
 assert.equal(inspected.nextTurnAt, 100, "dry-run selection uses the same recovery ownership without claiming active load");
 assert.equal(inspected.currentLoad, 0, "inspection cannot impersonate a live job");
+assert.equal(parsePersonaTurnIdentity("agent-turn:nibu:2026-07-15"), "nibu", "the queue adapter recognizes current Persona turn witnesses");
+assert.equal(parsePersonaTurnIdentity("unrelated:job"), undefined, "unrelated jobs cannot freeze Persona initiative");
+assert.equal(staleActiveTurnThresholdMs(20 * 60_000), 60 * 60_000, "runtime timeout expands the stale-claim boundary");
+assert.equal(staleActiveTurnThresholdMs(5 * 60_000), 45 * 60_000, "stale recovery never becomes an impatient repair loop");
 
 const stateDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-scheduler-"));
 try {

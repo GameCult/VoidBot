@@ -63,15 +63,10 @@ import {
   writePersonaSchedulerState as writeHeartbeatState,
   type PersonaSchedulerState as FaceHeartbeatState,
 } from "../apps/persona-scheduler/dist/state-store.js";
+import { scanActivePersonaTurns } from "../apps/persona-scheduler/dist/active-turn-source.js";
 
 const HEARTBEAT_COMMAND = "repo-face-rumination";
-const MIN_STALE_ACTIVE_JOB_MS = 45 * 60_000;
 const MAX_FACE_IMAGE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
-
-interface ActiveTurnScan {
-  active: Map<string, string>;
-  staleRecovered: StaleActiveTurn[];
-}
 
 interface IdleCoolingSnapshot {
   enabled: boolean;
@@ -85,15 +80,6 @@ interface IdleCoolingSnapshot {
   lastUnpromptedTurnQueuedAt?: string;
   nextUnpromptedTurnAllowedAt?: string;
   observedHumanMessages: Array<SourceMessage & { channelId: string }>;
-}
-
-interface StaleActiveTurn {
-  identityId: string;
-  jobId: string;
-  requestMessageId?: string;
-  state: string;
-  updatedAt?: string;
-  ageMinutes: number;
 }
 
 interface RepoFaceChannelPlan {
@@ -213,7 +199,7 @@ async function main(): Promise<void> {
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
     ? { active: new Map<string, string>(), staleRecovered: [] }
-    : await listExistingActiveTurns(config.databaseDsn, config.stateStorageBackend, config);
+    : await scanActivePersonaTurns(config);
   for (const stale of activeTurnScan.staleRecovered) {
     state.history.push({
       type: "stale_active_turn_recovered",
@@ -1160,76 +1146,6 @@ async function wasTouchedAfter(path: string, timestampMs: number): Promise<boole
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
-}
-
-async function listExistingActiveTurns(
-  databaseDsn: string,
-  stateStorageBackend: "file" | "postgres",
-  config: ReturnType<typeof loadConfig>,
-): Promise<ActiveTurnScan> {
-  const storage = await createStateStorage({
-    backend: stateStorageBackend,
-    databaseDsn,
-    jobsFile: config.jobsFile,
-    auditLogFile: config.auditLogFile,
-    interactionMemoryFile: config.interactionMemoryFile,
-    rateLimitStateFile: config.rateLimitStateFile,
-  });
-  try {
-    const jobs = await storage.jobQueue.listByStates(["approved", "running"]);
-    const active = new Map<string, string>();
-    const staleRecovered: StaleActiveTurn[] = [];
-    const staleAfterMs = Math.max(MIN_STALE_ACTIVE_JOB_MS, config.codexExecTimeoutMs * 3);
-    const nowMs = Date.now();
-    for (const job of jobs) {
-      if (job.command !== HEARTBEAT_COMMAND) {
-        continue;
-      }
-      const match =
-        job.requestMessageId?.match(/^agent-turn:([^:]+):/) ??
-        job.requestMessageId?.match(/^agent-heartbeat:([^:]+):/) ??
-        job.requestMessageId?.match(/^repo-face-heartbeat:([^:]+):/) ??
-        job.requestMessageId?.match(/:repo-face:([^:]+):\d+$/);
-      if (match) {
-        const updatedMs = Date.parse(job.updatedAt);
-        const ageMs = Number.isFinite(updatedMs) ? nowMs - updatedMs : Number.POSITIVE_INFINITY;
-        if (ageMs > staleAfterMs) {
-          const ageMinutes = Number.isFinite(ageMs) ? Math.round((ageMs / 60_000) * 10) / 10 : -1;
-          await storage.jobQueue.markFailed(
-            job.id,
-            `Repo Face CTB recovered stale active turn job after ${ageMinutes} minutes without progress.`,
-          );
-          staleRecovered.push({
-            identityId: match[1],
-            jobId: job.id,
-            requestMessageId: job.requestMessageId,
-            state: job.state,
-            updatedAt: job.updatedAt,
-            ageMinutes,
-          });
-          continue;
-        }
-        active.set(match[1], job.id);
-      }
-    }
-    const voidLock = await readRecentLock(resolve(config.storageRoot, "status", "moderation-rumination.lock"), 20);
-    if (voidLock) {
-      active.set("void", "lock:moderation-rumination");
-    }
-    return { active, staleRecovered };
-  } finally {
-    await storage.close();
-  }
-}
-
-async function readRecentLock(path: string, maxAgeMinutes: number): Promise<boolean> {
-  try {
-    const info = await stat(path);
-    const ageMs = Date.now() - info.mtimeMs;
-    return ageMs >= 0 && ageMs < maxAgeMinutes * 60_000;
-  } catch {
-    return false;
-  }
 }
 
 async function applySemanticResponsePressure(input: {
