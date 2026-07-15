@@ -66,9 +66,7 @@ export interface RestSnapshot {
   isNapping: boolean;
 }
 
-export interface IdleCoolingPolicy {
-  enabled: boolean;
-  active: boolean;
+export interface UnpromptedTurnPolicy {
   nextUnpromptedTurnAllowedAt?: string;
 }
 
@@ -498,7 +496,7 @@ export function selectReadyParticipants<TParticipant extends InitiativeParticipa
   maxJobs: number,
   completedThisTick: Set<string>,
   restStates: Map<string, RestSnapshot>,
-  idleCooling: IdleCoolingPolicy,
+  unpromptedTurnPolicy: UnpromptedTurnPolicy,
   nowMs = Date.now(),
 ): TParticipant[] {
   const mentionCounts = countPendingMentionsByIdentity(state.pendingMentions);
@@ -512,12 +510,12 @@ export function selectReadyParticipants<TParticipant extends InitiativeParticipa
       return mentionDelta || left.nextTurnAt - right.nextTurnAt || right.reactionBias - left.reactionBias || right.effectiveSpeed - left.effectiveSpeed || left.identityId.localeCompare(right.identityId);
     });
 
-  if (!idleCooling.enabled || !idleCooling.active) return ready.slice(0, maxJobs);
   const mentioned = ready.filter((participant) => (mentionCounts.get(participant.identityId) ?? 0) > 0);
   const unprompted = ready.filter((participant) => (mentionCounts.get(participant.identityId) ?? 0) === 0);
-  const allowsUnprompted = !idleCooling.nextUnpromptedTurnAllowedAt || Date.parse(idleCooling.nextUnpromptedTurnAllowedAt) <= nowMs;
-  const cooled = allowsUnprompted && mentioned.length < maxJobs ? unprompted.slice(0, 1) : [];
-  return [...mentioned, ...cooled].slice(0, maxJobs);
+  const allowsUnprompted = !unpromptedTurnPolicy.nextUnpromptedTurnAllowedAt
+    || Date.parse(unpromptedTurnPolicy.nextUnpromptedTurnAllowedAt) <= nowMs;
+  const admittedUnprompted = allowsUnprompted && mentioned.length < maxJobs ? unprompted.slice(0, 1) : [];
+  return [...mentioned, ...admittedUnprompted].slice(0, maxJobs);
 }
 
 function round3(value: number): number {

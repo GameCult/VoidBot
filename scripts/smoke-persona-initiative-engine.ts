@@ -107,20 +107,30 @@ const selected = selectReadyParticipants(
   2,
   new Set(),
   new Map([["napping", { isNapping: true }]]),
-  { enabled: false, active: false },
+  {},
   Date.parse("2026-07-15T20:02:30.000Z"),
 );
-assert.deepEqual(selected.map((entry) => entry.identityId), ["mentioned", "quiet"], "mentions lead while unmentioned naps remain asleep");
+assert.deepEqual(selected.map((entry) => entry.identityId), ["mentioned", "quiet"], "mentions lead while only one unprompted participant is admitted");
 
 const cooled = selectReadyParticipants(
   state,
   2,
   new Set(),
   new Map(),
-  { enabled: true, active: true, nextUnpromptedTurnAllowedAt: "2026-07-15T21:00:00.000Z" },
+  { nextUnpromptedTurnAllowedAt: "2026-07-15T21:00:00.000Z" },
   Date.parse("2026-07-15T20:02:30.000Z"),
 );
 assert.deepEqual(cooled.map((entry) => entry.identityId), ["mentioned"], "idle cooling suppresses unprompted turns but never pending mentions");
+
+const activeRoomCadence = selectReadyParticipants(
+  state,
+  2,
+  new Set(),
+  new Map(),
+  { nextUnpromptedTurnAllowedAt: "2026-07-15T21:00:00.000Z" },
+  Date.parse("2026-07-15T20:03:30.000Z"),
+);
+assert.deepEqual(activeRoomCadence.map((entry) => entry.identityId), ["mentioned"], "normal room activity cannot bypass the global unprompted cadence");
 
 const blocked = { ...participant("existing", 44), status: "blocked" as const, currentLoad: 1, activeJobId: "job-1" };
 const reconciled = reconcileParticipants({
@@ -234,6 +244,16 @@ assert.deepEqual(activitySnapshot.observedHumanMessages.map((message) => message
 assert.equal(activitySnapshot.active, false, "recent human activity keeps idle cooling inactive");
 assert.equal(activitySnapshot.idleForMinutes, 15, "idle duration is a neutral wall-clock observation");
 assert.equal(activitySnapshot.nextUnpromptedTurnAllowedAt, "2026-07-15T21:00:00.000Z", "the activity source derives the next unprompted window without mutating initiative");
+
+const disabledCoolingSnapshot = await readDiscordActivitySnapshot({
+  botToken: "test-token",
+  channelIds: ["aquarium"],
+  policy: { enabled: false, idleAfterMinutes: 30, recoveryMinutes: 90 },
+  history: [{ type: "queued", queuedAt: "2026-07-15T19:30:00.000Z", pendingMentionCount: 0 }],
+  now: new Date("2026-07-15T20:00:00.000Z"),
+  fetchImpl: async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
+});
+assert.equal(disabledCoolingSnapshot.nextUnpromptedTurnAllowedAt, "2026-07-15T21:00:00.000Z", "disabling idle rest cannot disable unprompted speech cadence");
 
 const pressureState: InitiativeState = {
   initiativeClock: 50,

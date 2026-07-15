@@ -105,6 +105,7 @@ export async function readDiscordActivitySnapshot(input: {
       ...base,
       reason: fetchErrors.length > 0 ? "disabled_with_activity_fetch_failure" : "disabled",
       lastHumanActivityAt: newestHumanActivityAt,
+      nextUnpromptedTurnAllowedAt,
     };
   }
   if (!newestHumanActivityAt) {
