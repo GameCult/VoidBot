@@ -980,7 +980,7 @@ function timestampForFile(date) {
 function loadCultPackages() {
   const cultLibRoot = process.env.VOIDBOT_CULTLIB_ROOT
     ? resolve(process.env.VOIDBOT_CULTLIB_ROOT)
-    : resolve(repoRoot, "..", "CultLib-codex-cultmesh-reliability");
+    : resolve(repoRoot, "..", "CultLib-dev-runtime");
   const candidates = [
     resolve(cultLibRoot, "packages", "cultmesh-ts", "package.json"),
     resolve(repoRoot, "..", "CultMeshTS", "package.json"),

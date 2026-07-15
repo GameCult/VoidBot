@@ -285,7 +285,7 @@ function defineDocuments(defineDocumentType) {
 function loadCultRuntime() {
   const cultLibRoot = process.env.VOIDBOT_CULTLIB_ROOT
     ? path.resolve(process.env.VOIDBOT_CULTLIB_ROOT)
-    : path.resolve(repoRoot, "..", "CultLib-codex-cultmesh-reliability");
+    : path.resolve(repoRoot, "..", "CultLib-dev-runtime");
   const packageJson = path.resolve(cultLibRoot, "packages", "cultmesh-ts", "package.json");
   const requireCult = createRequire(packageJson);
   const { CultMesh } = requireCult("./dist/index.js");
