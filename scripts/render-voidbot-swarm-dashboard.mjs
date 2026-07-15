@@ -27,6 +27,8 @@ const transportProfileDocumentType = "idunn.daemon_transport_profile";
 const transportProfileSchemaId = "idunn.daemon_transport_profile.v1";
 const commandBoundaryDocumentType = "idunn.command_boundary";
 const commandBoundarySchemaId = "idunn.command_boundary.v1";
+const swarmControlDocumentType = "voidbot.swarm_control_state";
+const swarmControlSchemaId = "voidbot.swarm_control_state.v1";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -896,6 +898,16 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
       name: (value) => value?.boundary_id || value?.daemon_id || "voidbot",
       schema: { parse: parseObjectDocument("Idunn command boundary") },
     });
+    const swarmControlDefinition = defineDocumentType({
+      type: swarmControlDocumentType,
+      schemaName: swarmControlDocumentType,
+      schemaId: swarmControlSchemaId,
+      schemaVersion: swarmControlSchemaId,
+      contentHash: swarmControlSchemaId,
+      global: false,
+      name: () => "voidbot-swarm",
+      schema: { parse: parseObjectDocument("VoidBot swarm control state") },
+    });
     const node = await CultMesh.createNode(storePath, {
       documents: [
         snapshotDefinition,
@@ -905,6 +917,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
         providerCatalogDefinition,
         transportProfileDefinition,
         commandBoundaryDefinition,
+        swarmControlDefinition,
       ],
     });
     const providerCatalog = loadProviderAdvertisementCatalog(snapshot);
@@ -1374,7 +1387,19 @@ function buildEveProviderState(snapshot) {
             eveNode("swarm-heat-control", "pane", { title: "Heat", density: "compact", layout: { width: 220, minWidth: 220 } }, [
               eveNode("swarm-heat-value", "text", {
                 role: "mono",
-                text: `${formatNumber(summary.globalHeat, 2)}\nlow 0.05  ·  nominal 1.00  ·  hot 2.00`,
+                text: "loading",
+                stateBindings: [{
+                  targetProp: "text",
+                  pointerId: "globalHeat",
+                  sourceId: "voidbot.swarm_control_state:voidbot-swarm",
+                  schemaId: "voidbot.swarm_control_state.v1",
+                  routeKind: "cultmesh-rudp",
+                  routeDescription: swarmCultMeshRudpEndpoint,
+                }],
+              }),
+              eveNode("swarm-heat-scale", "text", {
+                role: "caption",
+                text: "low 0.05  ·  nominal 1.00  ·  hot 2.00",
               }),
               eveNode("swarm-heat-slider", "control.slider", {
                 label: "Swarm heat",
