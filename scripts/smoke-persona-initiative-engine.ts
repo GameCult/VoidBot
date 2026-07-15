@@ -64,6 +64,7 @@ import {
 } from "../apps/persona-scheduler/dist/control-source.js";
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
+import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -432,6 +433,17 @@ const routedIdentity = {
     speedMultiplier: 1,
   }],
 } as RepoDiscordIdentity;
+assert.deepEqual(await readPersonaMemoryRecall({
+  identity: routedIdentity,
+  config: undefined as never,
+  state: undefined,
+  projectedMemory: "No memory was acquired.",
+  recentMessages: [],
+  channelSnapshots: [],
+}), {
+  status: "unavailable",
+  reason: "No typed Persona state observation was supplied.",
+}, "semantic recall fails explicitly before touching vector infrastructure when the typed Mind observation is absent");
 const stateSourceDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-state-source-"));
 try {
   const statePath = join(stateSourceDirectory, "nibu.cc");
