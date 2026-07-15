@@ -4,6 +4,10 @@ This note is the source-grounded description of how the live VoidBot stack is sh
 
 Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract.md`. VoidBot owns Discord cognition, r/GameCultOrg moderation judgment when Bifrost supplies Reddit threads/posts, repo Face Reddit thread intent packaging, archive/source retrieval, typed Void self-state, and repo Face compatibility rails. Huginn owns Persona/.cc runtime inspection stewardship. Bifrost owns governed work and Reddit transport. Odin discovers provider-owned CultMesh surfaces. Eve/CultUI is the presentation contract; browser HTML is only a lowering.
 
+## Deployment Authority
+
+VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repository pushes. The supported deployment path is therefore `upstream main -> Idunn release drift -> Yggdrasil`; a local checkout is a development and diagnostic body only. Future agents must not search for, create, or revive a local VoidBot deployment. Idunn compares `origin/main` with the root-owned `/srv/voidbot/deploy/deployment.env` witness, builds an audited immutable release when they differ, atomically switches `/srv/voidbot/app/current`, and accepts success only after the service set is running and `DEPLOYED_REVISION` matches upstream.
+
 ## Main Organs
 
 - `apps/bot/src/discord-bot.ts`
@@ -112,7 +116,7 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
 
 - `scripts/start-voidbot-stack.ps1`
   - stack bootstrap, health checks, fresh build, stale-process cleanup, source-repo reconcile, bot/worker restart, runtime status emission.
-  - It now also ensures the local Bifrost Docker Compose stack is healthy through `BIFROST_ROOT` and `BIFROST_HEALTH_URL`, because VoidBot's repo Face proposal/article/comment, r/GameCultOrg Reddit thread/post, and Discord persona crossing paths call Bifrost bridge/intake tooling.
+  - It now also ensures the configured Bifrost CultMesh command URI, provider store, and command processor are present through `BIFROST_ROOT`, `BIFROST_CULTMESH_COMMAND_URI`, and `BIFROST_CULTMESH_STORE_PATH`, because VoidBot's repo Face Discord speech writes typed Bifrost command documents and waits for typed receipts.
 - `scripts/install-stack-startup-task.ps1`
   - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
@@ -169,6 +173,7 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
   - Each repo identity has a Face state path, defaulting to `.voidbot/private/repo-faces/<identity>.cc`. The MCP still exposes `read_repo_face_state` and `apply_repo_face_state_operation` for diagnostics and explicit administrative use, but normal character turns do not see those tools. The scheduler reads typed state, projects it into lived memory/mood/obligation language, and the Interpreter writes natural character reflection back into typed state operations.
   - The typed Face state now includes `void.face_affect`: needs, social bonds, status reads, and mood dimensions. This is the state-owned home for substrate concern, attention hunger, recognition needs, territoriality, friendships, rivalries, envy, pride, irritation, pampering, neglect, bypasses, and consultation politics. Affect is projected into heartbeat prompts and repo Face speaking pressure; concrete requests still become agency pressure, candidates, Bifrost topics, or work dispatch.
   - `get_voidbot_runtime_info` exposes the running MCP process id, workspace, self-state schema fingerprint, and registered document types so stale mounted MCP processes can be detected before a state read. `scripts/smoke-repo-face-affect-mcp-fixture.mjs` is the public-surface guard for that document kind. It starts `apps/worker/dist/mcp-server.js`, checks the runtime fingerprint, calls `read_repo_face_state`, and verifies `typedState.faceAffect` comes back with needs, social bonds, status reads, and mood dimensions arrays. This catches stale or incomplete MCP registration even when the direct state service can read the `.cc` file.
+  - Shared coordination state has its own authority at `.voidbot/private/repo-face-shared-documents.cc`. Face-role Codex turns see `read_shared_document`, `create_shared_document`, and `update_shared_document` in both their neutral capability prompt and the hard MCP allow-list. The MCP server derives the writer from `VOIDBOT_REPO_FACE_IDENTITY`, validates it against the canonical Face registry, stamps provenance, and rejects stale expected revisions. The Interpreter, scheduler, Bifrost, private Face `.cc` stores, and arbitrary filesystem paths are forbidden writers.
   - Repo Face prompts now carry an explicit identity doctrine block. Void's style pack contributes discipline, humor permission, and source-grounding habits, but the registered Face state, repo-local `.voidbot` home, avatar, and identity description override the speaking subject so a Face does not collapse back into base Void. `ensureRepoFaceInitialized` also repairs the typed `selfProfile` inside the Face `.cc` file, and repo Face MCP state reads/writes pass identity defaults into the state service, so raw state and rendered state agree.
   - Repo Faces are allowed to build a long-running map of their repo and propose concrete changes, including lore/design repairs. Discord jobs remain read-only: a Face must ask for human consensus before implementation changes canonical repo material. Once a proposal is concrete enough to review, it should cross the parent-owned proposal PR rail so GitHub becomes the durable argument surface. If a Face state grants a bylined essay lane, authored opinion essays can carry that Face's own vision without canon consensus as long as the authorship is explicit.
   - On first role-addressed chat, `ensureRepoFaceInitialized` creates the target repo's local `.voidbot/voice`, `.voidbot/state`, `.voidbot/birth`, and `.voidbot/logs` folders, writes `voice/identity.json`, and launches `scripts/run-repo-face-birth.mjs` detached if no birth summary is already present.
@@ -216,7 +221,7 @@ When present, an ignored local script at `.voidbot/private/check-voidbot-operati
 - Derived state:
   - JSON status files, generated HTML, source/archive freshness summaries, prompt-facing projections, and local debug snapshots are witnesses or lowerings. They do not own durable truth.
 - Forbidden writers:
-  - Child prompts, renderers, static dashboards, legacy JSON projections, Odin discovery, and Huginn inspection tools must not mutate VoidBot state except through advertised command bindings or typed operation ports.
+  - Child prompts, renderers, static dashboards, legacy JSON projections, Odin discovery, Huginn inspection tools, and command receipts must not mutate VoidBot or rendered binding state except through advertised command bindings, typed operation ports, and provider-owned live state handles.
 - Shared paths:
   - Manual turns, CTB heartbeats, direct mentions, role/name addressing, moderation rumination, repo Face speech, Bifrost digest reads, and swarm controls should converge on typed operations and Eve/CultUI bindings rather than parallel dashboard endpoints.
 - Cut line:
@@ -232,6 +237,14 @@ Current CultMesh namespace:
 - Eve surface state: `gamecult.eve.surface_state`
 - Eve interface binding: `gamecult.eve.interface_binding`
 - Store path: `.voidbot/status/cultmesh/voidbot-swarm-state.cc`
+
+Eve v2 live-binding path:
+
+1. VoidBot owns accepted heat in `.voidbot/private/swarm-controls.cc` and publishes that typed document through a retained provider session (`060da23`). The Eve surface binds both heat text and slider to it (`3d86b93`); neither contains a baked live value.
+2. CultLib's dev line owns typed live-publication handles, authenticated provider-session ingress, reliable reconnect evidence, and RUDP application receipts (`ebd8c78c`, `d4934233`, `8965f3c0`).
+3. Eve's browser lowering resolves bindings and owns subscription cleanup/rebind across surface changes (`85b0139`, `522df00`). Command receipts report applied/rejected intent but cannot paint authoritative values into controls.
+4. Odin remains discovery/aggregation. Hermodr's live-publication branch owns the authenticated provider-session broker and ordered SSE lowering (`5cb819e`, `561e320`); one-shot surface/document reads remain bootstrap and diagnostics only.
+5. Initial load, external provider mutation, command mutation, and reconnect must converge through the same provider update -> typed handle -> Eve binding path.
 
 Target Eve surfaces:
 
@@ -250,6 +263,7 @@ Migration order:
 4. Publish `voidbot.discord`, `voidbot.reddit`, `voidbot.archive`, `voidbot.source`, and `voidbot.repo_face` as typed Eve/CultUI bindings.
 5. Let Odin discover and aggregate the provider-owned surfaces.
 6. Demote old JSON exports, local HTML, and legacy MCP state reads to diagnostics once CultMesh/Eve and Huginn cover the same reality.
+7. Extend the proven binding path beyond swarm heat as each remaining baked operator value earns a typed provider-owned document; never revive whole-surface polling or receipt-driven DOM repair.
 
 Huginn demotion line: VoidBot may carry repo Face `.cc` state paths, MCP diagnostics, and Discord compatibility registry data, but Persona/.cc inspection and portable Persona publication belong to Huginn. VoidBot must not let its private registry, static HTML, or legacy MCP state tools become the canonical Persona authority.
 

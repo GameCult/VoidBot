@@ -1,5 +1,7 @@
 # VoidBot Architecture Overview
 
+> **Deployment:** VoidBot runs on Yggdrasil and is deployed by Idunn from upstream repository pushes. Local checkouts are development and diagnostic environments, not deployment targets. Do not create or restore a local VoidBot deployment path.
+
 This initial scaffold follows the phase-one shape from the spec:
 
 ```text
