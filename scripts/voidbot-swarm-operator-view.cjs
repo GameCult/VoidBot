@@ -25,7 +25,13 @@ function projectSwarmOperatorView({ heartbeat, orchestrator, pause, control, obs
       pressureCount: array(participant?.responsePressureEvidence).length,
       description: text(participant?.description),
       statePath: text(participant?.statePath) || text(participant?.faceStatePath),
-      statePreview: participant?.statePreview ?? null,
+      statePreview: preview(participant?.statePreview),
+      channels: array(participant?.channelPermissions).slice(0, 8).map((channel) => ({
+        label: text(channel?.label) || text(channel?.channelName) || "channel",
+        speedMultiplier: number(channel?.speedMultiplier) ?? 1,
+        speechThreshold: text(channel?.speechThreshold) || "threshold",
+        topic: text(channel?.topic) || "no topic",
+      })),
       pendingMentionCount,
     };
   });
@@ -102,7 +108,46 @@ function projectSwarmOperatorView({ heartbeat, orchestrator, pause, control, obs
       description: selected.description,
       statePath: selected.statePath,
       statePreview: selected.statePreview,
+      channels: selected.channels.map((channel) => ({
+        label: channel.label,
+        status: `${channel.speechThreshold} / x${channel.speedMultiplier}`,
+        detail: channel.topic,
+      })),
     } : null,
+    operations: {
+      summary: `organs ${organs.length} / ${deriveOrchestratorState(organs, orchestratorReadable)}`,
+      items: organs
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((organ) => ({
+          label: organ.label,
+          status: organ.status,
+          detail: compact([
+            organ.lastFinishedAt ? `finished ${organ.lastFinishedAt}` : null,
+            organ.durationSeconds === null ? null : `${organ.durationSeconds}s`,
+          ]).join(" / "),
+        })),
+    },
+    pressure: [...participants]
+      .sort((left, right) => right.pressureCount - left.pressureCount || right.memoryCount - left.memoryCount || left.displayName.localeCompare(right.displayName))
+      .slice(0, 6)
+      .map((participant) => ({
+        label: participant.displayName,
+        status: `pressure ${participant.pressureCount}`,
+        detail: `memory ${participant.memoryCount} / heat ${participant.heat ?? "?"}`,
+      })),
+    mentions: array(heartbeat?.pendingMentions).slice(0, 6).map((mention) => ({
+      label: text(mention?.identityId) || "face",
+      status: "pending",
+      detail: compact([text(mention?.createdAt) || text(mention?.queuedAt), text(mention?.prompt)]).join(" / "),
+    })),
+    recentEvents: array(heartbeat?.history).slice(-8).reverse().map((event) => ({
+      label: text(event?.type) || "event",
+      status: text(event?.identityId) || "swarm",
+      detail: compact([
+        text(event?.observedAt) || text(event?.queuedAt) || text(event?.consumedAt) || text(event?.appliedAt),
+        text(event?.reason) || text(event?.statusPath),
+      ]).join(" / "),
+    })),
   };
 }
 
@@ -205,11 +250,20 @@ function buildAlerts({ sources, organs }) {
 function array(value) { return Array.isArray(value) ? value : []; }
 function object(value) { return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }
 function text(value) { return typeof value === "string" && value.trim() ? value : null; }
-function number(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
+function number(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 function subtract(left, right) { return left === null || right === null ? null : Math.round((left - right) * 1000) / 1000; }
 function nullableOrder(left, right) { return left === null ? 1 : right === null ? -1 : left - right; }
 function compact(values) { return values.filter((value) => value !== null); }
 function formatTurnDistance(value) { return value === null ? "unscheduled" : value <= 0 ? "ready now" : `turn in ${value}m`; }
+function preview(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
 
 module.exports = {
   RECORD_KEY,

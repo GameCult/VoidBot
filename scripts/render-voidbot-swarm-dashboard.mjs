@@ -29,6 +29,8 @@ const commandBoundaryDocumentType = "idunn.command_boundary";
 const commandBoundarySchemaId = "idunn.command_boundary.v1";
 const swarmControlDocumentType = "voidbot.swarm_control_state";
 const swarmControlSchemaId = "voidbot.swarm_control_state.v1";
+const swarmOperatorViewDocumentType = "voidbot.swarm_operator_view";
+const swarmOperatorViewSchemaId = "voidbot.swarm_operator_view.v1";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -908,6 +910,16 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
       name: () => "voidbot-swarm",
       schema: { parse: parseObjectDocument("VoidBot swarm control state") },
     });
+    const swarmOperatorViewDefinition = defineDocumentType({
+      type: swarmOperatorViewDocumentType,
+      schemaName: swarmOperatorViewDocumentType,
+      schemaId: swarmOperatorViewSchemaId,
+      schemaVersion: swarmOperatorViewSchemaId,
+      contentHash: swarmOperatorViewSchemaId,
+      global: false,
+      name: () => "voidbot-swarm",
+      schema: { parse: parseObjectDocument("VoidBot swarm operator view") },
+    });
     const node = await CultMesh.createNode(storePath, {
       documents: [
         snapshotDefinition,
@@ -918,6 +930,7 @@ async function writeCultMeshPublication(snapshot, eveState, storePath, allowStor
         transportProfileDefinition,
         commandBoundaryDefinition,
         swarmControlDefinition,
+        swarmOperatorViewDefinition,
       ],
     });
     const providerCatalog = loadProviderAdvertisementCatalog(snapshot);
@@ -1495,65 +1508,34 @@ function buildEveProviderState(snapshot) {
           layout: { gap: 8 },
         }, [
           eveNode("voidbot-state", "pane", { title: "State Detail", density: "compact" }, selectedLeaf ? [
-            eveNode("state-path", "text", { role: "mono", text: selectedLeaf.path ?? "state path" }),
-            eveNode("state-preview", "text", { role: "mono", text: compactText(selectedLeaf.detail ?? selectedLeaf.preview ?? "", 520) }),
+            eveNode("state-path", "text", { role: "mono", text: selectedLeaf.path ?? "state path", stateBindings: [operatorBinding("text", "selectedFace.statePath")] }),
+            eveNode("state-preview", "text", { role: "mono", text: compactText(selectedLeaf.detail ?? selectedLeaf.preview ?? "", 520), stateBindings: [operatorBinding("text", "selectedFace.statePreview")] }),
           ] : [
-            eveNode("state-empty", "text", { text: selected?.faceState?.error ?? "No readable Face state leaf." }),
+            eveNode("state-empty", "text", { text: selected?.faceState?.error ?? "No readable Face state leaf.", stateBindings: [operatorBinding("text", "selectedFace.statePreview")] }),
           ]),
           eveNode("voidbot-watchdog-pane", "pane", { title: "Operations", density: "compact" }, [
             eveNode("watchdog-summary", "text", {
               role: "mono",
               text: `orchestrator ${orchestrator.state ?? "unknown"}  organs ${organs.length}\nmesh ${snapshot.cultMesh?.writeStatus ?? "pending"}  ${shortIso(snapshot.cultMesh?.writtenAt ?? snapshot.generatedAt)}`,
+              stateBindings: [operatorBinding("text", "operations.summary")],
             }),
-            eveBar("watchdog", "Watchdog", watchdog?.lastStatus ?? "missing", statusFill(watchdog?.lastStatus)),
-            eveBar("repo-face-organ", "Faces", repoFaceOrgan?.lastStatus ?? "missing", statusFill(repoFaceOrgan?.lastStatus)),
-            eveBar("swarm-surface-organ", "Eve surface", swarmSurfaceOrgan?.lastStatus ?? "missing", statusFill(swarmSurfaceOrgan?.lastStatus)),
-            ...organs
-              .slice()
-              .sort((left, right) => String(left.id ?? "").localeCompare(String(right.id ?? "")))
-              .slice(0, 5)
-              .map((organ) => eveNode(`watchdog-organ-${stableId(organ.id)}`, "text", {
-                role: "caption",
-                text: `${organ.label ?? organ.id ?? "organ"}: ${organ.lastStatus ?? "unknown"} / exit ${organ.lastExitCode ?? "?"}`,
-              })),
+            eveNode("operations-items", "list", { items: [], stateBindings: [operatorBinding("items", "operations.items")] }),
           ]),
-          eveNode("voidbot-pressure-pane", "pane", { title: "Pressure", density: "compact" }, highPressureFaces.map((face, index) =>
-            eveNode(`pressure-face-${index}-${stableId(face.identityId)}`, "text", {
-              role: "mono",
-              text: `${String(index + 1).padStart(2, " ")} ${String(face.displayName ?? face.identityId ?? "face").padEnd(14, " ")} mem ${String(faceMemoryCount(face)).padStart(2, " ")}  prs ${String(facePressureCount(face)).padStart(2, " ")}  heat ${formatNumber(face.heat, 2)}  q ${face.queuedCount ?? 0}`,
-            }),
-          )),
+          eveNode("voidbot-pressure-pane", "pane", { title: "Pressure", density: "compact" }, [
+            eveNode("pressure-items", "list", { items: [], stateBindings: [operatorBinding("items", "pressure")] }),
+          ]),
           eveNode("pending-mentions-pane", "pane", { title: "Mentions + Events", density: "compact" }, [
-            ...(pendingMentions.length
-              ? pendingMentions.slice(0, 4).map((mention, index) => eveNode(`pending-mention-${index}`, "text", {
-                role: "mono",
-                text: `${mention.identityId ?? "face"} / ${shortIso(mention.createdAt)}\n${compactText(mention.prompt ?? "", 150)}`,
-              }))
-              : [eveNode("pending-mentions-empty", "text", { text: mentionEmptyText(summary, recentMentionActivity) })]),
-            ...recentMentionActivity.slice(0, 5).map((activity, index) =>
-              eveNode(`recent-mention-activity-${index}`, "text", {
-                role: "mono",
-                text: mentionActivityText(activity),
-              }),
-            ),
-            ...recentEvents.slice(0, 4).map((event, index) =>
-              eveNode(`recent-event-${index}`, "text", {
-                role: "mono",
-                text: `${event.type ?? "event"} ${event.identityId ?? ""} ${shortIso(event.observedAt)}\n${compactText(event.reason ?? event.statusPath ?? "", 120)}`,
-              }),
-            ),
+            eveNode("pending-mention-items", "list", { items: [], stateBindings: [operatorBinding("items", "mentions")] }),
+            eveNode("recent-event-items", "list", { items: [], stateBindings: [operatorBinding("items", "recentEvents")] }),
           ]),
         ]),
         eveNode("voidbot-context", "grid", {
           columns: "minmax(0, 1fr)",
           layout: { gap: 8, overflowX: "hidden" },
         }, [
-          eveNode("selected-channels", "pane", { title: "Channels", density: "compact" }, (selected?.channelPermissions ?? []).slice(0, 8).map((channel, index) =>
-              eveNode(`selected-channel-${index}`, "text", {
-                role: "mono",
-                text: `${channel.label ?? "channel"} x${formatNumber(channel.speedMultiplier ?? 1, 2)} ${channel.speechThreshold ?? "threshold"}\n${channel.topic ?? "no topic"}`,
-              }),
-          )),
+          eveNode("selected-channels", "pane", { title: "Channels", density: "compact" }, [
+            eveNode("selected-channel-items", "list", { items: [], stateBindings: [operatorBinding("items", "selectedFace.channels")] }),
+          ]),
         ]),
       ]),
       assets: participants

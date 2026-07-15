@@ -13,9 +13,10 @@ test("projects bounded operator state and lets control own heat", () => {
       globalHeat: 0.5,
       initiativeClock: 12,
       lastTickAt: "2026-07-15T10:00:00.000Z",
-      pendingMentions: [{ identityId: "eve" }],
+      pendingMentions: [{ identityId: "eve", prompt: "status?", createdAt: "2026-07-15T09:59:00.000Z" }],
+      history: [{ type: "queued", identityId: "odin", queuedAt: "2026-07-15T09:58:00.000Z" }],
       participants: [
-        { identityId: "eve", displayName: "Eve", status: "active", nextTurnInMinutes: 3, heat: 1.2 },
+        { identityId: "eve", displayName: "Eve", status: "active", nextTurnInMinutes: 3, heat: 1.2, memories: ["one"], responsePressureEvidence: ["signal"], statePath: "face.eve", statePreview: { claim: "awake" }, channelPermissions: [{ label: "general", speedMultiplier: 1.5, speechThreshold: "low", topic: "room" }] },
         { identityId: "odin", displayName: "Odin", status: "active", activeJobId: "job-1", nextTurnInMinutes: 8 },
       ],
     },
@@ -32,7 +33,12 @@ test("projects bounded operator state and lets control own heat", () => {
   assert.equal(view.summary.nextIdentityId, "eve");
   assert.equal(view.queue[0].heat, 0.85);
   assert.equal(view.selectedFace.identityId, "eve");
-  assert.equal(view.recentEvents, undefined);
+  assert.equal(view.selectedFace.statePreview, '{"claim":"awake"}');
+  assert.deepEqual(view.selectedFace.channels, [{ label: "general", status: "low / x1.5", detail: "room" }]);
+  assert.equal(view.operations.items[0].label, "Heartbeat");
+  assert.equal(view.pressure[0].label, "Eve");
+  assert.equal(view.mentions[0].status, "pending");
+  assert.equal(view.recentEvents[0].label, "queued");
 });
 
 test("publication exposes the typed record without dashboard-shaped authority", () => {

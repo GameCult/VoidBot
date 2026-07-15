@@ -11,6 +11,11 @@ test("the operator surface is composed from metrics and typed lists", () => {
     "metric-route-provider",
     "route-alerts",
     "metric-swarm-brake",
+    "operations-items",
+    "pressure-items",
+    "pending-mention-items",
+    "recent-event-items",
+    "selected-channel-items",
   ]) assert.match(source, new RegExp(`\\b${componentId}\\b`));
 
   assert.match(source, /sourceId: "voidbot\.swarm_operator_view:voidbot-swarm"/);
@@ -23,5 +28,9 @@ test("the migrated prose authorities cannot reappear in the surface", () => {
     "route-summary",
     "swarm-pause-status",
     "live-queue-empty",
+    "watchdog-organ-",
+    "pressure-face-",
+    "pending-mention-0",
+    "recent-event-0",
   ]) assert.doesNotMatch(source, new RegExp(`\\b${removedId}\\b`));
 });
