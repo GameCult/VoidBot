@@ -978,8 +978,11 @@ function timestampForFile(date) {
 }
 
 function loadCultPackages() {
+  const cultLibRoot = process.env.VOIDBOT_CULTLIB_ROOT
+    ? resolve(process.env.VOIDBOT_CULTLIB_ROOT)
+    : resolve(repoRoot, "..", "CultLib-codex-cultmesh-reliability");
   const candidates = [
-    resolve(repoRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
+    resolve(cultLibRoot, "packages", "cultmesh-ts", "package.json"),
     resolve(repoRoot, "..", "CultMeshTS", "package.json"),
   ];
   for (const packageJson of candidates) {
@@ -1379,10 +1382,17 @@ function buildEveProviderState(snapshot) {
                 command: "swarm.set_heat",
                 transport: "cultmesh-binding",
                 providerId,
-                value: summary.globalHeat ?? 1,
                 min: 0.05,
                 max: 2,
                 step: 0.05,
+                stateBindings: [{
+                  targetProp: "value",
+                  pointerId: "globalHeat",
+                  sourceId: "voidbot.swarm_control_state:voidbot-swarm",
+                  schemaId: "voidbot.swarm_control_state.v1",
+                  routeKind: "cultmesh-rudp",
+                  routeDescription: swarmCultMeshRudpEndpoint,
+                }],
               }),
             ]),
           ]),
@@ -1713,13 +1723,14 @@ function clampPercent(value) {
 }
 
 function eveNode(id, kind, props = {}, children = []) {
-  const { layout, style, ...nodeProps } = props ?? {};
+  const { layout, style, stateBindings, ...nodeProps } = props ?? {};
   return {
     id,
     kind,
     props: nodeProps,
     ...(layout && typeof layout === "object" ? { layout } : {}),
     ...(style && typeof style === "object" ? { style } : {}),
+    ...(Array.isArray(stateBindings) && stateBindings.length > 0 ? { stateBindings } : {}),
     children,
   };
 }

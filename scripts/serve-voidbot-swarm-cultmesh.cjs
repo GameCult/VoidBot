@@ -40,6 +40,7 @@ main().catch((error) => {
 });
 
 async function main() {
+  await publishCurrentControlState();
   server = CultMesh.createRudpDocumentServer("voidbot-swarm-cultmesh", connectionId, {
     bindHost: bind.host,
     bindPort: bind.port,
@@ -83,6 +84,13 @@ async function main() {
   process.once("SIGTERM", shutdown);
 }
 
+async function publishCurrentControlState() {
+  if (!fs.existsSync(controlStorePath)) return;
+  const controlNode = await CultMesh.createNode(controlStorePath, { documents: [documents.swarmControl] });
+  const control = controlNode.get(documents.swarmControl, "voidbot-swarm");
+  if (control) await projectAcceptedHeat(control);
+}
+
 async function applySwarmCommand(document) {
   if (document.schemaId !== "gamecult.eve.command.v1") return;
   const command = document.payload;
@@ -101,6 +109,7 @@ async function applySwarmCommand(document) {
   };
   await node.put(documents.swarmControl, "voidbot-swarm", control);
   await node.flush?.(true);
+  await projectAcceptedHeat(control);
   console.log(`Applied swarm heat ${control.globalHeat} from ${control.commandId}`);
   return {
     binding: bindings.commandReceipt,
@@ -118,12 +127,18 @@ async function applySwarmCommand(document) {
       sourceVersion: Date.parse(control.updatedAt),
       issuedAtUtc: control.updatedAt,
       message: `Swarm heat applied at ${control.globalHeat}.`,
-      diagnostics: [{ binding: "voidbot.swarm.globalHeat", value: control.globalHeat }],
+      diagnostics: [{ code: "state-published", pointerId: "summary.globalHeat" }],
     },
     sourceRuntimeId: "voidbot-swarm-cultmesh",
     sourceRole: "swarm-control-owner",
     tags: ["eve", "command-receipt", "swarm-control"],
   };
+}
+
+async function projectAcceptedHeat(control) {
+  const node = await CultMesh.createNode(storePath, { documents: documentDefinitions });
+  await node.put(documents.swarmControl, "voidbot-swarm", control);
+  await node.flush?.(true);
 }
 
 async function announceToOdin() {
@@ -268,11 +283,14 @@ function defineDocuments(defineDocumentType) {
 }
 
 function loadCultRuntime() {
-  const packageJson = path.resolve(repoRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json");
+  const cultLibRoot = process.env.VOIDBOT_CULTLIB_ROOT
+    ? path.resolve(process.env.VOIDBOT_CULTLIB_ROOT)
+    : path.resolve(repoRoot, "..", "CultLib-codex-cultmesh-reliability");
+  const packageJson = path.resolve(cultLibRoot, "packages", "cultmesh-ts", "package.json");
   const requireCult = createRequire(packageJson);
   const { CultMesh } = requireCult("./dist/index.js");
-  const { CultNetDocumentRegistry, defineCultNetDocumentBinding } = createRequire(path.resolve(repoRoot, "..", "CultLib", "packages", "cultnet-ts", "package.json"))("./dist/index.js");
-  const { defineDocumentType } = createRequire(path.resolve(repoRoot, "..", "CultLib", "packages", "cultcache-ts", "package.json"))("./dist/index.js");
+  const { CultNetDocumentRegistry, defineCultNetDocumentBinding } = createRequire(path.resolve(cultLibRoot, "packages", "cultnet-ts", "package.json"))("./dist/index.js");
+  const { defineDocumentType } = createRequire(path.resolve(cultLibRoot, "packages", "cultcache-ts", "package.json"))("./dist/index.js");
   return { CultMesh, CultNetDocumentRegistry, defineCultNetDocumentBinding, defineDocumentType };
 }
 
