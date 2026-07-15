@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   queueAgentHeartbeatMention,
+  ensureVoidSelfStateIdentityProfile,
   readRepoFaceMentionInbox,
   resolveRepoFaceHeartbeatDebugProjectionPath,
   resolveRepoFaceHeartbeatStatePath,
@@ -62,6 +63,7 @@ import {
   readSwarmControlState,
 } from "../apps/persona-scheduler/dist/control-source.js";
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
+import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -430,6 +432,32 @@ const routedIdentity = {
     speedMultiplier: 1,
   }],
 } as RepoDiscordIdentity;
+const stateSourceDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-state-source-"));
+try {
+  const statePath = join(stateSourceDirectory, "nibu.cc");
+  const observation = await readPersonaStateObservation({
+    identity: { ...routedIdentity, faceStatePath: statePath },
+    storageRoot: stateSourceDirectory,
+    now: new Date("2026-07-15T21:00:00.000Z"),
+  });
+  assert.equal(observation.status, "missing", "the Persona state source reports a missing canonical mind explicitly");
+  await assert.rejects(access(statePath), "observing a missing Persona state cannot create or mutate its canonical surface");
+  await ensureVoidSelfStateIdentityProfile({
+    canonicalPath: statePath,
+    identity: { agentId: routedIdentity.id, publicName: routedIdentity.displayName, publicDescription: routedIdentity.description },
+  });
+  const beforeObservation = await readFile(statePath);
+  const populatedObservation = await readPersonaStateObservation({
+    identity: { ...routedIdentity, faceStatePath: statePath },
+    storageRoot: stateSourceDirectory,
+    now: new Date("2026-07-15T21:00:00.000Z"),
+  });
+  assert.equal(populatedObservation.status, "ok", "the source acquires typed mind and physiology facts from an existing CultCache surface");
+  assert.equal(populatedObservation.status === "ok" && populatedObservation.rest?.isNapping, false, "rest projection is deterministic at the supplied observation time");
+  assert.deepEqual(await readFile(statePath), beforeObservation, "Persona state observation cannot rewrite sleep, speaking pressure, or any other Mind field");
+} finally {
+  await rm(stateSourceDirectory, { recursive: true, force: true });
+}
 const channelPlan = buildPersonaChannelPlan(routedIdentity, "aquarium", "lore");
 assert.equal(channelPlan.primaryChannelId, "lore", "fresh direct attention chooses its permitted source room");
 assert.deepEqual(channelPlan.snapshotChannelIds, ["aquarium", "lore", "legacy"], "routing exposes one deduplicated evidence neighborhood");

@@ -12,11 +12,8 @@ import {
   getRepoFaceSourceRepoName,
   getRepoDiscordIdentityAllowedChannelIds,
   faceRegistryAsRepoDiscordRegistry,
-  projectRepoFaceSleepCycleForNow,
-  applyVoidSelfStateOperation,
   loadFaceIdentityRegistry,
   loadVoidSelfStateTypedDocuments,
-  type RepoFaceRestSnapshot,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
@@ -57,6 +54,11 @@ import {
   type PersonaSchedulerState as FaceHeartbeatState,
 } from "../apps/persona-scheduler/dist/state-store.js";
 import { scanActivePersonaTurns } from "../apps/persona-scheduler/dist/active-turn-source.js";
+import {
+  readPersonaStateObservation,
+  readPersonaStateObservations,
+  type PersonaStateObservation,
+} from "../apps/persona-scheduler/dist/persona-state-source.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -144,8 +146,10 @@ async function main(): Promise<void> {
   const faceRegistry = await loadFaceIdentityRegistry(config.repoDiscordIdentitiesPath);
   const registry = faceRegistryAsRepoDiscordRegistry(faceRegistry);
   const state = await readHeartbeatState(config.repoFaceHeartbeats.statePath);
-  const restStates = await loadRepoFaceRestStates(registry.identities, config.storageRoot, state, { dryRun });
   const now = new Date();
+  const personaStateObservations = await readPersonaStateObservations({ identities: registry.identities, storageRoot: config.storageRoot, now });
+  const restStates = new Map(Array.from(personaStateObservations.entries()).flatMap(([identityId, observation]) =>
+    observation.status === "ok" && observation.rest ? [[identityId, observation.rest] as const] : []));
   advanceInitiativeClockFromWallClock(state, now);
   const activeTurnScan = dryRun
     ? { active: new Map<string, string>(), staleRecovered: [] }
@@ -250,6 +254,7 @@ async function main(): Promise<void> {
           config,
           storage,
           queuedAt,
+          personaStateObservation: personaStateObservations.get(participant.identityId),
         });
 
         if (turn.created) {
@@ -346,6 +351,7 @@ async function queueParticipantTurn(input: {
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
   queuedAt: string;
+  personaStateObservation?: PersonaStateObservation;
 }): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   switch (input.participant.turnKind) {
     case "repo_face_rumination":
@@ -366,6 +372,7 @@ async function queueRepoFaceTurn(input: {
   config: ReturnType<typeof loadConfig>;
   storage: Awaited<ReturnType<typeof createStateStorage>>;
   queuedAt: string;
+  personaStateObservation?: PersonaStateObservation;
 }): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
   const identity = input.registryIdentities.find((entry) => entry.id === input.participant.identityId);
   if (!identity) {
@@ -414,6 +421,7 @@ async function queueRepoFaceTurn(input: {
     input.registryIdentities,
     roomContext,
     humanPronounGuidance,
+    input.personaStateObservation,
   );
   const repoActivitySurface = identity.identityKind === "native_persona"
     ? renderNativePersonaBodySurface(identity)
@@ -472,190 +480,6 @@ async function queueRepoFaceTurn(input: {
     activeJobId: result.activeJobId,
     requestMessageId: result.requestMessageId,
   };
-}
-
-async function loadRepoFaceRestStates(
-  identities: RepoDiscordIdentity[],
-  storageRoot: string,
-  heartbeatState: FaceHeartbeatState,
-  options: { dryRun?: boolean } = {},
-): Promise<Map<string, RepoFaceRestSnapshot>> {
-  const restStates = new Map<string, RepoFaceRestSnapshot>();
-  const now = new Date();
-
-  for (const identity of identities) {
-    if (identity.identityKind === "native_persona") {
-      continue;
-    }
-
-    try {
-      const statePath = resolveRepoFaceStatePath(identity, storageRoot);
-      const typedState = await loadVoidSelfStateTypedDocuments({
-        canonicalPath: statePath,
-        identity: {
-          agentId: identity.id,
-          publicName: identity.displayName,
-          publicDescription: identity.description,
-        },
-      });
-      const projected = projectRepoFaceSleepCycleForNow(
-        typedState.scheduledRuntime.sleepCycle,
-        identity.id,
-        now,
-      );
-      if (!options.dryRun && !sleepCyclesEqual(typedState.scheduledRuntime.sleepCycle, projected.sleepCycle)) {
-        await applyVoidSelfStateOperation(
-          {
-            canonicalPath: statePath,
-            identity: {
-              agentId: identity.id,
-              publicName: identity.displayName,
-              publicDescription: identity.description,
-            },
-          },
-          {
-            operation: "update_sleep_cycle",
-            sleepCycle: projected.sleepCycle,
-          },
-        );
-      }
-      const speakingPressure = buildRepoFaceSpeakingPressure(
-        typedState,
-        projected.sleepCycle,
-        now,
-      );
-      if (!options.dryRun && !speakingPressuresEqual(typedState.scheduledRuntime.speakingPressure, speakingPressure)) {
-        await applyVoidSelfStateOperation(
-          {
-            canonicalPath: statePath,
-            identity: {
-              agentId: identity.id,
-              publicName: identity.displayName,
-              publicDescription: identity.description,
-            },
-          },
-          {
-            operation: "update_speaking_pressure",
-            speakingPressure,
-          },
-        );
-      }
-      restStates.set(identity.id, {
-        isNapping: projected.isNapping,
-        napEndsAt: projected.napEndsAt,
-        nextNapStartsAt: projected.nextNapStartsAt,
-      });
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") {
-        throw error;
-      }
-    }
-  }
-
-  return restStates;
-}
-
-function buildRepoFaceSpeakingPressure(
-  typedState: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>,
-  sleepCycle: Awaited<ReturnType<typeof projectRepoFaceSleepCycleForNow>>["sleepCycle"],
-  now: Date,
-): Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"] {
-  const previous = typedState.scheduledRuntime.speakingPressure;
-  const lastReceipt = typedState.speechReceipts.recentReceipts
-    .slice()
-    .sort((left, right) => Date.parse(right.sentAt) - Date.parse(left.sentAt))
-    [0];
-  const lastSpokeAt = lastReceipt?.sentAt ?? previous.lastSpokeAt;
-  const hoursSinceSpeech = lastSpokeAt ? Math.max(0, (now.getTime() - Date.parse(lastSpokeAt)) / 3_600_000) : 24;
-  const recentSpeechDamping = clamp(Math.exp(-hoursSinceSpeech / 3.5), 0, 1);
-  const affectNeedPressure = (typedState.faceAffect.needs ?? [])
-    .filter((entry) => entry.status === "active" || entry.status === "neglected")
-    .reduce((sum, entry) => {
-      const neglectedWeight = entry.status === "neglected" ? 1.25 : 1;
-      const substrateWeight = ["substrate", "agency", "status", "territory", "recognition"].includes(entry.kind) ? 0.18 : 0.11;
-      return sum + entry.intensity * substrateWeight * neglectedWeight;
-    }, 0);
-  const statusReadPressure = (typedState.faceAffect.statusReads ?? [])
-    .filter((entry) => !entry.retiredAt)
-    .reduce((sum, entry) => {
-      const sharpWeight = ["neglected", "bypassed", "blocked", "ignored", "threatened", "challenged"].includes(entry.status) ? 0.14 : 0.08;
-      return sum + entry.intensity * sharpWeight;
-    }, 0);
-  const socialBondPressure = (typedState.faceAffect.socialBonds ?? [])
-    .filter((entry) => entry.status === "active")
-    .reduce((sum, entry) => sum + entry.intensity * 0.07, 0);
-  const relationshipStalenessPressure = repoFaceRelationshipStalenessPressure(typedState, now);
-  const moodPressure = (typedState.faceAffect.moodDimensions ?? [])
-    .reduce((sum, entry) => {
-      const expressiveWeight = ["anger", "annoyance", "irritation", "envy", "pride", "smugness", "playfulness", "anxiety", "commandForce", "restlessness"].includes(entry.name)
-        ? 0.06
-        : 0.025;
-      return sum + entry.value * expressiveWeight;
-    }, 0);
-  const agencyPressure = typedState.agencyPressure.pressures
-    .filter((entry) => entry.status === "active" || entry.status === "ready_to_act")
-    .reduce((sum, entry) => sum + entry.intensity * (entry.kind.includes("advocacy") ? 0.22 : 0.11), 0);
-  const candidatePressure = typedState.candidateInterventions.interventions
-    .filter((entry) => entry.status === "queued" || entry.status === "deferred")
-    .reduce((sum, entry) => sum + entry.priority * (entry.mustEventuallyShare ? 0.22 : 0.12), 0);
-  const silencePressure = clamp(hoursSinceSpeech / 8, 0, 1);
-  const sleepiness = sleepCycle.isNapping ? 0.22 : 0;
-  const targetNeed = clamp(
-    0.12 + silencePressure * 0.18 + affectNeedPressure + statusReadPressure + socialBondPressure + relationshipStalenessPressure + moodPressure + agencyPressure + candidatePressure - recentSpeechDamping * 0.24 - sleepiness,
-    0,
-    1,
-  );
-  const needToSpeak = round3(clamp((previous.needToSpeak ?? 0.25) * 0.58 + targetNeed * 0.42, 0, 1));
-
-  return {
-    needToSpeak,
-    confessionPressure: round3(clamp((previous.confessionPressure ?? 0.2) * 0.7 + moodPressure * 0.42 + socialBondPressure * 0.18 + relationshipStalenessPressure * 0.18, 0, 1)),
-    noveltyPressure: round3(clamp((previous.noveltyPressure ?? 0.25) * 0.62 + affectNeedPressure * 0.35 + statusReadPressure * 0.24 + relationshipStalenessPressure * 0.22 + candidatePressure * 0.28, 0, 1)),
-    recentSpeechDamping: round3(recentSpeechDamping),
-    lastSpokeAt,
-  };
-}
-
-function repoFaceRelationshipStalenessPressure(
-  typedState: VoidSelfStateTypedProjection,
-  now: Date,
-): number {
-  const nowMs = now.getTime();
-  const bondPressure = (typedState.faceAffect.socialBonds ?? [])
-    .filter((entry) => entry.status === "active" && entry.target.kind === "person")
-    .reduce((sum, entry) => {
-      const ageHours = ageHoursSince(entry.updatedAt, nowMs);
-      if (ageHours < 48) {
-        return sum;
-      }
-      return sum + clamp((ageHours - 48) / 120, 0, 1) * entry.intensity * 0.13;
-    }, 0);
-  const statusPressure = (typedState.faceAffect.statusReads ?? [])
-    .filter((entry) => !entry.retiredAt && entry.target.kind === "person")
-    .reduce((sum, entry) => {
-      const ageHours = ageHoursSince(entry.updatedAt, nowMs);
-      if (ageHours < 72) {
-        return sum;
-      }
-      return sum + clamp((ageHours - 72) / 144, 0, 1) * entry.intensity * 0.08;
-    }, 0);
-  return clamp(bondPressure + statusPressure, 0, 0.28);
-}
-
-function speakingPressuresEqual(
-  left: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"],
-  right: Awaited<ReturnType<typeof loadVoidSelfStateTypedDocuments>>["scheduledRuntime"]["speakingPressure"],
-): boolean {
-  return left.needToSpeak === right.needToSpeak
-    && left.confessionPressure === right.confessionPressure
-    && left.noveltyPressure === right.noveltyPressure
-    && left.recentSpeechDamping === right.recentSpeechDamping
-    && left.lastSpokeAt === right.lastSpokeAt;
-}
-
-function sleepCyclesEqual(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 async function startVoidModerationTurn(input: {
@@ -1019,6 +843,7 @@ async function renderRepoFaceMemorySurfaceForTurn(
     channelSnapshots: ChannelSnapshot[];
   },
   humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
+  observation?: PersonaStateObservation,
 ): Promise<string> {
   if (identity.identityKind === "native_persona") {
     return renderNativePersonaMemorySurface(
@@ -1027,11 +852,13 @@ async function renderRepoFaceMemorySurfaceForTurn(
       registryIdentities,
       roomContext,
       humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
+      observation,
     );
   }
 
-  const statePath = resolveRepoFaceStatePath(identity, config.storageRoot);
-  const typedState = await loadVoidSelfStateTypedDocuments({ canonicalPath: statePath });
+  const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
+  if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
+  const typedState = acquired.typedState;
   const curiosityGraphFacts = roomContext
     ? await renderRepoFaceCuriosityGraphFacts(identity, config, typedState, roomContext)
     : undefined;
@@ -1350,6 +1177,7 @@ async function renderNativePersonaMemorySurface(
     channelSnapshots: ChannelSnapshot[];
   },
   humanPronounGuidance: RepoFaceHumanPronounGuidance[] = [],
+  observation?: PersonaStateObservation,
 ): Promise<string> {
   const personaStatePath = identity.personaStatePath;
   if (!personaStatePath) {
@@ -1360,14 +1188,9 @@ async function renderNativePersonaMemorySurface(
   }
 
   if (extname(personaStatePath).toLowerCase() === ".cc") {
-    const typedState = await loadVoidSelfStateTypedDocuments({
-      canonicalPath: resolve(personaStatePath),
-      identity: {
-        agentId: identity.id,
-        publicName: identity.displayName,
-        publicDescription: identity.description,
-      },
-    });
+    const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
+    if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
+    const typedState = acquired.typedState;
     const statePacket = renderRepoFaceStatePacket(
       identity,
       typedState,
