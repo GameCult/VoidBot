@@ -12,6 +12,113 @@ export interface PersonaHumanPronounGuidance {
   evidenceExcerpt?: string;
 }
 
+export interface PersonaSocialContextProjection {
+  relationshipFreshness?: string;
+  socialGraph?: string;
+  peerOpening?: string;
+  socialPressure?: string;
+  pronouns?: string;
+  roomTexture?: string;
+  humanClarity?: string;
+}
+
+export function projectPersonaSocialContext(input: {
+  identity: RepoDiscordIdentity;
+  registryIdentities: RepoDiscordIdentity[];
+  state: VoidSelfStateTypedProjection;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+  pronounGuidance: PersonaHumanPronounGuidance[];
+  observedAt: Date;
+  topicAttractorFacts?: string;
+}): PersonaSocialContextProjection {
+  return {
+    relationshipFreshness: renderPersonaRelationshipFreshness({ identityName: input.identity.displayName, state: input.state, registryIdentities: input.registryIdentities, observedAt: input.observedAt }),
+    socialGraph: renderPersonaSocialGraph(input),
+    peerOpening: renderPersonaPeerOpening(input),
+    socialPressure: renderPersonaRelationshipPressure(input),
+    pronouns: renderPersonaHumanPronounFacts(input.pronounGuidance),
+    roomTexture: renderPersonaRoomTexture(input),
+    humanClarity: renderPersonaHumanClarityPressure(input),
+  };
+}
+
+export function renderPersonaPeerOpening(input: {
+  identity: RepoDiscordIdentity;
+  registryIdentities: RepoDiscordIdentity[];
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+}): string | undefined {
+  const selfTokens = new Set(socialTokens(input.identity.displayName, input.identity.id, input.identity.repoName));
+  const peersByToken = new Map<string, RepoDiscordIdentity>();
+  for (const peer of input.registryIdentities) for (const token of socialTokens(peer.displayName, peer.id, peer.repoName)) if (!selfTokens.has(token)) peersByToken.set(token, peer);
+  const entries = [
+    ...input.recentMessages.map((message) => ({ label: "current room", message })),
+    ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages.map((message) => ({ label: "nearby room", message }))),
+  ];
+  const byPeer = new Map<string, { peer: RepoDiscordIdentity; entries: Array<{ label: string; message: SourceMessage }> }>();
+  for (const entry of entries) {
+    if (!entry.message.isBot || !entry.message.content.trim()) continue;
+    const peer = peersByToken.get(normalizeSocialLabel(entry.message.authorName));
+    if (!peer) continue;
+    const bucket = byPeer.get(peer.id) ?? { peer, entries: [] };
+    bucket.entries.push(entry);
+    byPeer.set(peer.id, bucket);
+  }
+  const facts = [...byPeer.values()].sort((left, right) => right.entries.length - left.entries.length).slice(0, 6).map(({ peer, entries: peerEntries }) => {
+    const latest = peerEntries.at(-1);
+    const labels = [...new Set(peerEntries.map((entry) => entry.label))].join(", ");
+    return `- ${peer.displayName}: ${peerEntries.length} recent nearby message${peerEntries.length === 1 ? "" : "s"} in ${labels}. Latest visible line: "${latest ? collapse(latest.message.content, 180) : ""}"`;
+  });
+  return facts.length === 0 ? undefined : ["Recent peer openings for possible social reads:", ...facts, "These are raw openings for the projector to translate into possible trust, irritation, rivalry, alliance, or no social move at all. Do not treat them as consensus."].join("\n");
+}
+
+export function renderPersonaRelationshipPressure(input: {
+  identity: RepoDiscordIdentity;
+  registryIdentities: RepoDiscordIdentity[];
+  state: VoidSelfStateTypedProjection;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+}): string | undefined {
+  const selfTokens = pressureTokensForIdentity(input.identity);
+  const jurisdictionTokens = pressureTokens(input.identity.repoName, input.identity.displayName, input.identity.description, ...input.identity.channelPermissions.flatMap((permission) => [permission.label, permission.topic])).filter((token) => token.length >= 5);
+  const peerProfiles = input.registryIdentities.filter((peer) => normalizeSocialLabel(peer.id) !== normalizeSocialLabel(input.identity.id)).map((peer) => ({ identity: peer, tokens: pressureTokensForIdentity(peer) }));
+  const relationTargets = collectPersonaSocialRelations(input.state).map((relation) => ({ label: relation.targetLabel, tokens: pressureTokens(relation.targetLabel) })).filter((relation) => relation.tokens.length > 0);
+  const entries = [
+    ...input.recentMessages.map((message) => ({ label: "current room", message })),
+    ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages.map((message) => ({ label: "nearby room", message }))),
+  ];
+  const byId = new Map<string, { label: string; message: SourceMessage; score: number; signals: string[] }>();
+  for (const entry of entries) {
+    const content = collapse(entry.message.content, 10_000);
+    if (!content) continue;
+    const normalizedContent = normalizeSocialLabel(content);
+    const authorToken = normalizeSocialLabel(entry.message.authorName ?? entry.message.authorId);
+    const signals: string[] = [];
+    let score = 0;
+    if (tokenAppears(normalizedContent, selfTokens)) { score += 3; signals.push(`names ${input.identity.displayName}`); }
+    else if (tokenAppears(authorToken, selfTokens)) { score += 1; signals.push(`${input.identity.displayName}'s own recent line`); }
+    const peerMatches = peerProfiles.filter((peer) => tokenAppears(authorToken, peer.tokens) || tokenAppears(normalizedContent, peer.tokens)).slice(0, 3);
+    if (peerMatches.length > 0) { score += peerMatches.length; signals.push(`touches peer ${peerMatches.map((peer) => peer.identity.displayName).join("/")}`); }
+    const relationMatches = relationTargets.filter((relation) => tokenAppears(authorToken, relation.tokens) || tokenAppears(normalizedContent, relation.tokens)).slice(0, 3);
+    if (relationMatches.length > 0) { score += relationMatches.length; signals.push(`touches existing social target ${relationMatches.map((relation) => relation.label).join("/")}`); }
+    if (tokenAppears(normalizedContent, jurisdictionTokens)) { score += 1; signals.push("touches this jurisdiction or its domain language"); }
+    const kinds = pressureLanguageKinds(content);
+    if (kinds.length > 0) { score += 2; signals.push(`uses social/status language (${kinds.join(", ")})`); }
+    if (!entry.message.isBot && score > 0) { score += 1; signals.push("human voice"); }
+    if (score < 4) continue;
+    const existing = byId.get(entry.message.id);
+    if (!existing || score > existing.score) byId.set(entry.message.id, { label: entry.label, message: entry.message, score, signals: [...new Set(signals)] });
+  }
+  const facts = [...byId.values()].sort((left, right) => Date.parse(left.message.timestamp) - Date.parse(right.message.timestamp) || left.message.id.localeCompare(right.message.id)).slice(-8);
+  if (facts.length === 0) return undefined;
+  return [
+    "Recent relationship-pressure evidence:",
+    ...facts.map((fact) => `- [${fact.label}] ${fact.message.isBot ? `${fact.message.authorName} (agent/bot)` : fact.message.authorName} said: "${collapse(fact.message.content, 260)}" Signals: ${fact.signals.join("; ")}.`),
+    "These are raw provocations, not settled memories. Project them as tentative felt pressure only where this character's values, territory, current mood, or existing relationships make them matter.",
+  ].join("\n");
+}
+
 export function renderPersonaHumanPronounFacts(guidance: PersonaHumanPronounGuidance[]): string | undefined {
   if (guidance.length === 0) return undefined;
   return [
@@ -168,6 +275,10 @@ function addRelation(map: Map<string, { targetLabel: string; parts: string[]; in
 function collectUnmappedPeers(identity: RepoDiscordIdentity, registry: RepoDiscordIdentity[], relations: Array<{ targetLabel: string }>): RepoDiscordIdentity[] { const mapped = new Set(relations.flatMap((relation) => socialTokens(relation.targetLabel))); const self = new Set(socialTokens(identity.displayName, identity.id, identity.repoName)); return registry.filter((peer) => { const tokens = socialTokens(peer.displayName, peer.id, peer.repoName); return !tokens.some((token) => self.has(token)) && !tokens.some((token) => mapped.has(token)); }).sort((left, right) => left.displayName.localeCompare(right.displayName)).slice(0, 8); }
 function socialTokens(...values: Array<string | undefined>): string[] { return [...new Set(values.map(normalizeSocialLabel).filter(Boolean))]; }
 function cleanTarget(value: string | undefined): string { return collapse(value ?? "").replace(/^repo:/i, "").trim(); }
+function pressureTokensForIdentity(identity: RepoDiscordIdentity): string[] { return pressureTokens(identity.displayName, identity.id, identity.repoName); }
+function pressureTokens(...values: Array<string | undefined>): string[] { const tokens = new Set<string>(); for (const value of values) { const normalized = normalizeSocialLabel(value); if (normalized.length >= 3) tokens.add(normalized); for (const part of (value ?? "").replace(/([a-z])([A-Z])/g, "$1 $2").split(/[^A-Za-z0-9]+/).filter(Boolean)) { const token = normalizeSocialLabel(part); if (token.length >= 4) tokens.add(token); } } return [...tokens]; }
+function tokenAppears(text: string, tokens: string[]): boolean { return tokens.some((token) => token.length > 0 && text.includes(token)); }
+function pressureLanguageKinds(content: string): string[] { const text = content.toLowerCase(); const groups: Array<[string, RegExp]> = [["status", /\b(status|standing|rank|hierarchy|authority|overbearing|defer(?:red|ring)?|challenge[ds]?|humiliat(?:e|ed|ing)|respect)\b/], ["territory", /\b(turf|jurisdiction|steward(?:ship)?|custody|owner|ownership|belongs?|domain|lane|stepp(?:ed|ing)? on)\b/], ["consultation", /\b(consult(?:ed|ation|ing)?|ask(?:ed|ing)?|permission|bypass(?:ed|ing)?|decorative|flavo[u]?r theater|rubber[- ]?stamp)\b/], ["affiliation", /\b(friend(?:ship)?|rival(?:ry)?|alliance|resent(?:ment|s|ed|ing)?|trust|protect(?:ion|ive)?|envy|jealous|wrapped around)\b/], ["attention", /\b(attention|ignored|neglected|noticed|summon(?:ed|s)?|called out|directly challenged|approval)\b/]]; return groups.filter(([, pattern]) => pattern.test(text)).map(([kind]) => kind); }
 
 export interface PersonaRoomTextureObservation {
   total: number;

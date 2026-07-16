@@ -63,7 +63,7 @@ import {
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
-import { collectPersonaSocialRelations, observePersonaRoomTexture, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRelationshipFreshness, renderPersonaRoomTexture, renderPersonaRoomWeather, renderPersonaSocialGraph, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -1132,32 +1132,17 @@ function renderRepoFaceStatePacket(
     .slice(-8)
     .reverse();
   const typedSections = renderPersonaTypedStateSections({ identityName: name, state });
-  const humanClarityFacts = roomContext
-    ? renderPersonaHumanClarityPressure({ identity, ...roomContext })
-    : undefined;
-  const clarityPressureActive = Boolean(humanClarityFacts);
-
-  const relationshipFreshnessFacts = renderPersonaRelationshipFreshness({
-    identityName: name,
-    state,
+  const socialContext = projectPersonaSocialContext({
+    identity,
     registryIdentities,
+    state,
+    recentMessages: roomContext?.recentMessages ?? [],
+    channelSnapshots: roomContext?.channelSnapshots ?? [],
+    pronounGuidance: humanPronounGuidance,
     observedAt: new Date(),
+    topicAttractorFacts: roomContext ? renderRepoFaceTopicAttractorFacts(identity, roomContext.recentMessages) : undefined,
   });
-  const socialGraphFacts = renderPersonaSocialGraph({ identity, registryIdentities, state });
-  const peerOpeningFacts = roomContext
-    ? renderRepoFacePeerOpeningFacts(identity, registryIdentities, roomContext)
-    : undefined;
-  const socialPressureFacts = roomContext
-    ? renderRepoFaceRelationshipPressureFacts(identity, registryIdentities, state, roomContext)
-    : undefined;
-  const pronounFacts = renderPersonaHumanPronounFacts(humanPronounGuidance);
-  const roomTextureFacts = roomContext
-    ? renderPersonaRoomTexture({
-        identity,
-        ...roomContext,
-        topicAttractorFacts: renderRepoFaceTopicAttractorFacts(identity, roomContext.recentMessages),
-      })
-    : undefined;
+  const clarityPressureActive = Boolean(socialContext.humanClarity);
 
   const selfMaintenancePressureFacts = !clarityPressureActive
     ? renderRepoFaceSelfMaintenancePressureFacts(name, agencyPressures, needs, candidateInterventions)
@@ -1166,16 +1151,16 @@ function renderRepoFaceStatePacket(
   return composePersonaMemoryPacket({
     identityName: name,
     typed: typedSections,
-    relationshipFreshness: relationshipFreshnessFacts,
-    socialGraph: socialGraphFacts,
-    peerOpening: peerOpeningFacts,
-    socialPressure: socialPressureFacts,
-    pronouns: pronounFacts,
-    roomTexture: roomTextureFacts,
+    relationshipFreshness: socialContext.relationshipFreshness,
+    socialGraph: socialContext.socialGraph,
+    peerOpening: socialContext.peerOpening,
+    socialPressure: socialContext.socialPressure,
+    pronouns: socialContext.pronouns,
+    roomTexture: socialContext.roomTexture,
     curiosity: curiosityGraphFacts,
     selfMaintenance: selfMaintenancePressureFacts,
     pressureSections: renderPersonaPressureSections({ identityName: name, state, clarityPressureActive }),
-    humanClarity: humanClarityFacts,
+    humanClarity: socialContext.humanClarity,
     transformSurface: (surface) => cleanRepoFaceProjectorLoopVocabulary(identity, surface),
   });
 }
@@ -1800,261 +1785,6 @@ function formatSignal(value: number): string {
   return `low ${value.toFixed(2)}`;
 }
 
-function renderRepoFacePeerOpeningFacts(
-  identity: RepoDiscordIdentity,
-  registryIdentities: RepoDiscordIdentity[],
-  roomContext: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string | undefined {
-  const selfTokens = new Set(socialTargetTokens(identity.displayName, identity.id, identity.repoName));
-  const peersByToken = new Map<string, RepoDiscordIdentity>();
-  for (const peer of registryIdentities) {
-    for (const token of socialTargetTokens(peer.displayName, peer.id, peer.repoName)) {
-      if (!selfTokens.has(token)) {
-        peersByToken.set(token, peer);
-      }
-    }
-  }
-
-  const entries: Array<{ label: string; message: SourceMessage }> = [
-    ...roomContext.recentMessages.map((message) => ({ label: "current room", message })),
-    ...roomContext.channelSnapshots.flatMap((snapshot) =>
-      snapshot.messages.map((message) => ({ label: "nearby room", message })),
-    ),
-  ];
-  const byPeer = new Map<string, { peer: RepoDiscordIdentity; entries: Array<{ label: string; message: SourceMessage }> }>();
-
-  for (const entry of entries) {
-    if (!entry.message.isBot || !entry.message.content.trim()) {
-      continue;
-    }
-    const peer = peersByToken.get(normalizeSocialLabel(entry.message.authorName));
-    if (!peer) {
-      continue;
-    }
-    const bucket = byPeer.get(peer.id) ?? { peer, entries: [] };
-    bucket.entries.push(entry);
-    byPeer.set(peer.id, bucket);
-  }
-
-  const peerFacts = [...byPeer.values()]
-    .sort((left, right) => right.entries.length - left.entries.length)
-    .slice(0, 6)
-    .map(({ peer, entries }) => {
-      const latest = entries.at(-1);
-      const channelLabels = [...new Set(entries.map((entry) => entry.label))].join(", ");
-      const excerpt = latest ? collapseWhitespace(latest.message.content, 180) : "";
-      return `- ${peer.displayName}: ${entries.length} recent nearby message${entries.length === 1 ? "" : "s"} in ${channelLabels}. Latest visible line: "${excerpt}"`;
-    });
-
-  if (peerFacts.length === 0) {
-    return undefined;
-  }
-
-  return [
-    "Recent peer openings for possible social reads:",
-    ...peerFacts,
-    "These are raw openings for the projector to translate into possible trust, irritation, rivalry, alliance, or no social move at all. Do not treat them as consensus.",
-  ].join("\n");
-}
-
-function renderRepoFaceRelationshipPressureFacts(
-  identity: RepoDiscordIdentity,
-  registryIdentities: RepoDiscordIdentity[],
-  state: VoidSelfStateTypedProjection,
-  roomContext: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string | undefined {
-  const selfTokens = socialPressureTokensForIdentity(identity);
-  const jurisdictionTokens = socialPressureJurisdictionTokens(identity);
-  const peerProfiles = registryIdentities
-    .filter((peer) => normalizeSocialLabel(peer.id) !== normalizeSocialLabel(identity.id))
-    .map((peer) => ({
-      identity: peer,
-      tokens: socialPressureTokensForIdentity(peer),
-    }));
-  const relationTargets = collectPersonaSocialRelations(state)
-    .map((relation) => ({
-      label: relation.targetLabel,
-      tokens: socialPressureTokens(relation.targetLabel),
-    }))
-    .filter((relation) => relation.tokens.length > 0);
-  const entries: Array<{ label: string; message: SourceMessage }> = [
-    ...roomContext.recentMessages.map((message) => ({ label: "current room", message })),
-    ...roomContext.channelSnapshots.flatMap((snapshot) =>
-      snapshot.messages.map((message) => ({ label: "nearby room", message })),
-    ),
-  ];
-  const byId = new Map<string, {
-    label: string;
-    message: SourceMessage;
-    score: number;
-    signals: string[];
-  }>();
-
-  for (const entry of entries) {
-    const content = collapseWhitespace(entry.message.content, 10_000);
-    if (!content) {
-      continue;
-    }
-    const normalizedContent = normalizeSocialLabel(content);
-    const authorToken = normalizeSocialLabel(entry.message.authorName ?? entry.message.authorId);
-    const signals: string[] = [];
-    let score = 0;
-
-    const authorIsSelf = tokenAppearsInNormalizedText(authorToken, selfTokens);
-    const contentNamesSelf = tokenAppearsInNormalizedText(normalizedContent, selfTokens);
-    if (contentNamesSelf) {
-      score += 3;
-      signals.push(`names ${identity.displayName}`);
-    } else if (authorIsSelf) {
-      score += 1;
-      signals.push(`${identity.displayName}'s own recent line`);
-    }
-
-    const peerMatches = peerProfiles
-      .filter((peer) =>
-        tokenAppearsInNormalizedText(authorToken, peer.tokens) ||
-        tokenAppearsInNormalizedText(normalizedContent, peer.tokens),
-      )
-      .slice(0, 3);
-    if (peerMatches.length > 0) {
-      score += peerMatches.length;
-      signals.push(`touches peer ${peerMatches.map((peer) => peer.identity.displayName).join("/")}`);
-    }
-
-    const relationMatches = relationTargets
-      .filter((relation) =>
-        tokenAppearsInNormalizedText(authorToken, relation.tokens) ||
-        tokenAppearsInNormalizedText(normalizedContent, relation.tokens),
-      )
-      .slice(0, 3);
-    if (relationMatches.length > 0) {
-      score += relationMatches.length;
-      signals.push(`touches existing social target ${relationMatches.map((relation) => relation.label).join("/")}`);
-    }
-
-    if (tokenAppearsInNormalizedText(normalizedContent, jurisdictionTokens)) {
-      score += 1;
-      signals.push("touches this jurisdiction or its domain language");
-    }
-
-    const socialPressureKinds = socialPressureLanguageKinds(content);
-    if (socialPressureKinds.length > 0) {
-      score += 2;
-      signals.push(`uses social/status language (${socialPressureKinds.join(", ")})`);
-    }
-
-    if (!entry.message.isBot && score > 0) {
-      score += 1;
-      signals.push("human voice");
-    }
-
-    if (score < 4) {
-      continue;
-    }
-
-    const existing = byId.get(entry.message.id);
-    if (!existing || score > existing.score) {
-      byId.set(entry.message.id, {
-        label: entry.label,
-        message: entry.message,
-        score,
-        signals: [...new Set(signals)],
-      });
-    }
-  }
-
-  const facts = [...byId.values()]
-    .sort((left, right) => {
-      const leftMs = Date.parse(left.message.timestamp);
-      const rightMs = Date.parse(right.message.timestamp);
-      if (Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs !== rightMs) {
-        return leftMs - rightMs;
-      }
-      return left.message.id.localeCompare(right.message.id);
-    })
-    .slice(-8);
-
-  if (facts.length === 0) {
-    return undefined;
-  }
-
-  return [
-    "Recent relationship-pressure evidence:",
-    ...facts.map((fact) => {
-      const speaker = fact.message.isBot ? `${fact.message.authorName} (agent/bot)` : fact.message.authorName;
-      return `- [${fact.label}] ${speaker} said: "${collapseWhitespace(fact.message.content, 260)}" Signals: ${fact.signals.join("; ")}.`;
-    }),
-    "These are raw provocations, not settled memories. Project them as tentative felt pressure only where this character's values, territory, current mood, or existing relationships make them matter.",
-  ].join("\n");
-}
-
-function socialPressureTokensForIdentity(identity: RepoDiscordIdentity): string[] {
-  return socialPressureTokens(identity.displayName, identity.id, identity.repoName);
-}
-
-function socialPressureJurisdictionTokens(identity: RepoDiscordIdentity): string[] {
-  return socialPressureTokens(
-    identity.repoName,
-    identity.displayName,
-    identity.description,
-    ...identity.channelPermissions.flatMap((permission) => [permission.label, permission.topic]),
-  )
-    .filter((token) => token.length >= 5);
-}
-
-function socialPressureTokens(...values: Array<string | undefined>): string[] {
-  const tokens = new Set<string>();
-  for (const value of values) {
-    const normalized = normalizeSocialLabel(value);
-    if (normalized.length >= 3) {
-      tokens.add(normalized);
-    }
-    for (const part of splitSocialPressureWords(value)) {
-      const token = normalizeSocialLabel(part);
-      if (token.length >= 4) {
-        tokens.add(token);
-      }
-    }
-  }
-  return [...tokens];
-}
-
-function splitSocialPressureWords(value: string | undefined): string[] {
-  return (value ?? "")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .split(/[^A-Za-z0-9]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function tokenAppearsInNormalizedText(normalizedText: string, tokens: string[]): boolean {
-  return tokens.some((token) => token.length > 0 && normalizedText.includes(token));
-}
-
-function socialPressureLanguageKinds(content: string): string[] {
-  const text = content.toLowerCase();
-  const kinds: string[] = [];
-  const groups: Array<[string, RegExp]> = [
-    ["status", /\b(status|standing|rank|hierarchy|authority|overbearing|defer(?:red|ring)?|challenge[ds]?|humiliat(?:e|ed|ing)|respect)\b/],
-    ["territory", /\b(turf|jurisdiction|steward(?:ship)?|custody|owner|ownership|belongs?|domain|lane|stepp(?:ed|ing)? on)\b/],
-    ["consultation", /\b(consult(?:ed|ation|ing)?|ask(?:ed|ing)?|permission|bypass(?:ed|ing)?|decorative|flavo[u]?r theater|rubber[- ]?stamp)\b/],
-    ["affiliation", /\b(friend(?:ship)?|rival(?:ry)?|alliance|resent(?:ment|s|ed|ing)?|trust|protect(?:ion|ive)?|envy|jealous|wrapped around)\b/],
-    ["attention", /\b(attention|ignored|neglected|noticed|summon(?:ed|s)?|called out|directly challenged|approval)\b/],
-  ];
-  for (const [kind, pattern] of groups) {
-    if (pattern.test(text)) {
-      kinds.push(kind);
-    }
-  }
-  return kinds;
-}
-
 async function loadRepoFaceHumanPronounGuidance(
   config: ReturnType<typeof loadConfig>,
   roomContext?: {
@@ -2139,10 +1869,6 @@ function pronounEvidenceRank(profile: InteractionMemoryProfile, entry: Interacti
   const timestampMs = Date.parse(entry.timestamp);
   const recencyBonus = Number.isFinite(timestampMs) ? timestampMs / 10_000_000_000 : 0;
   return resolvedSetBonus + (sourceRank[entry.source] ?? 0) + stanceBonus + confidenceBonus + recencyBonus;
-}
-
-function socialTargetTokens(...values: Array<string | undefined>): string[] {
-  return [...new Set(values.map(normalizeSocialLabel).filter((value) => value.length > 0))];
 }
 
 function normalizeSocialLabel(value: string | undefined): string {

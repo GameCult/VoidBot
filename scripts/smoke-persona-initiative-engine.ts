@@ -66,7 +66,7 @@ import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-s
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
-import { observePersonaRoomTexture, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -505,6 +505,22 @@ try {
     ? renderPersonaSocialGraph({ identity: routedIdentity, registryIdentities: [routedIdentity], state: populatedObservation.typedState })
     : undefined;
   assert.match(socialGraph ?? "", /Social graph topology:/, "social topology projection consumes typed state and the explicit registry without acquiring either");
+  const socialContext = populatedObservation.status === "ok"
+    ? projectPersonaSocialContext({
+      identity: routedIdentity,
+      registryIdentities: [routedIdentity, { ...routedIdentity, id: "peer", repoName: "PeerRepo", displayName: "Peer" }],
+      state: populatedObservation.typedState,
+      recentMessages: [
+        { id: "peer-opening", authorId: "peer", authorName: "Peer", content: "Nibu, the room is yours.", timestamp: "2026-07-15T21:01:00.000Z", isBot: true, channelId: "aquarium" },
+        { id: "human-pressure", authorId: "human", authorName: "Operator", content: "Nibu, your authority over this jurisdiction is being challenged.", timestamp: "2026-07-15T21:02:00.000Z", isBot: false, channelId: "aquarium" },
+      ],
+      channelSnapshots: [],
+      pronounGuidance: [],
+      observedAt: new Date("2026-07-15T21:03:00.000Z"),
+    })
+    : undefined;
+  assert.match(socialContext?.peerOpening ?? "", /Peer: 1 recent nearby message/, "the aggregate social projection owns peer openings");
+  assert.match(socialContext?.socialPressure ?? "", /human voice/, "the aggregate social projection owns relationship-pressure scoring");
   const pressureSections = populatedObservation.status === "ok"
     ? renderPersonaPressureSections({ identityName: "Nibu", state: populatedObservation.typedState, clarityPressureActive: true })
     : [];
