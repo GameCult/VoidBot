@@ -99,6 +99,7 @@ import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailur
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance, readStoredPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
+async function main(): Promise<void> {
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
     identityId,
@@ -145,6 +146,12 @@ assert.equal(state.initiativeClock, 12.5, "wall time advances the scheduler cloc
 applyPendingMentionPriority(state);
 assert.equal(state.participants[1].nextTurnAt, 12.5, "a mention makes its participant ready without queuing it");
 state.participants[0].responsePressure = state.participants[0].interruptThreshold;
+state.participants[0].responsePressureEvidence = [{
+  messageId: "fresh-pressure",
+  observedAt: "2026-07-15T20:02:00.000Z",
+  similarity: 0.8,
+  contribution: state.participants[0].interruptThreshold,
+}];
 
 const selected = selectReadyParticipants(
   state,
@@ -326,9 +333,28 @@ applySemanticPressureProjection({
 });
 assert.equal(pressureState.participants[0].nextTurnAt, 50, "only the initiative engine may turn semantic evidence into readiness");
 assert.equal(pressureState.participants[0].dynamicHeat, 2.2, "the engine owns pressure-derived recovery heat");
-assert.deepEqual(pressureState.participants[0].semanticInterruptReceipts, ["pressure-message"], "semantic interruption is consumed exactly once by scheduler state");
+assert.deepEqual(pressureState.participants[0].semanticInterruptReceipts, [], "observing semantic pressure does not consume it before a turn commits");
+assert.deepEqual(
+  selectReadyParticipants(pressureState, 1, new Set(), new Map(), {}, Date.parse("2026-07-15T21:00:00.000Z")).map((entry) => entry.identityId),
+  ["awakened"],
+  "fresh semantic pressure authorizes one unprompted turn",
+);
+recordTurnStarted({
+  participant: pressureState.participants[0],
+  state: pressureState,
+  queuedAt: "2026-07-15T21:00:00.000Z",
+  pendingMentionCount: 0,
+});
+pressureState.participants[0].currentLoad = 0;
+pressureState.participants[0].nextTurnAt = pressureState.initiativeClock;
+assert.deepEqual(pressureState.participants[0].semanticInterruptReceipts, ["pressure-message"], "a committed unprompted turn consumes its semantic evidence");
+assert.deepEqual(
+  selectReadyParticipants(pressureState, 1, new Set(), new Map(), {}, Date.parse("2026-07-15T21:01:00.000Z")),
+  [],
+  "the next observation pulse cannot replay consumed semantic pressure",
+);
 assert.equal(pressureState.participants[1].responsePressure, 0, "missing projections explicitly cool stale pressure");
-assert.equal(pressureState.history.at(-1)?.type, "semantic_response_interrupt", "the state owner records the semantic transition");
+assert.equal(pressureState.history.some((entry) => entry.type === "semantic_response_interrupt"), true, "the state owner records the semantic transition");
 
 const commitState: InitiativeState = {
   initiativeClock: 20,
@@ -1201,3 +1227,9 @@ try {
 }
 
 process.stdout.write("Persona initiative engine smoke passed.\n");
+}
+
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

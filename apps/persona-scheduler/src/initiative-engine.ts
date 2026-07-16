@@ -272,6 +272,14 @@ export function recordTurnStarted(input: {
   participant.lastTurnAt = state.initiativeClock;
   participant.queuedCount += 1;
   participant.currentLoad = 1;
+  const consumedPressureEvidence = participant.responsePressureEvidence
+    .find((entry) => !participant.semanticInterruptReceipts.includes(entry.messageId));
+  if (input.pendingMentionCount === 0 && consumedPressureEvidence) {
+    participant.semanticInterruptReceipts = mergeStrings(
+      participant.semanticInterruptReceipts,
+      consumedPressureEvidence.messageId,
+    ).slice(-40);
+  }
   state.history.push({
     type: "queued",
     identityId: participant.identityId,
@@ -459,10 +467,6 @@ export function applySemanticPressureProjection(input: {
       : undefined;
     if (!unseenInterruptEvidence || participant.currentLoad >= 1) continue;
     participant.nextTurnAt = Math.min(participant.nextTurnAt, input.state.initiativeClock);
-    participant.semanticInterruptReceipts = mergeStrings(
-      participant.semanticInterruptReceipts,
-      unseenInterruptEvidence.messageId,
-    ).slice(-40);
     input.state.history.push({
       type: "semantic_response_interrupt",
       identityId: participant.identityId,
@@ -521,7 +525,8 @@ export function selectReadyParticipants<TParticipant extends InitiativeParticipa
 }
 
 function hasMeaningfulUnpromptedPressure(participant: InitiativeParticipant): boolean {
-  return participant.responsePressure >= participant.interruptThreshold;
+  return participant.responsePressure >= participant.interruptThreshold
+    && participant.responsePressureEvidence.some((entry) => !participant.semanticInterruptReceipts.includes(entry.messageId));
 }
 
 function round3(value: number): number {
