@@ -613,6 +613,8 @@ node scripts/send-discord-message.mjs --channel-id <channel-id> --persona-name "
 Moderation heartbeat, person-shaped rumination, physiology, memory maintenance, and candidate delivery are resident daemon organs on Yggdrasil. They are configured independently and deployed only by pushing upstream for Idunn; do not install local scheduled-task copies.
 
 Chronological Discord evidence is acquired by the daemon's bounded evidence source. Semantic retrieval remains available for deeper context, but it does not own the heartbeat clock or cursor.
+
+Agent access to Discord history also executes at the archive owner. `.codex/config.toml` starts the `voidbot` stdio MCP server inside Yggdrasil's worker container over SSH; it must not start a Starfire-local MCP process pointed at `127.0.0.1:6333`. Verify the complete agent path with `scripts/smoke-voidbot-remote-mcp.mjs` and the `VOIDBOT_MCP_REMOTE_HOST`, `VOIDBOT_MCP_SSH_KEY_PATH`, and optional `VOIDBOT_MCP_SSH_EXECUTABLE` environment variables.
 There is also a repo-weather helper:
 
 ```bash

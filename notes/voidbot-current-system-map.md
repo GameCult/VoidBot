@@ -111,6 +111,7 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
 5. `scripts/reconcile-source-repos.ts` discovers local Git repos, refreshes push hooks, prunes stale repo shards, and indexes newly discovered repos.
 6. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive explicit or detached per-repo source/lore reindex work.
 7. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, and `list_indexed_repos`.
+8. Agent hosts start that stdio MCP body inside `compose-worker-1` on Yggdrasil over SSH. Qdrant stays loopback-private on Yggdrasil; agents receive MCP tools, not a raw vector-database route. A Starfire-local MCP body with `QDRANT_URL=http://127.0.0.1:6333` is invalid after the deployment move.
 
 ## Flow 4: Ops And Recovery
 

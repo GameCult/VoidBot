@@ -1,7 +1,3 @@
 [mcp_servers.voidbot]
-command = "C:\\Program Files\\nodejs\\node.exe"
-args = ["E:\\Projects\\VoidBot\\apps\\worker\\dist\\mcp-server.js"]
-cwd = "E:\\Projects\\VoidBot"
-
-[mcp_servers.voidbot.env]
-VOIDBOT_WORKSPACE_ROOT = "E:\\Projects\\VoidBot"
+command = "C:\\Windows\\System32\\OpenSSH\\ssh.exe"
+args = ["-T", "-i", "C:\\Users\\Meta\\.ssh\\gamecultadmin_gamecult_org_ed25519", "gamecultadmin@94.130.223.131", "sudo", "docker", "exec", "-i", "compose-worker-1", "node", "/app/apps/worker/dist/mcp-server.js"]
