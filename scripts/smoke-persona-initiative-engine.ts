@@ -76,6 +76,7 @@ import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from ".
 import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
 import { buildVoidModerationLaunchCommand, launchVoidModerationTurn, waitForVoidModerationHandshake } from "../apps/persona-scheduler/dist/void-moderation-turn-actuator.js";
 import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
+import { buildInspectionParticipant } from "../apps/persona-scheduler/dist/inspection-participant-factory.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -704,6 +705,9 @@ assert.match(conversationProjection.transcript, /Visible cross-channel chronolog
 assert.match(conversationProjection.topicAttractor ?? "", /semantic \(8\)/, "conversation projection owns topic-attractor facts");
 assert.match(renderPersonaRoomTopicSaturation(routedIdentity, saturatedMessages), /Current room topic saturation:/, "turn-facing saturation and memory-facing attractors share one conversation owner");
 const promptParticipant = participant("nibu", 0);
+const inspectionParticipant = buildInspectionParticipant(routedIdentity, 90);
+assert.deepEqual(inspectionParticipant.groups.slice(-2), ["identity:nibu", "repo:aetherialore"], "inspection participant synthesis is a pure scheduler fixture with normalized identity groups");
+assert.equal(inspectionParticipant.baseRecoveryMinutes, 90, "inspection synthesis carries explicit scheduler timing without reading live initiative state");
 const jurisdictionDive = buildPersonaJurisdictionDiveDirective(routedIdentity, promptParticipant);
 assert.equal(jurisdictionDive.cadence, 3, "the turn-prompt projector owns Nibu's jurisdiction-dive cadence");
 const projectedTurnPrompt = buildPersonaTurnPrompt({

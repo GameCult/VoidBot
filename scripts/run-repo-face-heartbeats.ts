@@ -66,6 +66,7 @@ import {
 } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
 import { submitPersonaTurn } from "../apps/persona-scheduler/dist/turn-actuator.js";
 import { launchVoidModerationTurn } from "../apps/persona-scheduler/dist/void-moderation-turn-actuator.js";
+import { buildInspectionParticipant } from "../apps/persona-scheduler/dist/inspection-participant-factory.js";
 import {
   buildPersonaChannelPlan as buildChannelPlan,
   newestPendingMentionChannel,
@@ -599,44 +600,6 @@ async function readOptionalMemorySurface(path: string | undefined): Promise<stri
 
   const content = (await readFile(resolve(path), "utf8")).trim();
   return content.length > 0 ? content : undefined;
-}
-
-function buildInspectionParticipant(
-  identity: RepoDiscordIdentity,
-  baseRecoveryMinutes: number,
-): FaceHeartbeatParticipant {
-  return {
-    identityId: identity.id,
-    participantKind: "repo_face",
-    turnKind: "repo_face_rumination",
-    repoName: identity.repoName,
-    displayName: identity.displayName,
-    initiativeSpeed: 1,
-    reactionBias: 0.5,
-    interruptThreshold: 0.6,
-    currentLoad: 0,
-    status: "active",
-    groups: [
-      "all",
-      "kind:repo_face",
-      "turn:repo_face_rumination",
-      `identity:${normalizeKey(identity.id)}`,
-      `repo:${normalizeKey(identity.repoName)}`,
-    ],
-    heat: 1,
-    effectiveSpeed: 1,
-    baseRecoveryMinutes,
-    nextTurnAt: 0,
-    queuedCount: 0,
-    constraints: [
-      "Prompt assembly is deterministic inspection only.",
-      "Character memory and affect prose must come from the Interpreter memory surface.",
-    ],
-  };
-}
-
-function normalizeKey(value: string): string {
-  return value.trim().toLowerCase();
 }
 
 function readArgValue(name: string): string | undefined {
