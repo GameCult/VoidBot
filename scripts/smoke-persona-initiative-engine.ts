@@ -65,6 +65,8 @@ import {
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
+import { coordinatePersonaMemoryTurn } from "../apps/persona-scheduler/dist/persona-memory-turn-coordinator.js";
+import { projectPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-recall-projector.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaSelfMaintenancePressure, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
@@ -643,6 +645,27 @@ try {
     observedAt: new Date("2026-07-15T21:00:00.000Z"),
   }) : "";
   assert.match(statePacket, /A witness artifact remains literal source evidence\./, "state packet projection does not rewrite natural language through a downstream vocabulary cop");
+  let recalledProjectedMemory = "";
+  const coordinatedMemory = await coordinatePersonaMemoryTurn({
+    identity: routedIdentity,
+    config: { storageRoot: stateSourceDirectory, repoFaceHeartbeats: { stateProjectorEnabled: false } } as never,
+    registryIdentities: [routedIdentity],
+    recentMessages: [],
+    channelSnapshots: [],
+    stateObservation: populatedObservation,
+    observedAt: new Date("2026-07-15T21:00:00.000Z"),
+  }, {
+    projectCuriosityFacts: async () => "Coordinator supplied curiosity facts.",
+    projectMemory: async ({ statePacket: packet }) => `Projected by coordinator:\n${packet}`,
+    readRecall: async ({ projectedMemory }) => {
+      recalledProjectedMemory = projectedMemory;
+      return { status: "ok", hits: [{ score: 0.91, text: "A recalled architectural promise.", targetLabel: "memory coordinator", memoryKind: "durable" }] };
+    },
+  });
+  assert.match(coordinatedMemory.memorySurface, /Coordinator supplied curiosity facts\./, "the coordinator sequences curiosity evidence into the state packet before memory projection");
+  assert.equal(recalledProjectedMemory, coordinatedMemory.memorySurface, "semantic recall consumes the exact projected Mind surface returned to both live and inspection turns");
+  assert.match(coordinatedMemory.semanticMemoryRecallSurface, /memory coordinator\/durable score=0\.910: A recalled architectural promise\./, "the coordinator returns prompt-ready semantic recall beside the projected Mind surface");
+  assert.match(projectPersonaMemoryRecall({ status: "unavailable", reason: "vector store asleep" }), /Semantic Persona memory recall unavailable:[\s\S]*vector store asleep/, "recall failure projection remains explicit and cannot masquerade as an empty successful search");
   assert.deepEqual(await readFile(statePath), beforeObservation, "Persona state observation cannot rewrite sleep, speaking pressure, or any other Mind field");
   const portableProjection = projectGamecultPersonaState({ ...routedIdentity, id: "muninn", displayName: "Muninn", identityKind: "native_persona" }, { schemaVersion: "gamecult.persona_state.v0", publicDescription: "Muninn remembers provenance.", privateNotes: ["Name missing evidence."], values: [{ label: "Source time", summary: "Keep observation time distinct." }], thoughtMemory: { shortTerm: [{ summary: "The last frame was stale." }] } });
   assert.match(portableProjection, /Persona state authority is unreported; treat it as a non-canonical projection[\s\S]*Source time: Keep observation time distinct/, "the portable projector renders bounded state without inventing canonical authority");

@@ -6,16 +6,13 @@ import { dirname, resolve } from "node:path";
 import { loadConfig } from "@voidbot/config";
 import {
   createStateStorage,
-  getRepoFaceSourceRepoName,
   getRepoDiscordIdentityAllowedChannelIds,
   faceRegistryAsRepoDiscordRegistry,
   loadFaceIdentityRegistry,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
-  type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
-import { createTextEmbedder, createVectorStores, RetrievalService } from "@voidbot/rag";
 import {
   type SourceMessage,
 } from "@voidbot/shared";
@@ -49,19 +46,10 @@ import {
   readPersonaStateObservations,
   type PersonaStateObservation,
 } from "../apps/persona-scheduler/dist/persona-state-source.js";
-import {
-  readPersonaMemoryRecall,
-  type PersonaMemoryRecallObservation,
-} from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
-import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
-import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
-import { renderPersonaIdentityDoctrine } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
-import { projectGamecultPersonaState, projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
+import { projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import type { PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
-import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
-import { projectPersonaText } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
 import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
+import { coordinatePersonaMemoryTurn } from "../apps/persona-scheduler/dist/persona-memory-turn-coordinator.js";
 import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
@@ -420,14 +408,14 @@ async function queueRepoFaceTurn(input: {
     channelSnapshots,
   };
   const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
-  const memorySurface = await renderRepoFaceMemorySurfaceForTurn(
+  const memoryContext = await coordinatePersonaMemoryTurn({
     identity,
-    input.config,
-    input.registryIdentities,
-    roomContext,
+    config: input.config,
+    registryIdentities: input.registryIdentities,
+    ...roomContext,
     humanPronounGuidance,
-    input.personaStateObservation,
-  );
+    stateObservation: input.personaStateObservation,
+  });
   const repoActivitySurface = identity.identityKind === "native_persona"
     ? projectNativePersonaBody(identity)
     : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
@@ -440,7 +428,8 @@ async function queueRepoFaceTurn(input: {
     channelSnapshots,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
-    memorySurface,
+    memorySurface: memoryContext.memorySurface,
+    semanticMemoryRecallSurface: memoryContext.semanticMemoryRecallSurface,
     repoActivitySurface,
     humanPronounGuidance,
     bifrostDigest,
@@ -547,27 +536,21 @@ async function assembleRepoFaceTurnPrompt(input: {
   };
   const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
   const personaStateObservation = await readPersonaStateObservation({ identity, storageRoot: input.config.storageRoot });
-  const memorySurface = input.memorySurfacePath
+  const projectedMemoryOverride = input.memorySurfacePath
     ? await readOptionalMemorySurface(input.memorySurfacePath)
-    : await renderRepoFaceMemorySurfaceForTurn(
-        identity,
-        input.config,
-        registry.identities,
-        roomContext,
-        humanPronounGuidance,
-        personaStateObservation,
-      );
+    : undefined;
+  const memoryContext = await coordinatePersonaMemoryTurn({
+    identity,
+    config: input.config,
+    registryIdentities: registry.identities,
+    ...roomContext,
+    humanPronounGuidance,
+    stateObservation: personaStateObservation,
+    projectedMemoryOverride,
+  });
   const repoActivitySurface = renderRepoActivityObservation(
     readRepoActivity({ identity, storageRoot: input.config.storageRoot }),
   );
-  const semanticMemoryRecallSurface = renderPersonaMemoryRecallObservation(await readPersonaMemoryRecall({
-    identity,
-    config: input.config,
-    state: personaStateObservation,
-    projectedMemory: memorySurface,
-    recentMessages,
-    channelSnapshots,
-  }));
   const globalAgentDoctrine = await readGlobalAgentDoctrine({ codexHome: process.env.CODEX_HOME, userProfile: process.env.USERPROFILE });
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
@@ -582,8 +565,8 @@ async function assembleRepoFaceTurnPrompt(input: {
     channelPlan,
     channelSnapshots,
     recentMessages,
-    memorySurface,
-    semanticMemoryRecallSurface,
+    memorySurface: memoryContext.memorySurface,
+    semanticMemoryRecallSurface: memoryContext.semanticMemoryRecallSurface,
     repoActivitySurface,
     conversationMemorySurface,
     humanPronounGuidance,
@@ -608,147 +591,6 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
-}
-
-async function renderRepoFaceMemorySurfaceForTurn(
-  identity: RepoDiscordIdentity,
-  config: ReturnType<typeof loadConfig>,
-  registryIdentities: RepoDiscordIdentity[] = [],
-  roomContext?: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-  humanPronounGuidance?: RepoFaceHumanPronounGuidance[],
-  observation?: PersonaStateObservation,
-): Promise<string> {
-  if (identity.identityKind === "native_persona") {
-    if (!identity.personaStatePath) return [`${identity.displayName} is a native VoidBot Persona, not a repo Face.`, "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest."].join("\n");
-  }
-
-  const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
-  if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
-  if (acquired.stateKind === "gamecult_persona") {
-    return projectGamecultPersonaState(identity, acquired.personaState);
-  }
-  if (acquired.stateKind === "persona_projection_import") {
-    return projectGamecultPersonaState(identity, acquired.projectionImport.payload);
-  }
-  const typedState = acquired.typedState;
-  const curiosityGraphFacts = roomContext && identity.identityKind !== "native_persona"
-    ? await renderRepoFaceCuriosityGraphFacts(identity, config, typedState, roomContext)
-    : undefined;
-  const statePacket = projectPersonaStatePacket({
-    identity,
-    state: typedState,
-    registryIdentities,
-    roomContext,
-    humanPronounGuidance: humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
-    curiosityGraphFacts,
-    observedAt: new Date(),
-  });
-  if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
-    return projectPersonaMemorySurface({
-      identityId: identity.id,
-      characterIdentity: renderPersonaIdentityDoctrine(identity),
-      statePacket,
-      modelProjectionEnabled: false,
-    });
-  }
-
-  return projectPersonaMemorySurface({
-    identityId: identity.id,
-    characterIdentity: renderPersonaIdentityDoctrine(identity),
-    statePacket,
-    modelProjectionEnabled: true,
-    projectText: (prompt) => projectPersonaText({
-      prompt,
-      config,
-      command: "repo-face-state-projector",
-      jobId: `state-projector:${identity.id}:${Date.now()}`,
-      timeoutMs: 180_000,
-    }),
-  });
-}
-
-function renderPersonaMemoryRecallObservation(observation: PersonaMemoryRecallObservation): string {
-  if (observation.status === "unavailable") {
-    return [
-      "Semantic Persona memory recall unavailable:",
-      `- ${collapseWhitespace(observation.reason, 320)}`,
-      "- Do not pretend semantic Persona memory retrieval was available this turn; use projected state and raw transcript instead.",
-    ].join("\n");
-  }
-  if (observation.hits.length === 0) {
-    return [
-      "- Semantic Persona memory recall ran, but no nearby memories crossed the retrieval threshold.",
-      "- Fall back to the projected state, raw transcript, and direct evidence above.",
-    ].join("\n");
-  }
-  return [
-    "These are derived Qdrant/local-vector recall hits from this Persona's typed memory. They are hints, not new authority; the `.cc` state remains the owner.",
-    ...observation.hits.map((hit, index) => {
-      const kind = hit.memoryKind ? `/${hit.memoryKind}` : "";
-      const target = hit.targetLabel ?? hit.targetId ?? "unknown target";
-      return `- ${index + 1}. ${target}${kind} score=${hit.score.toFixed(3)}: ${collapseWhitespace(hit.text, 520)}`;
-    }),
-  ].join("\n");
-}
-
-
-async function renderRepoFaceCuriosityGraphFacts(
-  identity: RepoDiscordIdentity,
-  config: ReturnType<typeof loadConfig>,
-  state: VoidSelfStateTypedProjection,
-  roomContext: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): Promise<string | undefined> {
-  const observation = await readPersonaCuriosityEvidence({
-    identity, state, ...roomContext,
-    sourceRepoName: getRepoFaceSourceRepoName(identity),
-    retrieval: () => {
-      const retrieval = createRepoFaceCuriosityRetrievalService(config);
-      return {
-        searchHistory: (query, limit) => retrieval.searchHistory(query, limit),
-        searchSources: (query, limit, repoName) => retrieval.searchRepositorySources(query, limit, repoName ? { repoName } : undefined),
-      };
-    },
-  });
-  const backendDescription = config.vectorStore.kind === "qdrant"
-    ? `Qdrant collections ${config.qdrant.historyCollection} + ${config.qdrant.sourceCollection}`
-    : "local vector shards";
-  return projectPersonaCuriosityContext({ identity, state, ...roomContext, observation, backendDescription });
-}
-
-function createRepoFaceCuriosityRetrievalService(config: ReturnType<typeof loadConfig>): RetrievalService {
-  const historyEmbedder = createTextEmbedder({
-    backend: config.ragEmbeddingBackend,
-    hashDimensions: config.ragEmbeddingDimensions,
-    ollamaBaseUrl: config.ragOllamaBaseUrl,
-    ollamaModel: config.ragOllamaModel,
-    ollamaTimeoutMs: config.ragOllamaTimeoutMs,
-    queryInstruction: config.ragQueryInstruction,
-  });
-  const sourceEmbedder = createTextEmbedder({
-    backend: config.ragEmbeddingBackend,
-    hashDimensions: config.ragEmbeddingDimensions,
-    ollamaBaseUrl: config.ragOllamaBaseUrl,
-    ollamaModel: config.ragOllamaModel,
-    ollamaTimeoutMs: config.ragOllamaTimeoutMs,
-    queryInstruction: config.ragSourceQueryInstruction || config.ragQueryInstruction,
-  });
-  const stores = createVectorStores({
-    kind: config.vectorStore.kind,
-    historyPath: config.vectorStore.path,
-    personaMemoryPath: config.vectorStore.personaMemoryPath,
-    sourceRoot: config.sourceVectorStoreRoot,
-    qdrant: config.qdrant,
-    historyEmbedder,
-    sourceEmbedder,
-    personaMemoryEmbedder: historyEmbedder,
-  });
-  return new RetrievalService(stores.history, stores.source, stores.personaMemory);
 }
 
 async function loadRepoFaceHumanPronounGuidance(
