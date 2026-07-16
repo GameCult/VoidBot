@@ -84,6 +84,7 @@ import { runVoidPhysiologyOrgan } from "../apps/persona-scheduler/dist/void-phys
 import { buildVoidMemoryMaintenancePrompt, parseVoidMemoryMaintenanceOperations, projectVoidMemoryMaintenanceContext } from "../apps/persona-scheduler/dist/void-memory-maintenance-projector.js";
 import { runVoidMemoryMaintenance } from "../apps/persona-scheduler/dist/void-memory-maintenance-organ.js";
 import { projectVoidMemoryOperations } from "../apps/persona-scheduler/dist/void-memory-text-actuator.js";
+import { buildVoidModerationHeartbeatPrompt, parseVoidModerationHeartbeatOperations, projectVoidModerationHeartbeatContext } from "../apps/persona-scheduler/dist/void-moderation-heartbeat-projector.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -831,6 +832,34 @@ const parsedMaintenance = parseVoidMemoryMaintenanceOperations(JSON.stringify([{
 }]));
 assert.equal(parsedMaintenance[0]?.operation, "prune_short_term_memories", "memory output parsing crosses the canonical operation schema before application");
 assert.throws(() => parseVoidMemoryMaintenanceOperations(JSON.stringify([{ operation: "update_sleep_cycle", sleepCycle: physiology.sleepCycle }])), /not allowed/, "memory maintenance cannot annex physiology operations even when they are schema-valid");
+const moderationContext = projectVoidModerationHeartbeatContext({
+  state: physiologyState,
+  observedAt: physiologyObservedAt,
+  observedCursor: { lastReviewedMessageId: "message-1", lastReviewedTimestamp: physiologyObservedAt.toISOString() },
+  recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z", content: "fixture" }] },
+  urgentModerationWitnesses: [],
+  enforcementMode: "log_only",
+  rules: "Fixture rules",
+});
+assert.match(JSON.stringify(moderationContext.recentHistory), /5 minutes ago/, "moderation evidence chronology is projected without surrendering exact operation time ownership");
+assert.doesNotMatch(buildVoidModerationHeartbeatPrompt(moderationContext), /OPERATION_OUTPUT_PATH|apply-operation/, "portable moderation prompts return operations directly and cannot preserve the filesystem tool-writing contract");
+const parsedModeration = parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{
+  operation: "upsert_open_case",
+  case: {
+    sourceMessageId: "message-1", status: "pending", summary: "Concrete fixture evidence.", authorId: "human-1", authorName: "Human",
+    channelId: "room-1", whyItMatters: "The fixture crosses the safety boundary.", createdAt: physiologyObservedAt.toISOString(),
+    lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "moderation:instaban"],
+  },
+}]), state: physiologyState });
+assert.equal(parsedModeration[0]?.operation, "upsert_open_case", "moderation output parsing crosses the canonical operation schema and classification invariant");
+assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{
+  operation: "upsert_open_case",
+  case: {
+    sourceMessageId: "message-2", status: "watching", summary: "Ambiguous fixture evidence.", createdAt: physiologyObservedAt.toISOString(),
+    lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "infringement:weaponized_intimidation", "moderation:case_only"],
+  },
+}]), state: physiologyState }), /exactly one infringement/, "moderation classification cannot multiply infringement authority for one message");
+assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{ operation: "update_sleep_cycle", sleepCycle: physiology.sleepCycle }]), state: physiologyState }), /not allowed/, "moderation cannot annex physiology even when the operation is schema-valid");
 const maintainedState = structuredClone(physiologyState);
 let memoryModelCalls = 0;
 const memoryMaintenanceDependencies = {
