@@ -444,6 +444,12 @@ export const voidThoughtMemorySchema = z.object({
   updatedAt: timestampSchema,
 }).strict();
 
+const scheduledRunSchema = z.object({
+  runner: nonEmptyStringSchema,
+  ranAt: timestampSchema,
+  summary: z.string().trim().min(1).max(1000),
+}).strict();
+
 export const voidScheduledRuntimeSchema = z.object({
   schemaVersion: z.literal(1),
   sleepCycle: z.object({
@@ -461,11 +467,7 @@ export const voidScheduledRuntimeSchema = z.object({
     lastSpokeAt: timestampSchema.optional(),
     lastHeraldAt: timestampSchema.optional(),
   }).strict(),
-  lastRuns: z.array(z.object({
-    runner: nonEmptyStringSchema,
-    ranAt: timestampSchema,
-    summary: z.string().trim().min(1).max(1000),
-  }).strict()).default([]),
+  lastRuns: z.array(scheduledRunSchema).default([]),
   updatedAt: timestampSchema,
 }).strict();
 
@@ -734,6 +736,10 @@ export const voidSelfStateOperationSchema = z.discriminatedUnion("operation", [
   z.object({
     operation: z.literal("update_speaking_pressure"),
     speakingPressure: voidScheduledRuntimeSchema.shape.speakingPressure,
+  }).strict(),
+  z.object({
+    operation: z.literal("record_scheduled_run"),
+    run: scheduledRunSchema,
   }).strict(),
   z.object({
     operation: z.literal("propose_memory_distillation"),

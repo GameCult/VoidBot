@@ -4,6 +4,8 @@ import { loadConfig } from "@voidbot/config";
 import { resolve } from "node:path";
 import { runPersonaSchedulerTick } from "./persona-scheduler-runner.js";
 import { runVoidPhysiologyOrgan } from "./void-physiology-organ.js";
+import { runVoidMemoryMaintenance } from "./void-memory-maintenance-organ.js";
+import { projectVoidMemoryOperations } from "./void-memory-text-actuator.js";
 
 const config = loadConfig();
 const intervalMs = Math.max(1, config.repoFaceHeartbeats.intervalMinutes) * 60_000;
@@ -27,6 +29,16 @@ function runTick(): Promise<void> {
           const physiology = await runVoidPhysiologyOrgan({ statePath: resolve(config.storageRoot, "private", "void-self-state.cc"), statusDirectory: resolve(config.storageRoot, "status") });
           lastPhysiologyAt = Date.now();
           console.log(`Void physiology pulse completed. ${JSON.stringify(physiology)}`);
+          if (physiology.memoryMaintenanceIntent) {
+            try {
+              const memory = await runVoidMemoryMaintenance({ statePath: physiology.statePath, intent: physiology.memoryMaintenanceIntent }, {
+                projectText: (prompt) => projectVoidMemoryOperations({ prompt, config }),
+              });
+              console.log(`Void memory-maintenance pulse completed. ${JSON.stringify(memory)}`);
+            } catch (error) {
+              console.error(`Void memory-maintenance pulse failed without automatic nap retry. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+            }
+          }
         } catch (error) {
           console.error(`Void physiology pulse failed. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         }

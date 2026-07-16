@@ -81,6 +81,9 @@ import { buildInspectionParticipant } from "../apps/persona-scheduler/dist/inspe
 import { runPersonaSchedulerTick } from "../apps/persona-scheduler/dist/persona-scheduler-runner.js";
 import { projectVoidPhysiology } from "../apps/persona-scheduler/dist/void-physiology-domain.js";
 import { runVoidPhysiologyOrgan } from "../apps/persona-scheduler/dist/void-physiology-organ.js";
+import { buildVoidMemoryMaintenancePrompt, parseVoidMemoryMaintenanceOperations, projectVoidMemoryMaintenanceContext } from "../apps/persona-scheduler/dist/void-memory-maintenance-projector.js";
+import { runVoidMemoryMaintenance } from "../apps/persona-scheduler/dist/void-memory-maintenance-organ.js";
+import { projectVoidMemoryOperations } from "../apps/persona-scheduler/dist/void-memory-text-actuator.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -816,6 +819,49 @@ const physiologyOrgan = await runVoidPhysiologyOrgan({ statePath: "void-self-sta
 });
 assert.deepEqual(appliedPhysiologyOperations, ["update_sleep_cycle", "update_speaking_pressure"], "the daemon physiology organ applies only domain-projected typed operations through the state-service port");
 assert.equal(physiologyOrgan.memoryMaintenanceIntent?.reason, "sleep_short_term_pressure", "the daemon organ exposes maintenance intent for a separate memory owner");
+const memoryMaintenanceContext = projectVoidMemoryMaintenanceContext({ state: physiologyState, observedAt: physiologyObservedAt, forceDistillation: true });
+assert.equal(memoryMaintenanceContext.forceDistillation, true, "sleep memory context exposes explicit maintenance pressure without deciding the memory operation");
+assert.match(JSON.stringify(memoryMaintenanceContext.shortTermMemories), /ago|short-term/, "prompt-facing memory context projects chronology instead of dumping exact state timestamps");
+assert.doesNotMatch(buildVoidMemoryMaintenancePrompt(memoryMaintenanceContext), /OPERATION_OUTPUT_PATH|apply-operation/, "portable maintenance prompts return operations directly and cannot preserve the filesystem tool-writing contract");
+const parsedMaintenance = parseVoidMemoryMaintenanceOperations(JSON.stringify([{
+  operation: "prune_short_term_memories",
+  sourceMemoryIds: ["short-term"],
+  prunedAt: physiologyObservedAt.toISOString(),
+  reason: "The fixture residue has no durable claim beyond proving the typed boundary.",
+}]));
+assert.equal(parsedMaintenance[0]?.operation, "prune_short_term_memories", "memory output parsing crosses the canonical operation schema before application");
+assert.throws(() => parseVoidMemoryMaintenanceOperations(JSON.stringify([{ operation: "update_sleep_cycle", sleepCycle: physiology.sleepCycle }])), /not allowed/, "memory maintenance cannot annex physiology operations even when they are schema-valid");
+const maintainedState = structuredClone(physiologyState);
+let memoryModelCalls = 0;
+const memoryMaintenanceDependencies = {
+  loadState: async () => maintainedState,
+  projectText: async () => {
+    memoryModelCalls += 1;
+    return JSON.stringify([{ operation: "prune_short_term_memories", sourceMemoryIds: ["short-term"], prunedAt: physiologyObservedAt.toISOString(), reason: "The fixture residue has no durable meaning beyond proving nap-level ownership." }]);
+  },
+  applyOperation: async (_store: unknown, operation: { operation: string; run?: { runner: string; ranAt: string; summary: string } }) => {
+    if (operation.operation === "prune_short_term_memories") maintainedState.thoughtMemory.shortTerm = [];
+    if (operation.operation === "record_scheduled_run" && operation.run) maintainedState.scheduledRuntime.lastRuns.push(operation.run);
+    return maintainedState;
+  },
+};
+const maintenanceIntent = physiology.memoryMaintenanceIntent;
+assert.ok(maintenanceIntent, "physiology fixture supplies memory-maintenance intent");
+const maintained = await runVoidMemoryMaintenance({ statePath: "void-self-state.cc", intent: maintenanceIntent, observedAt: physiologyObservedAt }, memoryMaintenanceDependencies as never);
+assert.equal(maintained.status, "ok", "the memory organ validates, applies, verifies, and receipts one sleep pass");
+const duplicateMaintenance = await runVoidMemoryMaintenance({ statePath: "void-self-state.cc", intent: maintenanceIntent, observedAt: physiologyObservedAt }, memoryMaintenanceDependencies as never);
+assert.deepEqual(duplicateMaintenance, { status: "skipped", reason: "already_completed_this_nap", runnerId: `void-memory-maintenance:${maintenanceIntent.napStartedAt}` }, "the typed scheduled-run receipt makes repeated intent idempotent for one nap");
+assert.equal(memoryModelCalls, 1, "one nap can authorize at most one memory model pass");
+let memoryRequestBody: Record<string, unknown> | undefined;
+const memoryModelOutput = await projectVoidMemoryOperations({ prompt: "Maintain memory.", config: { openAiApi: { baseUrl: "https://model.invalid/v1", apiKey: "secret", model: "memory-model", timeoutMs: 1000, authHeader: "Authorization", maxCompletionTokens: 512 } } as never }, {
+  fetch: async (_url, init) => {
+    memoryRequestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "[]" } }] }), { status: 200 });
+  },
+});
+assert.equal(memoryModelOutput, "[]", "the portable memory actuator returns only model text to the operation parser");
+assert.equal(memoryRequestBody?.model, "memory-model", "the memory actuator uses one explicit configured model and bounded completion budget");
+assert.equal(memoryRequestBody?.tools, undefined, "memory maintenance cannot acquire filesystem or side-effect tools through the model actuator");
 const moderationLaunchCommand = buildVoidModerationLaunchCommand({
   pendingMentionsPath: "C:/Void's state/pending.json",
   runnerScript: "C:/VoidBot/scripts/run.ps1",

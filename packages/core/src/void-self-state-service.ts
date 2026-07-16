@@ -467,6 +467,13 @@ function applyTypedOperation(
       state.scheduledRuntime.speakingPressure = operation.speakingPressure;
       state.scheduledRuntime.updatedAt = new Date().toISOString();
       return;
+    case "record_scheduled_run":
+      state.scheduledRuntime.lastRuns = [
+        ...state.scheduledRuntime.lastRuns.filter((entry) => entry.runner !== operation.run.runner),
+        operation.run,
+      ].slice(-64);
+      state.scheduledRuntime.updatedAt = operation.run.ranAt;
+      return;
     case "propose_memory_distillation":
       return;
     case "apply_memory_distillation":
