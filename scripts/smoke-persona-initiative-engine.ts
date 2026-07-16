@@ -71,6 +71,7 @@ import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/p
 import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
+import { buildVoidModerationLaunchCommand, launchVoidModerationTurn, waitForVoidModerationHandshake } from "../apps/persona-scheduler/dist/void-moderation-turn-actuator.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -717,6 +718,45 @@ assert.doesNotMatch(assembledTurn.prompt, /Visible cross-channel chronology/, "t
 assert.equal(assembledTurn.imageAttachments.length, 8, "the assembler owns the bounded image evidence budget");
 assert.equal(assembledTurn.imageAttachments.filter((attachment) => attachment.localPath === "C:/cache/same.png").length, 1, "the assembler deduplicates image evidence across room and nearby snapshots");
 assert.equal(assembledTurn.conversation.focus?.channelId, "aquarium", "the assembler returns the same newest-evidence conversation projection supplied to the turn actuator");
+const moderationLaunchCommand = buildVoidModerationLaunchCommand({
+  pendingMentionsPath: "C:/Void's state/pending.json",
+  runnerScript: "C:/VoidBot/scripts/run.ps1",
+  workspaceRoot: "C:/VoidBot",
+});
+assert.match(moderationLaunchCommand, /Void''s state/, "the moderation actuator owns PowerShell-safe path quoting");
+assert.match(moderationLaunchCommand, /Start-Process[\s\S]*-WindowStyle Hidden/, "the moderation actuator owns detached hidden launch mechanics");
+let handshakeNow = 0;
+const missingHandshake = await waitForVoidModerationHandshake({
+  lockPath: "lock",
+  statusPath: "status",
+  launchedAt: 0,
+  timeoutMs: 2,
+  now: () => handshakeNow,
+  pause: async () => { handshakeNow += 1; },
+  touchedAfter: async () => false,
+});
+assert.deepEqual(missingHandshake, { started: false, reason: "void_moderation_launch_handshake_missing" }, "a missing launch witness fails explicitly instead of pretending the turn started");
+const moderationActuatorDirectory = await mkdtemp(join(tmpdir(), "voidbot-moderation-actuator-"));
+try {
+  let launchWitness: { command?: string; args?: string[]; cwd?: string; unref?: boolean } = {};
+  const receipt = await launchVoidModerationTurn({
+    queuedAt: "2026-07-15T21:10:00.000Z",
+    storageRoot: moderationActuatorDirectory,
+    workspaceRoot: moderationActuatorDirectory,
+    pendingMentions: [{ messageId: "mention", channelId: "aquarium", authorId: "human-2", authorName: "Neighbor", visiblePrompt: "Void, answer this", queuedAt: "2026-07-15T21:10:00.000Z" }],
+  }, {
+    now: () => 1000,
+    touchedAfter: async (path) => path.endsWith("moderation-rumination.lock"),
+    launch: (command, args, options) => ({ pid: 42, unref: () => { launchWitness = { command, args, cwd: options.cwd, unref: true }; } }),
+  });
+  assert.deepEqual(receipt, { created: true, activeJobId: "process:void-moderation:2026-07-15T21:10:00.000Z", requestMessageId: "agent-turn:void:2026-07-15T21:10:00.000Z" }, "the moderation actuator returns only a scheduler-facing start receipt after handshake");
+  assert.equal(launchWitness.command, "powershell.exe", "the moderation actuator owns the platform process choice");
+  assert.equal(launchWitness.unref, true, "the moderation actuator detaches the launcher");
+  const pendingMentionEnvelope = JSON.parse(await readFile(join(moderationActuatorDirectory, "status", "void-moderation-pending-mentions.json"), "utf8"));
+  assert.equal(pendingMentionEnvelope.pendingMentions[0].messageId, "mention", "the moderation actuator writes the exact pending-attention handoff consumed by the runner");
+} finally {
+  await rm(moderationActuatorDirectory, { recursive: true, force: true });
+}
 assert.equal(personaChannelSpeedMultiplier(routedIdentity), 3, "scheduler speed projection uses the routing organ's bounded channel policy");
 assert.equal(newestPendingMentionChannel([
   { identityId: "nibu", channelId: "older", queuedAt: "2026-07-15T20:00:00.000Z" },

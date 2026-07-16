@@ -1,7 +1,6 @@
 import "dotenv/config";
 
-import { spawn } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
@@ -79,6 +78,7 @@ import {
   readBifrostGovernanceDigest,
 } from "../apps/persona-scheduler/dist/bifrost-governance-source.js";
 import { submitPersonaTurn } from "../apps/persona-scheduler/dist/turn-actuator.js";
+import { launchVoidModerationTurn } from "../apps/persona-scheduler/dist/void-moderation-turn-actuator.js";
 import {
   buildPersonaChannelPlan as buildChannelPlan,
   newestPendingMentionChannel,
@@ -362,7 +362,7 @@ async function queueParticipantTurn(input: {
     case "repo_face_rumination":
       return queueRepoFaceTurn(input);
     case "void_moderation":
-      return startVoidModerationTurn({
+      return launchVoidModerationTurn({
         queuedAt: input.queuedAt,
         storageRoot: input.config.storageRoot,
         pendingMentions: input.pendingMentions,
@@ -465,118 +465,6 @@ async function queueRepoFaceTurn(input: {
     activeJobId: result.activeJobId,
     requestMessageId: result.requestMessageId,
   };
-}
-
-async function startVoidModerationTurn(input: {
-  queuedAt: string;
-  storageRoot: string;
-  pendingMentions: RepoFacePendingMention[];
-}): Promise<{ created: boolean; activeJobId?: string; requestMessageId?: string; failureReason?: string }> {
-  const runnerScript = resolve(process.cwd(), "scripts", "run-void-moderator-rumination.ps1");
-  const statusDir = resolve(input.storageRoot, "status");
-  const lockPath = resolve(statusDir, "moderation-rumination.lock");
-  const statusPath = resolve(statusDir, "moderation-rumination.json");
-  const pendingMentionsPath = resolve(statusDir, "void-moderation-pending-mentions.json");
-  const launchedAt = Date.now();
-  await mkdir(statusDir, { recursive: true });
-  await writeFile(
-    pendingMentionsPath,
-    `${JSON.stringify({
-      generatedAt: input.queuedAt,
-      pendingMentions: input.pendingMentions,
-    }, null, 2)}\n`,
-    "utf8",
-  );
-  const launchCommand = [
-    `$env:VOID_RUMINATION_PENDING_MENTIONS_PATH = ${toPowerShellSingleQuotedString(pendingMentionsPath)};`,
-    `$arguments = @(${[
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      runnerScript,
-    ].map(toPowerShellSingleQuotedString).join(", ")});`,
-    `Start-Process -FilePath ${toPowerShellSingleQuotedString("powershell.exe")} -ArgumentList $arguments -WorkingDirectory ${toPowerShellSingleQuotedString(process.cwd())} -WindowStyle Hidden;`,
-  ].join(" ");
-  const child = spawn(
-    "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      launchCommand,
-    ],
-    {
-      cwd: process.cwd(),
-      stdio: "ignore",
-      windowsHide: true,
-    },
-  );
-  child.unref();
-  const handshake = await waitForVoidModerationHandshake({
-    lockPath,
-    statusPath,
-    launchedAt,
-    timeoutMs: 60000,
-  });
-
-  if (!handshake.started) {
-    return {
-      created: false,
-      activeJobId: child.pid ? `launcher-process:${child.pid}` : undefined,
-      requestMessageId: `agent-turn:void:${input.queuedAt}`,
-      failureReason: handshake.reason,
-    };
-  }
-
-  return {
-    created: true,
-    activeJobId: `process:void-moderation:${input.queuedAt}`,
-    requestMessageId: `agent-turn:void:${input.queuedAt}`,
-  };
-}
-
-function toPowerShellSingleQuotedString(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-async function waitForVoidModerationHandshake(input: {
-  lockPath: string;
-  statusPath: string;
-  launchedAt: number;
-  timeoutMs: number;
-}): Promise<{ started: true } | { started: false; reason: string }> {
-  const deadline = Date.now() + input.timeoutMs;
-  while (Date.now() < deadline) {
-    if (await wasTouchedAfter(input.lockPath, input.launchedAt)) {
-      return { started: true };
-    }
-    if (await wasTouchedAfter(input.statusPath, input.launchedAt)) {
-      return { started: true };
-    }
-    await sleep(250);
-  }
-
-  return {
-    started: false,
-    reason: "void_moderation_launch_handshake_missing",
-  };
-}
-
-async function wasTouchedAfter(path: string, timestampMs: number): Promise<boolean> {
-  try {
-    const info = await stat(path);
-    return info.mtimeMs >= timestampMs - 500;
-  } catch {
-    return false;
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
 function renderInitiativeAffinityCard(spec: ParticipantSpec): string {
