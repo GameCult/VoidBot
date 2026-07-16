@@ -62,7 +62,7 @@ import {
   readPersonaMemoryRecall,
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { projectPersonaMemorySurface, renderPersonaTypedStateSections, validatePersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -1120,22 +1120,15 @@ function renderRepoFaceStatePacket(
   curiosityGraphFacts?: string,
 ): string {
   const name = identity.displayName;
-  const lines: string[] = [];
   const needs = [...state.faceAffect.needs]
     .filter((need) => need.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => pressure.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
-  const incubation = [...state.thoughtMemory.incubation]
-    .filter((thread) => thread.status !== "retired")
-    .sort((left, right) => right.maturation - left.maturation);
   const candidateInterventions = [...state.candidateInterventions.interventions]
     .filter((intervention) => intervention.status !== "retired")
     .slice(-8)
-    .reverse();
-  const recentReceipts = [...state.speechReceipts.recentReceipts]
-    .slice(-6)
     .reverse();
   const typedSections = renderPersonaTypedStateSections({ identityName: name, state });
   const humanClarityFacts = roomContext
@@ -1143,137 +1136,38 @@ function renderRepoFaceStatePacket(
     : undefined;
   const clarityPressureActive = Boolean(humanClarityFacts);
 
-  lines.push(...typedSections.opening, ...typedSections.needs, ...typedSections.bonds);
-
   const relationshipFreshnessFacts = renderRepoFaceRelationshipFreshnessFacts(name, state, registryIdentities);
-  if (relationshipFreshnessFacts) {
-    lines.push(relationshipFreshnessFacts);
-  }
-
-  lines.push(...typedSections.statusMoodMemory);
-
   const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
-  if (socialGraphFacts) {
-    lines.push(socialGraphFacts);
-  }
-
   const peerOpeningFacts = roomContext
     ? renderRepoFacePeerOpeningFacts(identity, registryIdentities, roomContext)
     : undefined;
-  if (peerOpeningFacts) {
-    lines.push(peerOpeningFacts);
-  }
-
   const socialPressureFacts = roomContext
     ? renderRepoFaceRelationshipPressureFacts(identity, registryIdentities, state, roomContext)
     : undefined;
-  if (socialPressureFacts) {
-    lines.push(socialPressureFacts);
-  }
-
   const pronounFacts = renderRepoFaceHumanPronounFacts(humanPronounGuidance);
-  if (pronounFacts) {
-    lines.push(pronounFacts);
-  }
-
   const roomTextureFacts = roomContext
     ? renderRepoFaceRoomTextureFacts(identity, roomContext)
     : undefined;
-  if (roomTextureFacts) {
-    lines.push(roomTextureFacts);
-  }
-
-  if (curiosityGraphFacts) {
-    lines.push(curiosityGraphFacts);
-  }
 
   const selfMaintenancePressureFacts = !clarityPressureActive
     ? renderRepoFaceSelfMaintenancePressureFacts(name, agencyPressures, needs, candidateInterventions)
     : undefined;
-  if (selfMaintenancePressureFacts) {
-    lines.push(selfMaintenancePressureFacts);
-  }
 
-  if (agencyPressures.length > 0 && !clarityPressureActive) {
-    lines.push([
-      "Agency pressures that want eventual motion:",
-      ...agencyPressures.map((pressure) =>
-        [
-          `- ${pressure.kind} toward ${targetLabel(pressure.target)} [${pressure.status}, intensity ${pressure.intensity.toFixed(2)}]: ${asSentence(pressure.summary)}`,
-          pressure.claim ? `Claim: ${asSentence(pressure.claim)}` : "",
-          pressure.question ? `Question: ${asSentence(pressure.question)}` : "",
-          pressure.tension ? `Tension: ${asSentence(pressure.tension)}` : "",
-          `Behavioral pull: ${asSentence(pressure.actionImplication)}`,
-        ].filter(Boolean).join(" "),
-      ),
-    ].join("\n"));
-  } else if (agencyPressures.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Agency pressures are currently demoted by live clarity pressure:",
-      `- ${name} still has stored urges toward eventual motion, but the room has asked for plain understanding first. Do not expose the old detailed asks this turn; translate only the underlying value into simpler speech, repair, restraint, or silence.`,
-    ].join("\n"));
-  }
-
-  if (incubation.length > 0 && !clarityPressureActive) {
-    lines.push([
-      "Thoughts still moving under the floorboards:",
-      ...incubation.map((thread) =>
-        [
-          `- ${cleanCharacterFacingSentence(thread.topic)} [${thread.status}, maturation ${thread.maturation.toFixed(2)}]: ${cleanCharacterFacingSentence(thread.summary)}`,
-          typeof thread.desireToSpeak === "number" ? `desire to speak ${thread.desireToSpeak.toFixed(2)}` : "",
-          typeof thread.noveltyToRoom === "number" ? `room novelty ${thread.noveltyToRoom.toFixed(2)}` : "",
-          typeof thread.saturationScore === "number" ? `saturation ${thread.saturationScore.toFixed(2)}` : "",
-        ].filter(Boolean).join("; "),
-      ),
-    ].join("\n"));
-  } else if (incubation.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Incubating thoughts are currently background only:",
-      `- ${name} has unfinished thoughts, but live room confusion means they should not surface as new doctrine or terminology this turn.`,
-    ].join("\n"));
-  }
-
-  if (candidateInterventions.length > 0 && !clarityPressureActive) {
-    lines.push([
-      "Unsaid or recently deferred speech pressure:",
-      ...candidateInterventions.map((intervention) =>
-        [
-          `- ${intervention.kind} [${intervention.status}, priority ${intervention.priority.toFixed(2)}${intervention.mustEventuallyShare ? ", must eventually share" : ""}]: ${asSentence(intervention.summary)}`,
-          `Draft residue: ${cleanCharacterFacingSentence(intervention.draft)}`,
-        ].join(" "),
-      ),
-      "Do not repeat a waiting line unless the room gives it a sharper angle.",
-    ].join("\n"));
-  } else if (candidateInterventions.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Deferred speech pressure is not authorized for public reuse right now:",
-      `- ${name} has unsaid lines waiting, but the live room problem is intelligibility. Treat those lines as temptation to avoid, not as drafts to polish.`,
-    ].join("\n"));
-  }
-
-  if (recentReceipts.length > 0 && !clarityPressureActive) {
-    lines.push([
-      "Recent speech residue:",
-      ...recentReceipts.map((receipt) =>
-        `- Said recently${receipt.preview ? `: ${cleanCharacterFacingSentence(receipt.preview)}` : "."} Let this create repetition caution, confidence, embarrassment, or follow-through as appropriate.`,
-      ),
-    ].join("\n"));
-  } else if (recentReceipts.length > 0 && clarityPressureActive) {
-    lines.push([
-      "Recent speech residue should create caution only:",
-      `- ${name} has recent public wording in the room, but a human clarity request means the exact phrasing should not be echoed or treated as successful style.`,
-    ].join("\n"));
-  }
-
-  if (humanClarityFacts) {
-    lines.push(humanClarityFacts);
-  }
-
-  if (lines.length === 0) {
-    return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
-  }
-
-  return validatePersonaMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
+  return composePersonaMemoryPacket({
+    identityName: name,
+    typed: typedSections,
+    relationshipFreshness: relationshipFreshnessFacts,
+    socialGraph: socialGraphFacts,
+    peerOpening: peerOpeningFacts,
+    socialPressure: socialPressureFacts,
+    pronouns: pronounFacts,
+    roomTexture: roomTextureFacts,
+    curiosity: curiosityGraphFacts,
+    selfMaintenance: selfMaintenancePressureFacts,
+    pressureSections: renderPersonaPressureSections({ identityName: name, state, clarityPressureActive }),
+    humanClarity: humanClarityFacts,
+    transformSurface: (surface) => cleanRepoFaceProjectorLoopVocabulary(identity, surface),
+  });
 }
 
 function renderRepoFaceSelfMaintenancePressureFacts(

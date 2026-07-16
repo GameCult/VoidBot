@@ -65,7 +65,7 @@ import {
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { projectPersonaMemorySurface, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -483,6 +483,17 @@ try {
     ? renderPersonaTypedStateSections({ identityName: "Nibu", state: populatedObservation.typedState })
     : undefined;
   assert.match(typedSections?.opening.join("\n") ?? "", /Speaking pressure:/, "the projector owns typed runtime-pressure presentation without acquiring Persona state");
+  const pressureSections = populatedObservation.status === "ok"
+    ? renderPersonaPressureSections({ identityName: "Nibu", state: populatedObservation.typedState, clarityPressureActive: true })
+    : [];
+  const composedMemory = typedSections && composePersonaMemoryPacket({
+    identityName: "Nibu",
+    typed: typedSections,
+    socialGraph: "Explicit social graph fact.",
+    roomTexture: "Explicit room texture fact.",
+    pressureSections,
+  });
+  assert.match(composedMemory ?? "", /Explicit social graph fact\.[\s\S]*Explicit room texture fact\./, "the projector owns final ordering of explicitly supplied external facts");
   assert.deepEqual(await readFile(statePath), beforeObservation, "Persona state observation cannot rewrite sleep, speaking pressure, or any other Mind field");
 } finally {
   await rm(stateSourceDirectory, { recursive: true, force: true });

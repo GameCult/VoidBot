@@ -8,6 +8,68 @@ export interface PersonaTypedStateSections {
   statusMoodMemory: string[];
 }
 
+export function renderPersonaPressureSections(input: {
+  identityName: string;
+  state: VoidSelfStateTypedProjection;
+  clarityPressureActive: boolean;
+}): string[] {
+  const { identityName: name, clarityPressureActive } = input;
+  const agency = [...input.state.agencyPressure.pressures].filter((entry) => entry.status !== "retired").sort(sortAffect);
+  const incubation = [...input.state.thoughtMemory.incubation].filter((entry) => entry.status !== "retired").sort((left, right) => right.maturation - left.maturation);
+  const candidates = [...input.state.candidateInterventions.interventions].filter((entry) => entry.status !== "retired").slice(-8).reverse();
+  const receipts = [...input.state.speechReceipts.recentReceipts].slice(-6).reverse();
+  const sections: string[] = [];
+  if (agency.length > 0) sections.push(clarityPressureActive
+    ? ["Agency pressures are currently demoted by live clarity pressure:", `- ${name} still has stored urges toward eventual motion, but the room has asked for plain understanding first. Do not expose the old detailed asks this turn; translate only the underlying value into simpler speech, repair, restraint, or silence.`].join("\n")
+    : ["Agency pressures that want eventual motion:", ...agency.map((pressure) => [`- ${pressure.kind} toward ${targetLabel(pressure.target)} [${pressure.status}, intensity ${pressure.intensity.toFixed(2)}]: ${sentence(pressure.summary)}`, pressure.claim ? `Claim: ${sentence(pressure.claim)}` : "", pressure.question ? `Question: ${sentence(pressure.question)}` : "", pressure.tension ? `Tension: ${sentence(pressure.tension)}` : "", `Behavioral pull: ${sentence(pressure.actionImplication)}`].filter(Boolean).join(" "))].join("\n"));
+  if (incubation.length > 0) sections.push(clarityPressureActive
+    ? ["Incubating thoughts are currently background only:", `- ${name} has unfinished thoughts, but live room confusion means they should not surface as new doctrine or terminology this turn.`].join("\n")
+    : ["Thoughts still moving under the floorboards:", ...incubation.map((thread) => [`- ${cleanSentence(thread.topic)} [${thread.status}, maturation ${thread.maturation.toFixed(2)}]: ${cleanSentence(thread.summary)}`, typeof thread.desireToSpeak === "number" ? `desire to speak ${thread.desireToSpeak.toFixed(2)}` : "", typeof thread.noveltyToRoom === "number" ? `room novelty ${thread.noveltyToRoom.toFixed(2)}` : "", typeof thread.saturationScore === "number" ? `saturation ${thread.saturationScore.toFixed(2)}` : ""].filter(Boolean).join("; "))].join("\n"));
+  if (candidates.length > 0) sections.push(clarityPressureActive
+    ? ["Deferred speech pressure is not authorized for public reuse right now:", `- ${name} has unsaid lines waiting, but the live room problem is intelligibility. Treat those lines as temptation to avoid, not as drafts to polish.`].join("\n")
+    : ["Unsaid or recently deferred speech pressure:", ...candidates.map((entry) => [`- ${entry.kind} [${entry.status}, priority ${entry.priority.toFixed(2)}${entry.mustEventuallyShare ? ", must eventually share" : ""}]: ${sentence(entry.summary)}`, `Draft residue: ${cleanSentence(entry.draft)}`].join(" ")), "Do not repeat a waiting line unless the room gives it a sharper angle."].join("\n"));
+  if (receipts.length > 0) sections.push(clarityPressureActive
+    ? ["Recent speech residue should create caution only:", `- ${name} has recent public wording in the room, but a human clarity request means the exact phrasing should not be echoed or treated as successful style.`].join("\n")
+    : ["Recent speech residue:", ...receipts.map((receipt) => `- Said recently${receipt.preview ? `: ${cleanSentence(receipt.preview)}` : "."} Let this create repetition caution, confidence, embarrassment, or follow-through as appropriate.`)].join("\n"));
+  return sections;
+}
+
+export function composePersonaMemoryPacket(input: {
+  identityName: string;
+  typed: PersonaTypedStateSections;
+  relationshipFreshness?: string;
+  socialGraph?: string;
+  peerOpening?: string;
+  socialPressure?: string;
+  pronouns?: string;
+  roomTexture?: string;
+  curiosity?: string;
+  selfMaintenance?: string;
+  pressureSections: string[];
+  humanClarity?: string;
+  transformSurface?: (surface: string) => string;
+}): string {
+  const sections = [
+    ...input.typed.opening,
+    ...input.typed.needs,
+    ...input.typed.bonds,
+    input.relationshipFreshness,
+    ...input.typed.statusMoodMemory,
+    input.socialGraph,
+    input.peerOpening,
+    input.socialPressure,
+    input.pronouns,
+    input.roomTexture,
+    input.curiosity,
+    input.selfMaintenance,
+    ...input.pressureSections,
+    input.humanClarity,
+  ].filter((section): section is string => Boolean(section));
+  if (sections.length === 0) return `You are ${input.identityName}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
+  const surface = sections.join("\n\n");
+  return validatePersonaMemorySurface(input.transformSurface ? input.transformSurface(surface) : surface);
+}
+
 export function renderPersonaTypedStateSections(input: {
   identityName: string;
   state: VoidSelfStateTypedProjection;
