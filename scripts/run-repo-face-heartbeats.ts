@@ -79,8 +79,8 @@ import {
 } from "../apps/persona-scheduler/dist/control-source.js";
 import {
   readRepoActivity,
-  type RepoActivityObservation,
 } from "../apps/persona-scheduler/dist/repo-activity-source.js";
+import { projectRepoActivityObservation } from "../apps/persona-scheduler/dist/repo-activity-projector.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -417,7 +417,7 @@ async function queueRepoFaceTurn(input: {
   });
   const repoActivitySurface = identity.identityKind === "native_persona"
     ? projectNativePersonaBody(identity)
-    : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
+    : projectRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
   const globalAgentDoctrine = await readGlobalAgentDoctrine({ codexHome: process.env.CODEX_HOME, userProfile: process.env.USERPROFILE });
   const assembly = assemblePersonaTurn({
     identity,
@@ -547,7 +547,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     stateObservation: personaStateObservation,
     projectedMemoryOverride,
   });
-  const repoActivitySurface = renderRepoActivityObservation(
+  const repoActivitySurface = projectRepoActivityObservation(
     readRepoActivity({ identity, storageRoot: input.config.storageRoot }),
   );
   const globalAgentDoctrine = await readGlobalAgentDoctrine({ codexHome: process.env.CODEX_HOME, userProfile: process.env.USERPROFILE });
@@ -590,27 +590,6 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
-}
-
-function renderRepoActivityObservation(observation: RepoActivityObservation): string {
-  if (observation.status === "unconfigured") {
-    return "- This Persona has no source repository configured; no repo activity was requested.";
-  }
-  if (observation.status === "unavailable") {
-    return [
-      `- Recent ${observation.sourceRepoName} activity could not be read for this turn.`,
-      observation.detail ? `- Reader error: ${collapseWhitespace(observation.detail, 500)}` : "- Reader error: no diagnostic output.",
-      "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
-    ].join("\n");
-  }
-  if (observation.status === "malformed") {
-    return [
-      `- Recent ${observation.sourceRepoName} activity output was not parseable.`,
-      `- Raw output: ${collapseWhitespace(observation.raw, 500)}`,
-      "- Do not claim current repo state from stale memory; use source/history tools before making fresh claims.",
-    ].join("\n");
-  }
-  return observation.digest || `- No recent ${observation.sourceRepoName} activity was reported.`;
 }
 
 async function readOptionalMemorySurface(path: string | undefined): Promise<string | undefined> {
@@ -656,23 +635,8 @@ function buildInspectionParticipant(
   };
 }
 
-function collapseWhitespace(value: string, maxLength?: number): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return maxLength && normalized.length > maxLength
-    ? `${normalized.slice(0, maxLength - 3)}...`
-    : normalized;
-}
-
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Number(value.toFixed(3))));
-}
-
-function round3(value: number): number {
-  return Math.round(value * 1000) / 1000;
 }
 
 function readArgValue(name: string): string | undefined {

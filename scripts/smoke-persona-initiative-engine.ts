@@ -63,6 +63,7 @@ import {
   readSwarmControlState,
 } from "../apps/persona-scheduler/dist/control-source.js";
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
+import { projectRepoActivityObservation } from "../apps/persona-scheduler/dist/repo-activity-projector.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { coordinatePersonaMemoryTurn } from "../apps/persona-scheduler/dist/persona-memory-turn-coordinator.js";
@@ -858,6 +859,8 @@ const repoActivity = readRepoActivity({
   },
 });
 assert.deepEqual(repoActivity, { status: "ok", sourceRepoName: "AetheriaLore", digest: "- Fresh repo motion." }, "repo activity crosses the source boundary as facts, not prompt prose");
+assert.equal(projectRepoActivityObservation(repoActivity), "- Fresh repo motion.", "repo activity prompt lowering belongs to the pure projector");
+assert.match(projectRepoActivityObservation({ status: "unavailable", sourceRepoName: "AetheriaLore", detail: "exporter asleep" }), /could not be read[\s\S]*exporter asleep[\s\S]*Do not claim current repo state/, "repo activity failure remains explicit without moving exporter mechanics into the projector");
 assert.ok(repoActivityArgs.includes("--read-only"), "Persona turns cannot advance the repo activity cursor while observing body context");
 assert.deepEqual(repoActivityArgs.slice(-4), ["--hours", "96", "--max-commits", "5"], "the source owns one bounded activity window");
 const failedRepoActivity = readRepoActivity({
