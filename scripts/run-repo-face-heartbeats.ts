@@ -19,7 +19,6 @@ import {
 } from "@voidbot/core";
 import { createTextEmbedder, createVectorStores, RetrievalService } from "@voidbot/rag";
 import {
-  type PromptImageAttachment,
   type SourceMessage,
 } from "@voidbot/shared";
 import {
@@ -59,12 +58,12 @@ import {
 import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
-import { projectPersonaConversation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
-import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt, renderPersonaIdentityDoctrine } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
+import { renderPersonaIdentityDoctrine } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { projectGamecultPersonaState, projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import type { PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { projectPersonaText } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
+import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
   readDiscordActivitySnapshot,
@@ -433,46 +432,32 @@ async function queueRepoFaceTurn(input: {
     ? projectNativePersonaBody(identity)
     : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
-  const conversationProjection = projectPersonaConversation({
-    identity,
-    recentMessages,
-    channelSnapshots,
-    pendingMentions: input.pendingMentions,
-    channelPlan,
-  });
-  const conversationMemorySurface = conversationProjection.transcript;
-  const prompt = buildPersonaTurnPrompt({
+  const assembly = assemblePersonaTurn({
     identity,
     channelId,
     channelPlan,
-    channelSnapshots,
     recentMessages,
-    memorySurface,
-    repoActivitySurface,
-    conversationMemorySurface,
-    humanPronounGuidance,
-    bifrostDigest,
+    channelSnapshots,
     participant: input.participant,
     pendingMentions: input.pendingMentions,
-    jurisdictionDive: buildPersonaJurisdictionDiveDirective(identity, input.participant),
+    memorySurface,
+    repoActivitySurface,
+    humanPronounGuidance,
+    bifrostDigest,
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
     globalAgentDoctrine,
   });
-  const imageAttachments = collectPromptImageAttachments([
-    recentMessages,
-    ...channelSnapshots.map((snapshot) => snapshot.messages),
-  ].flat());
   const result = await submitPersonaTurn({
     jobQueue: input.storage.jobQueue,
     provider: input.config.repoFaceHeartbeats.provider,
     identityId: identity.id,
     queuedAt: input.queuedAt,
     channelId,
-    prompt,
+    prompt: assembly.prompt,
     recentMessages,
-    conversationFocus: conversationProjection.focus,
-    conversationThreads: conversationProjection.threads,
-    imageAttachments,
+    conversationFocus: assembly.conversation.focus,
+    conversationThreads: assembly.conversation.threads,
+    imageAttachments: assembly.imageAttachments,
   });
 
   return {
@@ -698,18 +683,12 @@ async function assembleRepoFaceTurnPrompt(input: {
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
-    : projectPersonaConversation({
-        identity,
-        recentMessages,
-        channelSnapshots,
-        pendingMentions: [],
-        channelPlan,
-      }).transcript;
+    : undefined;
   const participant = buildInspectionParticipant(
     identity,
     input.config.repoFaceHeartbeats.baseRecoveryMinutes,
   );
-  const prompt = buildPersonaTurnPrompt({
+  const assembly = assemblePersonaTurn({
     identity,
     channelId,
     channelPlan,
@@ -723,7 +702,6 @@ async function assembleRepoFaceTurnPrompt(input: {
     bifrostDigest,
     participant,
     pendingMentions: [],
-    jurisdictionDive: buildPersonaJurisdictionDiveDirective(identity, participant),
     githubActionsEnabled: input.config.repoFaceGithubActionsEnabled,
     globalAgentDoctrine,
   });
@@ -731,13 +709,13 @@ async function assembleRepoFaceTurnPrompt(input: {
   if (input.outPath) {
     const outPath = resolve(input.outPath);
     await mkdir(dirname(outPath), { recursive: true });
-    await writeFile(outPath, prompt, "utf8");
+    await writeFile(outPath, assembly.prompt, "utf8");
   }
 
   return {
     ok: true,
     identityId: identity.id,
-    promptLength: prompt.length,
+    promptLength: assembly.prompt.length,
     outPath: input.outPath ? resolve(input.outPath) : undefined,
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
@@ -963,31 +941,6 @@ function renderRepoActivityObservation(observation: RepoActivityObservation): st
     ].join("\n");
   }
   return observation.digest || `- No recent ${observation.sourceRepoName} activity was reported.`;
-}
-
-function collectPromptImageAttachments(messages: SourceMessage[]): PromptImageAttachment[] {
-  const seen = new Set<string>();
-  const images: PromptImageAttachment[] = [];
-  for (const message of messages) {
-    for (const attachment of message.attachments ?? []) {
-      if (attachment.kind !== "image" || !attachment.localPath) {
-        continue;
-      }
-      const key = attachment.localPath;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      images.push({
-        messageId: message.id,
-        authorName: message.authorName,
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        localPath: attachment.localPath,
-      });
-    }
-  }
-  return images.slice(0, 8);
 }
 
 async function readOptionalMemorySurface(path: string | undefined): Promise<string | undefined> {

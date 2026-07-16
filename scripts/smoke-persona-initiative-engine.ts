@@ -70,6 +70,7 @@ import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/per
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
+import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -681,6 +682,41 @@ const projectedTurnPrompt = buildPersonaTurnPrompt({
   globalAgentDoctrine: "Global doctrine.",
 });
 assert.match(projectedTurnPrompt, /A direct call is tugging at you[\s\S]*Nibu, answer this/, "the pure turn-prompt projector owns situation and pending-call policy from supplied facts");
+const assembledTurn = assemblePersonaTurn({
+  identity: routedIdentity,
+  channelId: "lore",
+  channelPlan,
+  channelSnapshots: [{ channelId: "aquarium", messages: [{
+    id: "duplicate-image",
+    authorId: "human-2",
+    authorName: "Neighbor",
+    content: "same image nearby",
+    timestamp: "2026-07-15T21:09:00.000Z",
+    isBot: false,
+    channelId: "aquarium",
+    attachments: [{ kind: "image", filename: "same.png", contentType: "image/png", localPath: "C:/cache/same.png" }],
+  }] }],
+  recentMessages: Array.from({ length: 9 }, (_, index) => ({
+    id: `image-${index}`,
+    authorId: "human",
+    authorName: "Operator",
+    content: `image evidence ${index}`,
+    timestamp: `2026-07-15T21:${String(index).padStart(2, "0")}:00.000Z`,
+    isBot: false,
+    channelId: "lore",
+    attachments: [{ kind: "image" as const, filename: `${index}.png`, contentType: "image/png", localPath: index === 0 ? "C:/cache/same.png" : `C:/cache/${index}.png` }],
+  })),
+  participant: promptParticipant,
+  pendingMentions: [],
+  conversationMemorySurface: "Inspection supplied conversation authority.",
+  githubActionsEnabled: false,
+  globalAgentDoctrine: "Global doctrine.",
+});
+assert.match(assembledTurn.prompt, /Inspection supplied conversation authority\./, "queued and inspection paths share one assembler with an explicit conversation override");
+assert.doesNotMatch(assembledTurn.prompt, /Visible cross-channel chronology/, "the assembler does not let its derived transcript override an explicit inspection surface");
+assert.equal(assembledTurn.imageAttachments.length, 8, "the assembler owns the bounded image evidence budget");
+assert.equal(assembledTurn.imageAttachments.filter((attachment) => attachment.localPath === "C:/cache/same.png").length, 1, "the assembler deduplicates image evidence across room and nearby snapshots");
+assert.equal(assembledTurn.conversation.focus?.channelId, "aquarium", "the assembler returns the same newest-evidence conversation projection supplied to the turn actuator");
 assert.equal(personaChannelSpeedMultiplier(routedIdentity), 3, "scheduler speed projection uses the routing organ's bounded channel policy");
 assert.equal(newestPendingMentionChannel([
   { identityId: "nibu", channelId: "older", queuedAt: "2026-07-15T20:00:00.000Z" },
