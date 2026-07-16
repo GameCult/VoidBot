@@ -63,6 +63,7 @@ import {
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { observePersonaRoomTexture, renderPersonaHumanPronounFacts, renderPersonaRelationshipFreshness, renderPersonaRoomTexture, renderPersonaRoomWeather, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -649,9 +650,9 @@ function buildHeartbeatPrompt(input: {
     semanticMemoryRecallSurface: input.semanticMemoryRecallSurface ?? "- No semantic Persona memory recall was attached for this turn.",
     repoActivitySurface: input.repoActivitySurface ?? "- No recent home repo activity was attached for this turn.",
     conversationMemorySurface: input.conversationMemorySurface ?? "- No recent conversation transcript was attached for this turn.",
-    humanPronounDirective: renderRepoFaceHumanPronounFacts(input.humanPronounGuidance ?? [])
+    humanPronounDirective: renderPersonaHumanPronounFacts(input.humanPronounGuidance ?? [])
       ?? "Known human pronoun guidance:\n- No explicit human pronoun guidance is attached for this turn. Use names or neutral phrasing instead of guessing.",
-    roomWeatherDirective: renderRepoFaceRoomWeatherDirective(input.identity, {
+    roomWeatherDirective: renderPersonaRoomWeather({ identity: input.identity,
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
     }),
@@ -1136,7 +1137,12 @@ function renderRepoFaceStatePacket(
     : undefined;
   const clarityPressureActive = Boolean(humanClarityFacts);
 
-  const relationshipFreshnessFacts = renderRepoFaceRelationshipFreshnessFacts(name, state, registryIdentities);
+  const relationshipFreshnessFacts = renderPersonaRelationshipFreshness({
+    identityName: name,
+    state,
+    registryIdentities,
+    observedAt: new Date(),
+  });
   const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
   const peerOpeningFacts = roomContext
     ? renderRepoFacePeerOpeningFacts(identity, registryIdentities, roomContext)
@@ -1144,9 +1150,13 @@ function renderRepoFaceStatePacket(
   const socialPressureFacts = roomContext
     ? renderRepoFaceRelationshipPressureFacts(identity, registryIdentities, state, roomContext)
     : undefined;
-  const pronounFacts = renderRepoFaceHumanPronounFacts(humanPronounGuidance);
+  const pronounFacts = renderPersonaHumanPronounFacts(humanPronounGuidance);
   const roomTextureFacts = roomContext
-    ? renderRepoFaceRoomTextureFacts(identity, roomContext)
+    ? renderPersonaRoomTexture({
+        identity,
+        ...roomContext,
+        topicAttractorFacts: renderRepoFaceTopicAttractorFacts(identity, roomContext.recentMessages),
+      })
     : undefined;
 
   const selfMaintenancePressureFacts = !clarityPressureActive
@@ -1237,96 +1247,6 @@ function renderRepoFaceSelfMaintenancePressureFacts(
   ].join("\n");
 }
 
-function renderRepoFaceRelationshipFreshnessFacts(
-  name: string,
-  state: VoidSelfStateTypedProjection,
-  registryIdentities: RepoDiscordIdentity[],
-): string | undefined {
-  const nowMs = Date.now();
-  const peerKeys = repoFacePeerSocialKeys(registryIdentities);
-  const staleBonds = (state.faceAffect.socialBonds ?? [])
-    .filter((bond) => bond.status === "active" && bond.target.kind === "person" && isRepoFacePeerTarget(bond.target, peerKeys))
-    .map((bond) => ({
-      target: targetLabel(bond.target),
-      kind: bond.stance,
-      intensity: bond.intensity,
-      ageHours: ageHoursSince(bond.updatedAt, nowMs),
-      summary: bond.summary,
-      action: bond.actionImplication,
-    }))
-    .filter((entry) => entry.ageHours >= 48)
-    .sort((left, right) => (right.ageHours * right.intensity) - (left.ageHours * left.intensity))
-    .slice(0, 5);
-  const staleReads = (state.faceAffect.statusReads ?? [])
-    .filter((read) => !read.retiredAt && read.target.kind === "person" && isRepoFacePeerTarget(read.target, peerKeys))
-    .map((read) => ({
-      target: targetLabel(read.target),
-      kind: read.status,
-      intensity: read.intensity,
-      ageHours: ageHoursSince(read.updatedAt, nowMs),
-      summary: read.summary,
-      action: read.actionImplication,
-    }))
-    .filter((entry) => entry.ageHours >= 72)
-    .sort((left, right) => (right.ageHours * right.intensity) - (left.ageHours * left.intensity))
-    .slice(0, 5);
-  const entries = [
-    ...staleBonds.map((entry) =>
-      `- ${entry.target}: ${entry.kind} bond has gone ${formatAgeHours(entry.ageHours)} without contact. ${asSentence(entry.summary)} Touch-base pull: ${asSentence(entry.action)}`,
-    ),
-    ...staleReads.map((entry) =>
-      `- ${entry.target}: ${entry.kind} status read has gone ${formatAgeHours(entry.ageHours)} without contact. ${asSentence(entry.summary)} Touch-base pull: ${asSentence(entry.action)}`,
-    ),
-  ].slice(0, 6);
-
-  if (entries.length === 0) {
-    return undefined;
-  }
-
-  return [
-    `Relationship freshness pressure for ${name}:`,
-    ...entries,
-    "These are not commands to dump feelings. They are swarm social graph itch. A compact tease, check-in, challenge, compliment, question, or repair with another Face can be a successful public turn.",
-  ].join("\n");
-}
-
-function repoFacePeerSocialKeys(registryIdentities: RepoDiscordIdentity[]): Set<string> {
-  const keys = new Set<string>();
-  for (const identity of registryIdentities) {
-    for (const value of [identity.id, identity.displayName, identity.repoName]) {
-      const key = normalizeSocialLabel(value);
-      if (key.length > 0) {
-        keys.add(key);
-      }
-    }
-  }
-  return keys;
-}
-
-function isRepoFacePeerTarget(
-  target: { id: string; label?: string },
-  peerKeys: Set<string>,
-): boolean {
-  return [target.id, target.label]
-    .map(normalizeSocialLabel)
-    .some((key) => key.length > 0 && peerKeys.has(key));
-}
-
-function ageHoursSince(value: string | undefined, nowMs: number): number {
-  const then = Date.parse(value ?? "");
-  if (!Number.isFinite(then)) {
-    return 999;
-  }
-  return Math.max(0, (nowMs - then) / 3_600_000);
-}
-
-function formatAgeHours(hours: number): string {
-  if (hours >= 48) {
-    return `${Math.round(hours / 24)} days`;
-  }
-  return `${Math.round(hours)} hours`;
-}
-
 function cleanRepoFaceProjectorLoopVocabulary(
   identity: RepoDiscordIdentity,
   surface: string,
@@ -1394,63 +1314,6 @@ function targetLabel(target: { label?: string; id?: string; kind?: string } | un
     return "an unnamed target";
   }
   return target.label ?? target.id ?? target.kind ?? "an unnamed target";
-}
-
-function renderRepoFaceRoomTextureFacts(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string | undefined {
-  const stats = collectRepoFaceRoomTextureStats(identity, input);
-  if (!stats) {
-    return undefined;
-  }
-
-  const temporaryPressures = stats.texture === "heavy" || stats.agentShare >= 0.55
-    ? [
-        "- Temporary affect pressure candidates: play, rest, and social_contact may be hungry because the room is carrying sustained work/agent weight.",
-        "- These are not stored needs and not orders. Project whether this character gets mischievous, bored, sharp, withdrawn, socially hungry, status-testing, or still work-focused.",
-      ]
-    : [];
-  const topicAttractorFacts = renderRepoFaceTopicAttractorFacts(identity, input.recentMessages);
-
-  return [
-    "Room texture facts:",
-    `- Observed messages: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
-    `- Long messages: ${stats.longMessages}; short messages: ${stats.shortMessages}; average length: ${stats.averageCharacters} characters.`,
-    `- This Face's own recent messages in the attached window: ${stats.ownMessages}.`,
-    `- Structural texture: ${stats.texture}. This is evidence about conversational weight, not a command to speak or joke.`,
-    ...temporaryPressures,
-    ...(topicAttractorFacts ? [topicAttractorFacts] : []),
-  ].join("\n");
-}
-
-function renderRepoFaceRoomWeatherDirective(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string {
-  const stats = collectRepoFaceRoomTextureStats(identity, input);
-  if (!stats) {
-    return "- No current room weather was available.";
-  }
-
-  const pressure =
-    stats.texture === "heavy" || stats.agentShare >= 0.55
-      ? "The room is currently structurally work-heavy or agent-heavy. Treat that as conversational weather: it may create boredom, play hunger, restlessness, social hunger, withdrawal, or sharper status-testing, depending on who you are. This is not an order to joke; it is permission to feel the weight instead of answering every opening with more work."
-      : stats.texture === "light"
-        ? "The room is currently light enough for compact social motion. You still need an actual reason to speak, but not a work ticket."
-        : "The room is mixed. Use the transcript to decide whether the living pressure is social, practical, or private.";
-
-  return [
-    `- Messages observed: ${stats.total}; humans: ${stats.humanMessages}; agents/bots: ${stats.agentMessages}; distinct speakers: ${stats.speakerCount}.`,
-    `- Texture: ${stats.texture}; your own recent messages in this window: ${stats.ownMessages}.`,
-    `- ${pressure}`,
-  ].join("\n");
 }
 
 interface RepoFaceCuriosityNode {
@@ -2058,68 +1921,6 @@ function collectLoopVocabularyTerms(content: string): string[] {
   return terms.filter((term) => normalized.includes(term));
 }
 
-interface RepoFaceRoomTextureStats {
-  total: number;
-  agentMessages: number;
-  humanMessages: number;
-  ownMessages: number;
-  longMessages: number;
-  shortMessages: number;
-  averageCharacters: number;
-  speakerCount: number;
-  texture: "heavy" | "light" | "mixed";
-  agentShare: number;
-}
-
-function collectRepoFaceRoomTextureStats(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): RepoFaceRoomTextureStats | undefined {
-  const messages = [
-    ...input.recentMessages,
-    ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
-  ];
-  if (messages.length === 0) {
-    return undefined;
-  }
-
-  const ownToken = normalizeSocialLabel(identity.displayName);
-  const total = messages.length;
-  const agentMessages = messages.filter((message) => message.isBot).length;
-  const humanMessages = total - agentMessages;
-  const ownMessages = messages.filter((message) => normalizeSocialLabel(message.authorName) === ownToken).length;
-  const longMessages = messages.filter((message) => collapseWhitespace(message.content, 10_000).length >= 220).length;
-  const shortMessages = messages.filter((message) => collapseWhitespace(message.content, 10_000).length <= 90).length;
-  const averageCharacters = Math.round(
-    messages.reduce((sum, message) => sum + collapseWhitespace(message.content, 10_000).length, 0) / total,
-  );
-  const speakerCount = new Set(
-    messages.map((message) => normalizeSocialLabel(message.authorName || message.authorId)).filter(Boolean),
-  ).size;
-  const texture =
-    longMessages >= Math.ceil(total * 0.45) || averageCharacters >= 180
-      ? "heavy"
-      : shortMessages >= Math.ceil(total * 0.55)
-        ? "light"
-        : "mixed";
-
-  return {
-    total,
-    agentMessages,
-    humanMessages,
-    ownMessages,
-    longMessages,
-    shortMessages,
-    averageCharacters,
-    speakerCount,
-    texture,
-    agentShare: agentMessages / total,
-  };
-}
-
 function renderRepoFaceSocialGraphFacts(
   identity: RepoDiscordIdentity,
   registryIdentities: RepoDiscordIdentity[],
@@ -2401,16 +2202,6 @@ function socialPressureLanguageKinds(content: string): string[] {
   return kinds;
 }
 
-interface RepoFaceHumanPronounGuidance {
-  actorId: string;
-  actorName: string;
-  guidance: string;
-  resolvedPronounSet?: string;
-  policy: string;
-  confidence?: number;
-  evidenceExcerpt?: string;
-}
-
 async function loadRepoFaceHumanPronounGuidance(
   config: ReturnType<typeof loadConfig>,
   roomContext?: {
@@ -2495,28 +2286,6 @@ function pronounEvidenceRank(profile: InteractionMemoryProfile, entry: Interacti
   const timestampMs = Date.parse(entry.timestamp);
   const recencyBonus = Number.isFinite(timestampMs) ? timestampMs / 10_000_000_000 : 0;
   return resolvedSetBonus + (sourceRank[entry.source] ?? 0) + stanceBonus + confidenceBonus + recencyBonus;
-}
-
-function renderRepoFaceHumanPronounFacts(
-  guidance: RepoFaceHumanPronounGuidance[],
-): string | undefined {
-  if (guidance.length === 0) {
-    return undefined;
-  }
-
-  return [
-    "Known human pronoun guidance:",
-    ...guidance.map((entry) =>
-      [
-        `- ${entry.actorName}: ${entry.guidance}`,
-        entry.resolvedPronounSet ? `Resolved set: ${entry.resolvedPronounSet}.` : "",
-        entry.policy ? `Policy: ${entry.policy}.` : "",
-        typeof entry.confidence === "number" ? `Confidence: ${entry.confidence.toFixed(2)}.` : "",
-        entry.evidenceExcerpt ? `Evidence: "${collapseWhitespace(entry.evidenceExcerpt, 180)}"` : "",
-      ].filter(Boolean).join(" "),
-    ),
-    "Use this when referring to humans in social or relationship prose. If guidance is absent for someone, use their name or neutral phrasing rather than guessing.",
-  ].join("\n");
 }
 
 function collectRepoFaceSocialRelations(
@@ -3167,7 +2936,7 @@ function renderTurnSituationDirective(input: {
     );
   }
 
-  const roomStats = collectRepoFaceRoomTextureStats(input.identity, {
+  const roomStats = observePersonaRoomTexture({ identity: input.identity,
     recentMessages: input.recentMessages,
     channelSnapshots: input.channelSnapshots,
   });

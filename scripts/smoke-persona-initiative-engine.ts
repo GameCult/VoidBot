@@ -66,6 +66,7 @@ import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-s
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { observePersonaRoomTexture, renderPersonaHumanPronounFacts, renderPersonaRoomWeather } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -445,6 +446,14 @@ assert.deepEqual(await readPersonaMemoryRecall({
   status: "unavailable",
   reason: "No typed Persona state observation was supplied.",
 }, "semantic recall fails explicitly before touching vector infrastructure when the typed Mind observation is absent");
+const roomObservation = observePersonaRoomTexture({
+  identity: routedIdentity,
+  recentMessages: [{ id: "human-1", authorId: "human", authorName: "Operator", content: "hello", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" }],
+  channelSnapshots: [],
+});
+assert.equal(roomObservation?.texture, "light", "social-context projection derives room weather from supplied messages without acquiring Discord state");
+assert.match(renderPersonaRoomWeather({ identity: routedIdentity, recentMessages: [], channelSnapshots: [] }), /No current room weather/, "absent room evidence stays explicit");
+assert.match(renderPersonaHumanPronounFacts([{ actorId: "human", actorName: "Operator", guidance: "use they/them", policy: "explicit", confidence: 1 }]) ?? "", /Confidence: 1\.00/, "pronoun guidance presentation belongs to the social-context projector");
 assert.equal(await projectPersonaMemorySurface({
   identityId: "nibu",
   characterIdentity: "Nibu",
