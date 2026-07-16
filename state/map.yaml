@@ -14,19 +14,14 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the paused MiMo repo Face swarm cold while scheduler eligibility is
-    repaired. The observation pulse must never authorize a model turn by itself;
-    only explicit attention or fresh semantic pressure may create turn intent.
-    Continue verifying the new canonical
-    Bifrost/CultMesh speech route proves itself in ordinary turns. MiMo can run
-    Face/persona heartbeat jobs and produce usable `SAY` blocks, ambiguous
-    multi-context `SAY` output is retried or dropped instead of completed
-    invisibly, and Discord delivery now targets a CultMesh URI instead of the
-    old Bifrost HTTP/token shortcut. Bifrost advertises `discord.post` command
-    metadata through its provider surface, VoidBot writes typed command
-    documents, Bifrost writes typed receipts, and a bounded Weksa live-fire post
-    verified visible Discord delivery. If this route regresses, pause with the
-    swarm brake and fix the typed command path rather than restoring shortcuts.
+    Keep the Persona swarm paused while the daemon organ migration continues.
+    The one-minute resident pulse is observation latency and must not authorize
+    inference by itself. Portable physiology now owns sleep and speaking
+    pressure, and portable memory maintenance consumes its typed nap intent with
+    one pre-receipted model attempt per nap and no automatic retry. Verify that
+    organ through Idunn's upstream deployment path, then split the legacy
+    moderation PowerShell body into shared evidence sources plus separate
+    daemon-owned moderation-heartbeat and person-shaped rumination coordinators.
 
 constraints:
   - VoidBot's deployed runtime lives on Yggdrasil and deployment is owned by Idunn from upstream pushes; local workspaces are not deployment targets.
@@ -80,6 +75,8 @@ active_subgoals:
   - `inspection-participant-factory.ts` owns the inert synthetic initiative participant used only by `--assemble-prompt`. It explicitly carries zero dynamic heat/response pressure and empty evidence/receipt state, reads no live scheduler state, and cannot queue work.
   - `persona-scheduler-runner.ts` owns one complete typed observation/selection/dispatch tick in-process. Resident `index.ts` serializes direct runner calls and no longer spawns a TypeScript child per minute. Pause and disabled controls return before registry, Discord, embedding, provider, or dispatch work. `persona-participant-dispatcher.ts` owns participant-spec projection and live repo-Persona/Void dispatch; `persona-prompt-inspection.ts` owns explicit inspection; `scripts/run-repo-face-heartbeats.ts` is CLI only.
   - `bifrost-governance-source.ts` owns the remaining Bifrost digest CLI adapter and converts command or parse failures into typed error topics. Persona prompt composition receives governance facts without knowing Bifrost process mechanics; `scripts/run-repo-face-heartbeats.ts` may not invoke the Bifrost CLI directly.
+  - `void-physiology-organ.ts` is the daemon-owned policy boundary for Void sleep and speaking pressure. It reads typed state and moderation activity through injected ports, writes only typed runtime operations, and emits a memory-maintenance intent without performing memory policy or inference.
+  - `void-memory-maintenance-organ.ts` consumes that intent and owns one bounded maintenance transaction per nap: it records an attempt receipt before inference, projects bounded typed context, accepts only the explicit memory/incubation/agency/candidate operation family, validates the whole batch before application, requires short-term residue to reach zero, and then records success. A failed or malformed pass cannot retry during the same nap. `void-memory-text-actuator.ts` is the narrow OpenAI-compatible text port; it receives one complete prompt, exposes no tools, and caps completion output.
   - `initiative-engine.ts` is the only writer of scheduler state fields and history. Reconciliation, controls, pause/disabled skips, stale-turn recovery witnesses, semantic pressure, attention consumption, queue transitions, and tick finalization all cross named engine commit primitives. Queue/context actuators return results and cannot patch participants or history directly.
   - `turn-actuator.ts` owns lowering an assembled Persona prompt and evidence bundle into the canonical worker `ContextBundle` and approved `repo-face-rumination` job. It owns the worker actor, command, request ID, approval defaults, and `createJob` call, then returns only a queue receipt. The orchestration shell chooses no queue mechanics and the actuator cannot read Persona or initiative state.
   - `turn-routing.ts` owns deterministic Persona channel policy: newest pending-attention preference, default/threshold fallback, snapshot neighborhoods, low-threshold topic projection, and bounded channel-speed projection. Prompt renderers consume a `PersonaChannelPlan`; they do not recompute routing or scheduler speed.

@@ -323,25 +323,24 @@ Within the Postgres path, the implementation is split on purpose now too:
 11. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
 12. Before applying model output, the runner enforces speech-pressure accountability. Active self/world advocacy pressures at 0.55 intensity or higher with no matching live queued candidate are projected as `speechPressureObligations`; model output must queue a candidate or cool/retire the pressure instead of returning silent `[]`. Deferred candidates do not satisfy that pressure by themselves, and an older spoken candidate does not keep satisfying a still-active pressure forever.
 
-## Flow 6: Mood And Sleep Runtime
+## Flow 6: Physiology Runtime
 
-1. The Windows scheduled task `GameCult Local Orchestrator` is enabled, and it invokes the Void mood drift organ when that organ is due.
-2. `scripts/simulate-void-mood.mjs` reads typed documents from `.voidbot/private/void-self-state.cc`.
-3. It updates `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations, with active advocacy pressure weighted strongly enough to raise speaking pressure earlier instead of staying a private sulk until the seam is already overripe.
-4. It writes `.voidbot/status/void-mood-drift.json`.
-5. When sleep is active, the script invokes `scripts/run-void-memory-maintenance.ps1` once per nap to force typed distillation/pruning.
-6. The old memory-organ script family, legacy state template, and legacy context exporter have been deleted.
+1. The resident `apps/persona-scheduler` daemon invokes `void-physiology-organ.ts` on its own five-minute cadence, independent of whether Persona initiative is paused.
+2. The organ reads typed documents from `.voidbot/private/void-self-state.cc`, derives the most recent speech time from typed receipts, and observes the moderation lock through narrow injected ports.
+3. It updates only `void.scheduled_runtime.sleepCycle` and `void.scheduled_runtime.speakingPressure` through `update_sleep_cycle` and `update_speaking_pressure` operations. Active moderation freezes sleep transitions but does not prevent pressure observation.
+4. When a nap has short-term residue, physiology emits a typed memory-maintenance intent. It does not perform memory policy, launch PowerShell, or call a model.
+5. The Windows omnibus mood writer has been removed. Legacy mood scripts may remain as fixtures or manual compatibility bodies, but they are not a deployed recurrence or runtime owner.
 
 ## Flow 7: Typed Memory Maintenance
 
-1. `scripts/run-void-memory-maintenance.ps1` is invoked by mood drift during sleep, and can also be run manually for fixtures.
-2. It reads `.voidbot/private/void-self-state.cc` through the typed self-state service.
-3. It writes `.voidbot/status/void-memory-maintenance-context.json` with prompt-facing relative chronology and only typed memory/incubation/agency/candidate surfaces.
-4. It loads `prompts/void-memory-maintenance.md` and asks Codex for operation proposals unless `-SkipModel` is set.
-5. The parent runner rejects any operation outside memory lifecycle, incubation, agency pressure, or candidate-intervention maintenance.
-6. The parent runner applies allowed operations through `scripts/void-self-state.mjs`.
-7. In sleep mode, the context carries `sleepDirective.forceDistillation` when there is short-term memory pressure. A real model pass that returns no operations under pressure fails visibly, and any real sleep pass that leaves short-term memory behind fails instead of letting yesterday's residue haunt the state. The fixture smoke exercises this path with a fake Codex child so the parent validation and application machinery are tested without relying on live inference.
-8. This is the replacement path for sleep/distillation and agency work: model-owned proposals crossing the typed operation boundary, not deterministic repair code editing state.
+1. `void-memory-maintenance-organ.ts` consumes a typed physiology intent containing the nap start and short-term pressure count.
+2. It checks typed scheduled-run receipts, then records `void-memory-maintenance-attempt:<napStartedAt>` before inference. This makes one attempt per nap structurally enforceable even when inference fails or returns malformed output.
+3. `void-memory-maintenance-projector.ts` builds bounded prompt context with relative chronology, one explicit operation timestamp, and only typed memory/incubation/agency/candidate surfaces.
+4. `void-memory-text-actuator.ts` performs one tool-free OpenAI-compatible text request with a bounded completion budget and returns model text only.
+5. The organ parses the entire response as a JSON operation array, validates every item against the canonical self-state operation schema, and rejects operations outside the explicit maintenance family before applying any item.
+6. It applies allowed operations through the typed self-state service, reloads state, and fails visibly unless all short-term residue is gone.
+7. Only a fully successful transaction records `void-memory-maintenance:<napStartedAt>`. A later physiology pulse for the same nap returns an already-attempted or already-completed result without inference.
+8. The PowerShell runner remains fixture/manual compatibility material only; it is not the daemon runtime owner.
 
 ### Memory Lifecycle
 
