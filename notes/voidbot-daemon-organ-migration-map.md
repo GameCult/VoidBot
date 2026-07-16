@@ -51,3 +51,5 @@ The disabled tasks are not standby owners. The listed organs currently have no r
 ## Deletion Line
 
 The Windows omnibus, installer, and hidden launcher are deleted, and watchdog logic cannot recognize them as health owners. Remaining per-organ Starfire tasks are operational debris, not standby paths; remove any installed copies rather than restoring repository launchers.
+
+As of deployed revision `9deebb3`, the listed Starfire task husks are unregistered, the promoted artifact contains none of the old Void runners, Persona state accepts only repo/native Persona turn kinds, and Yggdrasil runs one resident scheduler process. This migration map is satisfied; future work should add capabilities inside these ownership boundaries rather than recreating schedulers.
