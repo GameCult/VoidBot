@@ -42,7 +42,7 @@ The disabled tasks are not standby owners. The listed organs currently have no r
 
 1. Portable Void physiology is live in the daemon with injected typed state/moderation ports and maintenance intent; the Windows omnibus mood writer is deleted.
 2. Portable memory maintenance is daemon-owned: physiology emits a typed nap intent; the memory organ owns bounded context projection, one text-model attempt per nap, whole-batch operation validation, typed application, and residue verification. The attempt receipt is committed before inference, so failure cannot become a periodic retry furnace.
-3. Split `run-void-moderator-rumination.ps1` into shared Discord/context sources plus separate moderation-heartbeat and person-shaped rumination coordinators.
+3. The moderation-heartbeat half is portable and daemon-wired: chronological archive evidence, explicit model review ledger, typed case validation/application, guarded cursor commit, and replay-safe policy enforcement are separate organs. Live rollout begins in `log_only`; remove the old Windows heartbeat authority after the deployed review ledger and cases are inspected. Person-shaped rumination remains the next split from `run-void-moderator-rumination.ps1`.
 4. Add serialized daemon cadence for those three Void-owned organs, with independent due state, timeout, and telemetry. Do not route them through Persona initiative.
 5. Give Bifrost dispatch to a Bifrost-owned resident worker.
 6. Give operations health/restart scheduling to Idunn and retain VoidBot health publication as provider-owned observation only.
