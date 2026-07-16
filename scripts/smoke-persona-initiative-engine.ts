@@ -631,7 +631,7 @@ try {
   const portableObservation = await readPortablePersonaState(portablePath);
   assert.equal(portableObservation.status, "ok", "the portable Persona source validates the live gamecult.persona_state.v0 contract");
   const portableProjection = projectPortablePersonaState({ ...routedIdentity, id: "muninn", displayName: "Muninn", identityKind: "native_persona", personaStatePath: portablePath }, portableObservation);
-  assert.match(portableProjection, /Portable Persona state is an imported projection[\s\S]*Source time: Keep observation time distinct/, "the portable projector renders bounded state without becoming canonical authority");
+  assert.match(portableProjection, /Persona state authority is unreported; treat it as a non-canonical projection[\s\S]*Source time: Keep observation time distinct/, "the portable projector renders bounded state without inventing canonical authority");
   assert.doesNotMatch(portableProjection, /persona_state\.v0\.json|state-source/, "portable Persona projection cannot leak its private filesystem path");
 } finally {
   await rm(stateSourceDirectory, { recursive: true, force: true });
