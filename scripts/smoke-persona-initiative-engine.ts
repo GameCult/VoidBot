@@ -92,6 +92,7 @@ import { runVoidModerationEnforcement } from "../apps/persona-scheduler/dist/voi
 import { buildVoidRuminationPrompt, parseVoidRuminationOperations, projectVoidRuminationContext } from "../apps/persona-scheduler/dist/void-rumination-projector.js";
 import { runVoidRumination } from "../apps/persona-scheduler/dist/void-rumination-organ.js";
 import { projectVoidRuminationOperations } from "../apps/persona-scheduler/dist/void-rumination-text-actuator.js";
+import { runVoidCandidateDelivery } from "../apps/persona-scheduler/dist/void-candidate-delivery-organ.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -972,6 +973,26 @@ assert.equal(repeatedRumination.status, "ok", "a meaning-bearing state change ma
 const settledRumination = await runVoidRumination({ statePath: "void-self-state.cc", observedAt: new Date("2026-07-16T05:00:00.000Z"), pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." }, ruminationDependencies as never);
 assert.equal(settledRumination.status, "skipped", "an unchanged settled pressure cannot become a timer-driven inference loop");
 assert.equal(ruminationModelCalls, 2, "rumination cadence follows changed pressure rather than elapsed clock");
+let deliveredCandidate: { channelId?: string; replyToMessageId?: string; content?: string } = {};
+const candidateDelivery = await runVoidCandidateDelivery({ statePath: "void-self-state.cc", personaName: "Void", observedAt: physiologyObservedAt }, {
+  loadState: async () => ruminationState,
+  deliver: async (request) => {
+    deliveredCandidate = request;
+    return { messageId: "posted-message-1", transport: "bifrost", sentAt: physiologyObservedAt.toISOString() };
+  },
+  applyOperation: async (_store, operation) => {
+    if (operation.operation === "mark_candidate_intervention_spoken") {
+      const candidate = ruminationState.candidateInterventions.interventions.find((entry) => entry.interventionId === operation.interventionId);
+      if (candidate) candidate.status = "spoken";
+      ruminationState.speechReceipts.recentReceipts.push(operation.receipt);
+    }
+    return ruminationState;
+  },
+});
+assert.equal(candidateDelivery.status, "ok", "the delivery organ lowers one targeted queued candidate through its injected Bifrost port");
+assert.deepEqual({ channelId: deliveredCandidate.channelId, replyToMessageId: deliveredCandidate.replyToMessageId }, { channelId: "room-1", replyToMessageId: "message-1" }, "candidate delivery preserves the source conversation target");
+const repeatedCandidateDelivery = await runVoidCandidateDelivery({ statePath: "void-self-state.cc", personaName: "Void", observedAt: physiologyObservedAt }, { loadState: async () => ruminationState, deliver: async () => { throw new Error("resolved candidates cannot deliver again"); } });
+assert.deepEqual(repeatedCandidateDelivery, { status: "skipped", reason: "no_targeted_candidate" }, "a spoken candidate cannot be delivered twice");
 const maintainedState = structuredClone(physiologyState);
 let memoryModelCalls = 0;
 const memoryMaintenanceDependencies = {
