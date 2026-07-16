@@ -85,6 +85,7 @@ import { buildVoidMemoryMaintenancePrompt, parseVoidMemoryMaintenanceOperations,
 import { runVoidMemoryMaintenance } from "../apps/persona-scheduler/dist/void-memory-maintenance-organ.js";
 import { projectVoidMemoryOperations } from "../apps/persona-scheduler/dist/void-memory-text-actuator.js";
 import { buildVoidModerationHeartbeatPrompt, parseVoidModerationHeartbeatOperations, projectVoidModerationHeartbeatContext } from "../apps/persona-scheduler/dist/void-moderation-heartbeat-projector.js";
+import { readVoidModerationEvidence } from "../apps/persona-scheduler/dist/void-moderation-evidence-source.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -860,6 +861,15 @@ assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.st
   },
 }]), state: physiologyState }), /exactly one infringement/, "moderation classification cannot multiply infringement authority for one message");
 assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{ operation: "update_sleep_cycle", sleepCycle: physiology.sleepCycle }]), state: physiologyState }), /not allowed/, "moderation cannot annex physiology even when the operation is schema-valid");
+let moderationExporterArgs: string[] = [];
+const moderationEvidence = await readVoidModerationEvidence({ priorCursorTimestamp: "2026-07-16T02:00:00.000Z" }, {
+  run: async (_file, args) => {
+    moderationExporterArgs = args;
+    return { stdout: JSON.stringify({ after: "2026-07-16T02:00:00.000Z", totalMatchingMessages: 1, messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z", channelId: "room-1", content: "fixture" }] }) };
+  },
+});
+assert.deepEqual(moderationExporterArgs.slice(-4), ["--after", "2026-07-16T02:00:00.000Z", "--limit", "120"], "moderation evidence acquisition owns cursor-bounded chronological export arguments");
+assert.deepEqual(moderationEvidence.observedCursor, { lastReviewedMessageId: "message-1", lastReviewedTimestamp: "2026-07-16T02:55:00.000Z" }, "moderation evidence returns the exact parent-owned cursor witness separately from prompt chronology");
 const maintainedState = structuredClone(physiologyState);
 let memoryModelCalls = 0;
 const memoryMaintenanceDependencies = {
