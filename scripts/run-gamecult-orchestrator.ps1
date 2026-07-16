@@ -478,7 +478,6 @@ try {
   $agentSwarmPaused = Test-AgentSwarmPaused
   $agentSwarmOrganIds = @{
     "bifrost-dispatch" = $true
-    "void-mood-drift" = $true
     "void-moderation-heartbeat" = $true
     "void-moderation-rumination" = $true
   }
@@ -509,15 +508,6 @@ try {
       Cwd = $repoRoot
       Executable = $node
       Arguments = @((Join-Path $PSScriptRoot "render-voidbot-swarm-dashboard.mjs"))
-    },
-    [pscustomobject]@{
-      Id = "void-mood-drift"
-      Label = "Void mood drift"
-      IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MOOD_INTERVAL_MINUTES" -Default 5 -Minimum 5
-      TimeoutMinutes = 10
-      Cwd = $repoRoot
-      Executable = $powershell
-      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-mood-drift.ps1"))
     },
     [pscustomobject]@{
       Id = "void-moderation-heartbeat"
