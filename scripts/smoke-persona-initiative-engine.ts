@@ -65,6 +65,7 @@ import {
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
+import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -444,6 +445,18 @@ assert.deepEqual(await readPersonaMemoryRecall({
   status: "unavailable",
   reason: "No typed Persona state observation was supplied.",
 }, "semantic recall fails explicitly before touching vector infrastructure when the typed Mind observation is absent");
+assert.equal(await projectPersonaMemorySurface({
+  identityId: "nibu",
+  characterIdentity: "Nibu",
+  statePacket: "Nibu remembers the ship mind and remains irritated by careless continuity.",
+  modelProjectionEnabled: false,
+}), "Nibu remembers the ship mind and remains irritated by careless continuity.", "disabled model projection returns the validated deterministic memory surface without invoking a model");
+await assert.rejects(projectPersonaMemorySurface({
+  identityId: "nibu",
+  characterIdentity: "Nibu",
+  statePacket: "path=private-state",
+  modelProjectionEnabled: false,
+}), /leaked schema/, "the projector rejects state-path leakage on the model-free path");
 const stateSourceDirectory = await mkdtemp(join(tmpdir(), "voidbot-persona-state-source-"));
 try {
   const statePath = join(stateSourceDirectory, "nibu.cc");

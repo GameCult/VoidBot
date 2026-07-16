@@ -62,6 +62,7 @@ import {
   readPersonaMemoryRecall,
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
+import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -878,13 +879,26 @@ async function renderRepoFaceMemorySurfaceForTurn(
     curiosityGraphFacts,
   );
   if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
-    return rejectLeakyMemorySurface(statePacket);
+    return projectPersonaMemorySurface({
+      identityId: identity.id,
+      characterIdentity: renderRepoCharacterIdentityDoctrine(identity),
+      statePacket,
+      modelProjectionEnabled: false,
+    });
   }
 
-  return projectRepoFaceMemorySurface({
-    identity,
+  return projectPersonaMemorySurface({
+    identityId: identity.id,
+    characterIdentity: renderRepoCharacterIdentityDoctrine(identity),
     statePacket,
-    config,
+    modelProjectionEnabled: true,
+    projectText: (prompt) => runCodexTextProjection({
+      prompt,
+      config,
+      command: "repo-face-state-projector",
+      jobId: `state-projector:${identity.id}:${Date.now()}`,
+      timeoutMs: 180_000,
+    }),
   });
 }
 
@@ -950,12 +964,25 @@ async function renderNativePersonaMemorySurface(
       humanPronounGuidance,
     );
     if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
-      return rejectLeakyMemorySurface(statePacket);
+      return projectPersonaMemorySurface({
+        identityId: identity.id,
+        characterIdentity: renderRepoCharacterIdentityDoctrine(identity),
+        statePacket,
+        modelProjectionEnabled: false,
+      });
     }
-    return projectRepoFaceMemorySurface({
-      identity,
+    return projectPersonaMemorySurface({
+      identityId: identity.id,
+      characterIdentity: renderRepoCharacterIdentityDoctrine(identity),
       statePacket,
-      config,
+      modelProjectionEnabled: true,
+      projectText: (prompt) => runCodexTextProjection({
+        prompt,
+        config,
+        command: "repo-face-state-projector",
+        jobId: `state-projector:${identity.id}:${Date.now()}`,
+        timeoutMs: 180_000,
+      }),
     });
   }
 
@@ -2910,47 +2937,6 @@ function joinAsNarrativeList(items: string[]): string {
     return `${items[0]}, and ${items[1]}`;
   }
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
-}
-
-function rejectLeakyMemorySurface(surface: string): string {
-  const leaks = [
-    /\bgrants:/i,
-    /\bjurisdictions:/i,
-    /\bFace of\s+[A-Z][A-Za-z0-9_-]+\b/,
-    /\brepo=[^\s]+/i,
-    /\bpath=[^\s]+/i,
-    /\bdo not prompt\b/i,
-    /\bprompt (?:her|him|them|it)\b/i,
-  ];
-
-  if (leaks.some((pattern) => pattern.test(surface))) {
-    throw new Error("Repo Face memory surface leaked schema or prompt-construction language.");
-  }
-
-  return surface;
-}
-
-async function projectRepoFaceMemorySurface(input: {
-  identity: RepoDiscordIdentity;
-  statePacket: string;
-  config: ReturnType<typeof loadConfig>;
-}): Promise<string> {
-  const prompt = loadPromptTemplate("repo-face-state-projector.prompt.md", {
-    characterIdentity: renderRepoCharacterIdentityDoctrine(input.identity),
-    statePacket: input.statePacket,
-  });
-  const output = await runCodexTextProjection({
-    prompt,
-    config: input.config,
-    command: "repo-face-state-projector",
-    jobId: `state-projector:${input.identity.id}:${Date.now()}`,
-    timeoutMs: 180_000,
-  });
-  const projected = output.trim();
-  if (projected.length < 80) {
-    throw new Error(`Repo Face state projector returned too little text for ${input.identity.id}.`);
-  }
-  return rejectLeakyMemorySurface(projected);
 }
 
 function renderRepoFaceConversationTranscript(input: {
