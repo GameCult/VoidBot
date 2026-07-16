@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 
 import { loadGamecultPersonaState, migrateCanonicalPortablePersonaState } from "@voidbot/core";
 import { projectPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-projector.js";
+import { buildGamecultPersonaMemoryChunks } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 
 void main().catch((error) => { console.error(error); process.exitCode = 1; });
@@ -25,6 +26,9 @@ async function main(): Promise<void> {
     if (observation.status !== "ok" || observation.stateKind !== "gamecult_persona") throw new Error("Expected canonical standard Persona state.");
     const projection = projectPortablePersonaState(identity, { status: "ok", statePath: targetPath, state: observation.personaState, schemaVersion: "gamecult.persona_state.v0" });
     assert.match(projection, /canonical gamecult\.persona_state\.v0 state loaded from typed CultCache/);
+    const chunks = buildGamecultPersonaMemoryChunks({ identity, statePath: targetPath, state: observation.personaState, projectedMemory: projection, observedAt: new Date("2026-07-16T00:00:00Z") });
+    assert.ok(chunks.some((chunk) => chunk.id.endsWith(":memory:tengu-stress-wrathful-stillness-test")), "canonical standard memories enter semantic recall indexing");
+    assert.ok(chunks.some((chunk) => chunk.id.endsWith(":doctrine:tengu-stance-user-agency")), "canonical doctrine enters semantic recall indexing");
     await assert.rejects(migrateCanonicalPortablePersonaState({ sourcePath: resolve(".voidbot/private/personas/muninn/muninn.persona_state.v0.json"), targetPath: join(directory, "muninn.cc") }), /Refusing to promote projection/);
     await assert.rejects(migrateCanonicalPortablePersonaState({ sourcePath, targetPath }), /Refusing to overwrite existing Persona state target/);
     console.log("Portable Persona migration smoke passed.");

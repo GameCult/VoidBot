@@ -1,5 +1,5 @@
 import type { loadConfig } from "@voidbot/config";
-import type { RepoDiscordIdentity, VoidSelfStateTypedProjection } from "@voidbot/core";
+import type { GamecultPersonaState, RepoDiscordIdentity, VoidSelfStateTypedProjection } from "@voidbot/core";
 import { createTextEmbedder, createVectorStores, normalizeText, RetrievalService } from "@voidbot/rag";
 import type { EmbeddingChunk, SourceMessage } from "@voidbot/shared";
 
@@ -27,21 +27,15 @@ export async function readPersonaMemoryRecall(input: {
   channelSnapshots: ChannelSnapshot[];
   observedAt?: Date;
 }): Promise<PersonaMemoryRecallObservation> {
-  if (input.state?.status === "ok" && input.state.stateKind === "gamecult_persona") {
-    return { status: "unavailable", reason: "Semantic recall indexing for canonical gamecult.persona_state.v0 CultCache documents is not yet implemented." };
-  }
   if (!input.state || input.state.status !== "ok") {
     return { status: "unavailable", reason: input.state?.reason ?? "No typed Persona state observation was supplied." };
   }
   try {
     const store = createPersonaMemoryVectorStore(input.config);
-    const chunks = buildPersonaMemoryChunks({
-      identity: input.identity,
-      statePath: input.state.statePath,
-      state: input.state.typedState,
-      projectedMemory: input.projectedMemory,
-      observedAt: input.observedAt ?? new Date(),
-    });
+    const common = { identity: input.identity, statePath: input.state.statePath, projectedMemory: input.projectedMemory, observedAt: input.observedAt ?? new Date() };
+    const chunks = input.state.stateKind === "gamecult_persona"
+      ? buildGamecultPersonaMemoryChunks({ ...common, state: input.state.personaState })
+      : buildPersonaMemoryChunks({ ...common, state: input.state.typedState });
     await store.deleteByFilters({ corpusKind: "persona_memory", identityId: input.identity.id });
     await store.upsert(chunks);
     const retrieval = new RetrievalService(store, store, store);
@@ -59,6 +53,45 @@ export async function readPersonaMemoryRecall(input: {
   } catch (error) {
     return { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+export function buildGamecultPersonaMemoryChunks(input: {
+  identity: RepoDiscordIdentity;
+  statePath: string;
+  state: GamecultPersonaState;
+  projectedMemory: string;
+  observedAt: Date;
+}): EmbeddingChunk[] {
+  const chunks: EmbeddingChunk[] = [];
+  const sourceId = `persona:${input.identity.id}`;
+  const push = (entry: { id: string; kind: string; target?: Record<string, unknown>; text: string; createdAt?: string; updatedAt?: string }): void => {
+    const body = collapseWhitespace(entry.text, 1800);
+    if (body.length < 24) return;
+    chunks.push({
+      id: `${sourceId}:${entry.id}`,
+      sourceId,
+      sourceKind: "persona_memory",
+      text: body,
+      normalizedText: normalizeText(body),
+      metadata: {
+        corpusKind: "persona_memory", identityId: input.identity.id, personaName: input.identity.displayName,
+        sourceId, statePath: input.statePath, memoryKind: entry.kind,
+        targetKind: stringMetadata(entry.target?.kind) ?? "", targetId: stringMetadata(entry.target?.id) ?? "", targetLabel: stringMetadata(entry.target?.label) ?? "",
+        createdAt: entry.createdAt ?? "", updatedAt: entry.updatedAt ?? "",
+      },
+    });
+  };
+  push({ id: "projected-surface", kind: "projected_surface", target: { kind: "self", id: input.identity.id, label: input.identity.displayName }, text: input.projectedMemory, updatedAt: input.observedAt.toISOString() });
+  for (const value of input.state.values) push({ id: `value:${value.id}`, kind: "value", target: { kind: "self", id: input.identity.id, label: input.identity.displayName }, text: joinFields(value.label, value.summary) });
+  for (const memory of [...input.state.thoughtMemory.memories, ...input.state.thoughtMemory.shortTerm]) if (memory.status !== "retired") push({ id: `memory:${memory.id}`, kind: `memory:${memory.status}`, target: memory.target, text: joinFields(memory.summary, memory.claim, memory.question, memory.tension, memory.actionImplication), createdAt: memory.createdAt, updatedAt: memory.updatedAt });
+  for (const thread of input.state.thoughtMemory.incubation) if (thread.status !== "retired") push({ id: `incubation:${thread.id}`, kind: `incubation:${thread.status}`, target: thread.target, text: joinFields(thread.summary, thread.claim, thread.question, thread.tension, thread.actionImplication), createdAt: thread.createdAt, updatedAt: thread.updatedAt });
+  for (const pressure of input.state.agencyPressure.pressures) if (pressure.status !== "retired") push({ id: `agency:${pressure.id}`, kind: `agency:${pressure.status}`, target: pressure.target, text: joinFields(pressure.summary, pressure.claim, pressure.question, pressure.tension, pressure.actionImplication), createdAt: pressure.createdAt, updatedAt: pressure.updatedAt });
+  for (const need of input.state.affect.needs) if (need.status !== "retired") push({ id: `need:${need.id}`, kind: `need:${need.status}`, target: need.target, text: joinFields(need.summary, need.claim, need.question, need.tension, need.actionImplication), createdAt: need.createdAt, updatedAt: need.updatedAt });
+  for (const bond of input.state.affect.socialBonds) if (bond.status !== "retired") push({ id: `bond:${bond.id}`, kind: `bond:${bond.relationshipKind}`, target: bond.object, text: joinFields(bond.summary, `Trust ${bond.trust}; tension ${bond.tension}.`), updatedAt: bond.updatedAt });
+  for (const read of input.state.affect.statusReads) if (read.status !== "retired") push({ id: `status:${read.id}`, kind: `status:${read.statusKind}`, target: read.target, text: joinFields(read.summary, `Confidence ${read.confidence}.`), updatedAt: read.updatedAt });
+  for (const stance of input.state.affect.doctrineStances) if (stance.status !== "retired") push({ id: `doctrine:${stance.id}`, kind: `doctrine:${stance.stanceKind}`, target: stance.target, text: joinFields(stance.principle, stance.summary, stance.actionImplication), updatedAt: stance.updatedAt });
+  for (const action of input.state.candidateActions?.actions ?? []) if (action.status !== "retired") push({ id: `action:${action.id}`, kind: `action:${action.actionType}:${action.readiness}`, target: action.target, text: joinFields(action.summary, action.rationale), createdAt: action.createdAt, updatedAt: action.updatedAt });
+  return chunks;
 }
 
 function createPersonaMemoryVectorStore(config: ReturnType<typeof loadConfig>) {
