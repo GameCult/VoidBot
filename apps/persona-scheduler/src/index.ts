@@ -24,7 +24,7 @@ let timer: NodeJS.Timeout | undefined;
 let lastPhysiologyAt = 0;
 let lastModerationAt = 0;
 let lastRuminationAt = 0;
-const physiologyIntervalMs = Math.max(5, Number(process.env.VOIDBOT_MOOD_INTERVAL_MINUTES) || 5) * 60_000;
+const physiologyIntervalMs = config.voidPhysiology.intervalMinutes * 60_000;
 const moderationIntervalMs = config.voidModerationDaemon.intervalMinutes * 60_000;
 const ruminationIntervalMs = config.voidRuminationDaemon.intervalMinutes * 60_000;
 

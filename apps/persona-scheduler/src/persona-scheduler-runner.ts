@@ -89,7 +89,7 @@ export async function runPersonaSchedulerTick(input: {
   const pressure = await readSemanticPressure({
     candidates: participantSpecs.flatMap((spec) => {
       const participant = state.participants.find((entry) => entry.identityId === spec.id);
-      if (!spec.identity || spec.participantKind === "system_agent" || participant?.status !== "active" || participant.currentLoad >= 1 || completedThisTick.has(participant.identityId) || restStates.get(participant.identityId)?.isNapping === true) return [];
+      if (!spec.identity || participant?.status !== "active" || participant.currentLoad >= 1 || completedThisTick.has(participant.identityId) || restStates.get(participant.identityId)?.isNapping === true) return [];
       return [{ identityId: participant.identityId, interruptThreshold: participant.interruptThreshold, affinityText: renderPersonaInitiativeAffinity(spec), allowedChannelIds: spec.allowedChannelIds }];
     }),
     messages: idleCooling.observedHumanMessages,

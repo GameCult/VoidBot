@@ -272,8 +272,8 @@ function isInitiativeParticipant(value: unknown): value is InitiativeParticipant
   if (!isRecord(value)) return false;
   return (
     typeof value.identityId === "string" &&
-    ["repo_face", "native_persona", "system_agent"].includes(String(value.participantKind)) &&
-    ["repo_face_rumination", "void_moderation"].includes(String(value.turnKind)) &&
+    ["repo_face", "native_persona"].includes(String(value.participantKind)) &&
+    value.turnKind === "repo_face_rumination" &&
     typeof value.repoName === "string" &&
     typeof value.displayName === "string" &&
     ["active", "blocked", "withdrawn", "offscreen"].includes(String(value.status)) &&

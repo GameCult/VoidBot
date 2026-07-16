@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 export interface InitiativeParticipant {
   identityId: string;
-  participantKind: "repo_face" | "native_persona" | "system_agent";
-  turnKind: "repo_face_rumination" | "void_moderation";
+  participantKind: "repo_face" | "native_persona";
+  turnKind: "repo_face_rumination";
   repoName: string;
   displayName: string;
   initiativeSpeed: number;
@@ -94,7 +94,7 @@ export function reconcileParticipants(input: ReconcileParticipantsInput): Initia
 
   return input.specs.map((spec, index) => {
     const current = existingById.get(spec.id);
-    const hasChannel = spec.participantKind === "system_agent" || Boolean(spec.allowedChannelIds[0] || input.defaultChannelId);
+    const hasChannel = Boolean(spec.allowedChannelIds[0] || input.defaultChannelId);
     const speed = initiativeSpeedFor(spec, input.speedOverrides) * spec.channelSpeedMultiplier;
     const groups = initiativeGroupsFor(spec);
     const heat = heatFor(spec, groups, input.globalHeat, input.heatOverrides);

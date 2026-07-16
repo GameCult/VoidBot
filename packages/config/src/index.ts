@@ -140,6 +140,7 @@ const envSchema = z.object({
   VOID_MODERATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
   VOID_MODERATION_ENFORCEMENT_MODE: z.string().trim().min(1).default("log_only"),
   VOID_CANDIDATE_DELIVERY_ENABLED: booleanFromEnv.default(false),
+  VOID_PHYSIOLOGY_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(5),
   VOID_RUMINATION_DAEMON_ENABLED: booleanFromEnv.default(false),
   VOID_RUMINATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
   VOID_PUBLIC_ROOM_PERSONA_NAME: z.string().trim().min(1).default("Void"),
@@ -256,6 +257,7 @@ export interface AppConfig {
   };
   voidModerationDaemon: { enabled: boolean; intervalMinutes: number; enforcementMode: string };
   voidCandidateDelivery: { enabled: boolean; personaName: string; personaAvatarUrl?: string };
+  voidPhysiology: { intervalMinutes: number };
   voidRuminationDaemon: { enabled: boolean; intervalMinutes: number };
   repoFaceHeartbeats: {
     enabled: boolean;
@@ -556,6 +558,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       personaName: parsed.VOID_PUBLIC_ROOM_PERSONA_NAME,
       personaAvatarUrl: parsed.VOID_PUBLIC_ROOM_PERSONA_AVATAR_URL,
     },
+    voidPhysiology: { intervalMinutes: parsed.VOID_PHYSIOLOGY_INTERVAL_MINUTES },
     voidRuminationDaemon: {
       enabled: parsed.VOID_RUMINATION_DAEMON_ENABLED,
       intervalMinutes: parsed.VOID_RUMINATION_DAEMON_INTERVAL_MINUTES,
