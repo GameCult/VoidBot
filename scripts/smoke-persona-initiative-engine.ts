@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   queueAgentHeartbeatMention,
+  postDiscordViaBifrostCultMesh,
   ensureVoidSelfStateIdentityProfile,
   createEmptyVoidSelfState,
   readRepoFaceMentionInbox,
@@ -999,6 +1000,37 @@ assert.equal(repeatedRumination.status, "ok", "a meaning-bearing state change ma
 const settledRumination = await runVoidRumination({ statePath: "void-self-state.cc", observedAt: new Date("2026-07-16T05:00:00.000Z"), pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." }, ruminationDependencies as never);
 assert.equal(settledRumination.status, "skipped", "an unchanged settled pressure cannot become a timer-driven inference loop");
 assert.equal(ruminationModelCalls, 2, "rumination cadence follows changed pressure rather than elapsed clock");
+const bifrostWrites: Array<{ key: string; value: Record<string, unknown> }> = [];
+const bifrostPostInput = {
+  idempotencyKey: "candidate-1:room-1:message-1",
+  source: { kind: "voidbot.void.candidate", id: "candidate-1" },
+  actor: { id: "void", displayName: "Void" },
+  channelId: "room-1",
+  replyToMessageId: "message-1",
+  content: "This answer stays with the conversation that made it necessary.",
+};
+const postThroughFakeBifrost = () => postDiscordViaBifrostCultMesh(bifrostPostInput, {
+  commandUri: "cultmesh://asgard.yggdrasil.bifrost/commands/discord-post",
+  storePath: "provider-store.cc",
+  timeoutMs: 100,
+  pumpEnabled: false,
+  bifrostRoot: "Bifrost",
+}, {
+  definitions: { command: "command-definition", receipt: "receipt-definition", generic: [] },
+  openNode: async () => ({
+    put: async (_definition, key, value) => { bifrostWrites.push({ key, value: value as Record<string, unknown> }); },
+    get: (_definition, key) => ({ status: "completed", ok: true, commandId: key, messageId: "posted-message-1", transport: "webhook" }),
+  }),
+  now: () => physiologyObservedAt,
+});
+const firstBifrostReceipt = await postThroughFakeBifrost();
+const secondBifrostReceipt = await postThroughFakeBifrost();
+assert.equal(firstBifrostReceipt.commandId, secondBifrostReceipt.commandId, "the shared Bifrost port derives a stable command id from its caller-owned idempotency key");
+assert.deepEqual(firstBifrostReceipt, { commandId: firstBifrostReceipt.commandId, messageId: "posted-message-1", transport: "webhook", url: undefined }, "the shared port returns only a completed typed transport receipt");
+assert.deepEqual((bifrostWrites[0].value.payload as Record<string, unknown>), {
+  identityId: "void", channelId: "room-1", content: bifrostPostInput.content,
+  personaName: "Void", personaAvatarUrl: "", replyToMessageId: "message-1",
+}, "the shared port preserves actor, room, reply, and content in the typed command payload");
 let deliveredCandidate: { channelId?: string; replyToMessageId?: string; content?: string } = {};
 const candidateDelivery = await runVoidCandidateDelivery({ statePath: "void-self-state.cc", personaName: "Void", observedAt: physiologyObservedAt }, {
   loadState: async () => ruminationState,

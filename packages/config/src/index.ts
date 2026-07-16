@@ -140,6 +140,9 @@ const envSchema = z.object({
   VOID_MODERATION_DAEMON_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
   VOID_MODERATION_ENFORCEMENT_MODE: z.string().trim().min(1).default("log_only"),
+  VOID_CANDIDATE_DELIVERY_ENABLED: booleanFromEnv.default(false),
+  VOID_PUBLIC_ROOM_PERSONA_NAME: z.string().trim().min(1).default("Void"),
+  VOID_PUBLIC_ROOM_PERSONA_AVATAR_URL: optionalNonEmptyString,
   REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.cc"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
   REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
@@ -252,6 +255,7 @@ export interface AppConfig {
   };
   voidModerationHeartbeatEnabled: boolean;
   voidModerationDaemon: { enabled: boolean; intervalMinutes: number; enforcementMode: string };
+  voidCandidateDelivery: { enabled: boolean; personaName: string; personaAvatarUrl?: string };
   repoFaceHeartbeats: {
     enabled: boolean;
     statePath: string;
@@ -546,6 +550,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: parsed.VOID_MODERATION_DAEMON_ENABLED,
       intervalMinutes: parsed.VOID_MODERATION_DAEMON_INTERVAL_MINUTES,
       enforcementMode: parsed.VOID_MODERATION_ENFORCEMENT_MODE,
+    },
+    voidCandidateDelivery: {
+      enabled: parsed.VOID_CANDIDATE_DELIVERY_ENABLED,
+      personaName: parsed.VOID_PUBLIC_ROOM_PERSONA_NAME,
+      personaAvatarUrl: parsed.VOID_PUBLIC_ROOM_PERSONA_AVATAR_URL,
     },
     repoFaceHeartbeats: {
       enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,

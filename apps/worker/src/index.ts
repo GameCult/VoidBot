@@ -1,7 +1,6 @@
 import "dotenv/config";
 
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -14,6 +13,7 @@ import {
   buildVoidMcpServerConfig,
   createStateStorage,
   applyVoidSelfStateOperation,
+  postDiscordViaBifrostCultMesh,
   findRepoDiscordIdentity,
   faceRegistryAsRepoDiscordRegistry,
   hasFreshHumanRepoFaceVoiceListener,
@@ -81,10 +81,6 @@ const REPO_IDENTITY_PROPOSAL_PR_SENTINEL = "VOIDBOT_REPO_IDENTITY_PROPOSAL_PR:";
 const REPO_IDENTITY_PR_COMMENT_SENTINEL = "VOIDBOT_REPO_IDENTITY_PR_COMMENT:";
 const REPO_IDENTITY_UPDATE_REQUEST_SENTINEL = "VOIDBOT_REPO_IDENTITY_UPDATE_REQUEST:";
 const REPO_IDENTITY_BIFROST_TOPIC_SENTINEL = "VOIDBOT_REPO_IDENTITY_BIFROST_TOPIC:";
-const BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE = "bifrost.bridge.discord_post_command";
-const BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID = "bifrost.bridge.discord_post_command.v1";
-const BIFROST_DISCORD_POST_RECEIPT_DOCUMENT_TYPE = "bifrost.bridge.discord_post_receipt";
-const BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID = "bifrost.bridge.discord_post_receipt.v1";
 const CURRENT_REPO_FACE_IDENTITY_SELECTORS = new Set([
   "face_id",
   "faceid",
@@ -1715,294 +1711,21 @@ async function postRepoIdentityDiscordViaCultMeshCommand(input: {
   content: string;
   replyToMessageId?: string;
 }): Promise<BifrostBridgeReceipt> {
-  assertBifrostCultMeshCommandUri(config.bifrostCultMesh.commandUri);
-  const commandId = buildBifrostDiscordCommandId(input);
-  const node = await openBifrostCommandNode(config.bifrostCultMesh.storePath);
-  const requestedAt = new Date().toISOString();
-  const command = {
-    schemaName: BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE,
-    schemaVersion: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
-    commandId,
-    command: "discord-post",
-    status: "pending",
-    requestedBy: "voidbot",
-    requestedAt,
-    updatedAt: requestedAt,
-    commandUri: config.bifrostCultMesh.commandUri,
-    source: {
-      kind: "voidbot.repo-face.say",
-      id: input.job.id,
-      jobId: input.job.id,
-      requestMessageId: input.job.requestMessageId,
-    },
-    actor: {
-      id: input.identity.id,
-      displayName: input.identity.displayName,
-      repoName: input.identity.repoName,
-    },
-    payload: {
-      identityId: input.identity.id,
-      channelId: input.channelId,
-      content: input.content,
-      personaName: input.identity.displayName,
-      personaAvatarUrl: input.identity.avatarUrl ?? "",
-      replyToMessageId: input.replyToMessageId ?? "",
-    },
-  };
-
-  await node.put(bifrostDiscordCommandDefinition(), commandId, command);
-  await node.flush?.();
-
-  if (config.bifrostCultMesh.pumpEnabled) {
-    pumpBifrostCultMeshCommand(commandId);
-  }
-
-  const receipt = await waitForBifrostDiscordReceipt(node, commandId, config.bifrostCultMesh.timeoutMs);
-  if (receipt.status !== "completed" || receipt.ok !== true) {
-    throw new Error(
-      `Bifrost CultMesh Discord command ${commandId} failed: ${bifrostString(receipt.error) || "no error detail"}`,
-    );
-  }
-  const messageId = bifrostString(receipt.messageId);
-  const transport = bifrostString(receipt.transport);
-  if (!messageId || !transport) {
-    throw new Error(`Bifrost CultMesh Discord command ${commandId} returned an incomplete receipt.`);
-  }
+  const receipt = await postDiscordViaBifrostCultMesh({
+    idempotencyKey: JSON.stringify({ jobId: input.job.id, identityId: input.identity.id, channelId: input.channelId, replyToMessageId: input.replyToMessageId ?? "", content: input.content }),
+    source: { kind: "voidbot.repo-face.say", id: input.job.id, jobId: input.job.id, requestMessageId: input.job.requestMessageId },
+    actor: { id: input.identity.id, displayName: input.identity.displayName, repoName: input.identity.repoName },
+    channelId: input.channelId, content: input.content, replyToMessageId: input.replyToMessageId, personaAvatarUrl: input.identity.avatarUrl,
+  }, {
+    ...config.bifrostCultMesh, bifrostRoot: config.bifrostRoot, cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
+  });
   return {
     action: "discord-post",
     ok: true,
-    messageId,
-    transport: transport === "bot" || transport === "webhook" ? transport : "webhook",
-    url: bifrostString(receipt.url),
+    messageId: receipt.messageId,
+    transport: receipt.transport === "bot" || receipt.transport === "webhook" ? receipt.transport : "webhook",
+    url: receipt.url,
   };
-}
-
-function buildBifrostDiscordCommandId(input: {
-  job: JobRecord;
-  identity: RepoDiscordIdentity;
-  channelId: string;
-  content: string;
-  replyToMessageId?: string;
-}): string {
-  const hash = createHash("sha1")
-    .update(JSON.stringify({
-      jobId: input.job.id,
-      identityId: input.identity.id,
-      channelId: input.channelId,
-      replyToMessageId: input.replyToMessageId ?? "",
-      content: input.content,
-    }))
-    .digest("hex")
-    .slice(0, 20);
-  return `voidbot-discord-${hash}`;
-}
-
-function assertBifrostCultMeshCommandUri(value: string): void {
-  if (!/^cultmesh:\/\/[^/]+\/commands\/discord-post(?:$|[/?#])/.test(value)) {
-    throw new Error(
-      `BIFROST_CULTMESH_COMMAND_URI must be a CultMesh Discord command URI, got "${value}".`,
-    );
-  }
-}
-
-async function openBifrostCommandNode(storePath: string): Promise<{
-  put: (definition: unknown, key: string, value: unknown) => Promise<void>;
-  get: (definition: unknown, key: string) => unknown;
-  flush?: () => Promise<void>;
-  cache?: { pullAllBackingStores?: () => Promise<void> };
-}> {
-  const { CultMesh } = loadBifrostCultMeshRuntime();
-  return CultMesh.createNode(storePath, {
-    documents: [
-      bifrostDiscordCommandDefinition(),
-      bifrostDiscordReceiptDefinition(),
-      bifrostGenericDocumentDefinition("gamecult.eve.provider_advertisement", "gamecult.eve.provider_advertisement.v1", "providerId"),
-      bifrostGenericDocumentDefinition("gamecult.eve.surface_state", "gamecult.eve.surface_state.v1", "providerId"),
-      bifrostGenericDocumentDefinition("gamecult.eve.interface_binding", "gamecult.eve.interface_binding.v1", "bindingId"),
-    ],
-  });
-}
-
-function pumpBifrostCultMeshCommand(commandId: string): void {
-  const processor = resolve(config.bifrostRoot, "tools", "cultmesh-bridge-commands.mjs");
-  const result = spawnSync(process.execPath, [
-    processor,
-    "process",
-    "--store",
-    config.bifrostCultMesh.storePath,
-    "--command-id",
-    commandId,
-  ], {
-    cwd: config.bifrostRoot,
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (result.status !== 0 || result.error) {
-    throw new Error(`Bifrost CultMesh command processor failed. ${renderBridgeFailure(result, 1, 1)}`);
-  }
-}
-
-async function waitForBifrostDiscordReceipt(
-  node: { get: (definition: unknown, key: string) => unknown; cache?: { pullAllBackingStores?: () => Promise<void> } },
-  commandId: string,
-  timeoutMs: number,
-): Promise<Record<string, unknown>> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt <= timeoutMs) {
-    await node.cache?.pullAllBackingStores?.();
-    const receipt = unwrapBifrostRecord(await node.get(bifrostDiscordReceiptDefinition(), commandId));
-    if (receipt) {
-      return receipt;
-    }
-    await delay(250);
-  }
-  throw new Error(`Timed out waiting for Bifrost CultMesh Discord receipt ${commandId}.`);
-}
-
-let bifrostDefinitions: {
-  command?: unknown;
-  receipt?: unknown;
-  generic: Map<string, unknown>;
-} | undefined;
-
-function bifrostDiscordCommandDefinition(): unknown {
-  const { defineDocumentType } = loadBifrostCultMeshRuntime();
-  bifrostDefinitions ??= { generic: new Map() };
-  bifrostDefinitions.command ??= defineDocumentType({
-    type: BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE,
-    schemaName: BIFROST_DISCORD_POST_COMMAND_DOCUMENT_TYPE,
-    schemaId: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
-    schemaVersion: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
-    contentHash: BIFROST_DISCORD_POST_COMMAND_SCHEMA_ID,
-    global: false,
-    name: "commandId",
-    schema: parseBifrostObjectDocument("Bifrost Discord post command"),
-  });
-  return bifrostDefinitions.command;
-}
-
-function bifrostDiscordReceiptDefinition(): unknown {
-  const { defineDocumentType } = loadBifrostCultMeshRuntime();
-  bifrostDefinitions ??= { generic: new Map() };
-  bifrostDefinitions.receipt ??= defineDocumentType({
-    type: BIFROST_DISCORD_POST_RECEIPT_DOCUMENT_TYPE,
-    schemaName: BIFROST_DISCORD_POST_RECEIPT_DOCUMENT_TYPE,
-    schemaId: BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID,
-    schemaVersion: BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID,
-    contentHash: BIFROST_DISCORD_POST_RECEIPT_SCHEMA_ID,
-    global: false,
-    name: "commandId",
-    schema: parseBifrostObjectDocument("Bifrost Discord post receipt"),
-  });
-  return bifrostDefinitions.receipt;
-}
-
-function bifrostGenericDocumentDefinition(type: string, schemaId: string, name: string): unknown {
-  const { defineDocumentType } = loadBifrostCultMeshRuntime();
-  bifrostDefinitions ??= { generic: new Map() };
-  const key = `${type}:${schemaId}:${name}`;
-  let definition = bifrostDefinitions.generic.get(key);
-  if (!definition) {
-    definition = defineDocumentType({
-      type,
-      schemaName: type,
-      schemaId,
-      schemaVersion: schemaId,
-      contentHash: schemaId,
-      global: false,
-      name,
-      schema: parseBifrostObjectDocument(type),
-    });
-    bifrostDefinitions.generic.set(key, definition);
-  }
-  return definition;
-}
-
-function loadBifrostCultMeshRuntime(): {
-  CultMesh: { createNode: (storePath: string, options: unknown) => Promise<{
-    put: (definition: unknown, key: string, value: unknown) => Promise<void>;
-    get: (definition: unknown, key: string) => unknown;
-    flush?: () => Promise<void>;
-    cache?: { pullAllBackingStores?: () => Promise<void> };
-  }> };
-  defineDocumentType: (definition: Record<string, unknown>) => unknown;
-} {
-  if (process.env.VOIDBOT_CULTLIB_ROOT) {
-    try {
-      const cultMeshPackage = resolve(process.env.VOIDBOT_CULTLIB_ROOT, "packages", "cultmesh-ts", "package.json");
-      const cultCachePackage = resolve(process.env.VOIDBOT_CULTLIB_ROOT, "packages", "cultcache-ts", "package.json");
-      const { CultMesh } = createRequire(cultMeshPackage)("./dist/index.js") as {
-        CultMesh?: { createNode: (storePath: string, options: unknown) => Promise<{
-          put: (definition: unknown, key: string, value: unknown) => Promise<void>;
-          get: (definition: unknown, key: string) => unknown;
-          flush?: () => Promise<void>;
-          cache?: { pullAllBackingStores?: () => Promise<void> };
-        }> };
-      };
-      const { defineDocumentType } = createRequire(cultCachePackage)("./dist/index.js") as {
-        defineDocumentType?: (definition: Record<string, unknown>) => unknown;
-      };
-      if (CultMesh && defineDocumentType) {
-        return { CultMesh, defineDocumentType };
-      }
-    } catch {
-    }
-  }
-  const candidates = [
-    resolve(config.bifrostRoot, "..", "CultLib", "packages", "cultmesh-ts", "package.json"),
-    resolve(config.bifrostRoot, "..", "CultMeshTS", "package.json"),
-  ];
-
-  for (const packageJson of candidates) {
-    try {
-      const requireCult = createRequire(packageJson);
-      const { CultMesh } = requireCult("cultmesh-ts") as {
-        CultMesh?: { createNode: (storePath: string, options: unknown) => Promise<{
-          put: (definition: unknown, key: string, value: unknown) => Promise<void>;
-          get: (definition: unknown, key: string) => unknown;
-          flush?: () => Promise<void>;
-          cache?: { pullAllBackingStores?: () => Promise<void> };
-        }> };
-      };
-      const { defineDocumentType } = requireCult("cultcache-ts") as {
-        defineDocumentType?: (definition: Record<string, unknown>) => unknown;
-      };
-      if (CultMesh && defineDocumentType) {
-        return { CultMesh, defineDocumentType };
-      }
-    } catch {
-    }
-  }
-  throw new Error("CultMesh/CultCache packages are unavailable; cannot write Bifrost command documents.");
-}
-
-function parseBifrostObjectDocument(label: string): { parse: (value: unknown) => unknown } {
-  return {
-    parse(value: unknown): unknown {
-      if (!value || typeof value !== "object") {
-        throw new Error(`${label} must be an object.`);
-      }
-      return value;
-    },
-  };
-}
-
-function unwrapBifrostRecord(record: unknown): Record<string, unknown> | undefined {
-  const candidate = Array.isArray(record) && record.length === 1 ? record[0] : record;
-  const value = isBifrostRecord(candidate) && isBifrostRecord(candidate.value) ? candidate.value : candidate;
-  return isBifrostRecord(value) ? value : undefined;
-}
-
-function isBifrostRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function bifrostString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : value === undefined || value === null ? "" : String(value).trim();
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }
 
 async function resolveRepoIdentityForJobIntent(

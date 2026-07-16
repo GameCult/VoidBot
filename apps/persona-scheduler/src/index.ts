@@ -10,6 +10,8 @@ import { projectVoidMemoryOperations } from "./void-memory-text-actuator.js";
 import { runVoidModerationHeartbeat } from "./void-moderation-heartbeat-organ.js";
 import { projectVoidModerationOperations } from "./void-moderation-text-actuator.js";
 import { runVoidModerationEnforcement } from "./void-moderation-enforcement-organ.js";
+import { runVoidCandidateDelivery } from "./void-candidate-delivery-organ.js";
+import { deliverVoidCandidateViaBifrost } from "./bifrost-discord-delivery-actuator.js";
 
 const config = loadConfig();
 const intervalMs = Math.max(1, config.repoFaceHeartbeats.intervalMinutes) * 60_000;
@@ -71,6 +73,24 @@ function runTick(): Promise<void> {
           console.log(`Void moderation-enforcement pulse completed. ${JSON.stringify(enforcement)}`);
         } catch (error) {
           console.error(`Void moderation-enforcement pulse failed; pending cases remain typed debt for the next cadence. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        }
+      }
+      if (config.voidCandidateDelivery.enabled) {
+        try {
+          const delivery = await runVoidCandidateDelivery({
+            statePath: resolve(config.storageRoot, "private", "void-self-state.cc"),
+            personaName: config.voidCandidateDelivery.personaName,
+            personaAvatarUrl: config.voidCandidateDelivery.personaAvatarUrl,
+          }, {
+            deliver: (candidate) => deliverVoidCandidateViaBifrost(candidate, {
+              ...config.bifrostCultMesh,
+              bifrostRoot: config.bifrostRoot,
+              cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
+            }),
+          });
+          if (delivery.status === "ok") console.log(`Void candidate delivery completed. ${JSON.stringify(delivery)}`);
+        } catch (error) {
+          console.error(`Void candidate delivery failed; the queued candidate remains typed debt. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         }
       }
     })
