@@ -23,7 +23,6 @@ import { createTextEmbedder, createVectorStores, RetrievalService } from "@voidb
 import {
   loadPromptTemplate,
   type PromptImageAttachment,
-  type RepoFaceConversationFocus,
   type SourceMessage,
 } from "@voidbot/shared";
 import {
@@ -63,7 +62,7 @@ import {
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
-import { significantPersonaTopicTerms } from "../apps/persona-scheduler/dist/persona-curiosity-terms.js";
+import { projectPersonaConversation, renderPersonaRoomTopicSaturation, renderPersonaTopicAttractor } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
@@ -434,13 +433,14 @@ async function queueRepoFaceTurn(input: {
     ? renderNativePersonaBodySurface(identity)
     : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
-  const conversationMemorySurface = renderRepoFaceConversationTranscript({
+  const conversationProjection = projectPersonaConversation({
     identity,
     recentMessages,
     channelSnapshots,
     pendingMentions: input.pendingMentions,
     channelPlan,
   });
+  const conversationMemorySurface = conversationProjection.transcript;
   const prompt = buildHeartbeatPrompt({
     identity,
     channelId,
@@ -462,13 +462,6 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     ...channelSnapshots.map((snapshot) => snapshot.messages),
   ].flat());
-  const repoFaceConversationThreads = buildRepoFaceConversationThreads({
-    channelPlan,
-    recentMessages,
-    channelSnapshots,
-    pendingMentions: input.pendingMentions,
-  });
-  const repoFaceConversationFocus = repoFaceConversationThreads[0];
   const result = await submitPersonaTurn({
     jobQueue: input.storage.jobQueue,
     provider: input.config.repoFaceHeartbeats.provider,
@@ -477,8 +470,8 @@ async function queueRepoFaceTurn(input: {
     channelId,
     prompt,
     recentMessages,
-    conversationFocus: repoFaceConversationFocus,
-    conversationThreads: repoFaceConversationThreads,
+    conversationFocus: conversationProjection.focus,
+    conversationThreads: conversationProjection.threads,
     imageAttachments,
   });
 
@@ -658,7 +651,7 @@ function buildHeartbeatPrompt(input: {
       recentMessages: input.recentMessages,
       channelSnapshots: input.channelSnapshots,
     }),
-    topicSaturationDirective: renderRoomTopicSaturationDirective(input.identity, input.recentMessages),
+    topicSaturationDirective: renderPersonaRoomTopicSaturation(input.identity, input.recentMessages),
     turnSituationDirective: renderTurnSituationDirective({
       identity: input.identity,
       participant: input.participant,
@@ -766,13 +759,13 @@ async function assembleRepoFaceTurnPrompt(input: {
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
-    : renderRepoFaceConversationTranscript({
+    : projectPersonaConversation({
         identity,
         recentMessages,
         channelSnapshots,
         pendingMentions: [],
         channelPlan,
-      });
+      }).transcript;
   const participant = buildInspectionParticipant(
     identity,
     input.config.repoFaceHeartbeats.baseRecoveryMinutes,
@@ -1125,7 +1118,7 @@ function renderRepoFaceStatePacket(
     channelSnapshots: roomContext?.channelSnapshots ?? [],
     pronounGuidance: humanPronounGuidance,
     observedAt: new Date(),
-    topicAttractorFacts: roomContext ? renderRepoFaceTopicAttractorFacts(identity, roomContext.recentMessages) : undefined,
+    topicAttractorFacts: roomContext ? renderPersonaTopicAttractor(identity, roomContext.recentMessages) : undefined,
   });
   const clarityPressureActive = Boolean(socialContext.humanClarity);
 
@@ -1296,201 +1289,6 @@ function joinAsNarrativeList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
-function renderRepoFaceConversationTranscript(input: {
-  identity: RepoDiscordIdentity;
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-  pendingMentions: RepoFacePendingMention[];
-  channelPlan: RepoFaceChannelPlan;
-}): string {
-  const sections: string[] = [];
-  const threads = buildRepoFaceConversationThreads(input);
-  const focus = threads[0];
-  sections.push([
-    "Read this as raw recent message evidence, not as a summary and not as consensus.",
-    "Messages are ordered oldest to newest inside each section. Newer human corrections can supersede older agent proposals.",
-    "Use the visible cross-channel chronology below to decide whether a correction is still unresolved or was already answered later by the same Face.",
-    "Do not infer consensus from agents repeating each other. If a human reframes, narrows, or corrects an agent's proposal, account for that correction directly.",
-    "If you answer the live conversation, keep the conversation context attached. A Face can carry different conversations in different channels at once.",
-    "If you answer or riff on a nearby-room message, use that message's active context id or set channel to that message's listed channel id and usually set reply_to to that message id. If the nearby message is media, a public reaction belongs in that media source channel unless a human explicitly moved the topic. Never answer a nearby-room post in the current room just because the current room is easier to speak in.",
-    "Message IDs are shown so a public reply can target the message that gives it context. If you revive an older side thread, either reply_to that message id or include enough context in your message for readers to know what you mean.",
-  ].join("\n"));
-  if (focus) {
-    sections.push(renderRepoFaceConversationFocus(focus, threads));
-  }
-  const chronology = renderVisibleConversationChronology(input);
-  if (chronology) {
-    sections.push(chronology);
-  }
-  if (input.pendingMentions.length > 0) {
-    sections.push([
-      "Direct calls:",
-      ...input.pendingMentions.map((mention) =>
-        `- ${mention.authorName ?? mention.authorId}: ${collapseWhitespace(mention.visiblePrompt, 900)}`,
-      ),
-    ].join("\n"));
-  }
-  const currentLabel = input.channelPlan.options.find((option) =>
-    option.channelId === input.channelPlan.primaryChannelId
-  )?.label ?? "current room";
-  sections.push([
-    `Current room (${currentLabel}, channel ${input.channelPlan.primaryChannelId ?? "unknown"}), oldest to newest:`,
-    ...formatConversationMessages(input.recentMessages, 15, input.channelPlan.primaryChannelId),
-  ].join("\n"));
-  for (const snapshot of input.channelSnapshots) {
-    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
-      "nearby room";
-    sections.push([
-      `Nearby ${label} (channel ${snapshot.channelId}), oldest to newest:`,
-      ...formatConversationMessages(snapshot.messages, 6, snapshot.channelId),
-    ].join("\n"));
-  }
-  return sections.join("\n\n");
-}
-
-function buildRepoFaceConversationThreads(input: {
-  channelPlan: RepoFaceChannelPlan;
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-  pendingMentions: RepoFacePendingMention[];
-}): RepoFaceConversationFocus[] {
-  const primaryChannelId = input.channelPlan.primaryChannelId;
-  const channelLabel = (channelId: string | undefined): string | undefined =>
-    input.channelPlan.options.find((option) => option.channelId === channelId)?.label ?? channelId;
-  const newestMention = input.pendingMentions
-    .slice()
-    .sort((left, right) => Date.parse(right.queuedAt) - Date.parse(left.queuedAt))
-    [0];
-  const threads: RepoFaceConversationFocus[] = [];
-  if (newestMention) {
-    threads.push({
-      contextId: repoFaceConversationContextId(newestMention.channelId, newestMention.messageId),
-      channelId: newestMention.channelId,
-      channelLabel: channelLabel(newestMention.channelId),
-      messageId: newestMention.messageId,
-      authorName: newestMention.authorName,
-      timestamp: newestMention.queuedAt,
-      reason: "pending_mention",
-      isCurrentRoom: newestMention.channelId === primaryChannelId,
-    });
-  }
-
-  const visible = [
-    ...input.recentMessages.map((message) => ({
-      message,
-      channelId: primaryChannelId,
-      label: channelLabel(primaryChannelId),
-    })),
-    ...input.channelSnapshots.flatMap((snapshot) =>
-      snapshot.messages.map((message) => ({
-        message,
-        channelId: snapshot.channelId,
-        label: channelLabel(snapshot.channelId),
-      })),
-    ),
-  ]
-    .filter((entry): entry is { message: SourceMessage; channelId: string; label?: string } =>
-      Boolean(entry.channelId) && Number.isFinite(Date.parse(entry.message.timestamp)),
-    )
-    .sort((left, right) => Date.parse(right.message.timestamp) - Date.parse(left.message.timestamp));
-
-  const byChannel = new Set(threads.map((thread) => thread.channelId));
-  for (const entry of visible) {
-    if (byChannel.has(entry.channelId)) {
-      continue;
-    }
-    if (entry.message.isBot && (entry.message.attachments ?? []).length === 0) {
-      continue;
-    }
-    byChannel.add(entry.channelId);
-    threads.push({
-      contextId: repoFaceConversationContextId(entry.channelId, entry.message.id),
-      channelId: entry.channelId,
-      channelLabel: entry.label,
-      messageId: entry.message.id,
-      authorName: entry.message.authorName,
-      timestamp: entry.message.timestamp,
-      reason: entry.message.isBot ? "latest_visible_message" : "latest_human_message",
-      isCurrentRoom: entry.channelId === primaryChannelId,
-      hasMedia: (entry.message.attachments ?? []).length > 0,
-    });
-    if (threads.length >= 6) {
-      break;
-    }
-  }
-
-  return threads;
-}
-
-function repoFaceConversationContextId(channelId: string, messageId?: string): string {
-  return `ctx_${channelId}_${messageId ?? "latest"}`;
-}
-
-function renderRepoFaceConversationFocus(
-  focus: RepoFaceConversationFocus,
-  threads: RepoFaceConversationFocus[],
-): string {
-  return [
-    "Active conversation contexts:",
-    ...threads.map((thread) =>
-      [
-        `- ${thread.contextId}: ${thread.channelLabel ?? thread.channelId} (${thread.channelId})`,
-        thread.messageId ? `message ${thread.messageId}` : "",
-        thread.authorName ? `from ${thread.authorName}` : "",
-        thread.reason,
-        thread.hasMedia ? "media" : "",
-        thread.isCurrentRoom ? "current room" : "nearby room",
-      ].filter(Boolean).join("; "),
-    ),
-    "",
-    `Selected default context: ${focus.contextId ?? "(none)"}.`,
-    `- Source channel: ${focus.channelLabel ?? focus.channelId} (${focus.channelId}).`,
-    focus.messageId ? `- Source message: ${focus.messageId}${focus.authorName ? ` from ${focus.authorName}` : ""}.` : "",
-    focus.timestamp ? `- Source timestamp: ${focus.timestamp}.` : "",
-    `- Reason: ${focus.reason}${focus.hasMedia ? "; media-bearing message" : ""}.`,
-    "- If you speak from a listed context, set context to its context id. The worker will use that context as the channel/reply target for the SAY.",
-    "- If you are carrying more than one conversation at once, choose the context that your SAY is continuing. Do not collapse #pics, #general, and #aquarium into one room just because they are all visible.",
-  ].filter(Boolean).join("\n");
-}
-
-function renderVisibleConversationChronology(input: {
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-  channelPlan: RepoFaceChannelPlan;
-}): string {
-  const byId = new Map<string, SourceMessage & { channelLabel: string; channelId: string }>();
-  const primaryLabel = input.channelPlan.options.find((option) =>
-    option.channelId === input.channelPlan.primaryChannelId
-  )?.label ?? "current room";
-  for (const message of input.recentMessages) {
-    byId.set(message.id, { ...message, channelLabel: primaryLabel, channelId: input.channelPlan.primaryChannelId ?? "unknown" });
-  }
-  for (const snapshot of input.channelSnapshots) {
-    const label = input.channelPlan.options.find((option) => option.channelId === snapshot.channelId)?.label ??
-      "nearby room";
-    for (const message of snapshot.messages) {
-      byId.set(message.id, { ...message, channelLabel: label, channelId: snapshot.channelId });
-    }
-  }
-
-  const messages = [...byId.values()]
-    .filter((message) => Number.isFinite(Date.parse(message.timestamp)))
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
-    .slice(-24);
-  if (messages.length === 0) {
-    return "";
-  }
-
-  return [
-    "Visible cross-channel chronology, oldest to newest:",
-    ...messages.map((message) => {
-      const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-      const content = collapseWhitespace(message.content, 700) || "[no text]";
-      return `- [${message.channelLabel} channel ${message.channelId}] ${speaker} (message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
-    }),
-  ].join("\n");
-}
-
 function renderRepoActivityObservation(observation: RepoActivityObservation): string {
   if (observation.status === "unconfigured") {
     return "- This Persona has no source repository configured; no repo activity was requested.";
@@ -1510,33 +1308,6 @@ function renderRepoActivityObservation(observation: RepoActivityObservation): st
     ].join("\n");
   }
   return observation.digest || `- No recent ${observation.sourceRepoName} activity was reported.`;
-}
-
-function formatConversationMessages(messages: SourceMessage[], limit: number, channelId?: string): string[] {
-  if (messages.length === 0) {
-    return ["- No recent messages."];
-  }
-  return messages.slice(-limit).map((message) => {
-    const speaker = message.isBot ? `${message.authorName} (agent/bot)` : message.authorName;
-    const content = collapseWhitespace(message.content, 900) || "[no text]";
-    const channelPrefix = channelId ? `channel ${channelId}, ` : "";
-    return `- ${speaker} (${channelPrefix}message ${message.id}): ${content}${renderMessageAttachmentSuffix(message)}`;
-  });
-}
-
-function renderMessageAttachmentSuffix(message: SourceMessage): string {
-  const attachments = message.attachments ?? [];
-  if (attachments.length === 0) {
-    return "";
-  }
-  const rendered = attachments.map((attachment, index) => {
-    const label = attachment.kind === "image" ? "image" : "attachment";
-    const dimensions = attachment.width && attachment.height ? ` ${attachment.width}x${attachment.height}` : "";
-    const filename = attachment.filename ? ` ${attachment.filename}` : ` ${index + 1}`;
-    const local = attachment.localPath ? ` local=${attachment.localPath}` : "";
-    return `${label}${filename}${dimensions}${local}`;
-  });
-  return ` [media: ${rendered.join("; ")}]`;
 }
 
 function collectPromptImageAttachments(messages: SourceMessage[]): PromptImageAttachment[] {
@@ -1899,136 +1670,6 @@ function renderRepetitionSamplingDirective(messages: SourceMessage[]): string {
   return loadPromptTemplate("repo-face-repetition-sampling.prompt.md", {
     overused: overused.map((entry) => `${entry.phrase} (${entry.count} recent uses)`),
   });
-}
-
-function renderRoomTopicSaturationDirective(identity: RepoDiscordIdentity, messages: SourceMessage[]): string {
-  const signal = detectRoomTopicSaturation(messages);
-  if (!signal) {
-    return "";
-  }
-  const topicRelation = estimateTopicRelationToIdentity(identity, signal);
-  const relationLine = topicRelation.isHomeAdjacent
-    ? `- For ${identity.displayName}, this looks home-adjacent because the repeated terms overlap its territory (${topicRelation.matchedTerms.join(", ")}). That permits deeper engagement, but it still needs fresh anchors or closure.`
-    : `- For ${identity.displayName}, this looks like another steward's gravity well, not its own territory. Treat the pull as possible neglect, boredom, jealousy, territorial itch, or a reason to pivot toward ${identity.displayName}'s own priorities unless it has a distinct social move.`;
-
-  return [
-    "Current room topic saturation:",
-    `- The last ${signal.messageCount} current-room messages are circling repeated terms: ${signal.terms.map((term) => `${term.term} (${term.count})`).join(", ")}.`,
-    `- Topic coverage: ${signal.coveredMessages}/${signal.messageCount} messages touch those repeated terms.`,
-    relationLine,
-    "- Treat this as staleness pressure, not a ban. Stay with the topic only if you add a genuinely new anchor, answer a live question, make a decision-driving distinction, draft a concrete artifact, or intentionally close/defer the thread.",
-    "- If you only have another tasteful variation on the same point, choose a different social move, name your frustration with the room's orbit, pivot toward your own neglected fascination, or keep it private.",
-  ].join("\n");
-}
-
-interface RoomTopicSaturationSignal {
-  messageCount: number;
-  coveredMessages: number;
-  terms: Array<{ term: string; count: number }>;
-}
-
-interface TopicRelationToIdentity {
-  isHomeAdjacent: boolean;
-  matchedTerms: string[];
-}
-
-function renderRepoFaceTopicAttractorFacts(
-  identity: RepoDiscordIdentity,
-  messages: SourceMessage[],
-): string | undefined {
-  const signal = detectRoomTopicSaturation(messages);
-  if (!signal) {
-    return undefined;
-  }
-  const relation = estimateTopicRelationToIdentity(identity, signal);
-  const repeatedTerms = signal.terms.map((term) => `${term.term} (${term.count})`).join(", ");
-  const base = `- Current-room topic attractor: ${signal.coveredMessages}/${signal.messageCount} messages orbit repeated terms ${repeatedTerms}.`;
-  if (relation.isHomeAdjacent) {
-    return [
-      base,
-      `- This attractor touches ${identity.displayName}'s own territory through ${relation.matchedTerms.join(", ")}. Project sustained attention as a chance for deeper stewardship, but include fatigue if the room is polishing the same branch without new evidence.`,
-    ].join("\n");
-  }
-
-  return [
-    base,
-    `- This attractor does not obviously belong to ${identity.displayName}'s territory. Project it as social weather: another domain is absorbing the room, so this character may feel neglected, bored, crowded out, competitive, relieved, or tempted to pull attention back toward its own unfinished fascinations.`,
-  ].join("\n");
-}
-
-function estimateTopicRelationToIdentity(
-  identity: RepoDiscordIdentity,
-  signal: RoomTopicSaturationSignal,
-): TopicRelationToIdentity {
-  const identityTerms = new Set(significantPersonaTopicTerms([
-    identity.id,
-    identity.displayName,
-    identity.repoName,
-    identity.description ?? "",
-    ...identity.channelPermissions.flatMap((permission) => [
-      permission.label ?? "",
-      permission.topic ?? "",
-      permission.posture ?? "",
-    ]),
-  ].join(" ")));
-  const matchedTerms = signal.terms
-    .map((term) => term.term)
-    .filter((term) => identityTerms.has(term));
-
-  return {
-    isHomeAdjacent: matchedTerms.length > 0,
-    matchedTerms,
-  };
-}
-
-function detectRoomTopicSaturation(messages: SourceMessage[]): RoomTopicSaturationSignal | undefined {
-  const recent = messages
-    .filter((message) => collapseWhitespace(message.content).length > 0)
-    .slice(-18);
-  if (recent.length < 8) {
-    return undefined;
-  }
-
-  const termCounts = new Map<string, number>();
-  const messageTerms = recent.map((message) => new Set(significantPersonaTopicTerms(message.content)));
-  for (const terms of messageTerms) {
-    for (const term of terms) {
-      termCounts.set(term, (termCounts.get(term) ?? 0) + 1);
-    }
-  }
-
-  const minimumCount = Math.max(3, Math.ceil(recent.length * 0.25));
-  const terms = Array.from(termCounts.entries())
-    .map(([term, count]) => ({ term, count }))
-    .filter((entry) => entry.count >= minimumCount)
-    .sort((left, right) => {
-      if (right.count !== left.count) {
-        return right.count - left.count;
-      }
-      return left.term.localeCompare(right.term);
-    })
-    .slice(0, 8);
-
-  if (terms.length < 3) {
-    return undefined;
-  }
-
-  const repeatedTermSet = new Set(terms.slice(0, 6).map((entry) => entry.term));
-  const coveredMessages = messageTerms.filter((termsForMessage) =>
-    Array.from(termsForMessage).some((term) => repeatedTermSet.has(term)),
-  ).length;
-  const topCount = terms[0]?.count ?? 0;
-  const hasDominantTerm = topCount >= Math.ceil(recent.length * 0.35);
-  const hasBroadCoverage = coveredMessages >= Math.ceil(recent.length * 0.68);
-  if (!hasDominantTerm || !hasBroadCoverage) {
-    return undefined;
-  }
-
-  return {
-    messageCount: recent.length,
-    coveredMessages,
-    terms,
-  };
 }
 
 function countRepeatedPhrases(messages: SourceMessage[]): Array<{ phrase: string; count: number }> {

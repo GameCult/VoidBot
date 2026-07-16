@@ -68,6 +68,7 @@ import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaSelfMaintenancePressure, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
+import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
@@ -624,6 +625,18 @@ const channelPlan = buildPersonaChannelPlan(routedIdentity, "aquarium", "lore");
 assert.equal(channelPlan.primaryChannelId, "lore", "fresh direct attention chooses its permitted source room");
 assert.deepEqual(channelPlan.snapshotChannelIds, ["aquarium", "lore", "legacy"], "routing exposes one deduplicated evidence neighborhood");
 assert.deepEqual(channelPlan.lowThresholdTopics, ["casual conversation"], "prompt renderers consume routing policy instead of recomputing thresholds");
+const saturatedMessages = Array.from({ length: 8 }, (_, index) => ({ id: `topic-${index}`, authorId: "human", authorName: "Operator", content: `semantic memory topology anchors evidence ${index}`, timestamp: `2026-07-15T21:0${index}:00.000Z`, isBot: false, channelId: "lore" }));
+const conversationProjection = projectPersonaConversation({
+  identity: routedIdentity,
+  recentMessages: saturatedMessages,
+  channelSnapshots: [{ channelId: "aquarium", messages: [{ id: "nearby", authorId: "human-2", authorName: "Neighbor", content: "a nearby correction", timestamp: "2026-07-15T21:09:00.000Z", isBot: false, channelId: "aquarium" }] }],
+  pendingMentions: [{ messageId: "mention", channelId: "aquarium", authorId: "human-2", authorName: "Neighbor", visiblePrompt: "Nibu, answer this", queuedAt: "2026-07-15T21:10:00.000Z" }],
+  channelPlan,
+});
+assert.equal(conversationProjection.focus?.reason, "pending_mention", "conversation projection gives the freshest direct call default context authority");
+assert.match(conversationProjection.transcript, /Visible cross-channel chronology,[\s\S]*nearby correction/, "conversation projection renders supplied cross-channel evidence without acquiring it");
+assert.match(conversationProjection.topicAttractor ?? "", /semantic \(8\)/, "conversation projection owns topic-attractor facts");
+assert.match(renderPersonaRoomTopicSaturation(routedIdentity, saturatedMessages), /Current room topic saturation:/, "turn-facing saturation and memory-facing attractors share one conversation owner");
 assert.equal(personaChannelSpeedMultiplier(routedIdentity), 3, "scheduler speed projection uses the routing organ's bounded channel policy");
 assert.equal(newestPendingMentionChannel([
   { identityId: "nibu", channelId: "older", queuedAt: "2026-07-15T20:00:00.000Z" },
