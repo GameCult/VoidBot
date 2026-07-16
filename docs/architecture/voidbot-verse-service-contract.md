@@ -50,11 +50,10 @@ VoidBot surfaces as they become first-class Verse nodes.
   `.voidbot/status/cultmesh/voidbot-swarm-state.cc`, written by
   `scripts/render-voidbot-swarm-dashboard.mjs`.
 - Idunn health witness:
-  `scripts/run-gamecult-orchestrator.ps1` publishes
-  `voidbot.cultnet-rudp-stack-health` over `cultnet.transport.rudp.v0` after
-  each orchestrator pulse. The health record reports the pulse summary for the
-  local stack; `scripts/check-voidbot-operations.ps1` remains a compatibility
-  probe and watchdog report, not the daemon liveness owner.
+  the Yggdrasil swarm publisher emits `voidbot.cultnet-rudp-stack-health` over
+  `cultnet.transport.rudp.v0`; Idunn consumes that provider-owned daemon health.
+  `scripts/check-voidbot-operations.ps1` is a manual/local diagnostic probe,
+  not a recurrence or daemon-liveness owner.
 - JSON status packets under `.voidbot/status/` are debug/export surfaces unless
   a specific runner owns them as command input. They are not durable canonical
   state.
@@ -98,7 +97,7 @@ typed CultCache documents behind the Eve binding:
   channel permission projections, pending mention pressure, and compatibility
   state access status.
 - `voidbot.swarm`: CTB initiative order, active turns, pause/heat/cadence
-  controls, orchestrator organ health, and selected Face state witness.
+  controls, resident daemon health, and selected Face state witness.
 
 ## Eve Surfaces
 
@@ -122,7 +121,7 @@ All meaningful presentation flows through Eve/CultUI DSL:
   readiness.
 - Swarm surface:
   shows CTB order, active turn freeze, heat/cadence controls, pending mention
-  queues, orchestrator status, and selected Face state witness.
+  queues, daemon status, and selected Face state witness.
 
 The existing `swarm-dashboard.html` file is a local browser lowering of the
 `voidbot.swarm` Eve surface. It is useful for visual inspection, but it has no
@@ -133,8 +132,9 @@ Eve binding and the underlying typed state owners.
 
 1. Keep the current `voidbot.swarm` CultMesh publication healthy and discoverable
    through Odin.
-2. Keep `voidbot.cultnet-rudp-stack-health` publishing from the orchestrator
-   pulse so Idunn consumes daemon-owned health before compatibility probes.
+2. Keep `voidbot.cultnet-rudp-stack-health` publishing from the resident
+   Yggdrasil transport boundary so Idunn consumes daemon-owned health without
+   local status scraping.
 3. Add `.cc` witness/export documents for any remaining JSON-only command or
    status surfaces before treating them as Verse state.
 3. Move Persona and repo Face `.cc` inspection to Huginn-owned tooling while

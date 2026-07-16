@@ -630,7 +630,7 @@
       "providerId": "voidbot.swarm",
       "verseId": "voidbot.local",
       "title": "VoidBot Swarm",
-      "description": "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Face state witness.",
+      "description": "CTB initiative order, active turns, pause/heat/cadence controls, daemon health, and selected Face state witness.",
       "status": "live",
       "endpoint": "cultmesh://voidbot.local/eve/providers/voidbot.swarm",
       "documents": [
@@ -723,14 +723,6 @@
           "contains": [
             "derived debug/status projection",
             "not mutation authority"
-          ]
-        },
-        {
-          "id": "voidbot.orchestrator_state",
-          "path": ".voidbot/status/gamecult-orchestrator.json",
-          "owner": "GameCult Local Orchestrator",
-          "contains": [
-            "debug/status source"
           ]
         }
       ],

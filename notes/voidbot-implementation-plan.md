@@ -214,7 +214,7 @@ The canonical teardown map is `notes/agent-swarm-teardown-plan-2026-05-21.md`.
 
 First cuts:
 
-- Keep `GameCult Local Orchestrator` disabled while swarm teardown proceeds.
+- The Windows omnibus is deleted. Keep the resident Persona scheduler paused while swarm teardown proceeds.
 - Landed: add a repo-controlled pause gate that swarm organs obey even when the Windows scheduled task or manual runner is invoked.
 - Landed: rename child-facing `heartbeat` framing to neutral turn/pass language so runtime provenance stops poisoning public speech.
 - Landed: add parent-side public speech/work eligibility before transport as a Spark/Codex reviewer pass with one retry. The reviewer gives concrete reasons; the Face gets one revision; the parent routes or drops the final output.
@@ -275,12 +275,12 @@ Restart gates:
 
 - Landed in the active path: routine self-state operations use `.voidbot/private/void-self-state.cc`, and the typed service no longer registers or mirrors the legacy moderation document.
 - `scripts/run-void-moderator-rumination.ps1` restores rumination through `prompts/void-moderator-rumination.md` and typed operation output; it does not materialize `.json`.
-- `scripts/simulate-void-mood.mjs` is typed-only sleep/speaking pressure and does not refresh a JSON projection.
+- Resident `void-physiology-organ.ts` owns typed sleep/speaking pressure and emits maintenance intent without JSON projection.
 - Remaining work: keep any explicit human debug export separate from mutation authority, and delete stale references/invocations as they are found.
 
 ### Commit 6.5: Keep Old Scripts Offline
 
-- `Void Mood Drift` has been deliberately reinstalled after the typed sleep-maintenance fixture passed. It runs `scripts/run-void-mood-drift.ps1`, which calls the typed `scripts/simulate-void-mood.mjs` path.
+- Resident physiology and memory maintenance replace the deleted mood task, wrapper, simulator, and PowerShell maintenance runner.
 - `Void Moderator Rumination` is re-enabled after typed operation quality, parent-owned speech closure, and an observed live scheduled pass. The runner has model-branch, parent-owned speech, and nap-skip fixtures.
 - Do not reinstall or re-enable deleted legacy scripts as compatibility surfaces.
 - Verification: scheduled-task query shows mood and moderation enabled with Last Result `0`, and rebuilt direct dry runs operate only on `.voidbot/private/void-self-state.cc`.
@@ -308,8 +308,8 @@ Restart gates:
 
 - Landed cut: cleanup paths whose only job was repairing JSON projection edits, legacy mirrors, keyword sludge, or overgrown runtime residue have been deleted with the old memory-organ stack.
 - Landed cut: hard-wired agency paths that turned heuristic scores into doctrine, advocacy, or speech candidates without an explicit typed-state contract have been deleted.
-- Landed replacement boundary: `scripts/run-void-memory-maintenance.ps1` asks the model for memory/incubation/candidate typed operation proposals using `prompts/void-memory-maintenance.md`, rejects non-maintenance operations, and applies the rest through `scripts/void-self-state.mjs`.
-- Landed sleep integration: `scripts/simulate-void-mood.mjs` invokes memory maintenance once per nap, and the maintenance runner fails a real sleep pass that returns no operations while memory pressure is present.
+- Resident memory maintenance asks one tool-free model call for a fully validated typed operation batch, pre-receipts one attempt per nap, and fails if short-term residue survives.
+- Resident physiology emits the nap intent; no mood script, PowerShell runner, or filesystem lock participates.
 - Landed verification: `npm run moderation:memory-maintenance:sleep-fixture` exercises the non-skip model branch with a fake Codex child, proving `AquariumSynthCSharp: Workflow cannot own the body` promotes from short-term into durable memory while preserving subject, claim, anchor, tension, and action implication.
 - Landed memory lifecycle: `revise_durable_memory`, `retire_durable_memory`, and `crystallize_memory_into_identity` make long-term memory durable but plastic instead of silently immutable.
 - Landed lifecycle verification: `npm run moderation:memory-lifecycle:fixture` proves a short-term thought can promote into durable memory, revise into a replacement, retire superseded durable records, and crystallize into an identity memory plus self-profile value.

@@ -168,7 +168,7 @@ function buildCatalog() {
     provider({
       id: "voidbot.swarm",
       title: "VoidBot Swarm",
-      description: "CTB initiative order, active turns, pause/heat/cadence controls, orchestrator organ health, and selected Face state witness.",
+      description: "CTB initiative order, active turns, pause/heat/cadence controls, daemon health, and selected Face state witness.",
       status: "live",
       surfaces: [
         surface("voidbot.swarm.ctb_order", "CTB order", "Initiative order, active turns, recovery timing, pending mentions, and selected Face witness."),
@@ -178,7 +178,6 @@ function buildCatalog() {
         witness("voidbot.swarm_state_snapshot", ".voidbot/status/cultmesh/voidbot-swarm-state.cc", "scripts/render-voidbot-swarm-dashboard.mjs", ["voidbot.swarm_state_snapshot", "gamecult.eve.provider_advertisement", "gamecult.eve.surface_state", "gamecult.eve.interface_binding"]),
         witness("voidbot.repo_face_heartbeat_state", ".voidbot/status/repo-face-heartbeats.cc", "VoidBot CTB scheduler", ["canonical typed scheduler state"]),
         witness("voidbot.repo_face_heartbeat_debug_projection", ".voidbot/status/repo-face-heartbeats.json", "VoidBot CTB scheduler", ["derived debug/status projection", "not mutation authority"]),
-        witness("voidbot.orchestrator_state", ".voidbot/status/gamecult-orchestrator.json", "GameCult Local Orchestrator", ["debug/status source"]),
       ],
       commands: [
         command("swarm.inspect", "read-only", "Load the current CTB and selected Face state surface."),

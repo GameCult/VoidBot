@@ -4,7 +4,7 @@ Observed 2026-07-16 after the Yggdrasil replacement. This map distinguishes live
 
 ## Live Bodies
 
-- Starfire `GameCult Local Orchestrator`: disabled.
+- Starfire `GameCult Local Orchestrator`: deleted from the repository; the previously installed task remains operational debris to remove if still present on Starfire.
 - Starfire `Void Moderator Rumination`: disabled.
 - Starfire `Void Mood Drift`: disabled.
 - Starfire `VoidBot Operations Watchdog`: disabled.
@@ -50,4 +50,4 @@ The disabled tasks are not standby owners. The listed organs currently have no r
 
 ## Deletion Line
 
-After each target organ is live and verified on Yggdrasil, remove its definition from `run-gamecult-orchestrator.ps1` and stop watchdog logic from treating the disabled Local Orchestrator as a valid owner. The rebuild is incomplete while an old Windows path can still be re-enabled and produce the same decision independently.
+The Windows omnibus, installer, and hidden launcher are deleted, and watchdog logic cannot recognize them as health owners. Remaining per-organ Starfire tasks are operational debris, not standby paths; remove any installed copies rather than restoring repository launchers.
