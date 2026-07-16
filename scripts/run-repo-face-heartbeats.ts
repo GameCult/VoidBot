@@ -22,7 +22,6 @@ import {
 import { createTextEmbedder, createVectorStores, RetrievalService } from "@voidbot/rag";
 import {
   loadPromptTemplate,
-  type InteractionMemoryProfile,
   type PromptImageAttachment,
   type RepoFaceConversationFocus,
   type SourceMessage,
@@ -66,6 +65,7 @@ import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/per
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { significantPersonaTopicTerms } from "../apps/persona-scheduler/dist/persona-curiosity-terms.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -1248,83 +1248,23 @@ async function loadRepoFaceHumanPronounGuidance(
     channelSnapshots: ChannelSnapshot[];
   },
 ): Promise<RepoFaceHumanPronounGuidance[]> {
-  const visibleHumans = new Map<string, string>();
-  for (const message of [
-    ...(roomContext?.recentMessages ?? []),
-    ...(roomContext?.channelSnapshots.flatMap((snapshot) => snapshot.messages) ?? []),
-  ]) {
-    if (!message.isBot && message.authorId) {
-      visibleHumans.set(message.authorId, message.authorName || message.authorId);
-    }
-  }
-  visibleHumans.set(config.ownerDiscordId, visibleHumans.get(config.ownerDiscordId) ?? "Metacrat");
-
-  const storage = await createStateStorage({
-    backend: config.stateStorageBackend,
-    databaseDsn: config.databaseDsn,
-    jobsFile: config.jobsFile,
-    auditLogFile: config.auditLogFile,
-    interactionMemoryFile: config.interactionMemoryFile,
-    rateLimitStateFile: config.rateLimitStateFile,
+  return readPersonaHumanPronounGuidance({
+    ownerActorId: config.ownerDiscordId,
+    ownerFallbackName: "Metacrat",
+    recentMessages: roomContext?.recentMessages ?? [],
+    channelSnapshots: roomContext?.channelSnapshots ?? [],
+    openProfiles: async () => {
+      const storage = await createStateStorage({
+        backend: config.stateStorageBackend,
+        databaseDsn: config.databaseDsn,
+        jobsFile: config.jobsFile,
+        auditLogFile: config.auditLogFile,
+        interactionMemoryFile: config.interactionMemoryFile,
+        rateLimitStateFile: config.rateLimitStateFile,
+      });
+      return { getProfile: (actorId) => storage.interactionMemory.getProfile(actorId), close: () => storage.close() };
+    },
   });
-
-  try {
-    const profiles = await Promise.all(
-      [...visibleHumans.entries()].map(async ([actorId, fallbackName]) => ({
-        actorId,
-        fallbackName,
-        profile: await storage.interactionMemory.getProfile(actorId),
-      })),
-    );
-
-    return profiles
-      .map(({ actorId, fallbackName, profile }) =>
-        profile ? repoFacePronounGuidanceFromProfile(actorId, fallbackName, profile) : undefined,
-      )
-      .filter((entry): entry is RepoFaceHumanPronounGuidance => entry !== undefined);
-  } finally {
-    await storage.close();
-  }
-}
-
-function repoFacePronounGuidanceFromProfile(
-  actorId: string,
-  fallbackName: string,
-  profile: InteractionMemoryProfile,
-): RepoFaceHumanPronounGuidance | undefined {
-  if (profile.pronounPolicy === "unknown" || profile.resolvedPronounSets.length === 0) {
-    return undefined;
-  }
-
-  const evidence = [...profile.pronounEvidence]
-    .filter((entry) => entry.stance === "prefer" || entry.stance === "avoid")
-    .sort((left, right) => pronounEvidenceRank(profile, right) - pronounEvidenceRank(profile, left))[0];
-
-  return {
-    actorId,
-    actorName: profile.actorName || fallbackName,
-    guidance: profile.pronounGuidance,
-    resolvedPronounSet: profile.resolvedPronounSet,
-    policy: profile.pronounPolicy,
-    confidence: profile.pronounConfidence,
-    evidenceExcerpt: evidence?.excerpt,
-  };
-}
-
-function pronounEvidenceRank(profile: InteractionMemoryProfile, entry: InteractionMemoryProfile["pronounEvidence"][number]): number {
-  const sourceRank: Record<string, number> = {
-    explicit_self_statement: 10_000,
-    explicit_correction: 9_000,
-    direct_third_party_statement: 7_000,
-    contextual_relational_inference: 3_000,
-    ambient_usage: 1_000,
-  };
-  const resolvedSetBonus = profile.resolvedPronounSets.includes(entry.pronounSet) ? 50_000 : 0;
-  const stanceBonus = entry.stance === "prefer" ? 1_000 : 0;
-  const confidenceBonus = Math.round(entry.confidence * 100);
-  const timestampMs = Date.parse(entry.timestamp);
-  const recencyBonus = Number.isFinite(timestampMs) ? timestampMs / 10_000_000_000 : 0;
-  return resolvedSetBonus + (sourceRank[entry.source] ?? 0) + stanceBonus + confidenceBonus + recencyBonus;
 }
 
 function normalizeSocialLabel(value: string | undefined): string {

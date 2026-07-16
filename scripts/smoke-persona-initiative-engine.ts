@@ -69,6 +69,7 @@ import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaP
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -456,6 +457,30 @@ const roomObservation = observePersonaRoomTexture({
 assert.equal(roomObservation?.texture, "light", "social-context projection derives room weather from supplied messages without acquiring Discord state");
 assert.match(renderPersonaRoomWeather({ identity: routedIdentity, recentMessages: [], channelSnapshots: [] }), /No current room weather/, "absent room evidence stays explicit");
 assert.match(renderPersonaHumanPronounFacts([{ actorId: "human", actorName: "Operator", guidance: "use they/them", policy: "explicit", confidence: 1 }]) ?? "", /Confidence: 1\.00/, "pronoun guidance presentation belongs to the social-context projector");
+let pronounReaderClosed = false;
+const pronounGuidance = await readPersonaHumanPronounGuidance({
+  ownerActorId: "owner",
+  ownerFallbackName: "Metacrat",
+  recentMessages: [{ id: "human-pronouns", authorId: "human", authorName: "Operator", content: "hello", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" }],
+  channelSnapshots: [],
+  openProfiles: async () => ({
+    getProfile: async (actorId) => actorId === "human" ? {
+      actorName: "Operator",
+      pronounPolicy: "explicit",
+      resolvedPronounSets: ["they/them"],
+      resolvedPronounSet: "they/them",
+      pronounGuidance: "use they/them",
+      pronounConfidence: 0.95,
+      pronounEvidence: [
+        { pronounSet: "they/them", stance: "prefer", source: "explicit_correction", confidence: 0.9, timestamp: "2026-07-14T20:00:00.000Z", excerpt: "please use they/them" },
+        { pronounSet: "they/them", stance: "prefer", source: "ambient_usage", confidence: 1, timestamp: "2026-07-15T20:00:00.000Z", excerpt: "someone said they" },
+      ],
+    } as never : undefined,
+    close: async () => { pronounReaderClosed = true; },
+  }),
+});
+assert.match(pronounGuidance[0]?.evidenceExcerpt ?? "", /please use they\/them/, "the social-context source owns pronoun evidence precedence rather than favoring merely newer ambient usage");
+assert.equal(pronounReaderClosed, true, "the social-context source closes its injected interaction-profile reader");
 const clarityPressure = renderPersonaHumanClarityPressure({
   identity: routedIdentity,
   recentMessages: [
