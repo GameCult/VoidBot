@@ -3,7 +3,7 @@ import "dotenv/config";
 import { spawn } from "node:child_process";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
 import {
@@ -61,8 +61,7 @@ import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/per
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { projectPersonaConversation, renderPersonaTopicAttractor } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt, renderPersonaIdentityDoctrine } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
-import { readPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-source.js";
-import { projectNativePersonaBody, projectPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-projector.js";
+import { projectGamecultPersonaState, projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaSocialContext, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
@@ -789,18 +788,15 @@ async function renderRepoFaceMemorySurfaceForTurn(
 ): Promise<string> {
   if (identity.identityKind === "native_persona") {
     if (!identity.personaStatePath) return [`${identity.displayName} is a native VoidBot Persona, not a repo Face.`, "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest."].join("\n");
-    if (extname(identity.personaStatePath).toLowerCase() !== ".cc") return projectPortablePersonaState(identity, await readPortablePersonaState(identity.personaStatePath));
   }
 
   const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
   if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
   if (acquired.stateKind === "gamecult_persona") {
-    return projectPortablePersonaState(identity, {
-      status: "ok",
-      statePath: acquired.statePath,
-      state: acquired.personaState,
-      schemaVersion: "gamecult.persona_state.v0",
-    });
+    return projectGamecultPersonaState(identity, acquired.personaState);
+  }
+  if (acquired.stateKind === "persona_projection_import") {
+    return projectGamecultPersonaState(identity, acquired.projectionImport.payload);
   }
   const typedState = acquired.typedState;
   const curiosityGraphFacts = roomContext && identity.identityKind !== "native_persona"

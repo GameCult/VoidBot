@@ -70,8 +70,7 @@ import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/per
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
-import { readPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-source.js";
-import { projectPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-projector.js";
+import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
@@ -626,11 +625,7 @@ try {
   });
   assert.match(composedMemory ?? "", /Explicit social graph fact\.[\s\S]*Explicit room texture fact\./, "the projector owns final ordering of explicitly supplied external facts");
   assert.deepEqual(await readFile(statePath), beforeObservation, "Persona state observation cannot rewrite sleep, speaking pressure, or any other Mind field");
-  const portablePath = join(stateSourceDirectory, "muninn.persona_state.v0.json");
-  await writeFile(portablePath, JSON.stringify({ schemaVersion: "gamecult.persona_state.v0", publicDescription: "Muninn remembers provenance.", privateNotes: ["Name missing evidence."], values: [{ label: "Source time", summary: "Keep observation time distinct." }], thoughtMemory: { shortTerm: [{ summary: "The last frame was stale." }] } }));
-  const portableObservation = await readPortablePersonaState(portablePath);
-  assert.equal(portableObservation.status, "ok", "the portable Persona source validates the live gamecult.persona_state.v0 contract");
-  const portableProjection = projectPortablePersonaState({ ...routedIdentity, id: "muninn", displayName: "Muninn", identityKind: "native_persona", personaStatePath: portablePath }, portableObservation);
+  const portableProjection = projectGamecultPersonaState({ ...routedIdentity, id: "muninn", displayName: "Muninn", identityKind: "native_persona" }, { schemaVersion: "gamecult.persona_state.v0", publicDescription: "Muninn remembers provenance.", privateNotes: ["Name missing evidence."], values: [{ label: "Source time", summary: "Keep observation time distinct." }], thoughtMemory: { shortTerm: [{ summary: "The last frame was stale." }] } });
   assert.match(portableProjection, /Persona state authority is unreported; treat it as a non-canonical projection[\s\S]*Source time: Keep observation time distinct/, "the portable projector renders bounded state without inventing canonical authority");
   assert.doesNotMatch(portableProjection, /persona_state\.v0\.json|state-source/, "portable Persona projection cannot leak its private filesystem path");
 } finally {

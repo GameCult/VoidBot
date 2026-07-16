@@ -1,9 +1,6 @@
 import type { RepoDiscordIdentity } from "@voidbot/core";
-import type { PortablePersonaStateObservation } from "./persona-portable-state-source.js";
 
-export function projectPortablePersonaState(identity: RepoDiscordIdentity, observation: PortablePersonaStateObservation): string {
-  if (observation.status !== "ok") return [`${identity.displayName} is a native VoidBot Persona, not a repo Face.`, `Portable Persona state is ${observation.status}: ${observation.reason}`, "Treat this as a Body fault and keep the public turn modest."].join("\n");
-  const state = observation.state;
+export function projectGamecultPersonaState(identity: RepoDiscordIdentity, state: Record<string, unknown>): string {
   const profile = child(state, "profile") ?? child(state, "selfProfile") ?? state;
   const memory = child(state, "memory") ?? child(state, "thoughtMemory");
   const affect = child(state, "affect") ?? child(state, "faceAffect");

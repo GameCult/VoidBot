@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { CultCache, SingleFileMessagePackBackingStore } from "cultcache-ts";
 
-import { gamecultPersonaStateDocument, gamecultPersonaStateDocumentRegistry, gamecultPersonaStateSchema, type GamecultPersonaState } from "./persona-state-domain";
+import { gamecultPersonaStateDocument, gamecultPersonaStateDocumentRegistry, gamecultPersonaStateSchema, personaProjectionImportDocument, personaProjectionImportDocumentRegistry, type GamecultPersonaState, type PersonaProjectionImport } from "./persona-state-domain";
 
 export async function loadGamecultPersonaState(canonicalPath: string): Promise<GamecultPersonaState> {
   const cache = createCache(resolve(canonicalPath));
@@ -13,29 +13,67 @@ export async function loadGamecultPersonaState(canonicalPath: string): Promise<G
   return state;
 }
 
-export async function inspectPersonaStateSurfaceKind(canonicalPath: string): Promise<"gamecult_persona" | "void_self_state" | "unknown"> {
+export async function inspectPersonaStateSurfaceKind(canonicalPath: string): Promise<"gamecult_persona" | "persona_projection_import" | "void_self_state" | "unknown"> {
   const envelopes = await new SingleFileMessagePackBackingStore(resolve(canonicalPath)).pullAll();
   const types = new Set(envelopes.map((entry) => entry.type));
   if (types.has(gamecultPersonaStateDocument.type)) return "gamecult_persona";
+  if (types.has(personaProjectionImportDocument.type)) return "persona_projection_import";
   if ([...types].some((type) => type.startsWith("void."))) return "void_self_state";
   return "unknown";
+}
+
+export async function loadPersonaProjectionImport(canonicalPath: string): Promise<PersonaProjectionImport> {
+  const path = resolve(canonicalPath);
+  const cache = CultCache.builder().withRegistry(personaProjectionImportDocumentRegistry).withGenericStore(new SingleFileMessagePackBackingStore(path)).build();
+  await cache.pullAllBackingStores();
+  const state = cache.getGlobal(personaProjectionImportDocument);
+  if (!state) throw new Error(`CultCache projection import is missing its typed document: ${path}`);
+  return state;
+}
+
+export async function encapsulatePortablePersonaProjection(input: { sourcePath: string; targetPath: string; importedAt?: string }): Promise<{ sourcePath: string; targetPath: string; authority: "projection" | "import" }> {
+  const sourcePath = resolve(input.sourcePath);
+  const targetPath = resolve(input.targetPath);
+  const raw = JSON.parse(stripBom(await readFile(sourcePath, "utf8"))) as unknown;
+  const authority = readClaimedAuthority(raw);
+  if (authority !== "projection" && authority !== "import") throw new Error(`Refusing to quarantine ${authority ?? "unclaimed"} Persona state; canonical state must use the canonical migration path.`);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Portable Persona projection root must be an object.");
+  await refuseExistingTarget(targetPath);
+  const payload = raw as Record<string, unknown>;
+  const document: PersonaProjectionImport = {
+    schemaVersion: "voidbot.persona_state_projection_import.v1",
+    sourceDocumentId: sourcePath,
+    claimedSchemaVersion: typeof payload.schemaVersion === "string" ? payload.schemaVersion : "unreported",
+    authority,
+    payload,
+    importedAt: input.importedAt ?? new Date().toISOString(),
+  };
+  const cache = CultCache.builder().withRegistry(personaProjectionImportDocumentRegistry).withGenericStore(new SingleFileMessagePackBackingStore(targetPath)).build();
+  await cache.putGlobal(personaProjectionImportDocument, document);
+  const verified = await loadPersonaProjectionImport(targetPath);
+  if (verified.sourceDocumentId !== sourcePath || verified.authority !== authority) throw new Error(`Persona projection import verification failed after writing ${targetPath}`);
+  return { sourcePath, targetPath, authority };
 }
 
 export async function migrateCanonicalPortablePersonaState(input: { sourcePath: string; targetPath: string }): Promise<{ sourcePath: string; targetPath: string; personaId: string }> {
   const sourcePath = resolve(input.sourcePath);
   const targetPath = resolve(input.targetPath);
   const state = await readCanonicalPortablePersonaState(sourcePath);
+  await refuseExistingTarget(targetPath);
+  const cache = createCache(targetPath);
+  await cache.putGlobal(gamecultPersonaStateDocument, state);
+  const verified = await loadGamecultPersonaState(targetPath);
+  if (verified.personaId !== state.personaId || verified.updatedAt !== state.updatedAt) throw new Error(`Persona state verification failed after writing ${targetPath}`);
+  return { sourcePath, targetPath, personaId: state.personaId };
+}
+
+async function refuseExistingTarget(targetPath: string): Promise<void> {
   try {
     await access(targetPath);
     throw new Error(`Refusing to overwrite existing Persona state target: ${targetPath}`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const cache = createCache(targetPath);
-  await cache.putGlobal(gamecultPersonaStateDocument, state);
-  const verified = await loadGamecultPersonaState(targetPath);
-  if (verified.personaId !== state.personaId || verified.updatedAt !== state.updatedAt) throw new Error(`Persona state verification failed after writing ${targetPath}`);
-  return { sourcePath, targetPath, personaId: state.personaId };
 }
 
 export async function readCanonicalPortablePersonaState(sourcePathInput: string): Promise<GamecultPersonaState> {

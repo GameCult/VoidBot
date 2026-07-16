@@ -88,3 +88,23 @@ export const gamecultPersonaStateDocument = defineDocumentType({
 });
 
 export const gamecultPersonaStateDocumentRegistry = defineDocumentRegistry(gamecultPersonaStateDocument);
+
+export const personaProjectionImportSchema = z.object({
+  schemaVersion: z.literal("voidbot.persona_state_projection_import.v1"),
+  sourceDocumentId: text,
+  claimedSchemaVersion: text,
+  authority: z.enum(["projection", "import"]),
+  payload: z.record(z.unknown()),
+  importedAt: timestamp,
+}).strict();
+
+export type PersonaProjectionImport = z.infer<typeof personaProjectionImportSchema>;
+
+export const personaProjectionImportDocument = defineDocumentType({
+  type: "voidbot.persona_state_projection_import",
+  schemaName: "voidbot.persona_state_projection_import.v1",
+  schema: personaProjectionImportSchema,
+  global: true,
+});
+
+export const personaProjectionImportDocumentRegistry = defineDocumentRegistry(personaProjectionImportDocument);

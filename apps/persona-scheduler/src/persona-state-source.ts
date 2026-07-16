@@ -4,18 +4,21 @@ import { access } from "node:fs/promises";
 import {
   inspectPersonaStateSurfaceKind,
   loadGamecultPersonaState,
+  loadPersonaProjectionImport,
   loadVoidSelfStateTypedDocuments,
   projectRepoFaceSleepCycleForNow,
   resolveRepoFaceStatePath,
   type RepoDiscordIdentity,
   type RepoFaceRestSnapshot,
   type GamecultPersonaState,
+  type PersonaProjectionImport,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
 
 export type PersonaStateObservation =
   | { status: "ok"; stateKind: "void_self_state"; identityId: string; statePath: string; typedState: VoidSelfStateTypedProjection; rest?: RepoFaceRestSnapshot }
   | { status: "ok"; stateKind: "gamecult_persona"; identityId: string; statePath: string; personaState: GamecultPersonaState }
+  | { status: "ok"; stateKind: "persona_projection_import"; identityId: string; statePath: string; projectionImport: PersonaProjectionImport }
   | { status: "unconfigured" | "unsupported" | "missing"; identityId: string; statePath?: string; reason: string };
 
 export async function readPersonaStateObservation(input: {
@@ -33,6 +36,9 @@ export async function readPersonaStateObservation(input: {
     const stateKind = await inspectPersonaStateSurfaceKind(statePath);
     if (stateKind === "gamecult_persona") {
       return { status: "ok", stateKind, identityId: input.identity.id, statePath, personaState: await loadGamecultPersonaState(statePath) };
+    }
+    if (stateKind === "persona_projection_import") {
+      return { status: "ok", stateKind, identityId: input.identity.id, statePath, projectionImport: await loadPersonaProjectionImport(statePath) };
     }
     if (stateKind !== "void_self_state") {
       return { status: "unsupported", identityId: input.identity.id, statePath, reason: "The CultCache surface contains no supported Persona state document." };

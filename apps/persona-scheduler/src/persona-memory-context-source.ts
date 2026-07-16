@@ -35,7 +35,9 @@ export async function readPersonaMemoryRecall(input: {
     const common = { identity: input.identity, statePath: input.state.statePath, projectedMemory: input.projectedMemory, observedAt: input.observedAt ?? new Date() };
     const chunks = input.state.stateKind === "gamecult_persona"
       ? buildGamecultPersonaMemoryChunks({ ...common, state: input.state.personaState })
-      : buildPersonaMemoryChunks({ ...common, state: input.state.typedState });
+      : input.state.stateKind === "persona_projection_import"
+        ? buildProjectionImportMemoryChunks(common)
+        : buildPersonaMemoryChunks({ ...common, state: input.state.typedState });
     await store.deleteByFilters({ corpusKind: "persona_memory", identityId: input.identity.id });
     await store.upsert(chunks);
     const retrieval = new RetrievalService(store, store, store);
@@ -53,6 +55,15 @@ export async function readPersonaMemoryRecall(input: {
   } catch (error) {
     return { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function buildProjectionImportMemoryChunks(input: { identity: RepoDiscordIdentity; statePath: string; projectedMemory: string; observedAt: Date }): EmbeddingChunk[] {
+  const text = collapseWhitespace(input.projectedMemory, 1800);
+  if (text.length < 24) return [];
+  return [{
+    id: `persona:${input.identity.id}:projected-surface`, sourceId: `persona:${input.identity.id}`, sourceKind: "persona_memory", text, normalizedText: normalizeText(text),
+    metadata: { corpusKind: "persona_memory", identityId: input.identity.id, personaName: input.identity.displayName, sourceId: `persona:${input.identity.id}`, statePath: input.statePath, memoryKind: "noncanonical_projection", targetKind: "self", targetId: input.identity.id, targetLabel: input.identity.displayName, createdAt: "", updatedAt: input.observedAt.toISOString() },
+  }];
 }
 
 export function buildGamecultPersonaMemoryChunks(input: {
