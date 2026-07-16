@@ -1,7 +1,6 @@
 import "dotenv/config";
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
 import { loadConfig } from "@voidbot/config";
@@ -63,6 +62,7 @@ import type { PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { projectPersonaText } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
 import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
+import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
   readDiscordActivitySnapshot,
@@ -431,7 +431,7 @@ async function queueRepoFaceTurn(input: {
   const repoActivitySurface = identity.identityKind === "native_persona"
     ? projectNativePersonaBody(identity)
     : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
-  const globalAgentDoctrine = await loadGlobalAgentDoctrine();
+  const globalAgentDoctrine = await readGlobalAgentDoctrine({ codexHome: process.env.CODEX_HOME, userProfile: process.env.USERPROFILE });
   const assembly = assemblePersonaTurn({
     identity,
     channelId,
@@ -568,7 +568,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     recentMessages,
     channelSnapshots,
   }));
-  const globalAgentDoctrine = await loadGlobalAgentDoctrine();
+  const globalAgentDoctrine = await readGlobalAgentDoctrine({ codexHome: process.env.CODEX_HOME, userProfile: process.env.USERPROFILE });
   const conversationMemorySurface = input.conversationSurfacePath
     ? await readOptionalMemorySurface(input.conversationSurfacePath)
     : undefined;
@@ -608,39 +608,6 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
-}
-
-async function loadGlobalAgentDoctrine(): Promise<string> {
-  const candidates = [
-    process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME, "AGENTS.md") : undefined,
-    process.env.USERPROFILE ? resolve(process.env.USERPROFILE, ".codex", "AGENTS.md") : undefined,
-    resolve(homedir(), ".codex", "AGENTS.md"),
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const uniqueCandidates = [...new Set(candidates)];
-  const errors: string[] = [];
-
-  for (const candidate of uniqueCandidates) {
-    try {
-      const content = await readFile(candidate, "utf8");
-      if (content.trim().length > 0) {
-        return content.trim();
-      }
-      errors.push(`${candidate}: empty file`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      errors.push(`${candidate}: ${message}`);
-    }
-  }
-
-  return [
-    "# Global Agent Instructions Unavailable",
-    "",
-    "The Face prompt attempted to load the global Codex AGENTS.md file, but no readable file was found.",
-    "This is not a replacement doctrine. Treat it as an inspection failure and avoid claiming global guidance was available for this turn.",
-    "",
-    "Attempted paths:",
-    ...errors.map((error) => `- ${error}`),
-  ].join("\n");
 }
 
 async function renderRepoFaceMemorySurfaceForTurn(

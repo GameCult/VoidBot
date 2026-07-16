@@ -72,6 +72,7 @@ import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "..
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
 import { buildVoidModerationLaunchCommand, launchVoidModerationTurn, waitForVoidModerationHandshake } from "../apps/persona-scheduler/dist/void-moderation-turn-actuator.js";
+import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -680,7 +681,7 @@ const projectedTurnPrompt = buildPersonaTurnPrompt({
   pendingMentions: [{ messageId: "mention", channelId: "aquarium", authorId: "human-2", authorName: "Neighbor", visiblePrompt: "Nibu, answer this", queuedAt: "2026-07-15T21:10:00.000Z" }],
   jurisdictionDive,
   githubActionsEnabled: false,
-  globalAgentDoctrine: "Global doctrine.",
+  globalAgentDoctrine: { status: "ok", path: "C:/Codex/AGENTS.md", doctrine: "Global doctrine.", attemptedPaths: ["C:/Codex/AGENTS.md"] },
 });
 assert.match(projectedTurnPrompt, /A direct call is tugging at you[\s\S]*Nibu, answer this/, "the pure turn-prompt projector owns situation and pending-call policy from supplied facts");
 const assembledTurn = assemblePersonaTurn({
@@ -711,13 +712,44 @@ const assembledTurn = assemblePersonaTurn({
   pendingMentions: [],
   conversationMemorySurface: "Inspection supplied conversation authority.",
   githubActionsEnabled: false,
-  globalAgentDoctrine: "Global doctrine.",
+  globalAgentDoctrine: { status: "ok", path: "C:/Codex/AGENTS.md", doctrine: "Global doctrine.", attemptedPaths: ["C:/Codex/AGENTS.md"] },
 });
 assert.match(assembledTurn.prompt, /Inspection supplied conversation authority\./, "queued and inspection paths share one assembler with an explicit conversation override");
 assert.doesNotMatch(assembledTurn.prompt, /Visible cross-channel chronology/, "the assembler does not let its derived transcript override an explicit inspection surface");
 assert.equal(assembledTurn.imageAttachments.length, 8, "the assembler owns the bounded image evidence budget");
 assert.equal(assembledTurn.imageAttachments.filter((attachment) => attachment.localPath === "C:/cache/same.png").length, 1, "the assembler deduplicates image evidence across room and nearby snapshots");
 assert.equal(assembledTurn.conversation.focus?.channelId, "aquarium", "the assembler returns the same newest-evidence conversation projection supplied to the turn actuator");
+const doctrineReads: string[] = [];
+const doctrineObservation = await readGlobalAgentDoctrine({
+  codexHome: "C:/Codex",
+  userProfile: "C:/User",
+  homeDirectory: "C:/User",
+  readText: async (path) => {
+    doctrineReads.push(path);
+    if (path.endsWith("Codex\\AGENTS.md")) throw new Error("missing");
+    return "Global doctrine from the first readable authority.";
+  },
+});
+assert.equal(doctrineObservation.status, "ok", "the doctrine source reports the first readable authority as typed evidence");
+assert.equal(doctrineReads.length, 2, "the doctrine source stops after the first readable candidate and deduplicates repeated home paths");
+const unavailableDoctrine = await readGlobalAgentDoctrine({
+  codexHome: "C:/Absent",
+  homeDirectory: "C:/AlsoAbsent",
+  readText: async () => { throw new Error("not found"); },
+});
+assert.equal(unavailableDoctrine.status, "unavailable", "missing global doctrine remains an explicit source failure");
+const unavailableDoctrineTurn = assemblePersonaTurn({
+  identity: routedIdentity,
+  channelId: "lore",
+  channelPlan,
+  channelSnapshots: [],
+  recentMessages: [],
+  participant: promptParticipant,
+  pendingMentions: [],
+  githubActionsEnabled: false,
+  globalAgentDoctrine: unavailableDoctrine,
+});
+assert.match(unavailableDoctrineTurn.prompt, /Global Agent Instructions Unavailable[\s\S]*inspection failure/, "the assembler, not the source or shell, projects unavailable doctrine into the final prompt");
 const moderationLaunchCommand = buildVoidModerationLaunchCommand({
   pendingMentionsPath: "C:/Void's state/pending.json",
   runnerScript: "C:/VoidBot/scripts/run.ps1",

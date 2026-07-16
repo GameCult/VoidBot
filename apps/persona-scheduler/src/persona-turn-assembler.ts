@@ -2,6 +2,7 @@ import type { RepoDiscordIdentity, RepoFacePendingMention } from "@voidbot/core"
 import type { PromptImageAttachment, SourceMessage } from "@voidbot/shared";
 
 import type { BifrostGovernanceDigest } from "./bifrost-governance-source.js";
+import type { GlobalAgentDoctrineObservation } from "./global-agent-doctrine-source.js";
 import type { InitiativeParticipant } from "./initiative-engine.js";
 import { projectPersonaConversation, type PersonaConversationProjection } from "./persona-conversation-projector.js";
 import type { PersonaHumanPronounGuidance } from "./persona-social-context-projector.js";
@@ -24,7 +25,7 @@ export interface PersonaTurnAssemblyInput {
   humanPronounGuidance?: PersonaHumanPronounGuidance[];
   bifrostDigest?: BifrostGovernanceDigest;
   githubActionsEnabled: boolean;
-  globalAgentDoctrine: string;
+  globalAgentDoctrine: GlobalAgentDoctrineObservation;
 }
 
 export interface PersonaTurnAssembly {
@@ -57,13 +58,26 @@ export function assemblePersonaTurn(input: PersonaTurnAssemblyInput): PersonaTur
     pendingMentions: input.pendingMentions,
     jurisdictionDive: buildPersonaJurisdictionDiveDirective(input.identity, input.participant),
     githubActionsEnabled: input.githubActionsEnabled,
-    globalAgentDoctrine: input.globalAgentDoctrine,
+    globalAgentDoctrine: renderGlobalAgentDoctrine(input.globalAgentDoctrine),
   });
   return {
     prompt,
     conversation,
     imageAttachments: collectPromptImages([input.recentMessages, ...input.channelSnapshots.map((snapshot) => snapshot.messages)].flat()),
   };
+}
+
+function renderGlobalAgentDoctrine(observation: GlobalAgentDoctrineObservation): string {
+  if (observation.status === "ok") return observation.doctrine;
+  return [
+    "# Global Agent Instructions Unavailable",
+    "",
+    "The global Codex AGENTS.md source returned no readable doctrine.",
+    "This is an inspection failure, not replacement guidance. Do not claim global guidance was available for this turn.",
+    "",
+    "Attempted paths:",
+    ...observation.errors.map((error) => `- ${error}`),
+  ].join("\n");
 }
 
 function collectPromptImages(messages: SourceMessage[]): PromptImageAttachment[] {
