@@ -72,6 +72,7 @@ import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "..
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
+import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
@@ -108,6 +109,13 @@ const state: InitiativeState = {
   pendingMentions: [{ identityId: "mentioned" }],
   history: [],
 };
+
+assert.equal(extractLastPersonaProjectionMessage([
+  JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "first" } }),
+  JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "final projection" } }),
+].join("\n")), "final projection", "text projection actuator owns Codex event decoding");
+assert.equal(isRetryablePersonaProjectionFailure({ stdout: "", stderr: "HTTP 429 too many requests" }), true, "capacity failures may advance to the next configured projection model");
+assert.equal(isRetryablePersonaProjectionFailure({ stdout: "", stderr: "prompt contract rejected" }), false, "semantic or contract failures cannot hide behind model fallback");
 
 advanceInitiativeClockFromWallClock(state, new Date("2026-07-15T20:02:30.000Z"));
 assert.equal(state.initiativeClock, 12.5, "wall time advances the scheduler clock once");

@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { spawn } from "node:child_process";
-import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 
@@ -64,6 +64,7 @@ import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt, renderPe
 import { projectGamecultPersonaState, projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import type { PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
+import { projectPersonaText } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
   readDiscordActivitySnapshot,
@@ -826,7 +827,7 @@ async function renderRepoFaceMemorySurfaceForTurn(
     characterIdentity: renderPersonaIdentityDoctrine(identity),
     statePacket,
     modelProjectionEnabled: true,
-    projectText: (prompt) => runCodexTextProjection({
+    projectText: (prompt) => projectPersonaText({
       prompt,
       config,
       command: "repo-face-state-projector",
@@ -987,189 +988,6 @@ function collectPromptImageAttachments(messages: SourceMessage[]): PromptImageAt
     }
   }
   return images.slice(0, 8);
-}
-
-function runCodexTextProjection(input: {
-  prompt: string;
-  config: ReturnType<typeof loadConfig>;
-  command: string;
-  jobId: string;
-  timeoutMs: number;
-}): Promise<string> {
-  const models = [
-    ...input.config.repoFaceHeartbeats.codexModels,
-    input.config.repoFaceHeartbeats.codexModel,
-    input.config.codexModel,
-  ].filter((model, index, all): model is string => Boolean(model) && all.indexOf(model) === index);
-
-  return runCodexTextProjectionWithModels({
-    ...input,
-    models,
-    attemptedErrors: [],
-  });
-}
-
-function runCodexTextProjectionWithModels(input: {
-  prompt: string;
-  config: ReturnType<typeof loadConfig>;
-  command: string;
-  jobId: string;
-  timeoutMs: number;
-  models: string[];
-  attemptedErrors: string[];
-}): Promise<string> {
-  return new Promise((resolveProjection, rejectProjection) => {
-    const startedAt = new Date().toISOString();
-    const startedMs = Date.now();
-    const model = input.models[0] ?? input.config.codexModel;
-    const reasoningEffort = input.config.repoFaceHeartbeats.codexModelReasoningEffort ?? "low";
-    const args = [
-      ...input.config.codexExecArgs,
-      "exec",
-      "-m",
-      model,
-      "-c",
-      'approval_policy="never"',
-      "-c",
-      `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`,
-      "--json",
-      "--skip-git-repo-check",
-      "-s",
-      "read-only",
-      "-",
-    ];
-    const child = spawn(input.config.codexExecutable, args, {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("error", rejectProjection);
-    child.stdin.end(input.prompt);
-    const timer = setTimeout(() => {
-      child.kill();
-    }, input.timeoutMs);
-    child.on("close", (code, signal) => {
-      clearTimeout(timer);
-      const finishedAt = new Date().toISOString();
-      const durationMs = Date.now() - startedMs;
-      void appendProjectionModelOutputLog({
-        config: input.config,
-        jobId: input.jobId,
-        command: input.command,
-        model,
-        prompt: input.prompt,
-        startedAt,
-        finishedAt,
-        durationMs,
-        exitCode: code,
-        signal,
-        stdout,
-        stderr,
-      }).catch(() => undefined);
-      if (code !== 0) {
-        const diagnostics = `${stdout}\n${stderr}`.trim().slice(-2400);
-        const attemptedErrors = [
-          ...input.attemptedErrors,
-          `${model}: ${code ?? signal ?? "unknown"} ${diagnostics}`,
-        ];
-        if (input.models.length > 1 && isRetryableProjectionModelFailure({ stdout, stderr })) {
-          runCodexTextProjectionWithModels({
-            ...input,
-            models: input.models.slice(1),
-            attemptedErrors,
-          }).then(resolveProjection, rejectProjection);
-          return;
-        }
-        rejectProjection(new Error(`Repo Face ${input.command} failed: ${attemptedErrors.join("\n---\n")}`));
-        return;
-      }
-      const text = extractLastCodexAgentMessage(stdout).trim();
-      if (!text) {
-        rejectProjection(new Error("Repo Face state projector returned no visible agent message."));
-        return;
-      }
-      resolveProjection(text);
-    });
-  });
-}
-
-function isRetryableProjectionModelFailure(input: { stdout: string; stderr: string }): boolean {
-  const text = `${input.stdout}\n${input.stderr}`.toLowerCase();
-  return /quota|rate limit|rate-limit|usage limit|capacity|too many requests|(?:http|status|code|error)\s*429|429\s*(?:too many requests|rate)|insufficient_quota|model.*unavailable|model.*access|limit exceeded|tool .*not supported|unsupported.*tool/.test(text);
-}
-
-async function appendProjectionModelOutputLog(input: {
-  config: ReturnType<typeof loadConfig>;
-  jobId: string;
-  command: string;
-  model: string;
-  prompt: string;
-  startedAt: string;
-  finishedAt: string;
-  durationMs: number;
-  exitCode: number | null;
-  signal: NodeJS.Signals | null;
-  stdout: string;
-  stderr: string;
-}): Promise<void> {
-  const logPath = resolve(input.config.storageRoot, "logs", "model-outputs.jsonl");
-  const finalMessage = extractLastCodexAgentMessage(input.stdout).trim() || null;
-  const record = {
-    schemaVersion: 1,
-    loggedAt: new Date().toISOString(),
-    jobId: input.jobId,
-    command: input.command,
-    turn: 1,
-    model: input.model,
-    promptMarker: input.prompt.match(/<!--\s*prompt:([^>\s]+)\s*-->/)?.[1] ?? null,
-    promptLength: input.prompt.length,
-    startedAt: input.startedAt,
-    finishedAt: input.finishedAt,
-    durationMs: input.durationMs,
-    exitCode: input.exitCode,
-    signal: input.signal,
-    timedOut: input.signal === "SIGTERM",
-    handoffReason: null,
-    usage: null,
-    finalMessage,
-    stdoutTail: input.stdout.slice(-4000),
-    stderrTail: input.stderr.slice(-4000),
-    toolCalls: [],
-    commandExecutions: [],
-    artifactRefs: {},
-  };
-  await mkdir(dirname(logPath), { recursive: true });
-  await appendFile(logPath, `${JSON.stringify(record)}\n`, "utf8");
-}
-
-function extractLastCodexAgentMessage(stdout: string): string {
-  const messages = stdout
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as { type?: string; item?: { type?: string; text?: string } };
-      } catch {
-        return undefined;
-      }
-    })
-    .filter((event): event is { type?: string; item?: { type?: string; text?: string } } => Boolean(event))
-    .filter((event) => event.type === "item.completed" && event.item?.type === "agent_message")
-    .map((event) => event.item?.text?.trim() ?? "")
-    .filter((message) => message.length > 0);
-
-  return messages.at(-1) ?? stdout.trim();
 }
 
 async function readOptionalMemorySurface(path: string | undefined): Promise<string | undefined> {
