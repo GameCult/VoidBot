@@ -65,7 +65,7 @@ import {
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaSelfMaintenancePressure, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
@@ -521,6 +521,32 @@ try {
     : undefined;
   assert.match(socialContext?.peerOpening ?? "", /Peer: 1 recent nearby message/, "the aggregate social projection owns peer openings");
   assert.match(socialContext?.socialPressure ?? "", /human voice/, "the aggregate social projection owns relationship-pressure scoring");
+  const maintenanceState = populatedObservation.status === "ok" ? {
+    ...populatedObservation.typedState,
+    faceAffect: {
+      ...populatedObservation.typedState.faceAffect,
+      needs: [{
+        needId: "need-tool",
+        kind: "substrate" as const,
+        status: "neglected" as const,
+        target: { kind: "project" as const, id: "voidbot", label: "VoidBot" },
+        summary: "The Persona tool path is broken",
+        claim: "The voice cannot reach its room",
+        tension: "Private rumination cannot repair a missing actuator",
+        actionImplication: "Ask plainly for the tool path to be repaired",
+        intensity: 0.8,
+        valence: -0.6,
+        anchorRefs: [],
+        evidenceRefs: [],
+        sourceMemoryIds: [],
+        createdAt: "2026-07-15T20:00:00.000Z",
+        updatedAt: "2026-07-15T20:00:00.000Z",
+        tags: ["anchor:missing"],
+      }],
+    },
+  } : undefined;
+  assert.match(maintenanceState ? renderPersonaSelfMaintenancePressure({ identityName: "Nibu", state: maintenanceState, clarityPressureActive: false }) ?? "" : "", /Self-maintenance pressure requiring public advocacy/, "the memory projector owns self-maintenance classification and rendering");
+  assert.equal(maintenanceState ? renderPersonaSelfMaintenancePressure({ identityName: "Nibu", state: maintenanceState, clarityPressureActive: true }) : undefined, undefined, "live human clarity pressure suppresses self-maintenance advocacy inside the owning projector");
   const pressureSections = populatedObservation.status === "ok"
     ? renderPersonaPressureSections({ identityName: "Nibu", state: populatedObservation.typedState, clarityPressureActive: true })
     : [];

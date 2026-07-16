@@ -18,7 +18,8 @@ export function renderPersonaPressureSections(input: {
   const incubation = [...input.state.thoughtMemory.incubation].filter((entry) => entry.status !== "retired").sort((left, right) => right.maturation - left.maturation);
   const candidates = [...input.state.candidateInterventions.interventions].filter((entry) => entry.status !== "retired").slice(-8).reverse();
   const receipts = [...input.state.speechReceipts.recentReceipts].slice(-6).reverse();
-  const sections: string[] = [];
+  const selfMaintenance = renderPersonaSelfMaintenancePressure(input);
+  const sections: string[] = selfMaintenance ? [selfMaintenance] : [];
   if (agency.length > 0) sections.push(clarityPressureActive
     ? ["Agency pressures are currently demoted by live clarity pressure:", `- ${name} still has stored urges toward eventual motion, but the room has asked for plain understanding first. Do not expose the old detailed asks this turn; translate only the underlying value into simpler speech, repair, restraint, or silence.`].join("\n")
     : ["Agency pressures that want eventual motion:", ...agency.map((pressure) => [`- ${pressure.kind} toward ${targetLabel(pressure.target)} [${pressure.status}, intensity ${pressure.intensity.toFixed(2)}]: ${sentence(pressure.summary)}`, pressure.claim ? `Claim: ${sentence(pressure.claim)}` : "", pressure.question ? `Question: ${sentence(pressure.question)}` : "", pressure.tension ? `Tension: ${sentence(pressure.tension)}` : "", `Behavioral pull: ${sentence(pressure.actionImplication)}`].filter(Boolean).join(" "))].join("\n"));
@@ -34,6 +35,41 @@ export function renderPersonaPressureSections(input: {
   return sections;
 }
 
+export function renderPersonaSelfMaintenancePressure(input: {
+  identityName: string;
+  state: VoidSelfStateTypedProjection;
+  clarityPressureActive: boolean;
+}): string | undefined {
+  if (input.clarityPressureActive) return undefined;
+  const pattern = /runnable substrate|agent substrate|persona substrate|semantic memory|typed memory|persona memory|tool|voice|avatar|repo access|room access|signal boundary|signal chain|state projection|persona projection|agency path|broken tool|blocked faculty|stale context|underdeveloped interface|self[-_ ]?advocacy/i;
+  const fieldsMatch = (...fields: Array<string | undefined>): boolean => pattern.test(fields.map(cleanSentence).filter(Boolean).join(" "));
+  const needs = [...input.state.faceAffect.needs].filter((need) =>
+    (need.status === "active" || need.status === "neglected")
+    && (need.kind === "agency" || (need.kind === "substrate" && fieldsMatch(need.summary, need.claim, need.question, need.tension, need.actionImplication, targetLabel(need.target))) || fieldsMatch(need.summary, need.claim, need.question, need.tension, need.actionImplication, targetLabel(need.target)))
+    && need.intensity >= 0.45,
+  ).sort(sortAffect);
+  const pressures = [...input.state.agencyPressure.pressures].filter((pressure) =>
+    (pressure.status === "active" || pressure.status === "ready_to_act")
+    && (pressure.tags.some((tag) => pattern.test(tag)) || fieldsMatch(pressure.summary, pressure.claim, pressure.question, pressure.tension, pressure.actionImplication, targetLabel(pressure.target)))
+    && pressure.intensity >= 0.45,
+  ).sort(sortAffect);
+  const candidates = [...input.state.candidateInterventions.interventions].filter((intervention) =>
+    (intervention.status === "queued" || intervention.status === "deferred")
+    && intervention.mustEventuallyShare
+    && (intervention.tags.some((tag) => pattern.test(tag)) || fieldsMatch(intervention.summary, intervention.draft, targetLabel(intervention.target))),
+  ).slice(-8).reverse();
+  if (needs.length === 0 && pressures.length === 0 && candidates.length === 0) return undefined;
+  return [
+    "Self-maintenance pressure requiring public advocacy:",
+    `- ${input.identityName} is carrying a body/mind/substrate or self-advocacy issue. This is not decorative mood and not ordinary private rumination.`,
+    "- If the room is not in an active human crisis, the next public-safe turn should say the concrete want plainly in character. Do not bury it as only a STATE NOTE, another private thought, or vague eventual motion.",
+    "- If the issue is too raw, underspecified, or unsafe to ask for directly, say the smallest honest version: what hurts, what is blocked, what context is missing, or what help would let this Face become more coherent.",
+    ...needs.slice(0, 4).map((need) => [`- Need ${need.kind} toward ${targetLabel(need.target)} [${need.status}, intensity ${need.intensity.toFixed(2)}]: ${sentence(need.summary)}`, need.claim ? `Claim: ${sentence(need.claim)}` : "", need.question ? `Question: ${sentence(need.question)}` : "", `Wanted change: ${sentence(need.actionImplication)}`].filter(Boolean).join(" ")),
+    ...pressures.slice(0, 4).map((pressure) => [`- Pressure ${pressure.kind} toward ${targetLabel(pressure.target)} [${pressure.status}, intensity ${pressure.intensity.toFixed(2)}]: ${sentence(pressure.summary)}`, pressure.claim ? `Claim: ${sentence(pressure.claim)}` : "", pressure.question ? `Question: ${sentence(pressure.question)}` : "", `Wanted change: ${sentence(pressure.actionImplication)}`].filter(Boolean).join(" ")),
+    ...candidates.slice(0, 3).map((intervention) => `- Unsaid self-advocacy line [${intervention.status}, priority ${intervention.priority.toFixed(2)}]: ${sentence(intervention.summary)} Draft residue: ${cleanSentence(intervention.draft)}`),
+  ].join("\n");
+}
+
 export function composePersonaMemoryPacket(input: {
   identityName: string;
   typed: PersonaTypedStateSections;
@@ -44,7 +80,6 @@ export function composePersonaMemoryPacket(input: {
   pronouns?: string;
   roomTexture?: string;
   curiosity?: string;
-  selfMaintenance?: string;
   pressureSections: string[];
   humanClarity?: string;
   transformSurface?: (surface: string) => string;
@@ -61,7 +96,6 @@ export function composePersonaMemoryPacket(input: {
     input.pronouns,
     input.roomTexture,
     input.curiosity,
-    input.selfMaintenance,
     ...input.pressureSections,
     input.humanClarity,
   ].filter((section): section is string => Boolean(section));
