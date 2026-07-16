@@ -1,3 +1,5 @@
+import type { loadConfig } from "@voidbot/config";
+import { createStateStorage } from "@voidbot/core";
 import type { InteractionMemoryProfile, SourceMessage } from "@voidbot/shared";
 import type { ChannelSnapshot } from "./turn-context-source.js";
 import type { PersonaHumanPronounGuidance } from "./persona-social-context-projector.js";
@@ -5,6 +7,30 @@ import type { PersonaHumanPronounGuidance } from "./persona-social-context-proje
 export interface PersonaInteractionProfileReader {
   getProfile(actorId: string): Promise<InteractionMemoryProfile | undefined>;
   close(): Promise<void>;
+}
+
+export async function readStoredPersonaHumanPronounGuidance(input: {
+  config: ReturnType<typeof loadConfig>;
+  recentMessages: SourceMessage[];
+  channelSnapshots: ChannelSnapshot[];
+}, dependencies: { openProfiles?: () => Promise<PersonaInteractionProfileReader> } = {}): Promise<PersonaHumanPronounGuidance[]> {
+  return readPersonaHumanPronounGuidance({
+    ownerActorId: input.config.ownerDiscordId,
+    ownerFallbackName: "Metacrat",
+    recentMessages: input.recentMessages,
+    channelSnapshots: input.channelSnapshots,
+    openProfiles: dependencies.openProfiles ?? (async () => {
+      const storage = await createStateStorage({
+        backend: input.config.stateStorageBackend,
+        databaseDsn: input.config.databaseDsn,
+        jobsFile: input.config.jobsFile,
+        auditLogFile: input.config.auditLogFile,
+        interactionMemoryFile: input.config.interactionMemoryFile,
+        rateLimitStateFile: input.config.rateLimitStateFile,
+      });
+      return { getProfile: (actorId) => storage.interactionMemory.getProfile(actorId), close: () => storage.close() };
+    }),
+  });
 }
 
 export async function readPersonaHumanPronounGuidance(input: {

@@ -47,11 +47,10 @@ import {
   type PersonaStateObservation,
 } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
-import type { PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn-assembler.js";
 import { coordinatePersonaMemoryTurn } from "../apps/persona-scheduler/dist/persona-memory-turn-coordinator.js";
 import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
-import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
+import { readStoredPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -407,7 +406,7 @@ async function queueRepoFaceTurn(input: {
     recentMessages,
     channelSnapshots,
   };
-  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
+  const humanPronounGuidance = await readStoredPersonaHumanPronounGuidance({ config: input.config, ...roomContext });
   const memoryContext = await coordinatePersonaMemoryTurn({
     identity,
     config: input.config,
@@ -534,7 +533,7 @@ async function assembleRepoFaceTurnPrompt(input: {
     recentMessages,
     channelSnapshots,
   };
-  const humanPronounGuidance = await loadRepoFaceHumanPronounGuidance(input.config, roomContext);
+  const humanPronounGuidance = await readStoredPersonaHumanPronounGuidance({ config: input.config, ...roomContext });
   const personaStateObservation = await readPersonaStateObservation({ identity, storageRoot: input.config.storageRoot });
   const projectedMemoryOverride = input.memorySurfacePath
     ? await readOptionalMemorySurface(input.memorySurfacePath)
@@ -591,32 +590,6 @@ async function assembleRepoFaceTurnPrompt(input: {
     memorySurfacePath: input.memorySurfacePath ? resolve(input.memorySurfacePath) : undefined,
     conversationSurfacePath: input.conversationSurfacePath ? resolve(input.conversationSurfacePath) : undefined,
   };
-}
-
-async function loadRepoFaceHumanPronounGuidance(
-  config: ReturnType<typeof loadConfig>,
-  roomContext?: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): Promise<RepoFaceHumanPronounGuidance[]> {
-  return readPersonaHumanPronounGuidance({
-    ownerActorId: config.ownerDiscordId,
-    ownerFallbackName: "Metacrat",
-    recentMessages: roomContext?.recentMessages ?? [],
-    channelSnapshots: roomContext?.channelSnapshots ?? [],
-    openProfiles: async () => {
-      const storage = await createStateStorage({
-        backend: config.stateStorageBackend,
-        databaseDsn: config.databaseDsn,
-        jobsFile: config.jobsFile,
-        auditLogFile: config.auditLogFile,
-        interactionMemoryFile: config.interactionMemoryFile,
-        rateLimitStateFile: config.rateLimitStateFile,
-      });
-      return { getProfile: (actorId) => storage.interactionMemory.getProfile(actorId), close: () => storage.close() };
-    },
-  });
 }
 
 function renderRepoActivityObservation(observation: RepoActivityObservation): string {

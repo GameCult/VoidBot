@@ -79,7 +79,7 @@ import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/pers
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
-import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
+import { readPersonaHumanPronounGuidance, readStoredPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -503,6 +503,19 @@ const pronounGuidance = await readPersonaHumanPronounGuidance({
 });
 assert.match(pronounGuidance[0]?.evidenceExcerpt ?? "", /please use they\/them/, "the social-context source owns pronoun evidence precedence rather than favoring merely newer ambient usage");
 assert.equal(pronounReaderClosed, true, "the social-context source closes its injected interaction-profile reader");
+let storedProfileReaderClosed = false;
+const storedPronounGuidance = await readStoredPersonaHumanPronounGuidance({
+  config: { ownerDiscordId: "human" } as never,
+  recentMessages: [{ id: "human-pronouns", authorId: "human", authorName: "Operator", content: "hello", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" }],
+  channelSnapshots: [],
+}, {
+  openProfiles: async () => ({
+    getProfile: async () => ({ actorId: "human", actorName: "Operator", pronounPolicy: "explicit", resolvedPronounSet: "they/them", resolvedPronounSets: ["they/them"], pronounGuidance: "use they/them", pronounConfidence: 1, pronounEvidence: [{ pronounSet: "they/them", stance: "prefer", source: "explicit_self_statement", confidence: 1, timestamp: "2026-07-15T20:00:00.000Z", excerpt: "I use they/them" }], traits: [], notes: [], updatedAt: "2026-07-15T20:00:00.000Z" }),
+    close: async () => { storedProfileReaderClosed = true; },
+  }),
+});
+assert.equal(storedPronounGuidance[0]?.resolvedPronounSet, "they/them", "the stored-profile adapter feeds the existing social-context source without reimplementing pronoun policy");
+assert.equal(storedProfileReaderClosed, true, "the stored-profile adapter preserves provider close semantics");
 const clarityPressure = renderPersonaHumanClarityPressure({
   identity: routedIdentity,
   recentMessages: [
