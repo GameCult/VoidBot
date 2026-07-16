@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   queueAgentHeartbeatMention,
   ensureVoidSelfStateIdentityProfile,
+  createEmptyVoidSelfState,
   readRepoFaceMentionInbox,
   resolveRepoFaceHeartbeatDebugProjectionPath,
   resolveRepoFaceHeartbeatStatePath,
@@ -78,6 +79,8 @@ import { buildVoidModerationLaunchCommand, launchVoidModerationTurn, waitForVoid
 import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
 import { buildInspectionParticipant } from "../apps/persona-scheduler/dist/inspection-participant-factory.js";
 import { runPersonaSchedulerTick } from "../apps/persona-scheduler/dist/persona-scheduler-runner.js";
+import { projectVoidPhysiology } from "../apps/persona-scheduler/dist/void-physiology-domain.js";
+import { runVoidPhysiologyOrgan } from "../apps/persona-scheduler/dist/void-physiology-organ.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -792,6 +795,27 @@ const unavailableDoctrineTurn = assemblePersonaTurn({
   globalAgentDoctrine: unavailableDoctrine,
 });
 assert.match(unavailableDoctrineTurn.prompt, /Global Agent Instructions Unavailable[\s\S]*inspection failure/, "the assembler, not the source or shell, projects unavailable doctrine into the final prompt");
+const physiologyObservedAt = new Date("2026-07-16T03:00:00.000Z");
+const physiologyState = createEmptyVoidSelfState({ createdAt: "2026-07-15T00:00:00.000Z" });
+physiologyState.scheduledRuntime.sleepCycle.nextNapStartsAt = "2026-07-16T02:59:00.000Z";
+physiologyState.speechReceipts.recentReceipts.push({ sentAt: "2026-07-16T02:30:00.000Z" } as never);
+physiologyState.thoughtMemory.shortTerm.push({ id: "short-term", retiredAt: undefined } as never);
+const physiology = projectVoidPhysiology({ state: physiologyState, observedAt: physiologyObservedAt, moderationActive: false });
+assert.equal(physiology.sleepCycle.isNapping, true, "Void physiology owns deterministic sleep transition at the due boundary");
+assert.equal(physiology.speakingPressure.lastSpokeAt, "2026-07-16T02:30:00.000Z", "speaking pressure derives last speech from canonical typed receipts instead of a JSON status cache");
+assert.deepEqual(physiology.operations.map((operation) => operation.operation), ["update_sleep_cycle", "update_speaking_pressure"], "physiology emits only its two typed state operations");
+assert.deepEqual(physiology.memoryMaintenanceIntent, { napStartedAt: physiologyObservedAt.toISOString(), shortTermMemoryCount: 1, reason: "sleep_short_term_pressure" }, "physiology emits memory pressure as intent without running or deciding memory maintenance");
+const moderationHeldPhysiology = projectVoidPhysiology({ state: physiologyState, observedAt: physiologyObservedAt, moderationActive: true });
+assert.deepEqual(moderationHeldPhysiology.operations.map((operation) => operation.operation), ["update_speaking_pressure"], "active moderation freezes sleep ownership but does not prevent typed speech-pressure refresh");
+assert.equal(moderationHeldPhysiology.memoryMaintenanceIntent, undefined, "moderation-held physiology cannot launch maintenance behind the moderation organ");
+const appliedPhysiologyOperations: string[] = [];
+const physiologyOrgan = await runVoidPhysiologyOrgan({ statePath: "void-self-state.cc", statusDirectory: "status", observedAt: physiologyObservedAt }, {
+  loadState: async () => physiologyState,
+  readModerationActivity: async ({ lockPath }) => ({ active: false, lockPath }),
+  applyOperation: async (_store, operation) => { appliedPhysiologyOperations.push(operation.operation); return physiologyState; },
+});
+assert.deepEqual(appliedPhysiologyOperations, ["update_sleep_cycle", "update_speaking_pressure"], "the daemon physiology organ applies only domain-projected typed operations through the state-service port");
+assert.equal(physiologyOrgan.memoryMaintenanceIntent?.reason, "sleep_short_term_pressure", "the daemon organ exposes maintenance intent for a separate memory owner");
 const moderationLaunchCommand = buildVoidModerationLaunchCommand({
   pendingMentionsPath: "C:/Void's state/pending.json",
   runnerScript: "C:/VoidBot/scripts/run.ps1",
