@@ -726,7 +726,7 @@ const doctrineObservation = await readGlobalAgentDoctrine({
   homeDirectory: "C:/User",
   readText: async (path) => {
     doctrineReads.push(path);
-    if (path.endsWith("Codex\\AGENTS.md")) throw new Error("missing");
+    if (doctrineReads.length === 1) throw new Error("missing");
     return "Global doctrine from the first readable authority.";
   },
 });
