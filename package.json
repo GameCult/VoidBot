@@ -45,6 +45,8 @@
     "agents:shared-documents-mcp-smoke": "node scripts/smoke-repo-face-shared-documents-mcp.mjs",
     "agents:article-contract-smoke": "tsx scripts/smoke-repo-face-article-contract.ts",
     "persona:export-friendly": "tsx scripts/export-persona-friendly-input.ts",
+    "persona:migrate-portable": "tsx scripts/migrate-portable-persona-state.ts",
+    "persona:migrate-portable:smoke": "tsx scripts/smoke-portable-persona-migration.ts",
     "postgres:up": "docker compose -f infra/postgres/docker-compose.yml up -d",
     "codex:mcp:install": "tsx scripts/install-codex-mcp.ts",
     "codex:mcp:remove": "tsx scripts/remove-codex-mcp.ts",

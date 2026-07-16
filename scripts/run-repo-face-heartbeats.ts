@@ -794,6 +794,14 @@ async function renderRepoFaceMemorySurfaceForTurn(
 
   const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
   if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
+  if (acquired.stateKind === "gamecult_persona") {
+    return projectPortablePersonaState(identity, {
+      status: "ok",
+      statePath: acquired.statePath,
+      state: acquired.personaState,
+      schemaVersion: "gamecult.persona_state.v0",
+    });
+  }
   const typedState = acquired.typedState;
   const curiosityGraphFacts = roomContext && identity.identityKind !== "native_persona"
     ? await renderRepoFaceCuriosityGraphFacts(identity, config, typedState, roomContext)

@@ -2,16 +2,20 @@ import { extname, resolve } from "node:path";
 import { access } from "node:fs/promises";
 
 import {
+  inspectPersonaStateSurfaceKind,
+  loadGamecultPersonaState,
   loadVoidSelfStateTypedDocuments,
   projectRepoFaceSleepCycleForNow,
   resolveRepoFaceStatePath,
   type RepoDiscordIdentity,
   type RepoFaceRestSnapshot,
+  type GamecultPersonaState,
   type VoidSelfStateTypedProjection,
 } from "@voidbot/core";
 
 export type PersonaStateObservation =
-  | { status: "ok"; identityId: string; statePath: string; typedState: VoidSelfStateTypedProjection; rest?: RepoFaceRestSnapshot }
+  | { status: "ok"; stateKind: "void_self_state"; identityId: string; statePath: string; typedState: VoidSelfStateTypedProjection; rest?: RepoFaceRestSnapshot }
+  | { status: "ok"; stateKind: "gamecult_persona"; identityId: string; statePath: string; personaState: GamecultPersonaState }
   | { status: "unconfigured" | "unsupported" | "missing"; identityId: string; statePath?: string; reason: string };
 
 export async function readPersonaStateObservation(input: {
@@ -26,6 +30,13 @@ export async function readPersonaStateObservation(input: {
   }
   try {
     await access(statePath);
+    const stateKind = await inspectPersonaStateSurfaceKind(statePath);
+    if (stateKind === "gamecult_persona") {
+      return { status: "ok", stateKind, identityId: input.identity.id, statePath, personaState: await loadGamecultPersonaState(statePath) };
+    }
+    if (stateKind !== "void_self_state") {
+      return { status: "unsupported", identityId: input.identity.id, statePath, reason: "The CultCache surface contains no supported Persona state document." };
+    }
     const typedState = await loadVoidSelfStateTypedDocuments({
       canonicalPath: statePath,
       identity: { agentId: input.identity.id, publicName: input.identity.displayName, publicDescription: input.identity.description },
@@ -35,6 +46,7 @@ export async function readPersonaStateObservation(input: {
       : projectRepoFaceSleepCycleForNow(typedState.scheduledRuntime.sleepCycle, input.identity.id, input.now ?? new Date());
     return {
       status: "ok",
+      stateKind,
       identityId: input.identity.id,
       statePath,
       typedState,

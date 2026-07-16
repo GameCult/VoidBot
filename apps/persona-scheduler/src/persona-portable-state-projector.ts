@@ -8,9 +8,12 @@ export function projectPortablePersonaState(identity: RepoDiscordIdentity, obser
   const memory = child(state, "memory") ?? child(state, "thoughtMemory");
   const affect = child(state, "affect") ?? child(state, "faceAffect");
   const doctrine = child(state, "doctrine") ?? child(state, "doctrineStances");
+  const authority = text(child(state, "provenance"), "authority");
   return [
     `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
-    "Portable Persona state is an imported projection, not canonical typed runtime authority.",
+    authority === "canonical"
+      ? "Persona Mind is canonical gamecult.persona_state.v0 state loaded from typed CultCache."
+      : `Persona state authority is ${authority ?? "unreported"}; treat it as a non-canonical projection.`,
     identity.avatarUrl ? `Public avatar URL: ${identity.avatarUrl}` : undefined,
     identity.avatarPath ? `Local avatar asset: ${identity.avatarPath}` : undefined,
     text(profile, "publicDescription") ?? identity.description,

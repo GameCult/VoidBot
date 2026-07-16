@@ -1,5 +1,5 @@
 import type { loadConfig } from "@voidbot/config";
-import type { RepoDiscordIdentity } from "@voidbot/core";
+import type { RepoDiscordIdentity, VoidSelfStateTypedProjection } from "@voidbot/core";
 import { createTextEmbedder, createVectorStores, normalizeText, RetrievalService } from "@voidbot/rag";
 import type { EmbeddingChunk, SourceMessage } from "@voidbot/shared";
 
@@ -27,6 +27,9 @@ export async function readPersonaMemoryRecall(input: {
   channelSnapshots: ChannelSnapshot[];
   observedAt?: Date;
 }): Promise<PersonaMemoryRecallObservation> {
+  if (input.state?.status === "ok" && input.state.stateKind === "gamecult_persona") {
+    return { status: "unavailable", reason: "Semantic recall indexing for canonical gamecult.persona_state.v0 CultCache documents is not yet implemented." };
+  }
   if (!input.state || input.state.status !== "ok") {
     return { status: "unavailable", reason: input.state?.reason ?? "No typed Persona state observation was supplied." };
   }
@@ -82,7 +85,7 @@ function createPersonaMemoryVectorStore(config: ReturnType<typeof loadConfig>) {
 function buildPersonaMemoryChunks(input: {
   identity: RepoDiscordIdentity;
   statePath: string;
-  state: Extract<PersonaStateObservation, { status: "ok" }>['typedState'];
+  state: VoidSelfStateTypedProjection;
   projectedMemory: string;
   observedAt: Date;
 }): EmbeddingChunk[] {
