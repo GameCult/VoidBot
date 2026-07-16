@@ -12,7 +12,6 @@ import {
   getRepoDiscordIdentityAllowedChannelIds,
   faceRegistryAsRepoDiscordRegistry,
   loadFaceIdentityRegistry,
-  loadVoidSelfStateTypedDocuments,
   resolveRepoFaceStatePath,
   type RepoFacePendingMention,
   type RepoDiscordIdentity,
@@ -62,6 +61,8 @@ import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/per
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { projectPersonaConversation, renderPersonaTopicAttractor } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt, renderPersonaIdentityDoctrine } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
+import { readPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-source.js";
+import { projectNativePersonaBody, projectPortablePersonaState } from "../apps/persona-scheduler/dist/persona-portable-state-projector.js";
 import { projectPersonaSocialContext, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
@@ -428,7 +429,7 @@ async function queueRepoFaceTurn(input: {
     input.personaStateObservation,
   );
   const repoActivitySurface = identity.identityKind === "native_persona"
-    ? renderNativePersonaBodySurface(identity)
+    ? projectNativePersonaBody(identity)
     : renderRepoActivityObservation(readRepoActivity({ identity, storageRoot: input.config.storageRoot }));
   const globalAgentDoctrine = await loadGlobalAgentDoctrine();
   const conversationProjection = projectPersonaConversation({
@@ -787,20 +788,14 @@ async function renderRepoFaceMemorySurfaceForTurn(
   observation?: PersonaStateObservation,
 ): Promise<string> {
   if (identity.identityKind === "native_persona") {
-    return renderNativePersonaMemorySurface(
-      identity,
-      config,
-      registryIdentities,
-      roomContext,
-      humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
-      observation,
-    );
+    if (!identity.personaStatePath) return [`${identity.displayName} is a native VoidBot Persona, not a repo Face.`, "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest."].join("\n");
+    if (extname(identity.personaStatePath).toLowerCase() !== ".cc") return projectPortablePersonaState(identity, await readPortablePersonaState(identity.personaStatePath));
   }
 
   const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
   if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
   const typedState = acquired.typedState;
-  const curiosityGraphFacts = roomContext
+  const curiosityGraphFacts = roomContext && identity.identityKind !== "native_persona"
     ? await renderRepoFaceCuriosityGraphFacts(identity, config, typedState, roomContext)
     : undefined;
   const statePacket = renderRepoFaceStatePacket(
@@ -857,181 +852,6 @@ function renderPersonaMemoryRecallObservation(observation: PersonaMemoryRecallOb
       return `- ${index + 1}. ${target}${kind} score=${hit.score.toFixed(3)}: ${collapseWhitespace(hit.text, 520)}`;
     }),
   ].join("\n");
-}
-
-async function renderNativePersonaMemorySurface(
-  identity: RepoDiscordIdentity,
-  config: ReturnType<typeof loadConfig>,
-  registryIdentities: RepoDiscordIdentity[] = [],
-  roomContext?: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-  humanPronounGuidance: RepoFaceHumanPronounGuidance[] = [],
-  observation?: PersonaStateObservation,
-): Promise<string> {
-  const personaStatePath = identity.personaStatePath;
-  if (!personaStatePath) {
-    return [
-      `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
-      "No Persona state path is registered. Treat that as a Body fault and keep the public turn modest.",
-    ].join("\n");
-  }
-
-  if (extname(personaStatePath).toLowerCase() === ".cc") {
-    const acquired = observation ?? await readPersonaStateObservation({ identity, storageRoot: config.storageRoot });
-    if (acquired.status !== "ok") throw new Error(`${identity.displayName} Persona state ${acquired.status}: ${acquired.reason}`);
-    const typedState = acquired.typedState;
-    const statePacket = renderRepoFaceStatePacket(
-      identity,
-      typedState,
-      registryIdentities,
-      roomContext,
-      humanPronounGuidance,
-    );
-    if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
-      return projectPersonaMemorySurface({
-        identityId: identity.id,
-        characterIdentity: renderPersonaIdentityDoctrine(identity),
-        statePacket,
-        modelProjectionEnabled: false,
-      });
-    }
-    return projectPersonaMemorySurface({
-      identityId: identity.id,
-      characterIdentity: renderPersonaIdentityDoctrine(identity),
-      statePacket,
-      modelProjectionEnabled: true,
-      projectText: (prompt) => runCodexTextProjection({
-        prompt,
-        config,
-        command: "repo-face-state-projector",
-        jobId: `state-projector:${identity.id}:${Date.now()}`,
-        timeoutMs: 180_000,
-      }),
-    });
-  }
-
-  const raw = JSON.parse(stripLeadingBom(await readFile(resolve(personaStatePath), "utf8"))) as unknown;
-  const state = isRecord(raw) ? raw : {};
-  const profile = readRecord(state, "profile") ?? readRecord(state, "selfProfile") ?? state;
-  const presentation = readRecord(state, "presentation");
-  const memory = readRecord(state, "memory") ?? readRecord(state, "thoughtMemory");
-  const affect = readRecord(state, "affect") ?? readRecord(state, "faceAffect");
-  const doctrine = readRecord(state, "doctrine") ?? readRecord(state, "doctrineStances");
-
-  const lines = [
-    `${identity.displayName} is a native VoidBot Persona, not a repo Face.`,
-    `Persona state: ${resolve(personaStatePath)}`,
-    identity.avatarUrl ? `Public avatar URL: ${identity.avatarUrl}` : undefined,
-    identity.avatarPath ? `Local avatar asset: ${identity.avatarPath}` : undefined,
-    stringField(profile, "publicDescription") ?? identity.description,
-    listSection("Private notes", arrayField(profile, "privateNotes")),
-    valueSection("Values", arrayField(profile, "values")),
-    listSection("Activation traits", arrayField(profile, "activationTraits")),
-    memorySection("Memories", [
-      ...arrayField(memory, "memories"),
-      ...arrayField(memory, "durableMemories"),
-    ]),
-    memorySection("Short-term residue", arrayField(memory, "shortTerm")),
-    memorySection("Agency pressure", [
-      ...arrayField(state, "pressures"),
-      ...arrayField(state, "agencyPressures"),
-      ...arrayField(readRecord(state, "agencyPressure"), "pressures"),
-    ]),
-    memorySection("Affect needs", arrayField(affect, "needs")),
-    memorySection("Social bonds", arrayField(affect, "socialBonds")),
-    memorySection("Doctrine stances", [
-      ...arrayField(state, "doctrineStances"),
-      ...arrayField(doctrine, "stances"),
-      ...arrayField(doctrine, "doctrineStances"),
-    ]),
-  ].filter((line): line is string => typeof line === "string" && line.trim().length > 0);
-
-  return lines.join("\n\n");
-}
-
-function renderNativePersonaBodySurface(identity: RepoDiscordIdentity): string {
-  return [
-    `${identity.displayName} is a native VoidBot Persona.`,
-    "Body for this turn: Persona state, avatar, allowed Discord channels, current conversation, and VoidBot's webhook mouth.",
-    "No repo jurisdiction, Bifrost governance digest, source-repo activity, or repo proposal authority is implied by this native Persona category.",
-  ].join("\n");
-}
-
-function readRecord(value: unknown, key: string): Record<string, unknown> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const child = value[key];
-  return isRecord(child) ? child : undefined;
-}
-
-function stringField(value: unknown, key: string): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const child = value[key];
-  return typeof child === "string" && child.trim().length > 0 ? child.trim() : undefined;
-}
-
-function arrayField(value: unknown, key: string): unknown[] {
-  if (!isRecord(value)) {
-    return [];
-  }
-  const child = value[key];
-  return Array.isArray(child) ? child : [];
-}
-
-function listSection(title: string, entries: unknown[]): string | undefined {
-  const rendered = entries
-    .map((entry) => typeof entry === "string" ? entry : summarizeRecord(entry))
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    .slice(0, 12);
-  return rendered.length > 0
-    ? [`${title}:`, ...rendered.map((entry) => `- ${entry}`)].join("\n")
-    : undefined;
-}
-
-function valueSection(title: string, entries: unknown[]): string | undefined {
-  return listSection(title, entries.map((entry) => {
-    if (!isRecord(entry)) {
-      return entry;
-    }
-    const label = stringField(entry, "label") ?? stringField(entry, "id") ?? stringField(entry, "name");
-    const summary = stringField(entry, "summary") ?? stringField(entry, "description");
-    return [label, summary].filter(Boolean).join(": ");
-  }));
-}
-
-function memorySection(title: string, entries: unknown[]): string | undefined {
-  return listSection(title, entries.map((entry) => {
-    if (!isRecord(entry)) {
-      return entry;
-    }
-    return stringField(entry, "summary") ??
-      stringField(entry, "claim") ??
-      stringField(entry, "description") ??
-      stringField(entry, "text") ??
-      summarizeRecord(entry);
-  }));
-}
-
-function summarizeRecord(value: unknown): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  for (const key of ["summary", "claim", "description", "text", "label", "id", "name"]) {
-    const field = stringField(value, key);
-    if (field) {
-      return field;
-    }
-  }
-  return undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function renderRepoFaceStatePacket(
@@ -1515,10 +1335,6 @@ function clamp(value: number, min: number, max: number): number {
 
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
-}
-
-function stripLeadingBom(input: string): string {
-  return input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
 }
 
 function readArgValue(name: string): string | undefined {
