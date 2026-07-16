@@ -121,10 +121,8 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
   - installs the hidden logon task that runs `start-voidbot-stack.ps1` automatically after reboot or sign-in.
 - `scripts/check-voidbot-operations.ps1`
   - watchdog for process liveness, Qdrant, Postgres, Ollama, source-repo reconcile drift, Discord auth, backup freshness, offsite sync freshness, and optional ignored local extension checks.
-- `scripts/run-void-moderator-rumination.ps1`
-  - typed rumination runner. It builds a bounded context packet from `.voidbot/private/void-self-state.cc`, recent Discord chronology, and read-only repo activity; loads `prompts/void-moderator-rumination.md`; runs bounded Codex rumination; applies returned typed operations through `scripts/void-self-state.mjs`; then records parent-owned cursor and speech receipts. After parent-owned candidate delivery, it verifies the receipt is linked to the candidate and the candidate is marked `spoken`.
 - `scripts/lib/void-rumination-context-projection.ps1`
-  - rumination context projector. It turns typed timestamps and helper payloads into prompt-facing relative phrases while leaving exact chronology in parent-owned typed state, status, and cursor bookkeeping.
+  - remaining compatibility projector for the manual PowerShell memory-maintenance body. Resident moderation, rumination, and memory organs use the TypeScript relative-chronology projector.
 - `scripts/void-self-state.mjs`
   - typed self-state operation CLI. It applies strict operation payloads such as cursor updates, open-case changes, delivery receipts, repo cursor updates, short-term memory records, sleep-owned distillations, durable-memory revisions/retirements/crystallizations, incubation merges, agency pressure, candidate interventions, sleep-cycle updates, and speaking-pressure updates through `packages/core/src/void-self-state-service.ts` against the CultCache `.cc` store.
 - `scripts/run-void-memory-maintenance.ps1`
@@ -138,26 +136,12 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
   - short-term clustering fixture. It proves repeated same-target/topic rumination proposals fold into one provisional memory with merged anchors, while a different topic in the same repo stays separate.
 - `scripts/smoke-void-agency-pressure-fixture.ps1`
   - agency-pressure fixture. It seeds one typed self-advocacy pressure, verifies it appears in the rendered self-state summary, then runs mood drift against an isolated fixture state to prove agency pressure contributes to speaking pressure without creating a hard-wired speech candidate.
-- `scripts/smoke-void-rumination-fixture.ps1`
-  - rumination fixture. It seeds an isolated CultCache `.cc` state, routes the non-skip rumination runner through a fake Codex child, and verifies short-term memory, incubation, agency pressure, and candidate intervention proposals are applied by the parent runner while the prompt-facing context keeps exact timestamps out.
-- `scripts/smoke-void-rumination-speech-fixture.ps1`
-  - parent-owned speech fixture. It queues one deliverable candidate through fake Codex, routes delivery through a fake Discord sender, then verifies the parent runner writes a delivery receipt and marks the candidate spoken through typed state.
-- `scripts/smoke-void-rumination-nap-skip-fixture.ps1`
-  - nap-skip fixture. It seeds a napping typed state with no room debt, points `CODEX_EXECUTABLE` at a bogus command, then verifies the runner exits with `napping_without_room_debt` and writes no operation proposals before invoking the model.
-- `scripts/smoke-void-moderation-heartbeat-policy-fixture.ps1`
-  - rules-only moderation heartbeat fixture. It routes the heartbeat through a fake Codex child, verifies the prompt excludes rumination/memory/repo surfaces, writes a tagged instant-ban infringement case, and proves parent policy enforcement would call a Discord ban in dry-run mode.
-- `scripts/install-moderation-rumination-task.ps1`
-  - legacy installer for isolating the moderation/participation loop. The live scheduled pulse is now `GameCult Local Orchestrator`; keep this per-organ task disabled unless testing the organ in isolation.
+- `scripts/smoke-persona-initiative-engine.ts`
+  - consolidated resident-organ fixture. It proves moderation review/enforcement boundaries, rumination fingerprint and nap gates, typed advocacy accountability, candidate selection, shared Bifrost command receipts, and no-double-delivery without summoning a Windows runner.
 - `scripts/run-gamecult-orchestrator.ps1`
-  - local pulse owner for agent transport/runtime chores. It runs Bifrost dispatch, repo Face CTB heartbeats, Void moderation heartbeat, Void mood drift, Void moderation rumination, and the operations watchdog from one hidden scheduled task with one lock, per-organ status/log files, and per-organ timeouts.
+  - legacy local pulse for remaining Bifrost dispatch, swarm-surface projection, and operations-watchdog chores. It has no Persona, Void moderation, rumination, physiology, memory, or candidate-delivery authority.
 - `scripts/install-gamecult-orchestrator-task.ps1`
   - installs scheduled task `GameCult Local Orchestrator` through the hidden PowerShell launcher and can disable the old per-organ tasks: `Bifrost Agent Dispatch`, `VoidBot Repo Face Heartbeats`, `Void Mood Drift`, `Void Moderator Rumination`, and `VoidBot Operations Watchdog`.
-- Scheduled organ `Void Mood Drift`
-  - typed mood/sleep runner invoked by the orchestrator. It calls `scripts/simulate-void-mood.mjs`; when the typed sleep cycle is napping, that path invokes memory maintenance once per nap.
-- Scheduled organ `Void Moderation Heartbeat`
-  - rules-only moderation loop invoked every orchestrator pulse. It uses `prompts/void-moderation-heartbeat.md`, recent Discord history, Bifrost-provided r/GameCultOrg Reddit post/thread context when available, urgent witnesses, and typed infringement/open-case history; it may emit only `upsert_open_case` or `close_open_case`, then parent enforcement applies the explicit policy through the relevant venue transport.
-- Scheduled organ `Void Moderator Rumination`
-  - typed-only participation/announcement runner invoked by the orchestrator or CTB queue; it has model-branch plus parent-owned speech fixtures. It is no longer the every-heartbeat rules authority.
 - Live sleep maintenance
   - passed once on real state after a manual typed nap. The maintenance runner consumed the scheduled rumination short-term memory with one `apply_memory_distillation` operation, leaving short-term memory empty and preserving one durable identity seam with target, claim, tension, action implication, and anchors.
 - Sleep brake
@@ -310,20 +294,15 @@ Within the Postgres path, the implementation is split on purpose now too:
 - `state-storage-postgres-bootstrap.ts` handles schema/bootstrap/import work
 - per-domain modules own queue, audit, interaction-memory, and rate-limit behavior
 
-## Flow 5: Scheduled Moderation Rumination
+## Flow 5: Resident Person-Shaped Rumination
 
-1. The Windows scheduled task `GameCult Local Orchestrator` is enabled, and it invokes the Void moderation rumination organ when that organ is due.
-2. `scripts/run-void-moderator-rumination.ps1` reads `.voidbot/private/void-self-state.cc`, polls `node scripts/export-recent-discord-history.mjs`, and gathers read-only repo activity with `node scripts/export-recent-repo-activity.mjs --read-only`.
-3. The runner writes a bounded context packet at `.voidbot/status/moderation-rumination-context.json`; the prompt-facing packet projects recent timing as relative phrases instead of raw timestamps.
-4. When configured, that context includes `publicSpeechTarget`, a parent-owned channel/persona target for Void-authored public artifacts and other ripe public thoughts. Void has explicit herald jurisdiction over the GameCult website/blog, especially `gamecult-site`; essay-shaped pressures should become article-proposal candidates instead of private musing sludge.
-5. The runner loads `prompts/void-moderator-rumination.md`, substitutes the context/state/output paths, and sends that prompt to Codex.
-6. Codex may use retrieval and analysis tools, but its durable state output is restricted to `.voidbot/status/moderation-rumination-operations.json`.
-7. The parent runner applies those typed operations through `scripts/void-self-state.mjs`, then records reviewed-message cursor and, on successful normal posting-enabled passes, advances repo-activity cursors from the observed repo weather through typed `update_repo_activity_cursor` operations.
-8. If posting is enabled and typed state contains a queued candidate intervention with a delivery target, the parent runner sends at most one candidate, records the delivery receipt, and marks the candidate spoken through typed state. The candidate may have been proposed in the current pass or already queued from an earlier pass. The child prompt forbids direct send-script calls.
-9. Before that delivery step, the parent runner now retires queued candidates whose `channelId + replyToMessageId` already appear in canonical typed speech receipts, so a later pass cannot answer an already-answered direct question just because the same message is still visible or the seam still feels warm.
-10. The runner writes `.voidbot/status/moderation-rumination.json` and `.voidbot/logs/moderation-rumination.log`.
-11. It intentionally does not materialize `.json`, load `.msgpack`, read the legacy moderation monolith, or let the child edit state directly.
-12. Before applying model output, the runner enforces speech-pressure accountability. Active self/world advocacy pressures at 0.55 intensity or higher with no matching live queued candidate are projected as `speechPressureObligations`; model output must queue a candidate or cool/retire the pressure instead of returning silent `[]`. Deferred candidates do not satisfy that pressure by themselves, and an older spoken candidate does not keep satisfying a still-active pressure forever.
+1. `apps/persona-scheduler/src/index.ts` owns an independent disabled-by-default rumination cadence; the Persona observation clock cannot authorize it.
+2. A due pass acquires one bounded chronological Discord window and reads the dedicated doctrine, server rules, and Void voice surfaces.
+3. `void-rumination-projector.ts` derives relative chronology, typed advocacy obligations, and a stable pressure fingerprint that excludes wall-clock churn.
+4. `void-rumination-organ.ts` writes the attempt receipt before one tool-free text-model call. The same pressure fingerprint cannot retry after failure or on a later timer pulse.
+5. The model may propose only the bounded awake-rumination operation family. The parent validates and applies every operation through the typed self-state service.
+6. Speech remains a queued candidate. `void-candidate-delivery-organ.ts` independently selects at most one targeted candidate, crosses the shared typed Bifrost port, and marks it spoken only after a complete receipt.
+7. Yggdrasil keeps rumination inference disabled while the configured model credential is stale; this does not disable transport-only delivery of already-authorized candidates.
 
 ## Flow 6: Physiology Runtime
 

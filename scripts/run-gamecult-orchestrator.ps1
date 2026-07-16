@@ -478,8 +478,6 @@ try {
   $agentSwarmPaused = Test-AgentSwarmPaused
   $agentSwarmOrganIds = @{
     "bifrost-dispatch" = $true
-    "void-moderation-heartbeat" = $true
-    "void-moderation-rumination" = $true
   }
   $onlySet = @{}
   $onlyValues = @()
@@ -510,24 +508,6 @@ try {
       Arguments = @((Join-Path $PSScriptRoot "render-voidbot-swarm-dashboard.mjs"))
     },
     [pscustomobject]@{
-      Id = "void-moderation-heartbeat"
-      Label = "Void rules moderation heartbeat"
-      IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_INTERVAL_MINUTES" -Default 1 -Minimum 1
-      TimeoutMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_TIMEOUT_MINUTES" -Default 3 -Minimum 1
-      Cwd = $repoRoot
-      Executable = $powershell
-      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-moderator-rumination.ps1"), "-ModerationHeartbeatOnly")
-    },
-    [pscustomobject]@{
-      Id = "void-moderation-rumination"
-      Label = "Void moderation rumination"
-      IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_MODERATION_INTERVAL_MINUTES" -Default 15 -Minimum 15
-      TimeoutMinutes = 20
-      Cwd = $repoRoot
-      Executable = $powershell
-      Arguments = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "run-void-moderator-rumination.ps1"))
-    },
-    [pscustomobject]@{
       Id = "voidbot-operations-watchdog"
       Label = "VoidBot operations watchdog"
       IntervalMinutes = Get-ConfigInt -Config $config -Name "VOIDBOT_HEALTHCHECK_INTERVAL_MINUTES" -Default 60 -Minimum 15
@@ -544,16 +524,6 @@ try {
       continue
     }
     if ($organ.Id -eq "bifrost-dispatch" -and -not (Get-ConfigBool -Config $config -Name "BIFROST_DISPATCH_ENABLED" -Default $false)) {
-      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
-      Write-JsonFile -Path $statePath -Data $state
-      continue
-    }
-    if ($organ.Id -eq "void-moderation-heartbeat" -and -not (Get-ConfigBool -Config $config -Name "VOIDBOT_MODERATION_HEARTBEAT_ENABLED" -Default $true)) {
-      Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
-      Write-JsonFile -Path $statePath -Data $state
-      continue
-    }
-    if ($organ.Id -eq "void-moderation-rumination" -and -not (Get-ConfigBool -Config $config -Name "VOIDBOT_MODERATION_RUMINATION_ENABLED" -Default $true)) {
       Set-SkippedOrganState -State $state -Organ $organ -Now $now -Status "skipped_disabled"
       Write-JsonFile -Path $statePath -Data $state
       continue

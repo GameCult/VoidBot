@@ -1,5 +1,3 @@
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { createStateStorage } from "@voidbot/core";
 
@@ -72,9 +70,6 @@ export async function scanActivePersonaTurns(
       }
       active.set(identityId, job.id);
     }
-    if (await readRecentLock(resolve(config.storageRoot, "status", "moderation-rumination.lock"), 20, nowMs)) {
-      active.set("void", "lock:moderation-rumination");
-    }
     return { active, staleRecovered };
   } finally {
     await storage.close();
@@ -92,15 +87,4 @@ export function parsePersonaTurnIdentity(requestMessageId: string | undefined): 
 
 export function staleActiveTurnThresholdMs(codexExecTimeoutMs: number): number {
   return Math.max(MIN_STALE_ACTIVE_JOB_MS, codexExecTimeoutMs * 3);
-}
-
-async function readRecentLock(path: string, maxAgeMinutes: number, nowMs: number): Promise<boolean> {
-  try {
-    const info = await stat(path);
-    const ageMs = nowMs - info.mtimeMs;
-    return ageMs >= 0 && ageMs < maxAgeMinutes * 60_000;
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return false;
-    throw error;
-  }
 }

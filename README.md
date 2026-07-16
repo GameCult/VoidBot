@@ -563,23 +563,21 @@ Defaults come from `.env` / `.env.example`:
 
 The watchdog task also uses `Interactive` logon because the remote freshness check relies on the same local SSH key material as the offsite sync path.
 
-## Moderator Review Loop
+## Resident Void Organs
 
-Void can also keep a sandboxed little moderator brain running on a schedule without turning the live bot into an auto-ban carnival.
+Void's moderation, person-shaped rumination, physiology, memory maintenance, and candidate delivery run as separately gated resident daemon organs on Yggdrasil.
 
 Tracked prompt surfaces:
 
 - `config/discord-server-rules.md`
 - `config/moderation-review-agent.md`
+- `config/void-rumination-doctrine.md`
 - `prompts/void-memory-maintenance.md`
-- `prompts/void-moderator-rumination.md`
 - `styles/void-default.md`
 
 Local moderation-state surfaces:
 
 - `.voidbot/private/void-self-state.cc`: canonical typed CultCache self-state
-- `.voidbot/status/moderation-rumination-context.json`: bounded prompt-facing run context
-- `.voidbot/status/moderation-rumination-operations.json`: child-proposed typed operation payloads
 - `.voidbot/status/void-memory-maintenance-context.json`: bounded prompt-facing memory-maintenance context
 - `.voidbot/status/void-memory-maintenance-operations.json`: child-proposed memory/incubation/candidate operations
 
@@ -613,20 +611,9 @@ If one of the swarm agents should speak as itself through the shared Discord pip
 node scripts/send-discord-message.mjs --channel-id <channel-id> --persona-name "Ghostlight Archivist" --persona-avatar-url "https://example.com/avatar.png"
 ```
 
-Install or refresh the scheduled task:
+Moderation heartbeat, person-shaped rumination, physiology, memory maintenance, and candidate delivery are resident daemon organs on Yggdrasil. They are configured independently and deployed only by pushing upstream for Idunn; do not install local scheduled-task copies.
 
-```bash
-npm run state:install-moderation-task
-npm run state:install-mood-task
-```
-
-The runner records its pulse here:
-
-- `.voidbot/status/moderation-rumination.json`
-- `.voidbot/logs/moderation-rumination.log`
-- `.voidbot/logs/moderation-rumination-last.jsonl`
-
-That helper exists because semantic `search_history` is good at recall and bad at simple heartbeat duty. The moderator loop can use it to see what changed since its last cursor, then fall back to `search_history`, `get_message_context`, `list_indexed_repos`, `search_sources`, and `get_source_context` when it wants deeper social or project context.
+Chronological Discord evidence is acquired by the daemon's bounded evidence source. Semantic retrieval remains available for deeper context, but it does not own the heartbeat clock or cursor.
 There is also a repo-weather helper:
 
 ```bash

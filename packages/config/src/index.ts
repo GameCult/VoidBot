@@ -136,7 +136,6 @@ const envSchema = z.object({
   BIFROST_CULTMESH_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
-  VOIDBOT_MODERATION_HEARTBEAT_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
   VOID_MODERATION_ENFORCEMENT_MODE: z.string().trim().min(1).default("log_only"),
@@ -255,7 +254,6 @@ export interface AppConfig {
     timeoutMs: number;
     pumpEnabled: boolean;
   };
-  voidModerationHeartbeatEnabled: boolean;
   voidModerationDaemon: { enabled: boolean; intervalMinutes: number; enforcementMode: string };
   voidCandidateDelivery: { enabled: boolean; personaName: string; personaAvatarUrl?: string };
   voidRuminationDaemon: { enabled: boolean; intervalMinutes: number };
@@ -548,7 +546,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.BIFROST_CULTMESH_COMMAND_TIMEOUT_MS,
       pumpEnabled: parsed.BIFROST_CULTMESH_COMMAND_PUMP_ENABLED,
     },
-    voidModerationHeartbeatEnabled: parsed.VOIDBOT_MODERATION_HEARTBEAT_ENABLED,
     voidModerationDaemon: {
       enabled: parsed.VOID_MODERATION_DAEMON_ENABLED,
       intervalMinutes: parsed.VOID_MODERATION_DAEMON_INTERVAL_MINUTES,

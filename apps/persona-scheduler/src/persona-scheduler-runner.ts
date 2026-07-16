@@ -75,7 +75,7 @@ export async function runPersonaSchedulerTick(input: {
   const globalHeat = (await readSwarmControlState())?.globalHeat ?? config.repoFaceHeartbeats.globalHeat;
   applySchedulerControls({ state, baseRecoveryMinutes: config.repoFaceHeartbeats.baseRecoveryMinutes, globalHeat });
   const completedThisTick = new Set<string>();
-  const participantSpecs = buildPersonaParticipantSpecs(registry.identities, config.voidModerationHeartbeatEnabled);
+  const participantSpecs = buildPersonaParticipantSpecs(registry.identities);
   reconcileInitiativeParticipants({ state, specs: participantSpecs, defaultChannelId: config.repoFaceHeartbeats.defaultChannelId, speedOverrides: config.repoFaceHeartbeats.speedOverrides, heatOverrides: config.repoFaceHeartbeats.heatOverrides, baseRecoveryMinutes: config.repoFaceHeartbeats.baseRecoveryMinutes, globalHeat, activeTurns: activeTurnScan.active, completedThisTick });
   rescheduleStaleOverdueParticipants(state);
   applyPendingMentionPriority(state);

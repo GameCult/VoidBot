@@ -16,7 +16,6 @@ import { projectNativePersonaBody } from "./persona-standard-state-projector.js"
 import { readGlobalAgentDoctrine } from "./global-agent-doctrine-source.js";
 import { assemblePersonaTurn } from "./persona-turn-assembler.js";
 import { submitPersonaTurn } from "./turn-actuator.js";
-import { launchVoidModerationTurn } from "./void-moderation-turn-actuator.js";
 import { readRepoActivity } from "./repo-activity-source.js";
 import { projectRepoActivityObservation } from "./repo-activity-projector.js";
 import { buildPersonaChannelPlan, newestPendingMentionChannel, personaChannelSpeedMultiplier } from "./turn-routing.js";
@@ -32,10 +31,8 @@ export interface PersonaTurnStartReceipt {
   failureReason?: string;
 }
 
-export function buildPersonaParticipantSpecs(identities: RepoDiscordIdentity[], includeVoid: boolean): PersonaParticipantSpec[] {
-  return [
-    ...(includeVoid ? [{ id: "void", participantKind: "system_agent" as const, turnKind: "void_moderation" as const, repoName: "VoidBot", displayName: "Void", allowedChannelIds: [], channelSpeedMultiplier: 1 }] : []),
-    ...identities.map((identity) => ({
+export function buildPersonaParticipantSpecs(identities: RepoDiscordIdentity[]): PersonaParticipantSpec[] {
+  return identities.map((identity) => ({
       id: identity.id,
       participantKind: identity.identityKind === "native_persona" ? "native_persona" as const : "repo_face" as const,
       turnKind: "repo_face_rumination" as const,
@@ -44,8 +41,7 @@ export function buildPersonaParticipantSpecs(identities: RepoDiscordIdentity[], 
       allowedChannelIds: getRepoDiscordIdentityAllowedChannelIds(identity),
       channelSpeedMultiplier: personaChannelSpeedMultiplier(identity),
       identity,
-    })),
-  ];
+    }));
 }
 
 export function pendingMentionsForPersona(state: { pendingMentions: RepoFacePendingMention[] }, identityId: string): RepoFacePendingMention[] {
@@ -69,7 +65,6 @@ export async function dispatchPersonaParticipantTurn(input: {
   queuedAt: string;
   personaStateObservation?: PersonaStateObservation;
 }): Promise<PersonaTurnStartReceipt> {
-  if (input.participant.turnKind === "void_moderation") return launchVoidModerationTurn({ queuedAt: input.queuedAt, storageRoot: input.config.storageRoot, pendingMentions: input.pendingMentions });
   const identity = input.registryIdentities.find((entry) => entry.id === input.participant.identityId);
   if (!identity) return { created: false, failureReason: `No registered Persona identity exists for ${input.participant.identityId}.` };
   const channelPlan = buildPersonaChannelPlan(identity, input.config.repoFaceHeartbeats.defaultChannelId, newestPendingMentionChannel(input.pendingMentions));

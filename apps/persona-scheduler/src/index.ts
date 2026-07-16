@@ -39,7 +39,7 @@ function runTick(): Promise<void> {
       console.log(`Persona scheduler tick completed (started ${startedAt}). ${JSON.stringify(result)}`);
       if (Date.now() - lastPhysiologyAt >= physiologyIntervalMs) {
         try {
-          const physiology = await runVoidPhysiologyOrgan({ statePath: resolve(config.storageRoot, "private", "void-self-state.cc"), statusDirectory: resolve(config.storageRoot, "status") });
+          const physiology = await runVoidPhysiologyOrgan({ statePath: resolve(config.storageRoot, "private", "void-self-state.cc") });
           lastPhysiologyAt = Date.now();
           console.log(`Void physiology pulse completed. ${JSON.stringify(physiology)}`);
           if (physiology.memoryMaintenanceIntent) {
