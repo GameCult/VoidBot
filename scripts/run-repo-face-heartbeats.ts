@@ -25,7 +25,6 @@ import {
   type InteractionMemoryProfile,
   type PromptImageAttachment,
   type RepoFaceConversationFocus,
-  type RetrievalResult,
   type SourceMessage,
 } from "@voidbot/shared";
 import {
@@ -63,6 +62,9 @@ import {
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
+import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
+import { significantPersonaTopicTerms } from "../apps/persona-scheduler/dist/persona-curiosity-terms.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import {
   readDiscordActivitySnapshot,
@@ -1183,27 +1185,6 @@ function targetLabel(target: { label?: string; id?: string; kind?: string } | un
   return target.label ?? target.id ?? target.kind ?? "an unnamed target";
 }
 
-interface RepoFaceCuriosityNode {
-  id: string;
-  text: string;
-  sourceKind: RetrievalResult["sourceKind"];
-  score: number;
-  terms: string[];
-  metadata: Record<string, string>;
-  seedLabels: string[];
-}
-
-interface RepoFaceCuriosityCluster {
-  label: string;
-  nodes: RepoFaceCuriosityNode[];
-  prominence: number;
-  saturation: number;
-  novelty: number;
-  clusterDensity: number;
-  jurisdictionFit: number;
-  evidence: string[];
-}
-
 async function renderRepoFaceCuriosityGraphFacts(
   identity: RepoDiscordIdentity,
   config: ReturnType<typeof loadConfig>,
@@ -1213,69 +1194,21 @@ async function renderRepoFaceCuriosityGraphFacts(
     channelSnapshots: ChannelSnapshot[];
   },
 ): Promise<string | undefined> {
-  const seedQueries = buildRepoFaceCuriositySeedQueries(identity, state, roomContext);
-  if (seedQueries.length === 0) {
-    return undefined;
-  }
-
-  try {
-    const retrieval = createRepoFaceCuriosityRetrievalService(config);
-    const nodesById = new Map<string, RepoFaceCuriosityNode>();
-    const sourceRepoName = getRepoFaceSourceRepoName(identity);
-
-    for (const seed of seedQueries) {
-      const [historyResults, sourceResults, homeSourceResults] = await Promise.all([
-        retrieval.searchHistory(seed.query, 8),
-        retrieval.searchRepositorySources(seed.query, 8),
-        sourceRepoName
-          ? retrieval.searchRepositorySources(seed.query, 6, { repoName: sourceRepoName })
-          : Promise.resolve([]),
-      ]);
-      for (const result of [...historyResults, ...sourceResults, ...homeSourceResults]) {
-        const id = `${result.sourceKind}:${result.chunkId}`;
-        const terms = significantTopicTerms(result.text);
-        if (terms.length < 3) {
-          continue;
-        }
-        const existing = nodesById.get(id);
-        if (existing) {
-          existing.score = Math.max(existing.score, result.score);
-          existing.seedLabels = mergeStrings(existing.seedLabels, seed.label);
-          continue;
-        }
-        nodesById.set(id, {
-          id,
-          text: result.text,
-          sourceKind: result.sourceKind,
-          score: result.score,
-          terms,
-          metadata: result.metadata,
-          seedLabels: [seed.label],
-        });
-      }
-    }
-
-    const nodes = [...nodesById.values()]
-      .sort((left, right) => right.score - left.score)
-      .slice(0, 32);
-    if (nodes.length < 3) {
-      return undefined;
-    }
-
-    const clusters = decodeRepoFaceCuriosityGraph(identity, state, roomContext, nodes);
-    if (clusters.length === 0) {
-      return undefined;
-    }
-
-    return renderRepoFaceCuriosityClusters(identity, config, clusters);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return [
-      "Curiosity graph unavailable:",
-      `- Semantic retrieval failed while decoding topic attractors: ${collapseWhitespace(message, 260)}`,
-      "- Do not pretend a semantic curiosity map was available this turn. Fall back to the raw transcript, home-repo activity, and typed memory instead of inventing ranked attractors.",
-    ].join("\n");
-  }
+  const observation = await readPersonaCuriosityEvidence({
+    identity, state, ...roomContext,
+    sourceRepoName: getRepoFaceSourceRepoName(identity),
+    retrieval: () => {
+      const retrieval = createRepoFaceCuriosityRetrievalService(config);
+      return {
+        searchHistory: (query, limit) => retrieval.searchHistory(query, limit),
+        searchSources: (query, limit, repoName) => retrieval.searchRepositorySources(query, limit, repoName ? { repoName } : undefined),
+      };
+    },
+  });
+  const backendDescription = config.vectorStore.kind === "qdrant"
+    ? `Qdrant collections ${config.qdrant.historyCollection} + ${config.qdrant.sourceCollection}`
+    : "local vector shards";
+  return projectPersonaCuriosityContext({ identity, state, ...roomContext, observation, backendDescription });
 }
 
 function createRepoFaceCuriosityRetrievalService(config: ReturnType<typeof loadConfig>): RetrievalService {
@@ -1306,365 +1239,6 @@ function createRepoFaceCuriosityRetrievalService(config: ReturnType<typeof loadC
     personaMemoryEmbedder: historyEmbedder,
   });
   return new RetrievalService(stores.history, stores.source, stores.personaMemory);
-}
-
-function buildRepoFaceCuriositySeedQueries(
-  identity: RepoDiscordIdentity,
-  state: VoidSelfStateTypedProjection,
-  roomContext: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): Array<{ label: string; query: string }> {
-  const room = roomContext.recentMessages
-    .filter((message) => collapseWhitespace(message.content).length > 0)
-    .slice(-8)
-    .map((message) => `${message.authorName}: ${collapseWhitespace(message.content, 500)}`)
-    .join("\n");
-  const nearby = roomContext.channelSnapshots
-    .flatMap((snapshot) => snapshot.messages)
-    .filter((message) => collapseWhitespace(message.content).length > 0)
-    .slice(-8)
-    .map((message) => `${message.authorName}: ${collapseWhitespace(message.content, 320)}`)
-    .join("\n");
-  const privateThoughts = [
-    ...state.selfProfile.privateNotes.slice(-8),
-    ...state.selfProfile.values
-      .slice()
-      .sort((left, right) => right.priority - left.priority)
-      .slice(0, 8)
-      .map((value) => `${value.label}: ${value.summary}`),
-    ...state.thoughtMemory.memories
-      .filter((memory) => !memory.retiredAt)
-      .slice(-8)
-      .map((memory) => `${memory.kind} ${targetLabel(memory.target)} ${memory.summary} ${memory.claim ?? memory.question ?? ""}`),
-    ...state.thoughtMemory.shortTerm
-      .filter((memory) => !memory.retiredAt)
-      .slice(-8)
-      .map((memory) => `${memory.kind} ${targetLabel(memory.target)} ${memory.summary} ${memory.claim ?? memory.question ?? ""}`),
-    ...state.thoughtMemory.incubation
-      .filter((thread) => thread.status !== "retired")
-      .sort((left, right) => right.maturation - left.maturation)
-      .slice(0, 8)
-      .map((thread) => `${thread.topic}: ${thread.summary}`),
-  ].join("\n");
-  const identityQuery = [
-    identity.displayName,
-    identity.repoName,
-    identity.description ?? "",
-    ...identity.channelPermissions.flatMap((permission) => [
-      permission.label ?? "",
-      permission.topic ?? "",
-      permission.posture ?? "",
-    ]),
-  ].join("\n");
-
-  return [
-    { label: "current room", query: room },
-    { label: "nearby rooms", query: nearby },
-    { label: "private state", query: privateThoughts },
-    { label: "home territory", query: identityQuery },
-  ]
-    .map((seed) => ({ ...seed, query: collapseWhitespace(seed.query, 2800) }))
-    .filter((seed) => significantTopicTerms(seed.query).length >= 3)
-    .slice(0, 4);
-}
-
-function decodeRepoFaceCuriosityGraph(
-  identity: RepoDiscordIdentity,
-  state: VoidSelfStateTypedProjection,
-  roomContext: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-  nodes: RepoFaceCuriosityNode[],
-): RepoFaceCuriosityCluster[] {
-  const edgeWeights = new Map<string, number>();
-  const adjacency = new Map<string, Set<string>>();
-  for (const node of nodes) {
-    adjacency.set(node.id, new Set());
-  }
-
-  for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < nodes.length; rightIndex += 1) {
-      const left = nodes[leftIndex];
-      const right = nodes[rightIndex];
-      const weight = repoFaceCuriosityEdgeWeight(left, right);
-      if (weight < 0.16) {
-        continue;
-      }
-      const key = curiosityEdgeKey(left.id, right.id);
-      edgeWeights.set(key, weight);
-      adjacency.get(left.id)?.add(right.id);
-      adjacency.get(right.id)?.add(left.id);
-    }
-  }
-
-  const visited = new Set<string>();
-  const clusters: RepoFaceCuriosityNode[][] = [];
-  const nodesById = new Map(nodes.map((node) => [node.id, node]));
-  for (const node of nodes) {
-    if (visited.has(node.id)) {
-      continue;
-    }
-    const stack = [node.id];
-    const cluster: RepoFaceCuriosityNode[] = [];
-    visited.add(node.id);
-    while (stack.length > 0) {
-      const id = stack.pop();
-      if (!id) {
-        continue;
-      }
-      const current = nodesById.get(id);
-      if (current) {
-        cluster.push(current);
-      }
-      for (const neighbor of adjacency.get(id) ?? []) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor);
-          stack.push(neighbor);
-        }
-      }
-    }
-    clusters.push(cluster);
-  }
-
-  const recentTerms = collectRecentRoomTopicTermCounts(roomContext);
-  const stateTerms = collectRepoFaceStateTopicTermCounts(state);
-  const identityTerms = new Set(significantTopicTerms([
-    identity.id,
-    identity.displayName,
-    identity.repoName,
-    identity.description ?? "",
-    ...identity.channelPermissions.flatMap((permission) => [
-      permission.label ?? "",
-      permission.topic ?? "",
-      permission.posture ?? "",
-    ]),
-  ].join(" ")));
-
-  return clusters
-    .filter((cluster) => cluster.length >= 2)
-    .map((cluster): RepoFaceCuriosityCluster => {
-      const clusterTerms = rankedClusterTerms(cluster).slice(0, 7);
-      const density = clusterDensity(cluster, edgeWeights);
-      const averageScore = average(cluster.map((node) => node.score));
-      const recentOverlap = weightedTermOverlap(clusterTerms, recentTerms);
-      const stateOverlap = weightedTermOverlap(clusterTerms, stateTerms);
-      const saturation = clamp((recentOverlap * 0.72) + (stateOverlap * 0.42), 0, 1);
-      const jurisdictionFit = clamp(
-        clusterTerms.filter((term) => identityTerms.has(term)).length / Math.max(1, Math.min(clusterTerms.length, 4))
-        + cluster.filter((node) => normalizeKey(node.metadata.repoName ?? "") === normalizeKey(identity.repoName)).length / Math.max(1, cluster.length) * 0.55,
-        0,
-        1,
-      );
-      const novelty = clamp(1 - saturation + Math.max(0, 0.4 - stateOverlap), 0, 1);
-      const prominence = clamp((averageScore * 0.58) + (density * 0.28) + (Math.min(cluster.length, 8) / 8 * 0.18), 0, 1);
-      return {
-        label: clusterTerms.slice(0, 4).join(" / "),
-        nodes: cluster,
-        prominence,
-        saturation,
-        novelty,
-        clusterDensity: density,
-        jurisdictionFit,
-        evidence: cluster
-          .slice()
-          .sort((left, right) => right.score - left.score)
-          .slice(0, 3)
-          .map((node) => curiosityEvidenceLabel(node)),
-      };
-    })
-    .sort((left, right) => {
-      const leftRank = curiosityAttractorRank(left);
-      const rightRank = curiosityAttractorRank(right);
-      if (rightRank !== leftRank) {
-        return rightRank - leftRank;
-      }
-      return right.prominence - left.prominence;
-    })
-    .slice(0, 5);
-}
-
-function renderRepoFaceCuriosityClusters(
-  identity: RepoDiscordIdentity,
-  config: ReturnType<typeof loadConfig>,
-  clusters: RepoFaceCuriosityCluster[],
-): string {
-  const backend = config.vectorStore.kind === "qdrant"
-    ? `Qdrant collections ${config.qdrant.historyCollection} + ${config.qdrant.sourceCollection}`
-    : "local vector shards";
-  return [
-    "Curiosity graph attractors:",
-    `- Source: semantic retrieval from ${backend}; local graph decoding over retrieved chunks. This is curiosity weather, not orders or consensus.`,
-    ...clusters.map((cluster) => {
-      const suggestedMotion = suggestCuriosityMotion(identity, cluster);
-      return [
-        `- ${cluster.label || "unnamed cluster"}: prominence ${formatSignal(cluster.prominence)}, saturation ${formatSignal(cluster.saturation)}, novelty ${formatSignal(cluster.novelty)}, cluster density ${formatSignal(cluster.clusterDensity)}, jurisdiction fit ${formatSignal(cluster.jurisdictionFit)}.`,
-        `  Suggested motion: ${suggestedMotion}`,
-        `  Evidence: ${cluster.evidence.join("; ")}.`,
-      ].join("\n");
-    }),
-    "- The living use is intelligent curiosity: follow underexplored neighboring clusters, deepen home-territory clusters only with fresh anchors, and let saturated clusters create boredom, fatigue, or a deliberate closing move instead of another repetition.",
-  ].join("\n");
-}
-
-function repoFaceCuriosityEdgeWeight(left: RepoFaceCuriosityNode, right: RepoFaceCuriosityNode): number {
-  const termSimilarity = jaccard(left.terms, right.terms);
-  const sameRepo = left.metadata.repoName && right.metadata.repoName && normalizeKey(left.metadata.repoName) === normalizeKey(right.metadata.repoName)
-    ? 1
-    : 0;
-  const sameCorpus = left.sourceKind === right.sourceKind ? 1 : 0;
-  const sharedSeeds = left.seedLabels.filter((label) => right.seedLabels.includes(label)).length > 0 ? 1 : 0;
-  const scoreProximity = 1 - Math.min(1, Math.abs(left.score - right.score));
-  return clamp((termSimilarity * 0.58) + (sameRepo * 0.16) + (sameCorpus * 0.1) + (sharedSeeds * 0.08) + (scoreProximity * 0.08), 0, 1);
-}
-
-function rankedClusterTerms(cluster: RepoFaceCuriosityNode[]): string[] {
-  const counts = new Map<string, number>();
-  for (const node of cluster) {
-    for (const term of node.terms) {
-      counts.set(term, (counts.get(term) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .sort((left, right) => {
-      if (right[1] !== left[1]) {
-        return right[1] - left[1];
-      }
-      return left[0].localeCompare(right[0]);
-    })
-    .map(([term]) => term);
-}
-
-function collectRecentRoomTopicTermCounts(input: {
-  recentMessages: SourceMessage[];
-  channelSnapshots: ChannelSnapshot[];
-}): Map<string, number> {
-  const counts = new Map<string, number>();
-  const messages = [
-    ...input.recentMessages,
-    ...input.channelSnapshots.flatMap((snapshot) => snapshot.messages),
-  ].slice(-36);
-  for (const message of messages) {
-    for (const term of significantTopicTerms(message.content)) {
-      counts.set(term, (counts.get(term) ?? 0) + 1);
-    }
-  }
-  return counts;
-}
-
-function collectRepoFaceStateTopicTermCounts(state: VoidSelfStateTypedProjection): Map<string, number> {
-  const counts = new Map<string, number>();
-  const surfaces = [
-    ...state.selfProfile.privateNotes,
-    ...state.selfProfile.values.map((value) => `${value.label} ${value.summary}`),
-    ...state.thoughtMemory.memories.map((memory) => `${memory.summary} ${memory.claim ?? ""} ${memory.question ?? ""} ${memory.tension ?? ""}`),
-    ...state.thoughtMemory.shortTerm.map((memory) => `${memory.summary} ${memory.claim ?? ""} ${memory.question ?? ""} ${memory.tension ?? ""}`),
-    ...state.thoughtMemory.incubation.map((thread) => `${thread.topic} ${thread.summary}`),
-    ...state.agencyPressure.pressures.map((pressure) => `${pressure.summary} ${pressure.claim ?? ""} ${pressure.question ?? ""} ${pressure.tension ?? ""}`),
-  ].slice(-64);
-  for (const surface of surfaces) {
-    for (const term of significantTopicTerms(surface)) {
-      counts.set(term, (counts.get(term) ?? 0) + 1);
-    }
-  }
-  return counts;
-}
-
-function weightedTermOverlap(terms: string[], counts: Map<string, number>): number {
-  if (terms.length === 0 || counts.size === 0) {
-    return 0;
-  }
-  const maxCount = Math.max(...counts.values(), 1);
-  const overlap = terms.reduce((sum, term) => sum + ((counts.get(term) ?? 0) / maxCount), 0);
-  return clamp(overlap / Math.min(terms.length, 6), 0, 1);
-}
-
-function clusterDensity(cluster: RepoFaceCuriosityNode[], edgeWeights: Map<string, number>): number {
-  if (cluster.length < 2) {
-    return 0;
-  }
-  let sum = 0;
-  let pairs = 0;
-  for (let leftIndex = 0; leftIndex < cluster.length; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < cluster.length; rightIndex += 1) {
-      sum += edgeWeights.get(curiosityEdgeKey(cluster[leftIndex].id, cluster[rightIndex].id)) ?? 0;
-      pairs += 1;
-    }
-  }
-  return pairs > 0 ? clamp(sum / pairs, 0, 1) : 0;
-}
-
-function curiosityAttractorRank(cluster: RepoFaceCuriosityCluster): number {
-  return clamp(
-    cluster.prominence * 0.42
-      + cluster.novelty * 0.28
-      + cluster.clusterDensity * 0.16
-      + cluster.jurisdictionFit * 0.18
-      - cluster.saturation * 0.2,
-    0,
-    1,
-  );
-}
-
-function suggestCuriosityMotion(identity: RepoDiscordIdentity, cluster: RepoFaceCuriosityCluster): string {
-  if (cluster.saturation >= 0.68 && cluster.novelty <= 0.42) {
-    return `treat this as over-chewed; ${identity.displayName} should close, defer, or pivot to a neighboring question unless a new concrete anchor appears.`;
-  }
-  if (cluster.jurisdictionFit >= 0.55 && cluster.novelty >= 0.45) {
-    return `this is home-territory curiosity with room to grow; read, ask, draft, or make a fresh anchored distinction.`;
-  }
-  if (cluster.novelty >= 0.62) {
-    return `this is an underexplored neighboring trail; curiosity may pull ${identity.displayName} sideways instead of repeating the room's dominant topic.`;
-  }
-  if (cluster.jurisdictionFit < 0.3) {
-    return `this likely belongs to another steward; use it as social weather, consultation, or rivalry pressure rather than absorbing the work.`;
-  }
-  return "stay interested only if the turn adds a new anchor, concrete question, or relationship move.";
-}
-
-function curiosityEvidenceLabel(node: RepoFaceCuriosityNode): string {
-  const source = node.sourceKind === "source_document"
-    ? [node.metadata.repoName, node.metadata.path].filter(Boolean).join(":") || node.sourceId
-    : [node.metadata.channelId ? `channel ${node.metadata.channelId}` : undefined, node.sourceId].filter(Boolean).join(":") || node.sourceId;
-  return `${source} (${node.score.toFixed(2)}, ${node.seedLabels.join("/")})`;
-}
-
-function curiosityEdgeKey(left: string, right: string): string {
-  return left < right ? `${left}::${right}` : `${right}::${left}`;
-}
-
-function jaccard(left: string[], right: string[]): number {
-  const leftSet = new Set(left);
-  const rightSet = new Set(right);
-  const union = new Set([...leftSet, ...rightSet]).size;
-  if (union === 0) {
-    return 0;
-  }
-  let intersection = 0;
-  for (const term of leftSet) {
-    if (rightSet.has(term)) {
-      intersection += 1;
-    }
-  }
-  return intersection / union;
-}
-
-function average(values: number[]): number {
-  return values.length > 0
-    ? values.reduce((sum, value) => sum + value, 0) / values.length
-    : 0;
-}
-
-function formatSignal(value: number): string {
-  if (value >= 0.68) {
-    return `high ${value.toFixed(2)}`;
-  }
-  if (value >= 0.38) {
-    return `medium ${value.toFixed(2)}`;
-  }
-  return `low ${value.toFixed(2)}`;
 }
 
 async function loadRepoFaceHumanPronounGuidance(
@@ -2446,7 +2020,7 @@ function estimateTopicRelationToIdentity(
   identity: RepoDiscordIdentity,
   signal: RoomTopicSaturationSignal,
 ): TopicRelationToIdentity {
-  const identityTerms = new Set(significantTopicTerms([
+  const identityTerms = new Set(significantPersonaTopicTerms([
     identity.id,
     identity.displayName,
     identity.repoName,
@@ -2476,7 +2050,7 @@ function detectRoomTopicSaturation(messages: SourceMessage[]): RoomTopicSaturati
   }
 
   const termCounts = new Map<string, number>();
-  const messageTerms = recent.map((message) => new Set(significantTopicTerms(message.content)));
+  const messageTerms = recent.map((message) => new Set(significantPersonaTopicTerms(message.content)));
   for (const terms of messageTerms) {
     for (const term of terms) {
       termCounts.set(term, (termCounts.get(term) ?? 0) + 1);
@@ -2515,106 +2089,6 @@ function detectRoomTopicSaturation(messages: SourceMessage[]): RoomTopicSaturati
     coveredMessages,
     terms,
   };
-}
-
-const TOPIC_STOP_WORDS = new Set([
-  "about",
-  "actually",
-  "after",
-  "again",
-  "agent",
-  "agents",
-  "already",
-  "another",
-  "around",
-  "because",
-  "before",
-  "being",
-  "between",
-  "channel",
-  "could",
-  "does",
-  "doing",
-  "don",
-  "even",
-  "every",
-  "exactly",
-  "face",
-  "faces",
-  "from",
-  "give",
-  "going",
-  "good",
-  "have",
-  "here",
-  "into",
-  "just",
-  "kind",
-  "know",
-  "latest",
-  "like",
-  "little",
-  "line",
-  "made",
-  "make",
-  "maybe",
-  "more",
-  "need",
-  "needs",
-  "only",
-  "other",
-  "point",
-  "post",
-  "really",
-  "recent",
-  "room",
-  "same",
-  "should",
-  "something",
-  "still",
-  "take",
-  "talk",
-  "than",
-  "that",
-  "their",
-  "there",
-  "these",
-  "they",
-  "them",
-  "thing",
-  "things",
-  "think",
-  "this",
-  "those",
-  "through",
-  "turn",
-  "want",
-  "what",
-  "when",
-  "where",
-  "which",
-  "while",
-  "with",
-  "work",
-  "would",
-  "write",
-  "you",
-  "your",
-  "first",
-  "right",
-  "rights",
-]);
-
-function significantTopicTerms(content: string): string[] {
-  const normalized = normalizeForRepetition(content)
-    .replace(/\b\d{5,}\b/g, " ")
-    .replace(/\b[a-z]*\d+[a-z0-9]*\b/g, " ");
-  const terms = normalized
-    .split(/\s+/)
-    .map((term) => term.replace(/^['.-]+|['.-]+$/g, ""))
-    .filter((term) => term.length >= 4 && !TOPIC_STOP_WORDS.has(term));
-
-  return Array.from(new Set(terms));
 }
 
 function countRepeatedPhrases(messages: SourceMessage[]): Array<{ phrase: string; count: number }> {
@@ -2791,10 +2265,6 @@ function projectCharacterDescription(description: string | undefined): string | 
     )
     .filter((part) => part.length > 0)
     .join(" ");
-}
-
-function mergeStrings(values: string[], value: string): string[] {
-  return Array.from(new Set([...values, value]));
 }
 
 function normalizeKey(value: string): string {

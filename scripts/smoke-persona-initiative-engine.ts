@@ -66,6 +66,8 @@ import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-s
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaSelfMaintenancePressure, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
+import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
@@ -547,6 +549,37 @@ try {
   } : undefined;
   assert.match(maintenanceState ? renderPersonaSelfMaintenancePressure({ identityName: "Nibu", state: maintenanceState, clarityPressureActive: false }) ?? "" : "", /Self-maintenance pressure requiring public advocacy/, "the memory projector owns self-maintenance classification and rendering");
   assert.equal(maintenanceState ? renderPersonaSelfMaintenancePressure({ identityName: "Nibu", state: maintenanceState, clarityPressureActive: true }) : undefined, undefined, "live human clarity pressure suppresses self-maintenance advocacy inside the owning projector");
+  const curiosityObservation = populatedObservation.status === "ok" ? await readPersonaCuriosityEvidence({
+    identity: routedIdentity,
+    state: populatedObservation.typedState,
+    recentMessages: [{ id: "curiosity-room", authorId: "human", authorName: "Operator", content: "memory topology needs inspectable semantic anchors", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" }],
+    channelSnapshots: [],
+    sourceRepoName: "AetheriaLore",
+    retrieval: {
+      searchHistory: async () => [{ chunkId: "history-1", sourceId: "message-1", sourceKind: "discord_message", text: "semantic memory topology and inspectable anchors", score: 0.84, metadata: { channelId: "aquarium" } }],
+      searchSources: async (_query, _limit, repoName) => repoName
+        ? [{ chunkId: "source-home", sourceId: "doc-home", sourceKind: "source_document", text: "semantic memory topology preserves inspectable provenance anchors", score: 0.82, metadata: { repoName, path: "memory.md" } }]
+        : [{ chunkId: "source-global", sourceId: "doc-global", sourceKind: "source_document", text: "inspectable semantic topology joins memory evidence anchors", score: 0.8, metadata: { repoName: "VoidBot", path: "map.md" } }],
+    },
+  }) : undefined;
+  assert.equal(curiosityObservation?.status, "ok", "the curiosity source plans queries and acquires bounded neutral evidence through an injected retrieval port");
+  const unavailableCuriosity = populatedObservation.status === "ok" ? await readPersonaCuriosityEvidence({
+    identity: routedIdentity,
+    state: populatedObservation.typedState,
+    recentMessages: [{ id: "curiosity-failure", authorId: "human", authorName: "Operator", content: "semantic memory topology needs inspectable anchors", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" }],
+    channelSnapshots: [],
+    retrieval: () => { throw new Error("vector adapter unavailable"); },
+  }) : undefined;
+  assert.deepEqual(unavailableCuriosity, { status: "unavailable", reason: "vector adapter unavailable" }, "retrieval-adapter construction fails inside the curiosity source's explicit unavailable witness");
+  const curiosityProjection = populatedObservation.status === "ok" && curiosityObservation ? projectPersonaCuriosityContext({
+    identity: routedIdentity,
+    state: populatedObservation.typedState,
+    recentMessages: [{ id: "curiosity-room", authorId: "human", authorName: "Operator", content: "memory topology needs inspectable semantic anchors", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" }],
+    channelSnapshots: [],
+    observation: curiosityObservation,
+    backendDescription: "injected smoke retrieval",
+  }) : undefined;
+  assert.match(curiosityProjection ?? "", /Curiosity graph attractors:[\s\S]*injected smoke retrieval/, "the pure curiosity projector decodes and renders supplied evidence without acquiring it");
   const pressureSections = populatedObservation.status === "ok"
     ? renderPersonaPressureSections({ identityName: "Nibu", state: populatedObservation.typedState, clarityPressureActive: true })
     : [];
