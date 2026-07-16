@@ -69,6 +69,7 @@ import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaP
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
 import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
+import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
@@ -637,6 +638,24 @@ assert.equal(conversationProjection.focus?.reason, "pending_mention", "conversat
 assert.match(conversationProjection.transcript, /Visible cross-channel chronology,[\s\S]*nearby correction/, "conversation projection renders supplied cross-channel evidence without acquiring it");
 assert.match(conversationProjection.topicAttractor ?? "", /semantic \(8\)/, "conversation projection owns topic-attractor facts");
 assert.match(renderPersonaRoomTopicSaturation(routedIdentity, saturatedMessages), /Current room topic saturation:/, "turn-facing saturation and memory-facing attractors share one conversation owner");
+const promptParticipant = participant("nibu", 0);
+const jurisdictionDive = buildPersonaJurisdictionDiveDirective(routedIdentity, promptParticipant);
+assert.equal(jurisdictionDive.cadence, 3, "the turn-prompt projector owns Nibu's jurisdiction-dive cadence");
+const projectedTurnPrompt = buildPersonaTurnPrompt({
+  identity: routedIdentity,
+  channelId: "lore",
+  channelPlan,
+  channelSnapshots: [],
+  recentMessages: saturatedMessages,
+  memorySurface: "Nibu remembers the architecture.",
+  conversationMemorySurface: conversationProjection.transcript,
+  participant: promptParticipant,
+  pendingMentions: [{ messageId: "mention", channelId: "aquarium", authorId: "human-2", authorName: "Neighbor", visiblePrompt: "Nibu, answer this", queuedAt: "2026-07-15T21:10:00.000Z" }],
+  jurisdictionDive,
+  githubActionsEnabled: false,
+  globalAgentDoctrine: "Global doctrine.",
+});
+assert.match(projectedTurnPrompt, /A direct call is tugging at you[\s\S]*Nibu, answer this/, "the pure turn-prompt projector owns situation and pending-call policy from supplied facts");
 assert.equal(personaChannelSpeedMultiplier(routedIdentity), 3, "scheduler speed projection uses the routing organ's bounded channel policy");
 assert.equal(newestPendingMentionChannel([
   { identityId: "nibu", channelId: "older", queuedAt: "2026-07-15T20:00:00.000Z" },
