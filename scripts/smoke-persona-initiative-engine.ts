@@ -66,7 +66,7 @@ import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-s
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
-import { observePersonaRoomTexture, renderPersonaHumanPronounFacts, renderPersonaRoomWeather } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { observePersonaRoomTexture, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -454,6 +454,15 @@ const roomObservation = observePersonaRoomTexture({
 assert.equal(roomObservation?.texture, "light", "social-context projection derives room weather from supplied messages without acquiring Discord state");
 assert.match(renderPersonaRoomWeather({ identity: routedIdentity, recentMessages: [], channelSnapshots: [] }), /No current room weather/, "absent room evidence stays explicit");
 assert.match(renderPersonaHumanPronounFacts([{ actorId: "human", actorName: "Operator", guidance: "use they/them", policy: "explicit", confidence: 1 }]) ?? "", /Confidence: 1\.00/, "pronoun guidance presentation belongs to the social-context projector");
+const clarityPressure = renderPersonaHumanClarityPressure({
+  identity: routedIdentity,
+  recentMessages: [
+    { id: "later", authorId: "human", authorName: "Operator", content: "speak plainly", timestamp: "2026-07-15T22:00:00.000Z", isBot: false, channelId: "aquarium" },
+    { id: "earlier", authorId: "human", authorName: "Operator", content: "what are you talking about", timestamp: "2026-07-15T21:00:00.000Z", isBot: false, channelId: "aquarium" },
+  ],
+  channelSnapshots: [],
+});
+assert.match(clarityPressure ?? "", /said, "speak plainly"/, "clarity projection orders supplied evidence by its real timestamp before choosing the freshest human correction");
 assert.equal(await projectPersonaMemorySurface({
   identityId: "nibu",
   characterIdentity: "Nibu",
@@ -492,6 +501,10 @@ try {
     ? renderPersonaTypedStateSections({ identityName: "Nibu", state: populatedObservation.typedState })
     : undefined;
   assert.match(typedSections?.opening.join("\n") ?? "", /Speaking pressure:/, "the projector owns typed runtime-pressure presentation without acquiring Persona state");
+  const socialGraph = populatedObservation.status === "ok"
+    ? renderPersonaSocialGraph({ identity: routedIdentity, registryIdentities: [routedIdentity], state: populatedObservation.typedState })
+    : undefined;
+  assert.match(socialGraph ?? "", /Social graph topology:/, "social topology projection consumes typed state and the explicit registry without acquiring either");
   const pressureSections = populatedObservation.status === "ok"
     ? renderPersonaPressureSections({ identityName: "Nibu", state: populatedObservation.typedState, clarityPressureActive: true })
     : [];

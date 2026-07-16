@@ -63,7 +63,7 @@ import {
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
 import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
-import { observePersonaRoomTexture, renderPersonaHumanPronounFacts, renderPersonaRelationshipFreshness, renderPersonaRoomTexture, renderPersonaRoomWeather, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { collectPersonaSocialRelations, observePersonaRoomTexture, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRelationshipFreshness, renderPersonaRoomTexture, renderPersonaRoomWeather, renderPersonaSocialGraph, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -1133,7 +1133,7 @@ function renderRepoFaceStatePacket(
     .reverse();
   const typedSections = renderPersonaTypedStateSections({ identityName: name, state });
   const humanClarityFacts = roomContext
-    ? renderRepoFaceHumanClarityPressureFacts(identity, roomContext)
+    ? renderPersonaHumanClarityPressure({ identity, ...roomContext })
     : undefined;
   const clarityPressureActive = Boolean(humanClarityFacts);
 
@@ -1143,7 +1143,7 @@ function renderRepoFaceStatePacket(
     registryIdentities,
     observedAt: new Date(),
   });
-  const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
+  const socialGraphFacts = renderPersonaSocialGraph({ identity, registryIdentities, state });
   const peerOpeningFacts = roomContext
     ? renderRepoFacePeerOpeningFacts(identity, registryIdentities, roomContext)
     : undefined;
@@ -1800,153 +1800,6 @@ function formatSignal(value: number): string {
   return `low ${value.toFixed(2)}`;
 }
 
-function renderRepoFaceHumanClarityPressureFacts(
-  identity: RepoDiscordIdentity,
-  input: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-): string | undefined {
-  const messages = [
-    ...input.recentMessages.map((message) => ({ ...message, channelLabel: "current room" })),
-    ...input.channelSnapshots.flatMap((snapshot) =>
-      snapshot.messages.map((message) => ({ ...message, channelLabel: `nearby room ${snapshot.channelId}` })),
-    ),
-  ]
-    .filter((message) => collapseWhitespace(message.content).length > 0)
-    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
-  const recent = messages.slice(-24);
-  const latestPressure = [...recent]
-    .reverse()
-    .find((message) => !message.isBot && isHumanClarityPressureMessage(message.content));
-  if (!latestPressure) {
-    return undefined;
-  }
-
-  const pressureIndex = recent.findIndex((message) => message.id === latestPressure.id);
-  const laterHumanReapproval = pressureIndex >= 0
-    ? recent.slice(pressureIndex + 1).some((message) =>
-        !message.isBot && isHumanJargonReapprovalMessage(message.content)
-      )
-    : false;
-  if (laterHumanReapproval) {
-    return undefined;
-  }
-
-  const laterAgentEchoes = pressureIndex >= 0
-    ? recent.slice(pressureIndex + 1).filter((message) =>
-        message.isBot && containsLoopVocabulary(message.content)
-      )
-    : [];
-  const ownEchoes = laterAgentEchoes.filter((message) =>
-    normalizeSocialLabel(message.authorName) === normalizeSocialLabel(identity.displayName)
-  );
-  const echoedTerms = collectLoopVocabularyTerms([
-    latestPressure.content,
-    ...laterAgentEchoes.map((message) => message.content),
-  ].join("\n"));
-
-  return [
-    "Human clarity pressure:",
-    `- A human recently signaled confusion or asked for simpler language: ${latestPressure.authorName ?? latestPressure.authorId} in ${latestPressure.channelLabel} said, "${collapseWhitespace(latestPressure.content, 360)}"`,
-    "- This is the last and freshest volatile input in the state packet on purpose. It supersedes older stored pressure, speech residue, agency urges, and repeated agent chatter when they are abstract.",
-    "- Treat this as the current social fact. The room needs legibility before more clever framing.",
-    laterAgentEchoes.length > 0
-      ? `- After that clarity request, ${laterAgentEchoes.length} agent message(s) still echoed loop-shaped vocabulary${echoedTerms.length > 0 ? ` (${echoedTerms.join(", ")})` : ""}. These terms are evidence of the failure, not vocabulary to reuse. Project them as communication failure or social embarrassment, not consensus.`
-      : "",
-    ownEchoes.length > 0
-      ? `- ${identity.displayName} has contributed to that failure in the recent window. Let that create chastening, repair, restraint, or a plain-language apology before more abstraction.`
-      : "",
-    "- Plain-language repair means using ordinary words: what changed, who can see it, who agreed, what someone can do now, and what stays private. If that cannot be said cleanly, silence is better than another polished abstraction.",
-  ].filter(Boolean).join("\n");
-}
-
-function isHumanClarityPressureMessage(content: string): boolean {
-  const normalized = normalizeForRepetition(content);
-  return [
-    "what are you even talking about",
-    "what are you talking about",
-    "dumb it down",
-    "speak plainly",
-    "plainly",
-    "plain english",
-    "simple words",
-    "less abstract",
-    "too abstract",
-    "unintelligible",
-    "unintelligable",
-    "i don't understand",
-    "i do not understand",
-    "calm it down",
-    "cut it out",
-    "obsession",
-    "brain surgery",
-  ].some((needle) => normalized.includes(needle));
-}
-
-function isHumanJargonReapprovalMessage(content: string): boolean {
-  const normalized = normalizeForRepetition(content);
-  return [
-    "that's clearer",
-    "that is clearer",
-    "that makes sense",
-    "much better",
-    "yes exactly",
-    "precisely",
-    "keep going",
-    "go on",
-  ].some((needle) => normalized.includes(needle));
-}
-
-function containsLoopVocabulary(content: string): boolean {
-  return collectLoopVocabularyTerms(content).length > 0;
-}
-
-function collectLoopVocabularyTerms(content: string): string[] {
-  const normalized = normalizeForRepetition(content);
-  const terms = [
-    "artifact",
-    "specimen",
-    "seam",
-    "custody",
-    "first right",
-    "test card",
-    "receipt",
-    "proof",
-    "spine",
-    "downstream",
-    "consent flip",
-    "visibility",
-  ];
-  return terms.filter((term) => normalized.includes(term));
-}
-
-function renderRepoFaceSocialGraphFacts(
-  identity: RepoDiscordIdentity,
-  registryIdentities: RepoDiscordIdentity[],
-  state: VoidSelfStateTypedProjection,
-): string | undefined {
-  const relations = collectRepoFaceSocialRelations(state);
-  const unmappedPeers = collectUnmappedSocialPeers(identity, registryIdentities, relations);
-  if (registryIdentities.length === 0) {
-    return undefined;
-  }
-
-  const lines = [
-    "Social graph topology:",
-    relations.length === 0
-      ? "- No active person-bonds or person-status reads exist yet."
-      : `- Active mapped people: ${relations.map((relation) => relation.targetLabel).join(", ")}.`,
-  ];
-
-  if (unmappedPeers.length > 0) {
-    lines.push(`- Unmapped active peers: ${formatUnmappedPeers(unmappedPeers)}.`);
-  }
-
-  lines.push("- These are topology facts only; they do not say how the gap should feel.");
-  return lines.join("\n");
-}
-
 function renderRepoFacePeerOpeningFacts(
   identity: RepoDiscordIdentity,
   registryIdentities: RepoDiscordIdentity[],
@@ -2024,7 +1877,7 @@ function renderRepoFaceRelationshipPressureFacts(
       identity: peer,
       tokens: socialPressureTokensForIdentity(peer),
     }));
-  const relationTargets = collectRepoFaceSocialRelations(state)
+  const relationTargets = collectPersonaSocialRelations(state)
     .map((relation) => ({
       label: relation.targetLabel,
       tokens: socialPressureTokens(relation.targetLabel),
@@ -2288,87 +2141,8 @@ function pronounEvidenceRank(profile: InteractionMemoryProfile, entry: Interacti
   return resolvedSetBonus + (sourceRank[entry.source] ?? 0) + stanceBonus + confidenceBonus + recencyBonus;
 }
 
-function collectRepoFaceSocialRelations(
-  state: VoidSelfStateTypedProjection,
-): Array<{ targetLabel: string; pressure: string; intensity: number }> {
-  const byTarget = new Map<string, { targetLabel: string; parts: string[]; intensity: number }>();
-
-  for (const bond of state.faceAffect.socialBonds ?? []) {
-    if (bond.status !== "active") {
-      continue;
-    }
-    if (bond.target.kind !== "person") {
-      continue;
-    }
-    const targetLabel = cleanSocialTargetLabel(bond.target.label ?? bond.target.id);
-    if (!targetLabel) {
-      continue;
-    }
-    const entry = byTarget.get(targetLabel) ?? { targetLabel, parts: [], intensity: 0 };
-    entry.parts.push(`${bond.stance}: ${asSentence(bond.summary)} ${asSentence(bond.actionImplication)}`);
-    entry.intensity = Math.max(entry.intensity, bond.intensity);
-    byTarget.set(targetLabel, entry);
-  }
-
-  for (const read of state.faceAffect.statusReads ?? []) {
-    if (read.retiredAt) {
-      continue;
-    }
-    if (read.target.kind !== "person") {
-      continue;
-    }
-    const targetLabel = cleanSocialTargetLabel(read.target.label ?? read.target.id);
-    if (!targetLabel) {
-      continue;
-    }
-    const entry = byTarget.get(targetLabel) ?? { targetLabel, parts: [], intensity: 0 };
-    entry.parts.push(`${read.status}: ${asSentence(read.summary)} ${asSentence(read.actionImplication)}`);
-    entry.intensity = Math.max(entry.intensity, read.intensity);
-    byTarget.set(targetLabel, entry);
-  }
-
-  return [...byTarget.values()]
-    .map((entry) => ({
-      targetLabel: entry.targetLabel,
-      pressure: entry.parts.map(cleanCharacterFacingSentence).filter(Boolean).join(" "),
-      intensity: entry.intensity,
-    }))
-    .filter((entry) => entry.pressure.length > 0)
-    .sort((left, right) => right.intensity - left.intensity);
-}
-
-function collectUnmappedSocialPeers(
-  identity: RepoDiscordIdentity,
-  registryIdentities: RepoDiscordIdentity[],
-  relations: Array<{ targetLabel: string }>,
-): RepoDiscordIdentity[] {
-  const mappedTokens = new Set(
-    relations.flatMap((relation) => socialTargetTokens(relation.targetLabel)),
-  );
-  const selfTokens = new Set(socialTargetTokens(identity.displayName, identity.id, identity.repoName));
-
-  return registryIdentities
-    .filter((peer) => {
-      const peerTokens = socialTargetTokens(peer.displayName, peer.id, peer.repoName);
-      if (peerTokens.some((token) => selfTokens.has(token))) {
-        return false;
-      }
-      return !peerTokens.some((token) => mappedTokens.has(token));
-    })
-    .sort((left, right) => left.displayName.localeCompare(right.displayName))
-    .slice(0, 8);
-}
-
 function socialTargetTokens(...values: Array<string | undefined>): string[] {
   return [...new Set(values.map(normalizeSocialLabel).filter((value) => value.length > 0))];
-}
-
-function formatUnmappedPeers(peers: RepoDiscordIdentity[]): string {
-  return peers.map((peer) => `${peer.displayName}/${peer.repoName}`).join(", ");
-}
-
-function cleanSocialTargetLabel(value: string | undefined): string {
-  return collapseWhitespace(value ?? "").replace(/^repo:/i, "").trim();
 }
 
 function normalizeSocialLabel(value: string | undefined): string {
