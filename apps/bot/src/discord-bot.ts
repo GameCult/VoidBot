@@ -22,7 +22,6 @@ import {
   findRepoDiscordIdentityByTextAddress,
   isRepoDiscordIdentityAllowedInChannel,
   loadFaceIdentityRegistry,
-  queueAgentHeartbeatMention,
   queueRepoFaceMention,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
@@ -64,8 +63,10 @@ import { maybeMirrorOwnerAquariumMessageAsMetameVoice } from "./metame-owner-voi
 import { startRepoFaceVoicePlayback } from "./repo-face-voice-playback";
 import {
   buildActorFromInteraction,
+  buildActorFromMessage,
   buildChannelIndexingTarget,
   buildGuildContextFromInteraction,
+  buildGuildContextFromMessage,
   filterPromptEchoHistoryResults,
   formatArchivedMessageContext,
   formatHistoryResults,
@@ -73,6 +74,7 @@ import {
   formatSourceResults,
   getRecentMessages,
   getRoleIdsFromInteraction,
+  getRoleIdsFromMessage,
   ingestIfIndexed,
   materializeMessage,
   notifyOwnerOfBotIssue,
@@ -453,19 +455,32 @@ export async function startBot(): Promise<void> {
         return;
       }
 
-      const queuedMention = await queueAgentHeartbeatMention({
-        statePath: config.repoFaceHeartbeats.statePath,
-        identityId: "void",
-        channelId: message.channelId,
-        messageId: message.id,
-        authorId: message.author.id,
-        authorName: message.author.username,
-        content: message.content,
-        visiblePrompt: visiblePrompt || "Void was mentioned without a visible prompt; inspect recent room context and decide whether a response is warranted.",
+      await handlePrompt({
+        prompt: visiblePrompt || "Void was mentioned without a visible prompt; inspect recent room context and decide whether a response is warranted.",
+        command: "ask",
+        actor: buildActorFromMessage(message),
+        roleIds: getRoleIdsFromMessage(message),
+        guildContext: buildGuildContextFromMessage(message),
+        outputChannelId: message.channelId,
+        requestMessageId: message.id,
+        channel: message.channel.isTextBased() ? message.channel : null,
+        respond: async (content) => { await message.reply(content); },
+        config,
+        permissionEngine,
+        contextBuilder,
+        retrievalService,
+        archiveRepository,
+        sourceArchiveRepository,
+        jobQueue,
+        auditLog,
+        interactionMemory,
+        voidUsageRateLimiter,
+        providerRegistry,
+        situationalSocialReadInferer,
+        stylePack: activeStylePack,
+        systemMessages: activeSystemMessages,
       });
-      console.log(
-        `Queued Void mention ${message.id} via CTB turn queue (${queuedMention.pendingCount} pending).`,
-      );
+      console.log(`Routed Void mention ${message.id} through the normal bot prompt lane.`);
     } catch (error) {
       console.error(error);
       await notifyOwnerOfBotIssue(
