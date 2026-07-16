@@ -1,4 +1,5 @@
 import { voidSelfStateOperationSchema, type VoidSelfStateOperation, type VoidSelfStateTypedProjection } from "@voidbot/core";
+import { z } from "zod";
 
 const ALLOWED_MODERATION_TAGS = new Set(["moderation:instaban", "moderation:strike", "moderation:case_only"]);
 
@@ -12,6 +13,12 @@ export interface VoidModerationHeartbeatContext {
   openCases: unknown[];
   urgentModerationWitnesses: unknown[];
   recentHistory: unknown;
+}
+
+export interface VoidModerationHeartbeatDecision {
+  reviewedMessageIds: string[];
+  urgentMessageIds: string[];
+  operations: VoidSelfStateOperation[];
 }
 
 export function projectVoidModerationHeartbeatContext(input: {
@@ -40,7 +47,8 @@ export function projectVoidModerationHeartbeatContext(input: {
 export function buildVoidModerationHeartbeatPrompt(context: VoidModerationHeartbeatContext): string {
   return [
     "You are Void's rules-only public-community moderation organ. This is not public speech, private rumination, or repo thought.",
-    "Return only a JSON array of complete typed Void self-state operation objects. Do not use markdown fences, commentary, tools, or file writes.",
+    "Return only one JSON object with reviewedMessageIds, urgentMessageIds, and operations. Do not use markdown fences, commentary, tools, or file writes.",
+    "reviewedMessageIds must contain every message ID in recentHistory exactly once. urgentMessageIds is the subset requiring urgent safety accounting; use [] when none are urgent.",
     "Allowed operations: upsert_open_case, close_open_case.",
     "Each new case must identify one concrete source message and contain exactly one infringement:<type> tag plus exactly one moderation:instaban, moderation:strike, or moderation:case_only tag.",
     "Choose the strongest supported infringement type; never multiply cases or sanctions for one message.",
@@ -54,13 +62,36 @@ export function buildVoidModerationHeartbeatPrompt(context: VoidModerationHeartb
 export function parseVoidModerationHeartbeatOperations(input: {
   outputText: string;
   state: VoidSelfStateTypedProjection;
-}): VoidSelfStateOperation[] {
+  observedMessageIds: string[];
+}): VoidModerationHeartbeatDecision {
   const trimmed = input.outputText.trim();
   const candidate = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1]?.trim() ?? trimmed;
   let raw: unknown;
   try { raw = JSON.parse(candidate); } catch (error) { throw new Error(`Moderation heartbeat output is not valid JSON: ${error instanceof Error ? error.message : String(error)}`); }
-  if (!Array.isArray(raw)) throw new Error("Moderation heartbeat output must be a JSON array.");
-  return raw.map((entry, index) => validateOperation(entry, index, input.state));
+  const envelope = z.object({
+    reviewedMessageIds: z.array(z.string().trim().min(1)),
+    urgentMessageIds: z.array(z.string().trim().min(1)),
+    operations: z.array(z.unknown()),
+  }).strict().parse(raw);
+  assertExactReviewLedger(input.observedMessageIds, envelope.reviewedMessageIds);
+  const observed = new Set(input.observedMessageIds);
+  if (envelope.urgentMessageIds.some((id) => !observed.has(id))) throw new Error("Moderation urgent ledger contains a message outside the observed evidence window.");
+  const operations = envelope.operations.map((entry, index) => validateOperation(entry, index, input.state));
+  const accounted = new Set([
+    ...input.state.moderationCursor.openCases.map((entry) => entry.sourceMessageId),
+    ...operations.flatMap((operation) => operation.operation === "upsert_open_case" ? [operation.case.sourceMessageId] : []),
+  ]);
+  const unaccountedUrgent = envelope.urgentMessageIds.filter((id) => !accounted.has(id));
+  if (unaccountedUrgent.length > 0) throw new Error(`Urgent moderation evidence is unaccounted for: ${unaccountedUrgent.join(", ")}.`);
+  return { reviewedMessageIds: envelope.reviewedMessageIds, urgentMessageIds: envelope.urgentMessageIds, operations };
+}
+
+function assertExactReviewLedger(observed: string[], reviewed: string[]): void {
+  const expected = [...new Set(observed)].sort();
+  const actual = [...new Set(reviewed)].sort();
+  if (reviewed.length !== actual.length || expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
+    throw new Error("Moderation review ledger must account for every observed message exactly once before cursor advancement.");
+  }
 }
 
 function validateOperation(entry: unknown, index: number, state: VoidSelfStateTypedProjection): VoidSelfStateOperation {

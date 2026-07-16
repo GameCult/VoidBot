@@ -1,11 +1,15 @@
 import "dotenv/config";
 
 import { loadConfig } from "@voidbot/config";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { runPersonaSchedulerTick } from "./persona-scheduler-runner.js";
 import { runVoidPhysiologyOrgan } from "./void-physiology-organ.js";
 import { runVoidMemoryMaintenance } from "./void-memory-maintenance-organ.js";
 import { projectVoidMemoryOperations } from "./void-memory-text-actuator.js";
+import { runVoidModerationHeartbeat } from "./void-moderation-heartbeat-organ.js";
+import { projectVoidModerationOperations } from "./void-moderation-text-actuator.js";
+import { runVoidModerationEnforcement } from "./void-moderation-enforcement-organ.js";
 
 const config = loadConfig();
 const intervalMs = Math.max(1, config.repoFaceHeartbeats.intervalMinutes) * 60_000;
@@ -13,7 +17,9 @@ let stopping = false;
 let activeTick: Promise<void> | undefined;
 let timer: NodeJS.Timeout | undefined;
 let lastPhysiologyAt = 0;
+let lastModerationAt = 0;
 const physiologyIntervalMs = Math.max(5, Number(process.env.VOIDBOT_MOOD_INTERVAL_MINUTES) || 5) * 60_000;
+const moderationIntervalMs = config.voidModerationDaemon.intervalMinutes * 60_000;
 
 function runTick(): Promise<void> {
   if (activeTick) {
@@ -41,6 +47,30 @@ function runTick(): Promise<void> {
           }
         } catch (error) {
           console.error(`Void physiology pulse failed. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        }
+      }
+      if (config.voidModerationDaemon.enabled && Date.now() - lastModerationAt >= moderationIntervalMs) {
+        lastModerationAt = Date.now();
+        try {
+          const moderation = await runVoidModerationHeartbeat({
+            statePath: resolve(config.storageRoot, "private", "void-self-state.cc"),
+            rules: await readFile(resolve("config", "discord-server-rules.md"), "utf8"),
+            enforcementMode: config.voidModerationDaemon.enforcementMode,
+          }, { projectText: (prompt) => projectVoidModerationOperations({ prompt, config }) });
+          console.log(`Void moderation-heartbeat pulse completed. ${JSON.stringify(moderation)}`);
+        } catch (error) {
+          console.error(`Void moderation-heartbeat pulse failed without automatic evidence-window retry. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        }
+        try {
+          const enforcement = await runVoidModerationEnforcement({
+            statePath: resolve(config.storageRoot, "private", "void-self-state.cc"),
+            mode: config.voidModerationDaemon.enforcementMode,
+            botToken: config.botToken,
+            guildId: config.developmentGuildId,
+          });
+          console.log(`Void moderation-enforcement pulse completed. ${JSON.stringify(enforcement)}`);
+        } catch (error) {
+          console.error(`Void moderation-enforcement pulse failed; pending cases remain typed debt for the next cadence. ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         }
       }
     })

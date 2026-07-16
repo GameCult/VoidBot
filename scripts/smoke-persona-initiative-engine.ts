@@ -86,6 +86,9 @@ import { runVoidMemoryMaintenance } from "../apps/persona-scheduler/dist/void-me
 import { projectVoidMemoryOperations } from "../apps/persona-scheduler/dist/void-memory-text-actuator.js";
 import { buildVoidModerationHeartbeatPrompt, parseVoidModerationHeartbeatOperations, projectVoidModerationHeartbeatContext } from "../apps/persona-scheduler/dist/void-moderation-heartbeat-projector.js";
 import { readVoidModerationEvidence } from "../apps/persona-scheduler/dist/void-moderation-evidence-source.js";
+import { runVoidModerationHeartbeat } from "../apps/persona-scheduler/dist/void-moderation-heartbeat-organ.js";
+import { projectVoidModerationOperations } from "../apps/persona-scheduler/dist/void-moderation-text-actuator.js";
+import { runVoidModerationEnforcement } from "../apps/persona-scheduler/dist/void-moderation-enforcement-organ.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -844,23 +847,28 @@ const moderationContext = projectVoidModerationHeartbeatContext({
 });
 assert.match(JSON.stringify(moderationContext.recentHistory), /5 minutes ago/, "moderation evidence chronology is projected without surrendering exact operation time ownership");
 assert.doesNotMatch(buildVoidModerationHeartbeatPrompt(moderationContext), /OPERATION_OUTPUT_PATH|apply-operation/, "portable moderation prompts return operations directly and cannot preserve the filesystem tool-writing contract");
-const parsedModeration = parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{
-  operation: "upsert_open_case",
-  case: {
-    sourceMessageId: "message-1", status: "pending", summary: "Concrete fixture evidence.", authorId: "human-1", authorName: "Human",
-    channelId: "room-1", whyItMatters: "The fixture crosses the safety boundary.", createdAt: physiologyObservedAt.toISOString(),
-    lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "moderation:instaban"],
-  },
-}]), state: physiologyState });
-assert.equal(parsedModeration[0]?.operation, "upsert_open_case", "moderation output parsing crosses the canonical operation schema and classification invariant");
-assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{
-  operation: "upsert_open_case",
-  case: {
-    sourceMessageId: "message-2", status: "watching", summary: "Ambiguous fixture evidence.", createdAt: physiologyObservedAt.toISOString(),
-    lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "infringement:weaponized_intimidation", "moderation:case_only"],
-  },
-}]), state: physiologyState }), /exactly one infringement/, "moderation classification cannot multiply infringement authority for one message");
-assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify([{ operation: "update_sleep_cycle", sleepCycle: physiology.sleepCycle }]), state: physiologyState }), /not allowed/, "moderation cannot annex physiology even when the operation is schema-valid");
+const parsedModeration = parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify({
+  reviewedMessageIds: ["message-1"], urgentMessageIds: ["message-1"], operations: [{
+    operation: "upsert_open_case",
+    case: {
+      sourceMessageId: "message-1", status: "pending", summary: "Concrete fixture evidence.", authorId: "human-1", authorName: "Human",
+      channelId: "room-1", whyItMatters: "The fixture crosses the safety boundary.", createdAt: physiologyObservedAt.toISOString(),
+      lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "moderation:instaban"],
+    },
+  }],
+}), state: physiologyState, observedMessageIds: ["message-1"] });
+assert.equal(parsedModeration.operations[0]?.operation, "upsert_open_case", "moderation output parsing crosses the canonical operation schema and classification invariant");
+assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify({ reviewedMessageIds: ["message-2"], urgentMessageIds: [], operations: [{
+    operation: "upsert_open_case",
+    case: {
+      sourceMessageId: "message-2", status: "watching", summary: "Ambiguous fixture evidence.", createdAt: physiologyObservedAt.toISOString(),
+      lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "infringement:weaponized_intimidation", "moderation:case_only"],
+    },
+  }],
+}), state: physiologyState, observedMessageIds: ["message-2"] }), /exactly one infringement/, "moderation classification cannot multiply infringement authority for one message");
+assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify({ reviewedMessageIds: ["message-1"], urgentMessageIds: [], operations: [{ operation: "update_sleep_cycle", sleepCycle: physiology.sleepCycle }] }), state: physiologyState, observedMessageIds: ["message-1"] }), /not allowed/, "moderation cannot annex physiology even when the operation is schema-valid");
+assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify({ reviewedMessageIds: [], urgentMessageIds: [], operations: [] }), state: physiologyState, observedMessageIds: ["message-1"] }), /every observed message/, "moderation cannot advance over an omitted message");
+assert.throws(() => parseVoidModerationHeartbeatOperations({ outputText: JSON.stringify({ reviewedMessageIds: ["message-1"], urgentMessageIds: ["message-1"], operations: [] }), state: physiologyState, observedMessageIds: ["message-1"] }), /unaccounted/, "urgent classification cannot advance without an existing or proposed case");
 let moderationExporterArgs: string[] = [];
 const moderationEvidence = await readVoidModerationEvidence({ priorCursorTimestamp: "2026-07-16T02:00:00.000Z" }, {
   run: async (_file, args) => {
@@ -870,6 +878,52 @@ const moderationEvidence = await readVoidModerationEvidence({ priorCursorTimesta
 });
 assert.deepEqual(moderationExporterArgs.slice(-4), ["--after", "2026-07-16T02:00:00.000Z", "--limit", "120"], "moderation evidence acquisition owns cursor-bounded chronological export arguments");
 assert.deepEqual(moderationEvidence.observedCursor, { lastReviewedMessageId: "message-1", lastReviewedTimestamp: "2026-07-16T02:55:00.000Z" }, "moderation evidence returns the exact parent-owned cursor witness separately from prompt chronology");
+const moderationState = createEmptyVoidSelfState({ createdAt: "2026-07-15T00:00:00.000Z" });
+const appliedModerationOperations: string[] = [];
+let moderationModelCalls = 0;
+const moderationOrganDependencies = {
+  loadState: async () => moderationState,
+  readEvidence: async () => moderationEvidence,
+  projectText: async () => {
+    moderationModelCalls += 1;
+    return JSON.stringify({ reviewedMessageIds: ["message-1"], urgentMessageIds: ["message-1"], operations: [{
+      operation: "upsert_open_case",
+      case: { sourceMessageId: "message-1", status: "pending", summary: "Concrete fixture evidence.", authorId: "human-1", createdAt: physiologyObservedAt.toISOString(), lastTouchedAt: physiologyObservedAt.toISOString(), tags: ["infringement:safety_threat", "moderation:instaban"] },
+    }] });
+  },
+  applyOperation: async (_store: unknown, operation: { operation: string; run?: { runner: string; ranAt: string; summary: string }; case?: unknown; lastReviewedMessageId?: string; lastReviewedTimestamp?: string }) => {
+    appliedModerationOperations.push(operation.operation);
+    if (operation.operation === "record_scheduled_run" && operation.run) moderationState.scheduledRuntime.lastRuns.push(operation.run);
+    if (operation.operation === "upsert_open_case" && operation.case) moderationState.moderationCursor.openCases.push(operation.case as never);
+    if (operation.operation === "record_reviewed_messages") {
+      moderationState.moderationCursor.lastReviewedMessageId = operation.lastReviewedMessageId;
+      moderationState.moderationCursor.lastReviewedTimestamp = operation.lastReviewedTimestamp;
+    }
+    return moderationState;
+  },
+};
+const moderated = await runVoidModerationHeartbeat({ statePath: "void-self-state.cc", rules: "Fixture rules", enforcementMode: "log_only", observedAt: physiologyObservedAt }, moderationOrganDependencies as never);
+assert.equal(moderated.status, "ok", "portable moderation coordinator completes one reviewed evidence window");
+assert.deepEqual(appliedModerationOperations, ["record_scheduled_run", "upsert_open_case", "record_reviewed_messages"], "moderation persists attempt and cases before the sole cursor commit");
+const repeatedModeration = await runVoidModerationHeartbeat({ statePath: "void-self-state.cc", rules: "Fixture rules", enforcementMode: "log_only", observedAt: physiologyObservedAt }, moderationOrganDependencies as never);
+assert.deepEqual(repeatedModeration, { status: "skipped", reason: "already_attempted_this_window", runnerId: "void-moderation-heartbeat-attempt:message-1" }, "the same evidence window cannot become a recurring inference loop");
+assert.equal(moderationModelCalls, 1, "moderation makes at most one model call per latest-message evidence window");
+let bannedUserId: string | undefined;
+const moderationEnforcement = await runVoidModerationEnforcement({ statePath: "void-self-state.cc", mode: "policy", botToken: "token", guildId: "guild", observedAt: physiologyObservedAt }, {
+  loadState: async () => moderationState,
+  banMember: async ({ userId }) => { bannedUserId = userId; },
+  applyOperation: async (_store, operation) => {
+    if (operation.operation === "close_open_case") {
+      const existing = moderationState.moderationCursor.openCases.find((entry) => entry.sourceMessageId === operation.sourceMessageId);
+      if (existing) Object.assign(existing, { status: operation.status, resolvedAt: operation.resolvedAt, resolutionSummary: operation.resolutionSummary });
+    }
+    return moderationState;
+  },
+});
+assert.equal(bannedUserId, "human-1", "policy enforcement lowers an instaban through the injected Discord actuator");
+assert.equal(moderationEnforcement.actions[0]?.status, "instaban_applied", "successful sanction closes the typed case with an enforcement result");
+const repeatedEnforcement = await runVoidModerationEnforcement({ statePath: "void-self-state.cc", mode: "policy", botToken: "token", guildId: "guild", observedAt: physiologyObservedAt }, { loadState: async () => moderationState });
+assert.equal(repeatedEnforcement.evaluatedCaseCount, 0, "resolved moderation debt cannot be sanctioned twice on later cadences");
 const maintainedState = structuredClone(physiologyState);
 let memoryModelCalls = 0;
 const memoryMaintenanceDependencies = {
@@ -901,6 +955,16 @@ const memoryModelOutput = await projectVoidMemoryOperations({ prompt: "Maintain 
 assert.equal(memoryModelOutput, "[]", "the portable memory actuator returns only model text to the operation parser");
 assert.equal(memoryRequestBody?.model, "memory-model", "the memory actuator uses one explicit configured model and bounded completion budget");
 assert.equal(memoryRequestBody?.tools, undefined, "memory maintenance cannot acquire filesystem or side-effect tools through the model actuator");
+let moderationRequestBody: Record<string, unknown> | undefined;
+const moderationModelOutput = await projectVoidModerationOperations({ prompt: "Review moderation evidence.", config: { openAiApi: { baseUrl: "https://model.invalid/v1", apiKey: "secret", model: "moderation-model", timeoutMs: 1000, authHeader: "Authorization", maxCompletionTokens: 512 } } as never }, {
+  fetch: async (_url, init) => {
+    moderationRequestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"reviewedMessageIds":[],"urgentMessageIds":[],"operations":[]}' } }] }), { status: 200 });
+  },
+});
+assert.match(moderationModelOutput, /reviewedMessageIds/, "the portable moderation actuator returns only model text to the decision parser");
+assert.equal(moderationRequestBody?.model, "moderation-model", "the moderation actuator uses one explicit configured model and bounded completion budget");
+assert.equal(moderationRequestBody?.tools, undefined, "moderation inference cannot acquire filesystem or side-effect tools");
 const moderationLaunchCommand = buildVoidModerationLaunchCommand({
   pendingMentionsPath: "C:/Void's state/pending.json",
   runnerScript: "C:/VoidBot/scripts/run.ps1",

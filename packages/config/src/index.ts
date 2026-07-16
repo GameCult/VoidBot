@@ -137,6 +137,9 @@ const envSchema = z.object({
   BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
   VOIDBOT_MODERATION_HEARTBEAT_ENABLED: booleanFromEnv.default(false),
+  VOID_MODERATION_DAEMON_ENABLED: booleanFromEnv.default(false),
+  VOID_MODERATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
+  VOID_MODERATION_ENFORCEMENT_MODE: z.string().trim().min(1).default("log_only"),
   REPO_FACE_HEARTBEAT_STATE_PATH: z.string().min(1).default(".voidbot/status/repo-face-heartbeats.cc"),
   REPO_FACE_HEARTBEAT_TASK_NAME: z.string().min(1).default("VoidBot Repo Face Heartbeats"),
   REPO_FACE_HEARTBEAT_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(5),
@@ -248,6 +251,7 @@ export interface AppConfig {
     pumpEnabled: boolean;
   };
   voidModerationHeartbeatEnabled: boolean;
+  voidModerationDaemon: { enabled: boolean; intervalMinutes: number; enforcementMode: string };
   repoFaceHeartbeats: {
     enabled: boolean;
     statePath: string;
@@ -538,6 +542,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       pumpEnabled: parsed.BIFROST_CULTMESH_COMMAND_PUMP_ENABLED,
     },
     voidModerationHeartbeatEnabled: parsed.VOIDBOT_MODERATION_HEARTBEAT_ENABLED,
+    voidModerationDaemon: {
+      enabled: parsed.VOID_MODERATION_DAEMON_ENABLED,
+      intervalMinutes: parsed.VOID_MODERATION_DAEMON_INTERVAL_MINUTES,
+      enforcementMode: parsed.VOID_MODERATION_ENFORCEMENT_MODE,
+    },
     repoFaceHeartbeats: {
       enabled: parsed.REPO_FACE_HEARTBEATS_ENABLED,
       statePath: canonicalSchedulerStatePath(resolve(parsed.REPO_FACE_HEARTBEAT_STATE_PATH)),
