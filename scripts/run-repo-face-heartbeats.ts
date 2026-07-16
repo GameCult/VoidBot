@@ -62,7 +62,7 @@ import {
   readPersonaMemoryRecall,
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { projectPersonaMemorySurface, renderPersonaTypedStateSections, validatePersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import {
   readDiscordActivitySnapshot,
   type IdleCoolingSnapshot,
@@ -1121,32 +1121,12 @@ function renderRepoFaceStatePacket(
 ): string {
   const name = identity.displayName;
   const lines: string[] = [];
-  const profile = state.selfProfile;
-  const privateNotes = profile.privateNotes;
-  const values = [...profile.values]
-    .sort((left, right) => right.priority - left.priority);
   const needs = [...state.faceAffect.needs]
     .filter((need) => need.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
-  const bonds = [...state.faceAffect.socialBonds]
-    .filter((bond) => bond.status !== "retired")
-    .sort(sortAffectByStatusAndIntensity);
-  const statusReads = [...state.faceAffect.statusReads]
-    .filter((read) => !read.retiredAt)
-    .sort(sortAffectByStatusAndIntensity);
-  const moodDimensions = [...state.faceAffect.moodDimensions]
-    .sort((left, right) => right.value - left.value);
   const agencyPressures = [...state.agencyPressure.pressures]
     .filter((pressure) => pressure.status !== "retired")
     .sort(sortAffectByStatusAndIntensity);
-  const durableMemories = [...state.thoughtMemory.memories]
-    .filter((memory) => !memory.retiredAt)
-    .slice(-12)
-    .reverse();
-  const shortTermResidue = [...state.thoughtMemory.shortTerm]
-    .filter((memory) => !memory.retiredAt)
-    .slice(-12)
-    .reverse();
   const incubation = [...state.thoughtMemory.incubation]
     .filter((thread) => thread.status !== "retired")
     .sort((left, right) => right.maturation - left.maturation);
@@ -1157,109 +1137,20 @@ function renderRepoFaceStatePacket(
   const recentReceipts = [...state.speechReceipts.recentReceipts]
     .slice(-6)
     .reverse();
-  const activationFacts = renderRepoFaceActivationProfileFacts(profile.activationProfile);
-  const runtimeFacts = renderRepoFaceRuntimePressureFacts(name, state);
+  const typedSections = renderPersonaTypedStateSections({ identityName: name, state });
   const humanClarityFacts = roomContext
     ? renderRepoFaceHumanClarityPressureFacts(identity, roomContext)
     : undefined;
   const clarityPressureActive = Boolean(humanClarityFacts);
 
-  const selfTexture = [
-    ...privateNotes.map(projectPrivateNoteForMemorySurface),
-    ...values.map((value) => value.summary || value.label),
-  ]
-    .map(cleanCharacterFacingSentence)
-    .filter((entry) => entry.length > 0)
-    .slice(0, 18);
-  if (selfTexture.length > 0) {
-    lines.push(`Right now, ${name} is carrying this close to the skin: ${joinAsNarrativeList(selfTexture)}.`);
-  }
-
-  if (activationFacts) {
-    lines.push(activationFacts);
-  }
-
-  if (runtimeFacts) {
-    lines.push(runtimeFacts);
-  }
-
-  if (needs.length > 0) {
-    lines.push([
-      `${name}'s explicit needs and frictions:`,
-      ...needs.map((need) => {
-        const target = targetLabel(need.target);
-        const claimOrQuestion = need.claim
-          ? `Claim: ${asSentence(need.claim)}`
-          : need.question
-            ? `Question: ${asSentence(need.question)}`
-            : "";
-        return [
-          `- ${need.kind} need toward ${target} [${need.status}, intensity ${need.intensity.toFixed(2)}, valence ${need.valence.toFixed(2)}]: ${asSentence(need.summary)}`,
-          claimOrQuestion,
-          `Tension: ${asSentence(need.tension)}`,
-          `Behavioral pull: ${asSentence(need.actionImplication)}`,
-        ].filter(Boolean).join(" ");
-      }),
-    ].join("\n"));
-  }
-
-  if (bonds.length > 0) {
-    lines.push([
-      "The social map has teeth:",
-      ...bonds.map((bond) => {
-        const target = targetLabel(bond.target);
-        return [
-          `- ${target} draws ${bond.stance} [${bond.status}, intensity ${bond.intensity.toFixed(2)}]: ${asSentence(bond.summary)}`,
-          `Read: ${asSentence(bond.claim)}`,
-          `Tension: ${asSentence(bond.tension)}`,
-          `Behavioral pull: ${asSentence(bond.actionImplication)}`,
-        ].join(" ");
-      }),
-    ].join("\n"));
-  }
+  lines.push(...typedSections.opening, ...typedSections.needs, ...typedSections.bonds);
 
   const relationshipFreshnessFacts = renderRepoFaceRelationshipFreshnessFacts(name, state, registryIdentities);
   if (relationshipFreshnessFacts) {
     lines.push(relationshipFreshnessFacts);
   }
 
-  if (statusReads.length > 0) {
-    lines.push([
-      "Status in the swarm is part of the weather:",
-      ...statusReads.map((read) => {
-        const target = targetLabel(read.target);
-        return [
-          `- Around ${target}, ${name} feels ${read.status} [intensity ${read.intensity.toFixed(2)}]: ${asSentence(read.summary)}`,
-          `Read: ${asSentence(read.claim)}`,
-          `Tension: ${asSentence(read.tension)}`,
-          `Behavioral pull: ${asSentence(read.actionImplication)}`,
-        ].join(" ");
-      }),
-    ].join("\n"));
-  }
-
-  if (moodDimensions.length > 0) {
-    lines.push([
-      "Mood dimensions currently bending the turn:",
-      ...moodDimensions.map((dimension) =>
-        `- ${dimension.name}=${dimension.value.toFixed(2)}${dimension.source ? ` from ${cleanCharacterFacingSentence(dimension.source)}` : ""}`,
-      ),
-    ].join("\n"));
-  }
-
-  if (durableMemories.length > 0) {
-    lines.push([
-      "Durable memories that should still bias judgment:",
-      ...durableMemories.map((memory) => renderRepoFaceMemoryFact(name, memory)),
-    ].join("\n"));
-  }
-
-  if (shortTermResidue.length > 0) {
-    lines.push([
-      "Short-term residue waiting to settle:",
-      ...shortTermResidue.map((memory) => renderRepoFaceMemoryFact(name, memory)),
-    ].join("\n"));
-  }
+  lines.push(...typedSections.statusMoodMemory);
 
   const socialGraphFacts = renderRepoFaceSocialGraphFacts(identity, registryIdentities, state);
   if (socialGraphFacts) {
@@ -1382,7 +1273,7 @@ function renderRepoFaceStatePacket(
     return `You are ${name}, but your durable state is thin. Use the room, repo, and your jurisdiction to form a real opinion before speaking.`;
   }
 
-  return rejectLeakyMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
+  return validatePersonaMemorySurface(cleanRepoFaceProjectorLoopVocabulary(identity, lines.join("\n\n")));
 }
 
 function renderRepoFaceSelfMaintenancePressureFacts(
@@ -1609,83 +1500,6 @@ function targetLabel(target: { label?: string; id?: string; kind?: string } | un
     return "an unnamed target";
   }
   return target.label ?? target.id ?? target.kind ?? "an unnamed target";
-}
-
-function renderRepoFaceActivationProfileFacts(
-  activationProfile: VoidSelfStateTypedProjection["selfProfile"]["activationProfile"],
-): string | undefined {
-  const sections = Object.entries(activationProfile)
-    .map(([section, values]) => {
-      const entries = Object.entries(values)
-        .sort(([, left], [, right]) => activationVectorWeight(right) - activationVectorWeight(left))
-        .map(([key, value]) => `${key}=${activationVectorWeight(value).toFixed(2)}${activationVectorNote(value) ? ` (${cleanCharacterFacingSentence(activationVectorNote(value) ?? "")})` : ""}`);
-      return entries.length > 0 ? `- ${section}: ${entries.join("; ")}` : undefined;
-    })
-    .filter((entry): entry is string => typeof entry === "string");
-
-  return sections.length > 0
-    ? ["Activation profile that should color behavior:", ...sections].join("\n")
-    : undefined;
-}
-
-function activationVectorWeight(value: unknown): number {
-  if (!isRecord(value)) {
-    return 0;
-  }
-  const candidates = [value.weight, value.current_activation, value.currentActivation, value.mean];
-  const numeric = candidates.find((candidate) => typeof candidate === "number" && Number.isFinite(candidate));
-  return typeof numeric === "number" ? numeric : 0;
-}
-
-function activationVectorNote(value: unknown): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  return typeof value.note === "string" ? value.note : undefined;
-}
-
-function renderRepoFaceRuntimePressureFacts(
-  name: string,
-  state: VoidSelfStateTypedProjection,
-): string | undefined {
-  const lines: string[] = [];
-  const sleep = state.scheduledRuntime.sleepCycle;
-  if (sleep.isNapping || sleep.activeDreamThemes.length > 0) {
-    lines.push(
-      `${name}'s rest state: ${sleep.isNapping ? "currently in a sleep/low-output phase" : "awake but carrying dream residue"}${sleep.activeDreamThemes.length > 0 ? ` around ${joinAsNarrativeList(sleep.activeDreamThemes.map(cleanCharacterFacingSentence))}` : ""}.`,
-    );
-  }
-
-  const speaking = state.scheduledRuntime.speakingPressure;
-  const speakingParts = [
-    `need to speak ${speaking.needToSpeak.toFixed(2)}`,
-    typeof speaking.confessionPressure === "number" ? `confession ${speaking.confessionPressure.toFixed(2)}` : "",
-    typeof speaking.noveltyPressure === "number" ? `novelty ${speaking.noveltyPressure.toFixed(2)}` : "",
-    typeof speaking.recentSpeechDamping === "number" ? `recent-speech damping ${speaking.recentSpeechDamping.toFixed(2)}` : "",
-  ].filter(Boolean);
-  lines.push(`Speaking pressure: ${speakingParts.join(", ")}. Treat this as appetite/restraint, not an order.`);
-
-  if (state.scheduledRuntime.lastRuns.length > 0) {
-    lines.push(`Recent internal passes: ${state.scheduledRuntime.lastRuns.slice(-4).map((run) =>
-      cleanCharacterFacingSentence(run.summary),
-    ).join(" | ")}`);
-  }
-
-  return lines.length > 0 ? lines.join("\n") : undefined;
-}
-
-function renderRepoFaceMemoryFact(
-  name: string,
-  memory: VoidSelfStateTypedProjection["thoughtMemory"]["memories"][number],
-): string {
-  const parts = [
-    `- ${memory.kind} about ${targetLabel(memory.target)}: ${asSentence(memory.summary)}`,
-    memory.claim ? `Claim: ${asSentence(memory.claim)}` : "",
-    memory.question ? `Question: ${asSentence(memory.question)}` : "",
-    memory.tension ? `Tension: ${asSentence(memory.tension)}` : "",
-    memory.actionImplication ? `Behavioral pull for ${name}: ${asSentence(memory.actionImplication)}` : "",
-  ];
-  return parts.filter(Boolean).join(" ");
 }
 
 function renderRepoFaceRoomTextureFacts(
@@ -2896,14 +2710,6 @@ function cleanSocialTargetLabel(value: string | undefined): string {
 
 function normalizeSocialLabel(value: string | undefined): string {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function projectPrivateNoteForMemorySurface(note: string): string {
-  return note
-    .replace(/\bdo not prompt (?:her|him|them|it|[A-Z][A-Za-z0-9_-]*) as\b/gi, "she refuses to be treated as")
-    .replace(/\bdo not prompt\b/gi, "do not treat")
-    .replace(/\bprompt (?:her|him|them|it)\b/gi, "treat them")
-    .replace(/\bprompt [A-Z][A-Za-z0-9_-]*\b/g, "treat them");
 }
 
 function cleanCharacterFacingSentence(value: string | undefined): string {

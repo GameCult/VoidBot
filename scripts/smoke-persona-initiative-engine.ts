@@ -65,7 +65,7 @@ import {
 import { readRepoActivity } from "../apps/persona-scheduler/dist/repo-activity-source.js";
 import { readPersonaStateObservation } from "../apps/persona-scheduler/dist/persona-state-source.js";
 import { readPersonaMemoryRecall } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { projectPersonaMemorySurface, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 
 function participant(identityId: string, nextTurnAt: number): InitiativeParticipant {
   return {
@@ -479,6 +479,10 @@ try {
   });
   assert.equal(populatedObservation.status, "ok", "the source acquires typed mind and physiology facts from an existing CultCache surface");
   assert.equal(populatedObservation.status === "ok" && populatedObservation.rest?.isNapping, false, "rest projection is deterministic at the supplied observation time");
+  const typedSections = populatedObservation.status === "ok"
+    ? renderPersonaTypedStateSections({ identityName: "Nibu", state: populatedObservation.typedState })
+    : undefined;
+  assert.match(typedSections?.opening.join("\n") ?? "", /Speaking pressure:/, "the projector owns typed runtime-pressure presentation without acquiring Persona state");
   assert.deepEqual(await readFile(statePath), beforeObservation, "Persona state observation cannot rewrite sleep, speaking pressure, or any other Mind field");
 } finally {
   await rm(stateSourceDirectory, { recursive: true, force: true });
