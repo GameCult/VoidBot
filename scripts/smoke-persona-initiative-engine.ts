@@ -77,6 +77,7 @@ import { assemblePersonaTurn } from "../apps/persona-scheduler/dist/persona-turn
 import { buildVoidModerationLaunchCommand, launchVoidModerationTurn, waitForVoidModerationHandshake } from "../apps/persona-scheduler/dist/void-moderation-turn-actuator.js";
 import { readGlobalAgentDoctrine } from "../apps/persona-scheduler/dist/global-agent-doctrine-source.js";
 import { buildInspectionParticipant } from "../apps/persona-scheduler/dist/inspection-participant-factory.js";
+import { runPersonaSchedulerTick } from "../apps/persona-scheduler/dist/persona-scheduler-runner.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -848,6 +849,14 @@ try {
   assert.deepEqual(await readAgentSwarmPause({ path: pausePath }), { paused: false, path: pausePath, reason: "operator resumed" }, "the pause source returns operator facts without touching scheduler state");
   assert.deepEqual(await readSwarmControlState({ loadControl: () => ({ globalHeat: 1.75 }) }), { globalHeat: 1.75 }, "typed CultMesh heat is projected through the control source");
   assert.equal(await readSwarmControlState({ loadControl: () => ({ globalHeat: 4 }) }), null, "out-of-contract heat fails closed before the engine sees it");
+  let pausedRunnerWrite = false;
+  const pausedRunnerResult = await runPersonaSchedulerTick({ config: { repoFaceHeartbeats: { statePath: "paused.cc" } } as never, dryRun: true, now: new Date("2026-07-15T21:00:00.000Z") }, {
+    readPause: async () => ({ paused: true, path: "pause.json", reason: "operator brake" }),
+    readState: async () => newPersonaSchedulerState(),
+    writeState: async () => { pausedRunnerWrite = true; },
+  });
+  assert.equal(pausedRunnerResult.reason, "agent_swarm_paused", "the in-process runner owns the pause-before-expensive-work short circuit");
+  assert.equal(pausedRunnerWrite, false, "a dry-run paused pulse cannot persist scheduler state");
 } finally {
   await rm(controlDirectory, { recursive: true, force: true });
 }

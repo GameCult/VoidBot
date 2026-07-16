@@ -383,7 +383,7 @@ export function recordStaleActiveTurnRecoveries(input: {
     jobId: string;
     requestMessageId?: string;
     state: string;
-    updatedAt: string;
+    updatedAt?: string;
     ageMinutes: number;
   }>;
 }): void {
