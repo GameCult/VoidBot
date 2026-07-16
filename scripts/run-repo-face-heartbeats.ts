@@ -56,13 +56,14 @@ import {
   readPersonaMemoryRecall,
   type PersonaMemoryRecallObservation,
 } from "../apps/persona-scheduler/dist/persona-memory-context-source.js";
-import { composePersonaMemoryPacket, projectPersonaMemorySurface, renderPersonaPressureSections, renderPersonaTypedStateSections } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
+import { projectPersonaMemorySurface } from "../apps/persona-scheduler/dist/persona-memory-projector.js";
 import { readPersonaCuriosityEvidence } from "../apps/persona-scheduler/dist/persona-curiosity-context-source.js";
 import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/persona-curiosity-projector.js";
-import { projectPersonaConversation, renderPersonaTopicAttractor } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
+import { projectPersonaConversation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt, renderPersonaIdentityDoctrine } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { projectGamecultPersonaState, projectNativePersonaBody } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
-import { projectPersonaSocialContext, type PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import type { PersonaHumanPronounGuidance as RepoFaceHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
+import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 import {
   readDiscordActivitySnapshot,
@@ -802,14 +803,15 @@ async function renderRepoFaceMemorySurfaceForTurn(
   const curiosityGraphFacts = roomContext && identity.identityKind !== "native_persona"
     ? await renderRepoFaceCuriosityGraphFacts(identity, config, typedState, roomContext)
     : undefined;
-  const statePacket = renderRepoFaceStatePacket(
+  const statePacket = projectPersonaStatePacket({
     identity,
-    typedState,
+    state: typedState,
     registryIdentities,
     roomContext,
-    humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
+    humanPronounGuidance: humanPronounGuidance ?? await loadRepoFaceHumanPronounGuidance(config, roomContext),
     curiosityGraphFacts,
-  );
+    observedAt: new Date(),
+  });
   if (!config.repoFaceHeartbeats.stateProjectorEnabled) {
     return projectPersonaMemorySurface({
       identityId: identity.id,
@@ -858,86 +860,6 @@ function renderPersonaMemoryRecallObservation(observation: PersonaMemoryRecallOb
   ].join("\n");
 }
 
-function renderRepoFaceStatePacket(
-  identity: RepoDiscordIdentity,
-  state: VoidSelfStateTypedProjection,
-  registryIdentities: RepoDiscordIdentity[] = [],
-  roomContext?: {
-    recentMessages: SourceMessage[];
-    channelSnapshots: ChannelSnapshot[];
-  },
-  humanPronounGuidance: RepoFaceHumanPronounGuidance[] = [],
-  curiosityGraphFacts?: string,
-): string {
-  const name = identity.displayName;
-  const typedSections = renderPersonaTypedStateSections({ identityName: name, state });
-  const socialContext = projectPersonaSocialContext({
-    identity,
-    registryIdentities,
-    state,
-    recentMessages: roomContext?.recentMessages ?? [],
-    channelSnapshots: roomContext?.channelSnapshots ?? [],
-    pronounGuidance: humanPronounGuidance,
-    observedAt: new Date(),
-    topicAttractorFacts: roomContext ? renderPersonaTopicAttractor(identity, roomContext.recentMessages) : undefined,
-  });
-  const clarityPressureActive = Boolean(socialContext.humanClarity);
-
-  return composePersonaMemoryPacket({
-    identityName: name,
-    typed: typedSections,
-    relationshipFreshness: socialContext.relationshipFreshness,
-    socialGraph: socialContext.socialGraph,
-    peerOpening: socialContext.peerOpening,
-    socialPressure: socialContext.socialPressure,
-    pronouns: socialContext.pronouns,
-    roomTexture: socialContext.roomTexture,
-    curiosity: curiosityGraphFacts,
-    pressureSections: renderPersonaPressureSections({ identityName: name, state, clarityPressureActive }),
-    humanClarity: socialContext.humanClarity,
-    transformSurface: (surface) => cleanRepoFaceProjectorLoopVocabulary(identity, surface),
-  });
-}
-
-function cleanRepoFaceProjectorLoopVocabulary(
-  identity: RepoDiscordIdentity,
-  surface: string,
-): string {
-  let cleaned = surface
-    .replace(/\bLocalCastBridge\b/g, "the retired bridge alias")
-    .replace(/\bwet-voice-01\b/g, "the old voice-demo artifact")
-    .replace(/\bwet-voice\b/g, "old voice-demo")
-    .replace(/\bcanary-style\b/gi, "small-scope")
-    .replace(/\bnamed canary\b/gi, "named small-scope check")
-    .replace(/\bcanary utterance\b/gi, "small-scope utterance")
-    .replace(/\bcanary demo\b/gi, "small-scope demo")
-    .replace(/\bcanary\b/gi, "small-scope check")
-    .replace(/\bwitness receipts?\b/gi, "reviewable evidence")
-    .replace(/\bwitness data\b/gi, "proof data")
-    .replace(/\bwitness-first\b/gi, "evidence-first")
-    .replace(/\bwitness demo\b/gi, "proof demo")
-    .replace(/\bwitness artifact\b/gi, "evidence artifact")
-    .replace(/\bwitness culture\b/gi, "proof ceremony")
-    .replace(/\bwitness ceremon(?:y|ies)\b/gi, "proof ceremony");
-
-  if (identity.id !== "nibu") {
-    cleaned = cleaned
-      .replace(/\bwitnessability\b/gi, "inspectability")
-      .replace(/\bwitnesses\b/gi, "evidence points")
-      .replace(/\bwitnessing\b/gi, "inspection")
-      .replace(/\bwitnessed\b/gi, "measured")
-      .replace(/\bwitness\b/gi, "evidence");
-  }
-
-  return cleaned;
-}
-
-function targetLabel(target: { label?: string; id?: string; kind?: string } | undefined): string {
-  if (!target) {
-    return "an unnamed target";
-  }
-  return target.label ?? target.id ?? target.kind ?? "an unnamed target";
-}
 
 async function renderRepoFaceCuriosityGraphFacts(
   identity: RepoDiscordIdentity,
@@ -1019,35 +941,6 @@ async function loadRepoFaceHumanPronounGuidance(
       return { getProfile: (actorId) => storage.interactionMemory.getProfile(actorId), close: () => storage.close() };
     },
   });
-}
-
-function normalizeSocialLabel(value: string | undefined): string {
-  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function cleanCharacterFacingSentence(value: string | undefined): string {
-  const cleaned = (value ?? "")
-    .replace(/\s*\|\s*/g, " ")
-    .replace(/\bFace of\s+[A-Za-z0-9_-]+\b/gi, "")
-    .replace(/\bgrants:\s*[^.]+/gi, "")
-    .replace(/\bjurisdictions:\s*[^.]+/gi, "")
-    .replace(/\brepo=[^\s]+/gi, "")
-    .replace(/\bpath=[^\s]+/gi, "")
-    .replace(/\bvoid\.face_[A-Za-z0-9_.-]+/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-  return cleaned.replace(/[.;:,]+$/g, "");
-}
-
-function joinAsNarrativeList(items: string[]): string {
-  if (items.length <= 1) {
-    return items[0] ?? "";
-  }
-  if (items.length === 2) {
-    return `${items[0]}, and ${items[1]}`;
-  }
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
 function renderRepoActivityObservation(observation: RepoActivityObservation): string {

@@ -71,6 +71,7 @@ import { projectPersonaCuriosityContext } from "../apps/persona-scheduler/dist/p
 import { projectPersonaConversation, renderPersonaRoomTopicSaturation } from "../apps/persona-scheduler/dist/persona-conversation-projector.js";
 import { buildPersonaJurisdictionDiveDirective, buildPersonaTurnPrompt } from "../apps/persona-scheduler/dist/persona-turn-prompt-projector.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
+import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { observePersonaRoomTexture, projectPersonaSocialContext, renderPersonaHumanClarityPressure, renderPersonaHumanPronounFacts, renderPersonaRoomWeather, renderPersonaSocialGraph } from "../apps/persona-scheduler/dist/persona-social-context-projector.js";
 import { readPersonaHumanPronounGuidance } from "../apps/persona-scheduler/dist/persona-social-context-source.js";
 
@@ -624,6 +625,13 @@ try {
     pressureSections,
   });
   assert.match(composedMemory ?? "", /Explicit social graph fact\.[\s\S]*Explicit room texture fact\./, "the projector owns final ordering of explicitly supplied external facts");
+  const statePacket = populatedObservation.status === "ok" ? projectPersonaStatePacket({
+    identity: routedIdentity,
+    state: populatedObservation.typedState,
+    curiosityGraphFacts: "A witness artifact remains literal source evidence.",
+    observedAt: new Date("2026-07-15T21:00:00.000Z"),
+  }) : "";
+  assert.match(statePacket, /A witness artifact remains literal source evidence\./, "state packet projection does not rewrite natural language through a downstream vocabulary cop");
   assert.deepEqual(await readFile(statePath), beforeObservation, "Persona state observation cannot rewrite sleep, speaking pressure, or any other Mind field");
   const portableProjection = projectGamecultPersonaState({ ...routedIdentity, id: "muninn", displayName: "Muninn", identityKind: "native_persona" }, { schemaVersion: "gamecult.persona_state.v0", publicDescription: "Muninn remembers provenance.", privateNotes: ["Name missing evidence."], values: [{ label: "Source time", summary: "Keep observation time distinct." }], thoughtMemory: { shortTerm: [{ summary: "The last frame was stale." }] } });
   assert.match(portableProjection, /Persona state authority is unreported; treat it as a non-canonical projection[\s\S]*Source time: Keep observation time distinct/, "the portable projector renders bounded state without inventing canonical authority");
