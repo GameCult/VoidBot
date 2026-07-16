@@ -1,5 +1,6 @@
 import { voidSelfStateOperationSchema, type VoidSelfStateOperation, type VoidSelfStateTypedProjection } from "@voidbot/core";
 import { z } from "zod";
+import { projectRelativeChronology } from "./relative-chronology-projector.js";
 
 const ALLOWED_MODERATION_TAGS = new Set(["moderation:instaban", "moderation:strike", "moderation:case_only"]);
 
@@ -30,7 +31,7 @@ export function projectVoidModerationHeartbeatContext(input: {
   enforcementMode: string;
   rules: string;
 }): VoidModerationHeartbeatContext {
-  const relative = <T>(value: T): T => projectRelativeChronology(value, input.observedAt) as T;
+  const relative = <T>(value: T): T => projectRelativeChronology(value, input.observedAt);
   return {
     mode: "moderation_heartbeat",
     operationTimestamp: input.observedAt.toISOString(),
@@ -111,23 +112,4 @@ function validateOperation(entry: unknown, index: number, state: VoidSelfStateTy
   if (infringementTags.length !== 1) throw new Error("Moderation heartbeat open cases must include exactly one infringement:<type> tag.");
   if (moderationTags.length !== 1) throw new Error("Moderation heartbeat open cases must include exactly one moderation classification tag.");
   return operation;
-}
-
-function projectRelativeChronology(value: unknown, observedAt: Date, key = ""): unknown {
-  if (Array.isArray(value)) return value.map((entry) => projectRelativeChronology(entry, observedAt));
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([entryKey, entry]) => [entryKey, projectRelativeChronology(entry, observedAt, entryKey)]));
-  if (typeof value === "string" && /(?:at|timestamp)$/i.test(key) && Number.isFinite(Date.parse(value))) return relativeTime(value, observedAt);
-  return value;
-}
-
-function relativeTime(value: string, observedAt: Date): string {
-  const difference = observedAt.getTime() - Date.parse(value);
-  const future = difference < 0;
-  const minutes = Math.max(0, Math.round(Math.abs(difference) / 60_000));
-  const phrase = (amount: number, unit: string) => future ? `in ${amount} ${unit}${amount === 1 ? "" : "s"}` : `${amount} ${unit}${amount === 1 ? "" : "s"} ago`;
-  if (minutes < 60) return phrase(minutes, "minute");
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return phrase(hours, "hour");
-  const days = Math.round(hours / 24);
-  return phrase(days, "day");
 }

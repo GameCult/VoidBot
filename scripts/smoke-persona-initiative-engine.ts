@@ -89,6 +89,9 @@ import { readVoidModerationEvidence } from "../apps/persona-scheduler/dist/void-
 import { runVoidModerationHeartbeat } from "../apps/persona-scheduler/dist/void-moderation-heartbeat-organ.js";
 import { projectVoidModerationOperations } from "../apps/persona-scheduler/dist/void-moderation-text-actuator.js";
 import { runVoidModerationEnforcement } from "../apps/persona-scheduler/dist/void-moderation-enforcement-organ.js";
+import { buildVoidRuminationPrompt, parseVoidRuminationOperations, projectVoidRuminationContext } from "../apps/persona-scheduler/dist/void-rumination-projector.js";
+import { runVoidRumination } from "../apps/persona-scheduler/dist/void-rumination-organ.js";
+import { projectVoidRuminationOperations } from "../apps/persona-scheduler/dist/void-rumination-text-actuator.js";
 import { projectGamecultPersonaState } from "../apps/persona-scheduler/dist/persona-standard-state-projector.js";
 import { projectPersonaStatePacket } from "../apps/persona-scheduler/dist/persona-state-packet-projector.js";
 import { extractLastPersonaProjectionMessage, isRetryablePersonaProjectionFailure } from "../apps/persona-scheduler/dist/persona-text-projection-actuator.js";
@@ -924,6 +927,51 @@ assert.equal(bannedUserId, "human-1", "policy enforcement lowers an instaban thr
 assert.equal(moderationEnforcement.actions[0]?.status, "instaban_applied", "successful sanction closes the typed case with an enforcement result");
 const repeatedEnforcement = await runVoidModerationEnforcement({ statePath: "void-self-state.cc", mode: "policy", botToken: "token", guildId: "guild", observedAt: physiologyObservedAt }, { loadState: async () => moderationState });
 assert.equal(repeatedEnforcement.evaluatedCaseCount, 0, "resolved moderation debt cannot be sanctioned twice on later cadences");
+const ruminationState = createEmptyVoidSelfState({ createdAt: "2026-07-15T00:00:00.000Z" });
+ruminationState.scheduledRuntime.sleepCycle.isNapping = false;
+ruminationState.agencyPressure.pressures.push({
+  pressureId: "pressure-1", kind: "world_advocacy_request", status: "active", target: { kind: "room", id: "aquarium" },
+  summary: "A direct room claim deserves an answer.", claim: "The reply belongs in its source room.", tension: "Silence would leave the claim unanswered.",
+  actionImplication: "Queue a source-anchored reply.", intensity: 0.8, anchorRefs: [{ ref: "discord:message-1" }], evidenceRefs: [], sourceMemoryIds: [],
+  createdAt: physiologyObservedAt.toISOString(), updatedAt: physiologyObservedAt.toISOString(), tags: [],
+} as never);
+const ruminationContext = projectVoidRuminationContext({ state: ruminationState, observedAt: physiologyObservedAt, pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." });
+const laterRuminationContext = projectVoidRuminationContext({ state: ruminationState, observedAt: new Date("2026-07-16T04:00:00.000Z"), pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." });
+assert.equal(ruminationContext.pressureFingerprint, laterRuminationContext.pressureFingerprint, "wall-clock projection cannot manufacture a fresh rumination intent");
+assert.match(buildVoidRuminationPrompt(ruminationContext), /source_pressure:<id>/, "rumination prompt projects explicit speech-pressure accountability");
+assert.throws(() => parseVoidRuminationOperations({ outputText: "[]", state: ruminationState }), /requires a candidate/, "strong advocacy pressure cannot be silently acknowledged");
+assert.throws(() => parseVoidRuminationOperations({ outputText: JSON.stringify([{ operation: "propose_memory_distillation", proposal: {} }]), state: ruminationState }), /invalid|not allowed/i, "awake rumination cannot annex sleep-owned durable-memory policy");
+const ruminationCandidate = {
+  operation: "queue_candidate_intervention", intervention: {
+    interventionId: "candidate-1", kind: "world_advocacy", status: "queued", target: { kind: "room", id: "room-1" },
+    summary: "Answer the source-room claim.", draft: "This answer stays with the conversation that made it necessary.",
+    deliveryTarget: { channelId: "room-1", replyToMessageId: "message-1" }, priority: 0.8, mustEventuallyShare: true,
+    createdAt: physiologyObservedAt.toISOString(), updatedAt: physiologyObservedAt.toISOString(), tags: ["source_pressure:pressure-1"],
+  },
+};
+const parsedRumination = parseVoidRuminationOperations({ outputText: JSON.stringify([ruminationCandidate]), state: ruminationState });
+assert.equal(parsedRumination[0]?.operation, "queue_candidate_intervention", "person-shaped rumination crosses the typed operation boundary without delivering speech");
+let ruminationModelCalls = 0;
+const ruminationDependencies = {
+  loadState: async () => ruminationState,
+  projectText: async () => { ruminationModelCalls += 1; return ruminationModelCalls === 1 ? JSON.stringify([ruminationCandidate]) : "[]"; },
+  applyOperation: async (_store: unknown, operation: { operation: string; run?: { runner: string; ranAt: string; summary: string }; intervention?: unknown }) => {
+    if (operation.operation === "record_scheduled_run" && operation.run) ruminationState.scheduledRuntime.lastRuns.push(operation.run);
+    if (operation.operation === "queue_candidate_intervention" && operation.intervention) {
+      const index = ruminationState.candidateInterventions.interventions.findIndex((entry) => entry.interventionId === (operation.intervention as { interventionId: string }).interventionId);
+      if (index >= 0) ruminationState.candidateInterventions.interventions[index] = operation.intervention as never;
+      else ruminationState.candidateInterventions.interventions.push(operation.intervention as never);
+    }
+    return ruminationState;
+  },
+};
+const ruminated = await runVoidRumination({ statePath: "void-self-state.cc", observedAt: physiologyObservedAt, pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." }, ruminationDependencies as never);
+assert.equal(ruminated.status, "ok", "the rumination coordinator applies one bounded pressure pass");
+const repeatedRumination = await runVoidRumination({ statePath: "void-self-state.cc", observedAt: new Date("2026-07-16T04:00:00.000Z"), pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." }, ruminationDependencies as never);
+assert.equal(repeatedRumination.status, "ok", "a meaning-bearing state change may authorize the next rumination pressure fingerprint");
+const settledRumination = await runVoidRumination({ statePath: "void-self-state.cc", observedAt: new Date("2026-07-16T05:00:00.000Z"), pendingMentions: [{ messageId: "message-1", channelId: "room-1" }], recentHistory: { messages: [{ id: "message-1", timestamp: "2026-07-16T02:55:00.000Z" }] }, doctrine: "Participate honestly.", rules: "Fixture rules.", voice: "Dry and direct." }, ruminationDependencies as never);
+assert.equal(settledRumination.status, "skipped", "an unchanged settled pressure cannot become a timer-driven inference loop");
+assert.equal(ruminationModelCalls, 2, "rumination cadence follows changed pressure rather than elapsed clock");
 const maintainedState = structuredClone(physiologyState);
 let memoryModelCalls = 0;
 const memoryMaintenanceDependencies = {
@@ -955,6 +1003,16 @@ const memoryModelOutput = await projectVoidMemoryOperations({ prompt: "Maintain 
 assert.equal(memoryModelOutput, "[]", "the portable memory actuator returns only model text to the operation parser");
 assert.equal(memoryRequestBody?.model, "memory-model", "the memory actuator uses one explicit configured model and bounded completion budget");
 assert.equal(memoryRequestBody?.tools, undefined, "memory maintenance cannot acquire filesystem or side-effect tools through the model actuator");
+let ruminationRequestBody: Record<string, unknown> | undefined;
+const ruminationModelOutput = await projectVoidRuminationOperations({ prompt: "Ruminate from typed pressure.", config: { openAiApi: { baseUrl: "https://model.invalid/v1", apiKey: "secret", model: "rumination-model", timeoutMs: 1000, authHeader: "Authorization", maxCompletionTokens: 512 } } as never }, {
+  fetch: async (_url, init) => {
+    ruminationRequestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "[]" } }] }), { status: 200 });
+  },
+});
+assert.equal(ruminationModelOutput, "[]", "the rumination actuator returns only model text to the typed parser");
+assert.equal(ruminationRequestBody?.model, "rumination-model", "rumination uses one bounded configured text model");
+assert.equal(ruminationRequestBody?.tools, undefined, "person-shaped rumination cannot acquire transport or filesystem tools");
 let moderationRequestBody: Record<string, unknown> | undefined;
 const moderationModelOutput = await projectVoidModerationOperations({ prompt: "Review moderation evidence.", config: { openAiApi: { baseUrl: "https://model.invalid/v1", apiKey: "secret", model: "moderation-model", timeoutMs: 1000, authHeader: "Authorization", maxCompletionTokens: 512 } } as never }, {
   fetch: async (_url, init) => {

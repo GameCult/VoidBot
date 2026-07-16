@@ -1,4 +1,5 @@
 import { voidSelfStateOperationSchema, type VoidSelfStateOperation, type VoidSelfStateTypedProjection } from "@voidbot/core";
+import { projectRelativeChronology } from "./relative-chronology-projector.js";
 
 const ALLOWED_OPERATIONS = new Set([
   "merge_incubation_support", "queue_candidate_intervention", "retire_candidate_intervention",
@@ -39,7 +40,7 @@ export function projectVoidMemoryMaintenanceContext(input: {
   const activeAgency = state.agencyPressure.pressures.filter((entry) => ["active", "cooling", "ready_to_act"].includes(entry.status));
   const activeCandidates = state.candidateInterventions.interventions.filter((entry) => entry.status === "queued" || entry.status === "deferred");
   const maintenancePressure = activeShortTerm.length + state.thoughtMemory.incubation.length + activeAgency.length + activeCandidates.length;
-  const relative = <T>(value: T): T => projectRelativeChronology(value, input.observedAt) as T;
+  const relative = <T>(value: T): T => projectRelativeChronology(value, input.observedAt);
   return {
     mode: sleeping ? "sleep_maintenance" : "awake_memory_maintenance",
     operationTimestamp: input.observedAt.toISOString(),
@@ -84,20 +85,4 @@ export function parseVoidMemoryMaintenanceOperations(outputText: string): VoidSe
     if (!ALLOWED_OPERATIONS.has(operation.operation)) throw new Error(`Memory maintenance operation ${index + 1} is not allowed: ${operation.operation}.`);
     return operation;
   });
-}
-
-function projectRelativeChronology(value: unknown, observedAt: Date, key = ""): unknown {
-  if (Array.isArray(value)) return value.map((entry) => projectRelativeChronology(entry, observedAt));
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([entryKey, entry]) => [entryKey, projectRelativeChronology(entry, observedAt, entryKey)]));
-  if (typeof value === "string" && /(?:At|Timestamp)$/.test(key) && Number.isFinite(Date.parse(value))) return relativeTime(value, observedAt);
-  return value;
-}
-
-function relativeTime(value: string, observedAt: Date): string {
-  const differenceMs = observedAt.getTime() - Date.parse(value);
-  if (!Number.isFinite(differenceMs)) return "unknown time";
-  const future = differenceMs < 0;
-  const minutes = Math.max(0, Math.round(Math.abs(differenceMs) / 60_000));
-  const amount = minutes < 60 ? `${minutes} minute${minutes === 1 ? "" : "s"}` : minutes < 1_440 ? `${Math.round(minutes / 60)} hour${Math.round(minutes / 60) === 1 ? "" : "s"}` : `${Math.round(minutes / 1_440)} day${Math.round(minutes / 1_440) === 1 ? "" : "s"}`;
-  return future ? `in ${amount}` : `${amount} ago`;
 }
