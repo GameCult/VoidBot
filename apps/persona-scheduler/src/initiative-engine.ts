@@ -511,11 +511,17 @@ export function selectReadyParticipants<TParticipant extends InitiativeParticipa
     });
 
   const mentioned = ready.filter((participant) => (mentionCounts.get(participant.identityId) ?? 0) > 0);
-  const unprompted = ready.filter((participant) => (mentionCounts.get(participant.identityId) ?? 0) === 0);
+  const unprompted = ready.filter((participant) =>
+    (mentionCounts.get(participant.identityId) ?? 0) === 0
+    && hasMeaningfulUnpromptedPressure(participant));
   const allowsUnprompted = !unpromptedTurnPolicy.nextUnpromptedTurnAllowedAt
     || Date.parse(unpromptedTurnPolicy.nextUnpromptedTurnAllowedAt) <= nowMs;
   const admittedUnprompted = allowsUnprompted && mentioned.length < maxJobs ? unprompted.slice(0, 1) : [];
   return [...mentioned, ...admittedUnprompted].slice(0, maxJobs);
+}
+
+function hasMeaningfulUnpromptedPressure(participant: InitiativeParticipant): boolean {
+  return participant.responsePressure >= participant.interruptThreshold;
 }
 
 function round3(value: number): number {

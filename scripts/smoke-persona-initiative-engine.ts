@@ -113,6 +113,7 @@ advanceInitiativeClockFromWallClock(state, new Date("2026-07-15T20:02:30.000Z"))
 assert.equal(state.initiativeClock, 12.5, "wall time advances the scheduler clock once");
 applyPendingMentionPriority(state);
 assert.equal(state.participants[1].nextTurnAt, 12.5, "a mention makes its participant ready without queuing it");
+state.participants[0].responsePressure = state.participants[0].interruptThreshold;
 
 const selected = selectReadyParticipants(
   state,
@@ -122,7 +123,11 @@ const selected = selectReadyParticipants(
   {},
   Date.parse("2026-07-15T20:02:30.000Z"),
 );
-assert.deepEqual(selected.map((entry) => entry.identityId), ["mentioned", "quiet"], "mentions lead while only one unprompted participant is admitted");
+assert.deepEqual(selected.map((entry) => entry.identityId), ["mentioned", "quiet"], "mentions lead while one pressure-backed unprompted participant is admitted");
+
+state.participants[0].responsePressure = 0;
+const clockOnly = selectReadyParticipants(state, 2, new Set(), new Map(), {}, Date.parse("2026-07-15T20:02:30.000Z"));
+assert.deepEqual(clockOnly.map((entry) => entry.identityId), ["mentioned"], "elapsed wall clock alone cannot authorize an unprompted model turn");
 
 const cooled = selectReadyParticipants(
   state,
