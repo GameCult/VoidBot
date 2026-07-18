@@ -471,7 +471,7 @@ export async function startBot(): Promise<void> {
               targetPersonaId: identity.remotePersonaFeedbackTarget.personaId,
               targetRepoName: identity.remotePersonaFeedbackTarget.repoName,
               targetRuntimeId: identity.remotePersonaFeedbackTarget.runtimeId,
-            }, { storePath: config.bifrostPersonaFeedbackObservationStorePath, bifrostRoot: config.bifrostRoot, producerRuntimeId: "voidbot-yggdrasil" });
+            }, { storePath: config.bifrostPersonaFeedbackObservationStorePath, bifrostRoot: config.bifrostRoot, cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT, producerRuntimeId: "voidbot-yggdrasil" });
           }
         }
         if (queuedCount === 0) {
