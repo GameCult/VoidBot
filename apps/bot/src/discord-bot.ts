@@ -23,6 +23,7 @@ import {
   isRepoDiscordIdentityAllowedInChannel,
   loadFaceIdentityRegistry,
   queueRepoFaceMention,
+  exportPersonaFeedbackObservation,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
   loadStylePack,
@@ -35,6 +36,7 @@ import {
   OwnerCodexProvider,
   ProviderRegistry,
 } from "@voidbot/providers";
+
 import {
   createTextEmbedder,
   createVectorStores,
@@ -83,6 +85,16 @@ import {
   searchHistoryWithArchiveFallback,
   stripBotMention,
 } from "./discord-bot-support";
+
+async function exportPersonaFeedbackWithRetry(input: Parameters<typeof exportPersonaFeedbackObservation>[0], config: Parameters<typeof exportPersonaFeedbackObservation>[1]): Promise<void> {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try { await exportPersonaFeedbackObservation(input, config); return; }
+    catch (error) {
+      console.error(`Persona feedback observation export failed (${attempt}/3) for Discord message ${input.messageId}:`, error);
+      if (attempt < 3) await new Promise((resolveDelay) => setTimeout(resolveDelay, attempt * 250));
+    }
+  }
+}
 
 export async function startBot(): Promise<void> {
   const config = loadConfig();
@@ -448,6 +460,19 @@ export async function startBot(): Promise<void> {
           console.log(
             `Queued repo Face mention ${message.id} for ${identity.id} via CTB turn queue (${queuedMention.pendingCount} pending).`,
           );
+          if (identity.remotePersonaFeedbackTarget && message.guildId) {
+            const addressingMode = roleAddressedRepoIdentities.some((entry) => entry.id === identity.id)
+              ? "role" : repliedRepoIdentity?.id === identity.id ? "reply"
+                : broadcastAddressedRepoIdentities.some((entry) => entry.id === identity.id) ? "broadcast" : "text";
+            void exportPersonaFeedbackWithRetry({
+              guildId: message.guildId, channelId: message.channelId, messageId: message.id,
+              observedAt: message.createdAt.toISOString(), authorId: message.author.id,
+              authorName: message.author.username, addressingMode, content: identityVisiblePrompt,
+              targetPersonaId: identity.remotePersonaFeedbackTarget.personaId,
+              targetRepoName: identity.remotePersonaFeedbackTarget.repoName,
+              targetRuntimeId: identity.remotePersonaFeedbackTarget.runtimeId,
+            }, { storePath: config.bifrostPersonaFeedbackObservationStorePath, bifrostRoot: config.bifrostRoot, producerRuntimeId: "voidbot-yggdrasil" });
+          }
         }
         if (queuedCount === 0) {
           console.log(`Repo Face mention ${message.id} matched existing pending obligations only.`);

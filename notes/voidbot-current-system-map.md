@@ -322,3 +322,6 @@ Within the Postgres path, the implementation is split on purpose now too:
 3. The self-state summary renders active agency pressure separately from queued speech candidates.
 4. Mood drift reads active and ready agency pressure into speaking pressure, but it does not manufacture speech text from it.
 5. The rumination runner bridges desire-to-speak without manufacturing text: strong advocacy pressure becomes an obligation for the model to queue/defer a candidate or explicitly cool/retire the pressure. The parent rejects silent output for those obligations.
+# Organizational Persona Feedback
+
+Configured remote Persona feedback is an observation fork beside the existing mention scheduler. `discord-bot.ts` commits the local Persona mention obligation first and independently calls `exportPersonaFeedbackObservation` only when `remotePersonaFeedbackTarget` is present on the addressed Face. The exported immutable event carries exact Discord provenance, addressing mode, target binding, content hash, and stable `voidbot` producer identity. It writes only to `BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH`, never the outbound Discord command provider store or Bifrost-private binding/receipt state. It carries `feedback_only`; Bifrost—not VoidBot—classifies actor links, admits targets, and produces downstream cognition pressure.

@@ -30,6 +30,11 @@ const repoDiscordIdentitySchema = z.object({
   faceStatePath: portablePersonaStatePathSchema.optional(),
   personaStatePath: portablePersonaStatePathSchema.optional(),
   description: z.string().trim().min(1).optional(),
+  remotePersonaFeedbackTarget: z.object({
+    runtimeId: z.string().trim().min(1),
+    personaId: z.string().trim().min(1),
+    repoName: z.string().trim().min(1),
+  }).strict().optional(),
 });
 
 const repoDiscordIdentityRegistrySchema = z.object({

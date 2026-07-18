@@ -135,6 +135,7 @@ const envSchema = z.object({
   BIFROST_CULTMESH_STORE_PATH: z.string().min(1).default("E:/Projects/Bifrost/.bifrost/provider-store.cc"),
   BIFROST_CULTMESH_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
+  BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH: z.string().min(1).default("E:/Projects/Bifrost/.bifrost/persona-feedback-observations.cc"),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
@@ -255,6 +256,7 @@ export interface AppConfig {
     timeoutMs: number;
     pumpEnabled: boolean;
   };
+  bifrostPersonaFeedbackObservationStorePath: string;
   voidModerationDaemon: { enabled: boolean; intervalMinutes: number; enforcementMode: string };
   voidCandidateDelivery: { enabled: boolean; personaName: string; personaAvatarUrl?: string };
   voidPhysiology: { intervalMinutes: number };
@@ -548,6 +550,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.BIFROST_CULTMESH_COMMAND_TIMEOUT_MS,
       pumpEnabled: parsed.BIFROST_CULTMESH_COMMAND_PUMP_ENABLED,
     },
+    bifrostPersonaFeedbackObservationStorePath: resolve(parsed.BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH),
     voidModerationDaemon: {
       enabled: parsed.VOID_MODERATION_DAEMON_ENABLED,
       intervalMinutes: parsed.VOID_MODERATION_DAEMON_INTERVAL_MINUTES,

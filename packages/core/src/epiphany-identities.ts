@@ -57,6 +57,9 @@ const faceIdentitySchema = z.object({
   faceStatePath: portablePersonaStatePathSchema.optional(),
   personaStatePath: portablePersonaStatePathSchema.optional(),
   description: z.string().trim().min(1).optional(),
+  remotePersonaFeedbackTarget: z.object({
+    runtimeId: z.string().trim().min(1), personaId: z.string().trim().min(1), repoName: z.string().trim().min(1),
+  }).strict().optional(),
   grants: z.array(agencyGrantSchema).default(["discussion", "rumination", "discord_text"]),
   jurisdictions: z.array(jurisdictionSchema).default([]),
 });
@@ -135,6 +138,7 @@ export function faceToRepoDiscordIdentity(face: ResolvedFaceIdentity): RepoDisco
     faceStatePath: face.faceStatePath,
     personaStatePath: face.personaStatePath,
     description: renderFaceDescription(face),
+    remotePersonaFeedbackTarget: face.remotePersonaFeedbackTarget,
   };
 }
 
@@ -200,6 +204,7 @@ function repoIdentityToEpiphany(identity: RepoDiscordIdentity): EpiphanyIdentity
         faceStatePath: identity.faceStatePath,
         personaStatePath: identity.personaStatePath,
         description: identity.description,
+        remotePersonaFeedbackTarget: identity.remotePersonaFeedbackTarget,
         grants: [
           "discussion",
           "rumination",
