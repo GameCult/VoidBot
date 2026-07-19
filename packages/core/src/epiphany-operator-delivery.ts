@@ -249,7 +249,7 @@ function renderDelivery(delivery: EpiphanyOperatorDeliveryDocument, request: Epi
   const headline = delivery.status === "completed" ? `Completed (${delivery.disposition})` : `Refused (${delivery.failureCode})`;
   const detail = delivery.detail ? `\n${delivery.detail}` : "";
   const statuses = delivery.status === "completed"
-    ? [["Operator", delivery.operatorStatus], ["State", delivery.stateStatus], ["Coordinator", delivery.coordinatorAction], ["Brakes", delivery.brakeStatus]]
+    ? [["Coordinator snapshot", delivery.operatorStatus], ["State", delivery.stateStatus], ["Coordinator action", delivery.coordinatorAction], ["Brakes", delivery.brakeStatus]]
       .filter((entry) => entry[1]).map(([label, value]) => `${label}: ${value}`).join("\n")
     : "";
   const reviews = request.command.kind === "reviews" && delivery.reviews.length
