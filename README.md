@@ -65,6 +65,10 @@ Copy `.env.example` to `.env`, then set at minimum:
 - `DISCORD_APPLICATION_ID`
 - `DISCORD_GUILD_ID`
 - `DISCORD_OWNER_ID`
+- `BIFROST_EPIPHANY_OPERATOR_REQUEST_STORE` points at the dedicated Bifrost-owned
+  inbox for short-lived `/epiphany` operator requests. The bot writes typed
+  requests only; it cannot read or mutate Epiphany state and does not execute
+  commands locally.
 
 Recommended starting values:
 

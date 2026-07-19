@@ -24,6 +24,7 @@ import {
   loadFaceIdentityRegistry,
   queueRepoFaceMention,
   exportPersonaFeedbackObservation,
+  submitEpiphanyOperatorRequest,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
   loadStylePack,
@@ -57,6 +58,8 @@ import {
   handleReindexChannel,
   handleSearchHistory,
   handleSummarizeChannel,
+  epiphanyOperatorCommandFromInteraction,
+  isExactDiscordOwner,
   maybeRegisterCommands,
   parseProviderOverride,
   replyEphemeral,
@@ -563,6 +566,43 @@ export async function startBot(): Promise<void> {
       const guildContext = buildGuildContextFromInteraction(interaction);
 
       switch (interaction.commandName) {
+        case "epiphany": {
+          await interaction.deferReply({ ephemeral: true });
+          if (!isExactDiscordOwner(actor.id, config.ownerDiscordId)) {
+            await replyEphemeral(
+              interaction,
+              "Refused: Epiphany operator requests require the exact configured Discord owner identity.",
+            );
+            break;
+          }
+          if (!interaction.guildId) {
+            await replyEphemeral(
+              interaction,
+              "Refused: Epiphany operator requests require their exact Discord organization provenance.",
+            );
+            break;
+          }
+          const request = await submitEpiphanyOperatorRequest(
+            {
+              interactionId: interaction.id,
+              actorDiscordId: actor.id,
+              guildId: interaction.guildId,
+              channelId: interaction.channelId,
+              command: epiphanyOperatorCommandFromInteraction(interaction),
+            },
+            {
+              storePath: config.bifrostEpiphanyOperatorRequestStorePath,
+              bifrostRoot: config.bifrostRoot,
+              cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
+              producerRuntimeId: "voidbot-yggdrasil",
+            },
+          );
+          await replyEphemeral(
+            interaction,
+            `Epiphany operator request \`${request.requestId}\` is pending Bifrost admission. This request grants no Mind, Hands, release, deployment, or local execution authority.`,
+          );
+          break;
+        }
         case "ask":
           const requestedProvider = parseProviderOverride(
             interaction.options.getString("provider", false),

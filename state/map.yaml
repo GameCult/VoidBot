@@ -32,6 +32,7 @@ constraints:
   - Persistent project state must stay small enough to rehydrate from without becoming a second swamp.
 
 invariants:
+  - The `/epiphany` Discord edge is an exact-owner request producer only. Its closed status/sleep/wake/direct command family writes short-lived immutable documents to a dedicated Bifrost inbox; ordinary conversation remains feedback-only, and VoidBot gains no Epiphany state, Mind, Hands, release, deployment, argv, or local-execution authority.
   - Deployment follows one path: push the intended upstream commit, then let Idunn deploy VoidBot on Yggdrasil. Do not create, restore, or search for a local VoidBot deployment path.
   - The map is canonical and slow-changing.
   - Scratch is temporary and disposable.

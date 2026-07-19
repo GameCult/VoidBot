@@ -11,6 +11,7 @@ import {
 import type { AppConfig } from "@voidbot/config";
 import {
   ContextBuilder,
+  type EpiphanyOperatorCommand,
   type OllamaSituationalSocialReadInferer,
   loadVoidSelfState,
   PermissionEngine,
@@ -122,7 +123,61 @@ export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName("set-style")
     .setDescription("Reload the configured style pack from disk."),
+  new SlashCommandBuilder()
+    .setName("epiphany")
+    .setDescription("Request an operator action from the Yggdrasil Epiphany runtime.")
+    .addSubcommand((command) =>
+      command.setName("status").setDescription("Request a sealed operator status receipt."),
+    )
+    .addSubcommand((command) =>
+      command
+        .setName("sleep")
+        .setDescription("Request that Epiphany engage its swarm brake.")
+        .addStringOption((option) =>
+          option
+            .setName("reason")
+            .setDescription("Why the swarm should sleep.")
+            .setRequired(true)
+            .setMaxLength(500),
+        ),
+    )
+    .addSubcommand((command) =>
+      command.setName("wake").setDescription("Request that Epiphany release its swarm brake."),
+    )
+    .addSubcommand((command) =>
+      command
+        .setName("direct")
+        .setDescription("Submit bounded operator pressure to resident Self.")
+        .addStringOption((option) =>
+          option
+            .setName("objective")
+            .setDescription("The objective to consider; this grants no consequence authority.")
+            .setRequired(true)
+            .setMaxLength(2000),
+        ),
+    ),
 ];
+
+export function epiphanyOperatorCommandFromInteraction(
+  interaction: ChatInputCommandInteraction<CacheType>,
+): EpiphanyOperatorCommand {
+  switch (interaction.options.getSubcommand(true)) {
+    case "status":
+      return { kind: "status" };
+    case "sleep":
+      return { kind: "sleep", reason: interaction.options.getString("reason", true) };
+    case "wake":
+      return { kind: "wake" };
+    case "direct":
+      return { kind: "directive", objective: interaction.options.getString("objective", true) };
+    default:
+      throw new Error("Unsupported Epiphany operator subcommand.");
+  }
+}
+
+export function isExactDiscordOwner(actorId: string, ownerDiscordId: string): boolean {
+  return actorId === ownerDiscordId;
+}
 
 export interface PromptHandlerOptions {
   prompt: string;
