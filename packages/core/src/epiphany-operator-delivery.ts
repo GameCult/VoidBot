@@ -11,7 +11,7 @@ import {
 } from "./epiphany-operator-request";
 
 export const EPIPHANY_OPERATOR_DELIVERY_TYPE = "bifrost.discord.epiphany_operator_delivery";
-export const EPIPHANY_OPERATOR_DELIVERY_SCHEMA = "bifrost.discord.epiphany_operator_delivery.v0";
+export const EPIPHANY_OPERATOR_DELIVERY_SCHEMA = "bifrost.discord.epiphany_operator_delivery.v1";
 export const EPIPHANY_OPERATOR_CHECKPOINT_TYPE = "voidbot.private.epiphany_operator_delivery_checkpoint";
 export const EPIPHANY_OPERATOR_CHECKPOINT_SCHEMA = "voidbot.private.epiphany_operator_delivery_checkpoint.v0";
 
@@ -20,7 +20,7 @@ const DELIVERY_KEYS = [
   "discordGuildId", "discordChannelId", "discordInteractionId", "targetRuntimeId",
   "status", "disposition", "failureCode", "detail", "sealedResultPayloadSha256",
   "operatorStatus", "stateStatus", "coordinatorAction", "brakeStatus", "executorSignatureSha256",
-  "resultProviderIdentityId", "recordedAt", "privateStateExposed",
+  "resultProviderIdentityId", "reviews", "reviewCandidateId", "reviewDecision", "recordedAt", "privateStateExposed",
 ] as const;
 const SHA256 = /^sha256-[0-9a-f]{64}$/;
 
@@ -45,8 +45,21 @@ export interface EpiphanyOperatorDeliveryDocument {
   sealedResultPayloadSha256: string;
   executorSignatureSha256: string;
   resultProviderIdentityId: string;
+  reviews: EpiphanyOperatorReviewSummary[];
+  reviewCandidateId: string;
+  reviewDecision: string;
   recordedAt: string;
   privateStateExposed: false;
+}
+
+export interface EpiphanyOperatorReviewSummary {
+  mindRequestId: string;
+  candidateId: string;
+  candidateSha256: string;
+  modelRevision: number;
+  modelHash: string;
+  frontierItemId: string;
+  requestedAt: string;
 }
 
 export interface EpiphanyOperatorDeliveryCheckpoint {
@@ -178,9 +191,12 @@ export async function processEpiphanyOperatorDelivery(
 }
 
 export function epiphanyOperatorRequestPayloadSha256(request: EpiphanyOperatorRequestDocument): string {
-  const compact = request.command.kind === "status" || request.command.kind === "wake"
+  const compact = request.command.kind === "status" || request.command.kind === "wake" || request.command.kind === "reviews"
     ? request.command.kind
-    : request.command.kind === "sleep" ? ["sleep", request.command.reason] : ["directive", request.command.objective];
+    : request.command.kind === "sleep" ? ["sleep", request.command.reason]
+      : request.command.kind === "directive" ? ["directive", request.command.objective]
+        : ["review", [request.command.mindRequestId, request.command.candidateId, request.command.candidateSha256,
+          request.command.expectedModelRevision, request.command.expectedModelHash, request.command.decision]];
   const tuple = [request.schemaName, request.schemaVersion, request.requestId, request.commandId, request.nonce,
     request.sourceEventId, request.sourceActorDiscordId, request.discordGuildId, request.discordChannelId,
     request.discordMessageId, request.targetRuntimeId, request.issuedAt, request.expiresAt, request.producerId,
@@ -190,12 +206,15 @@ export function epiphanyOperatorRequestPayloadSha256(request: EpiphanyOperatorRe
 
 export function validateDelivery(value: unknown): EpiphanyOperatorDeliveryDocument {
   if (!isRecord(value) || Object.keys(value).sort().join("\0") !== [...DELIVERY_KEYS].sort().join("\0")) throw new Error("delivery has an inexact field set");
-  for (const key of DELIVERY_KEYS) if (key !== "privateStateExposed" && typeof value[key] !== "string") throw new Error(`delivery ${key} must be a string`);
+  for (const key of DELIVERY_KEYS) if (key !== "privateStateExposed" && key !== "reviews" && typeof value[key] !== "string") throw new Error(`delivery ${key} must be a string`);
   if (value.schemaVersion !== EPIPHANY_OPERATOR_DELIVERY_SCHEMA) throw new Error("delivery schema mismatch");
   if (!required(value.deliveryId as string, "deliveryId") || value.deliveryId !== value.requestId) throw new Error("delivery identity mismatch");
   if (!SHA256.test(value.requestPayloadSha256 as string)) throw new Error("request payload digest malformed");
   if (value.targetRuntimeId !== EPIPHANY_OPERATOR_RUNTIME_ID) throw new Error("delivery runtime mismatch");
   if (value.privateStateExposed !== false) throw new Error("delivery exposes private state");
+  if (!Array.isArray(value.reviews) || value.reviews.length > 10) throw new Error("delivery reviews must contain at most ten bounded summaries");
+  value.reviews.forEach(validateReviewSummary);
+  if (typeof value.reviewCandidateId !== "string" || typeof value.reviewDecision !== "string") throw new Error("delivery review disposition bindings must be strings");
   if (typeof value.detail !== "string" || value.detail.length > 512) throw new Error("delivery detail exceeds 512 characters");
   for (const key of ["operatorStatus", "stateStatus", "coordinatorAction", "brakeStatus"] as const) {
     if (typeof value[key] !== "string" || value[key].length > 512) throw new Error(`delivery ${key} exceeds 512 characters`);
@@ -206,7 +225,7 @@ export function validateDelivery(value: unknown): EpiphanyOperatorDeliveryDocume
     if (value.failureCode !== "") throw new Error("completed delivery has a failure code");
   } else if (value.status === "refused") {
     if (!required(value.failureCode as string, "failureCode")) throw new Error("refused delivery lacks failure code");
-    if (value.disposition !== "" || value.operatorStatus !== "" || value.stateStatus !== "" || value.coordinatorAction !== "" || value.brakeStatus !== "" || value.sealedResultPayloadSha256 !== "" || value.executorSignatureSha256 !== "" || value.resultProviderIdentityId !== "") throw new Error("refused delivery carries completed-result bindings");
+    if (value.disposition !== "" || value.operatorStatus !== "" || value.stateStatus !== "" || value.coordinatorAction !== "" || value.brakeStatus !== "" || value.sealedResultPayloadSha256 !== "" || value.executorSignatureSha256 !== "" || value.resultProviderIdentityId !== "" || value.reviews.length || value.reviewCandidateId !== "" || value.reviewDecision !== "") throw new Error("refused delivery carries completed-result bindings");
   } else throw new Error("delivery status is not terminal");
   return value as unknown as EpiphanyOperatorDeliveryDocument;
 }
@@ -215,6 +234,13 @@ function validateBindings(delivery: EpiphanyOperatorDeliveryDocument, request: E
   if (!request || request.schemaName !== EPIPHANY_OPERATOR_REQUEST_TYPE || request.schemaVersion !== EPIPHANY_OPERATOR_REQUEST_SCHEMA) throw new Error("exact operator request is unavailable");
   if (delivery.requestId !== request.requestId || delivery.commandId !== request.commandId || delivery.discordGuildId !== request.discordGuildId || delivery.discordChannelId !== request.discordChannelId || delivery.discordInteractionId !== request.sourceEventId || delivery.targetRuntimeId !== request.targetRuntimeId) throw new Error("delivery does not bind the exact request");
   if (delivery.requestPayloadSha256 !== epiphanyOperatorRequestPayloadSha256(request)) throw new Error("delivery request digest mismatch");
+  if (request.command.kind === "reviews") {
+    if (delivery.reviewCandidateId !== "" || delivery.reviewDecision !== "") throw new Error("Reviews delivery carries a decision binding");
+  } else if (request.command.kind === "review") {
+    if (delivery.reviews.length !== 0 || delivery.reviewCandidateId !== request.command.candidateId || delivery.reviewDecision !== request.command.decision) throw new Error("Review delivery does not bind the exact candidate and decision");
+  } else if (delivery.reviews.length !== 0 || delivery.reviewCandidateId !== "" || delivery.reviewDecision !== "") {
+    throw new Error("non-review delivery carries review state");
+  }
   if (checkpoint.requestId !== request.requestId || checkpoint.discordGuildId !== request.discordGuildId || checkpoint.discordChannelId !== request.discordChannelId || checkpoint.discordInteractionId !== request.sourceEventId || checkpoint.targetRuntimeId !== request.targetRuntimeId) throw new Error("private interaction binding mismatch");
 }
 
@@ -226,7 +252,21 @@ function renderDelivery(delivery: EpiphanyOperatorDeliveryDocument, request: Epi
     ? [["Operator", delivery.operatorStatus], ["State", delivery.stateStatus], ["Coordinator", delivery.coordinatorAction], ["Brakes", delivery.brakeStatus]]
       .filter((entry) => entry[1]).map(([label, value]) => `${label}: ${value}`).join("\n")
     : "";
-  return `Epiphany ${command}: ${headline}.${detail}${statuses ? `\n${statuses}` : ""}\nBifrost reported this terminal result; VoidBot did not execute or inspect Epiphany state.`;
+  const reviews = request.command.kind === "reviews" && delivery.reviews.length
+    ? `\n${delivery.reviews.map((review) => `- ${review.candidateId} | request ${review.mindRequestId} | revision ${review.modelRevision} | frontier ${review.frontierItemId}`).join("\n")}`
+    : "";
+  const decision = request.command.kind === "review" && delivery.reviewCandidateId
+    ? `\nCandidate ${delivery.reviewCandidateId}: ${delivery.reviewDecision}` : "";
+  return `Epiphany ${command}: ${headline}.${detail}${statuses ? `\n${statuses}` : ""}${reviews}${decision}\nBifrost reported this terminal result; VoidBot did not execute or inspect Epiphany state.`;
+}
+
+function validateReviewSummary(value: unknown): void {
+  const keys = ["mindRequestId", "candidateId", "candidateSha256", "modelRevision", "modelHash", "frontierItemId", "requestedAt"];
+  if (!isRecord(value) || Object.keys(value).sort().join("\0") !== keys.sort().join("\0")) throw new Error("review summary has an inexact field set");
+  for (const key of ["mindRequestId", "candidateId", "frontierItemId"] as const) if (!required(value[key], key) || value[key].length > 256) throw new Error(`review summary ${key} is invalid`);
+  for (const key of ["candidateSha256", "modelHash"] as const) if (!/^[0-9a-f]{64}$/.test(value[key])) throw new Error(`review summary ${key} is invalid`);
+  if (!Number.isSafeInteger(value.modelRevision) || value.modelRevision < 0) throw new Error("review summary modelRevision is invalid");
+  if (!Number.isFinite(Date.parse(value.requestedAt))) throw new Error("review summary requestedAt is invalid");
 }
 
 function requestDefinition(define: any): unknown { return define({ type: EPIPHANY_OPERATOR_REQUEST_TYPE, schemaName: EPIPHANY_OPERATOR_REQUEST_TYPE, schemaId: EPIPHANY_OPERATOR_REQUEST_SCHEMA, schemaVersion: EPIPHANY_OPERATOR_REQUEST_SCHEMA, contentHash: EPIPHANY_OPERATOR_REQUEST_SCHEMA, global: false, name: "requestId", schema: { parse: (v: unknown) => v } }); }

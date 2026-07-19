@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
 export const EPIPHANY_OPERATOR_REQUEST_TYPE = "voidbot.discord.epiphany_operator_request";
-export const EPIPHANY_OPERATOR_REQUEST_SCHEMA = "voidbot.discord.epiphany_operator_request.v0";
+export const EPIPHANY_OPERATOR_REQUEST_SCHEMA = "voidbot.discord.epiphany_operator_request.v1";
 export const EPIPHANY_OPERATOR_RUNTIME_ID = "epiphany-yggdrasil";
 const MAX_REASON_LENGTH = 500;
 const MAX_OBJECTIVE_LENGTH = 2_000;
@@ -12,7 +12,17 @@ export type EpiphanyOperatorCommand =
   | { kind: "status" }
   | { kind: "sleep"; reason: string }
   | { kind: "wake" }
-  | { kind: "directive"; objective: string };
+  | { kind: "directive"; objective: string }
+  | { kind: "reviews" }
+  | {
+      kind: "review";
+      mindRequestId: string;
+      candidateId: string;
+      candidateSha256: string;
+      expectedModelRevision: number;
+      expectedModelHash: string;
+      decision: "adopt" | "refuse" | "hold";
+    };
 
 export interface EpiphanyOperatorRequestInput {
   interactionId: string;
@@ -122,9 +132,34 @@ function validateCommand(command: EpiphanyOperatorCommand): EpiphanyOperatorComm
       return { kind: "wake" };
     case "directive":
       return { kind: "directive", objective: boundedText(command.objective, "directive objective", MAX_OBJECTIVE_LENGTH) };
+    case "reviews":
+      return { kind: "reviews" };
+    case "review": {
+      const candidateSha256 = sha256(command.candidateSha256, "candidate sha256");
+      const expectedModelHash = sha256(command.expectedModelHash, "expected model hash");
+      if (!Number.isSafeInteger(command.expectedModelRevision) || command.expectedModelRevision < 0) {
+        throw new Error("expected model revision must be a non-negative safe integer.");
+      }
+      if (!["adopt", "refuse", "hold"].includes(command.decision)) throw new Error("review decision is invalid.");
+      return {
+        kind: "review",
+        mindRequestId: boundedText(command.mindRequestId, "Mind request id", 256),
+        candidateId: boundedText(command.candidateId, "candidate id", 256),
+        candidateSha256,
+        expectedModelRevision: command.expectedModelRevision,
+        expectedModelHash,
+        decision: command.decision,
+      };
+    }
     default:
       throw new Error("Unsupported Epiphany operator command.");
   }
+}
+
+function sha256(value: string, label: string): string {
+  const normalized = value?.trim();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) throw new Error(`${label} must be 64 lowercase hexadecimal characters.`);
+  return normalized;
 }
 
 function boundedText(value: string, label: string, maxLength: number): string {

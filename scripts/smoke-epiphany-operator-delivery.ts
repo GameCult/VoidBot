@@ -29,7 +29,7 @@ assert.notEqual(digest, epiphanyOperatorRequestPayloadSha256({ ...request, disco
 assert.notEqual(digest, epiphanyOperatorRequestPayloadSha256({ ...request, command: { kind: "wake" } }));
 
 const completed: EpiphanyOperatorDeliveryDocument = {
-  schemaVersion: "bifrost.discord.epiphany_operator_delivery.v0",
+  schemaVersion: "bifrost.discord.epiphany_operator_delivery.v1",
   deliveryId: request.requestId, requestId: request.requestId, requestPayloadSha256: digest,
   commandId: request.commandId, discordGuildId: request.discordGuildId,
   discordChannelId: request.discordChannelId, discordInteractionId: request.sourceEventId,
@@ -38,6 +38,7 @@ const completed: EpiphanyOperatorDeliveryDocument = {
   coordinatorAction: "none", brakeStatus: "engaged",
   sealedResultPayloadSha256: `sha256-${"a".repeat(64)}`,
   executorSignatureSha256: `sha256-${"b".repeat(64)}`, resultProviderIdentityId: "bifrost-yggdrasil",
+  reviews: [], reviewCandidateId: "", reviewDecision: "",
   recordedAt: "2026-07-19T12:00:01.000Z", privateStateExposed: false,
 };
 assert.equal(validateDelivery(completed).status, "completed");
@@ -46,6 +47,7 @@ const refused: EpiphanyOperatorDeliveryDocument = {
   ...completed, status: "refused", disposition: "", failureCode: "brakes_engaged", detail: "refused",
   operatorStatus: "", stateStatus: "", coordinatorAction: "", brakeStatus: "",
   sealedResultPayloadSha256: "", executorSignatureSha256: "", resultProviderIdentityId: "",
+  reviews: [], reviewCandidateId: "", reviewDecision: "",
 };
 assert.equal(validateDelivery(refused).status, "refused");
 
@@ -62,6 +64,8 @@ rejects({ deliveryId: "collision" }, /identity/);
 rejects({ executorSignatureSha256: "signature-bytes" }, /sealed bindings/);
 rejects({ resultProviderIdentityId: "" }, /resultProviderIdentityId|sealed bindings/);
 rejects({ surprisePrivatePayload: "secret" }, /field set/);
+rejects({ reviews: [{ mindRequestId: "m", candidateId: "c", candidateSha256: "1".repeat(64), modelRevision: 1, modelHash: "2".repeat(64), frontierItemId: "f", requestedAt: "2026-07-19T12:00:00Z", proposalText: "private" }] }, /inexact field set/);
+rejects({ reviews: Array.from({ length: 11 }, () => ({ mindRequestId: "m", candidateId: "c", candidateSha256: "1".repeat(64), modelRevision: 1, modelHash: "2".repeat(64), frontierItemId: "f", requestedAt: "2026-07-19T12:00:00Z" })) }, /at most ten/);
 assert.throws(() => validateDelivery({ ...refused, brakeStatus: "not empty" }), /completed-result bindings/);
 assert.throws(() => validateDelivery({ ...refused, failureCode: "" }), /failureCode|failure code/);
 
@@ -101,6 +105,43 @@ for (const [field, value] of [["commandId", "wrong"], ["discordGuildId", "wrong"
 let collisionCheckpoint = { ...baseCheckpoint, observedDeliverySha256: `sha256-${"d".repeat(64)}` };
 assert.equal(await processEpiphanyOperatorDelivery(completed, request, collisionCheckpoint, async () => { throw new Error("must not edit"); }, async (next) => { collisionCheckpoint = next; }), "failed");
 assert.match(collisionCheckpoint.lastError, /collision/);
+
+const reviewRequest = buildEpiphanyOperatorRequest({
+  interactionId: "interaction-review", actorDiscordId: "owner-1", guildId: "guild-1", channelId: "channel-1",
+  command: { kind: "reviews" }, issuedAt: "2026-07-19T12:00:00.000Z",
+}, "voidbot-yggdrasil");
+const reviewDelivery: EpiphanyOperatorDeliveryDocument = {
+  ...completed,
+  deliveryId: reviewRequest.requestId, requestId: reviewRequest.requestId, commandId: reviewRequest.commandId,
+  discordInteractionId: reviewRequest.sourceEventId, requestPayloadSha256: epiphanyOperatorRequestPayloadSha256(reviewRequest),
+  reviews: [{ mindRequestId: "mind-1", candidateId: "candidate-1", candidateSha256: "1".repeat(64), modelRevision: 7,
+    modelHash: "2".repeat(64), frontierItemId: "frontier-1", requestedAt: "2026-07-19T11:59:00Z" }],
+};
+let renderedReview = "";
+let reviewCheckpoint = { ...baseCheckpoint, requestId: reviewRequest.requestId, discordInteractionId: reviewRequest.sourceEventId };
+assert.equal(await processEpiphanyOperatorDelivery(reviewDelivery, reviewRequest, reviewCheckpoint,
+  async (_app, _token, content) => { renderedReview = content; }, async (next) => { reviewCheckpoint = next; }), "responded");
+assert.match(renderedReview, /candidate-1.*request mind-1.*revision 7.*frontier frontier-1/);
+assert.doesNotMatch(renderedReview, /proposal|private|sha256/i);
+let substitutedCheckpoint = { ...baseCheckpoint };
+assert.equal(await processEpiphanyOperatorDelivery({ ...completed, reviews: reviewDelivery.reviews }, request, substitutedCheckpoint,
+  async () => { throw new Error("must not render substituted review state"); }, async (next) => { substitutedCheckpoint = next; }), "failed");
+assert.match(substitutedCheckpoint.lastError, /non-review/);
+
+const decisionRequest = buildEpiphanyOperatorRequest({
+  interactionId: "interaction-decision", actorDiscordId: "owner-1", guildId: "guild-1", channelId: "channel-1",
+  command: { kind: "review", mindRequestId: "mind-1", candidateId: "candidate-1", candidateSha256: "1".repeat(64),
+    expectedModelRevision: 7, expectedModelHash: "2".repeat(64), decision: "hold" }, issuedAt: "2026-07-19T12:00:00.000Z",
+}, "voidbot-yggdrasil");
+const decisionDelivery: EpiphanyOperatorDeliveryDocument = {
+  ...completed, deliveryId: decisionRequest.requestId, requestId: decisionRequest.requestId, commandId: decisionRequest.commandId,
+  discordInteractionId: decisionRequest.sourceEventId, requestPayloadSha256: epiphanyOperatorRequestPayloadSha256(decisionRequest),
+  reviewCandidateId: "candidate-1", reviewDecision: "hold",
+};
+let decisionCheckpoint = { ...baseCheckpoint, requestId: decisionRequest.requestId, discordInteractionId: decisionRequest.sourceEventId };
+assert.equal(await processEpiphanyOperatorDelivery({ ...decisionDelivery, reviewCandidateId: "candidate-2" }, decisionRequest, decisionCheckpoint,
+  async () => { throw new Error("must not render substituted decision"); }, async (next) => { decisionCheckpoint = next; }), "failed");
+assert.match(decisionCheckpoint.lastError, /exact candidate and decision/);
 
 const temp = await mkdtemp(join(tmpdir(), "voidbot-epiphany-delivery-"));
 try {
