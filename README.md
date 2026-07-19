@@ -618,7 +618,7 @@ Moderation heartbeat, person-shaped rumination, physiology, memory maintenance, 
 
 Chronological Discord evidence is acquired by the daemon's bounded evidence source. Semantic retrieval remains available for deeper context, but it does not own the heartbeat clock or cursor.
 
-Agent access to Discord history and indexed sources executes inside the archive owner. The resident Yggdrasil worker publishes a stateless streamable-HTTP MCP endpoint on loopback `127.0.0.1:17875/mcp`, backed by the worker's existing archive repositories and retrieval service. The canonical SSH tunnel maps that endpoint to Starfire loopback, and `.codex/config.toml` connects to the URL directly. No agent tool call starts SSH, Docker, Node, or a second retrieval process. Verify the complete path with `VOIDBOT_MCP_HTTP_URL=http://127.0.0.1:17875/mcp node scripts/smoke-voidbot-resident-mcp-http.mjs`.
+Agent access to Discord history and indexed sources executes inside the archive owner. The resident Yggdrasil worker publishes a stateless streamable-HTTP MCP endpoint on loopback `127.0.0.1:17875/mcp`, backed by the worker's existing archive repositories and retrieval service. The canonical SSH tunnel maps that endpoint to Starfire loopback. `.codex/config.toml` starts one task-local stdio bridge that forwards each tool request over HTTP and converts a deployment/tunnel gap into a normal tool error instead of permanently closing Codex's transport. The bridge owns no retrieval state and starts no SSH, Docker, or remote process. Verify the failure path with `QDRANT_URL=http://127.0.0.1:16333 node scripts/smoke-voidbot-mcp-bridge-recovery.mjs`.
 There is also a repo-weather helper:
 
 ```bash

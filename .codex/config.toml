@@ -1,2 +1,6 @@
 [mcp_servers.voidbot]
-url = "http://127.0.0.1:17875/mcp"
+command = "C:\\Users\\Meta\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe"
+args = ["E:\\Projects\\VoidBot\\scripts\\serve-voidbot-mcp-bridge.mjs"]
+
+[mcp_servers.voidbot.env]
+VOIDBOT_MCP_HTTP_URL = "http://127.0.0.1:17875/mcp"
