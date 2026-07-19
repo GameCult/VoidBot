@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
+    "@msgpack/msgpack": "^3.1.3",
     "@voidbot/shared": "0.1.0",
     "cultcache-ts": "file:../../vendor/cultcache-ts",
     "pg": "^8.20.0",

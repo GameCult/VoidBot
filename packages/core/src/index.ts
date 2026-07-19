@@ -29,3 +29,4 @@ export * from "./persona-state-service";
 export * from "./bifrost-discord-command";
 export * from "./persona-feedback-observation";
 export * from "./epiphany-operator-request";
+export * from "./epiphany-operator-delivery";

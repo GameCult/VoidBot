@@ -24,6 +24,7 @@ import {
   loadFaceIdentityRegistry,
   queueRepoFaceMention,
   exportPersonaFeedbackObservation,
+  registerEpiphanyOperatorInteraction,
   submitEpiphanyOperatorRequest,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
@@ -66,6 +67,7 @@ import {
 } from "./discord-bot-handlers";
 import { maybeMirrorOwnerAquariumMessageAsMetameVoice } from "./metame-owner-voice-bridge";
 import { startRepoFaceVoicePlayback } from "./repo-face-voice-playback";
+import { startEpiphanyOperatorDeliveryConsumer } from "./epiphany-operator-delivery-consumer";
 import {
   buildActorFromInteraction,
   buildActorFromMessage,
@@ -342,6 +344,15 @@ export async function startBot(): Promise<void> {
     console.log(`VoidBot connected as ${readyClient.user.tag}.`);
     await maybeRegisterCommands(config.botToken!, config.applicationId, config.developmentGuildId);
     startRepoFaceVoicePlayback(readyClient, config.repoFaceDiscordVoice);
+    startEpiphanyOperatorDeliveryConsumer({
+      applicationId: readyClient.application.id,
+      requestStorePath: config.bifrostEpiphanyOperatorRequestStorePath,
+      deliveryStorePath: config.bifrostEpiphanyOperatorDeliveryStorePath,
+      checkpointStorePath: config.epiphanyOperatorDeliveryCheckpointStorePath,
+      bifrostRoot: config.bifrostRoot,
+      cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
+      pollIntervalMs: config.epiphanyOperatorDeliveryPollIntervalMs,
+    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
@@ -582,6 +593,26 @@ export async function startBot(): Promise<void> {
             );
             break;
           }
+          const issuedAt = new Date().toISOString();
+          await registerEpiphanyOperatorInteraction(
+            {
+              requestId: interaction.id,
+              applicationId: interaction.applicationId,
+              interactionToken: interaction.token,
+              guildId: interaction.guildId,
+              channelId: interaction.channelId,
+              registeredAt: issuedAt,
+            },
+            {
+              checkpointStorePath: config.epiphanyOperatorDeliveryCheckpointStorePath,
+              bifrostRoot: config.bifrostRoot,
+              cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
+            },
+          );
+          await replyEphemeral(
+            interaction,
+            `Epiphany operator request \`${interaction.id}\` is pending Bifrost admission. This request grants no Mind, Hands, release, deployment, or local execution authority.`,
+          );
           const request = await submitEpiphanyOperatorRequest(
             {
               interactionId: interaction.id,
@@ -589,6 +620,7 @@ export async function startBot(): Promise<void> {
               guildId: interaction.guildId,
               channelId: interaction.channelId,
               command: epiphanyOperatorCommandFromInteraction(interaction),
+              issuedAt,
             },
             {
               storePath: config.bifrostEpiphanyOperatorRequestStorePath,
@@ -597,10 +629,7 @@ export async function startBot(): Promise<void> {
               producerRuntimeId: "voidbot-yggdrasil",
             },
           );
-          await replyEphemeral(
-            interaction,
-            `Epiphany operator request \`${request.requestId}\` is pending Bifrost admission. This request grants no Mind, Hands, release, deployment, or local execution authority.`,
-          );
+          if (request.requestId !== interaction.id) throw new Error("Epiphany request identity changed after interaction registration.");
           break;
         }
         case "ask":

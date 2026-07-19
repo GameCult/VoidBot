@@ -292,3 +292,7 @@ When context pressure is rising:
 4. add distilled evidence only when the lesson changes future belief
 
 The point is to bank coals, not leave the next waking thing a pile of ash and a browser tab graveyard.
+
+# Epiphany Operator Result Leg
+
+The `/epiphany` result leg consumes Bifrost's frozen `bifrost.discord.epiphany_operator_delivery.v0` outbox contract. It persists private Discord interaction correlation before request submission, validates the exact immutable request digest and all Discord/runtime bindings, and idempotently edits the original ephemeral reply. Restart replay, same-key collision, private-state rejection, sealed-field shape, bounded operator fields, and transient Discord retry are covered by `scripts/smoke-epiphany-operator-delivery.ts`. Deployment remains Idunn-owned and was not performed in this pass.
