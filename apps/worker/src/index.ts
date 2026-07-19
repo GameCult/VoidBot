@@ -70,6 +70,7 @@ import {
   parseRepoIdentityPostIntents,
   type RepoIdentityPostIntent,
 } from "./repo-face-speech.js";
+import { startVoidbotMcpHttpServer } from "./mcp-http-server.js";
 
 const config = loadConfig();
 const weksaSpeechClient = new WeksaSpeechClient({
@@ -174,6 +175,13 @@ async function main(): Promise<void> {
     resolve("config/system-messages.json"),
   );
   providerRegistry = await buildProviderRegistry(systemMessages);
+  await startVoidbotMcpHttpServer({
+    config,
+    archiveRepository,
+    sourceArchiveRepository,
+    retrievalService,
+    sourceDocumentIngester,
+  });
   console.log(`VoidBot worker polling every ${config.workerPollIntervalMs}ms.`);
   await pollPendingJobs();
   setInterval(() => {

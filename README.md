@@ -618,7 +618,7 @@ Moderation heartbeat, person-shaped rumination, physiology, memory maintenance, 
 
 Chronological Discord evidence is acquired by the daemon's bounded evidence source. Semantic retrieval remains available for deeper context, but it does not own the heartbeat clock or cursor.
 
-Agent access to Discord history and indexed sources also executes at the archive owner. `.codex/config.toml` starts a stable local stdio relay; each tool call opens a fresh SSH-backed MCP session inside Yggdrasil's current worker container. Idunn may replace that container without permanently closing an already-open agent task. The relay must not start a Starfire-local VoidBot MCP body pointed at `127.0.0.1:6333`. Verify the direct Ygg body with `scripts/smoke-voidbot-remote-mcp.mjs`, then verify the durable agent path with `scripts/smoke-voidbot-remote-mcp-relay.mjs`. Both use `VOIDBOT_MCP_REMOTE_HOST`, `VOIDBOT_MCP_SSH_KEY_PATH`, and optional `VOIDBOT_MCP_SSH_EXECUTABLE` environment variables.
+Agent access to Discord history and indexed sources executes inside the archive owner. The resident Yggdrasil worker publishes a stateless streamable-HTTP MCP endpoint on loopback `127.0.0.1:17875/mcp`, backed by the worker's existing archive repositories and retrieval service. The canonical SSH tunnel maps that endpoint to Starfire loopback, and `.codex/config.toml` connects to the URL directly. No agent tool call starts SSH, Docker, Node, or a second retrieval process. Verify the complete path with `VOIDBOT_MCP_HTTP_URL=http://127.0.0.1:17875/mcp node scripts/smoke-voidbot-resident-mcp-http.mjs`.
 There is also a repo-weather helper:
 
 ```bash

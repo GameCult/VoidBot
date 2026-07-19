@@ -1,26 +1,9 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createVoidbotMcpContext } from "./mcp-server-context";
-import { registerVoidbotResources } from "./mcp-server-resources";
-import { registerVoidbotTools } from "./mcp-server-tools";
-
-const server = new McpServer(
-  {
-    name: "voidbot",
-    version: "0.1.0",
-  },
-  {
-    capabilities: {
-      logging: {},
-    },
-  },
-);
-
-const context = createVoidbotMcpContext();
-registerVoidbotResources(server, context);
-registerVoidbotTools(server, context);
+import { createVoidbotMcpServer } from "./mcp-server-factory";
 
 async function main(): Promise<void> {
+  const server = createVoidbotMcpServer(createVoidbotMcpContext());
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

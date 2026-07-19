@@ -1,8 +1,2 @@
 [mcp_servers.voidbot]
-command = "C:\\Users\\Meta\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe"
-args = ["E:\\Projects\\VoidBot\\scripts\\serve-voidbot-remote-mcp-relay.mjs"]
-
-[mcp_servers.voidbot.env]
-VOIDBOT_MCP_REMOTE_HOST = "gamecultadmin@94.130.223.131"
-VOIDBOT_MCP_SSH_KEY_PATH = "C:\\Users\\Meta\\.ssh\\gamecultadmin_gamecult_org_ed25519"
-VOIDBOT_MCP_SSH_EXECUTABLE = "C:\\Windows\\System32\\OpenSSH\\ssh.exe"
+url = "http://127.0.0.1:17875/mcp"
