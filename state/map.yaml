@@ -63,7 +63,7 @@ data_flow:
     - keep persistent state lean enough that re-entry sharpens the next turn instead of drowning it
 
 active_subgoals:
-  - Publish the read-only `get_exact_source_document` contract through the Yggdrasil recovery allow-list and immutable release, then verify a full Aetheria document over the restored Starfire loopback tunnel. The source archive remains the sole owner; consumers hash and receipt returned content.
+  - Keep the deployed read-only `get_exact_source_document` contract inside the recovery allow-list. The source archive remains the sole owner; consumers hash and receipt returned content. Yggdrasil release `20260816T193315Z-c88c71909dbc` and the Starfire full-document witness prove the live path.
   - Treat `notes/agent-swarm-teardown-plan-2026-05-21.md` as the historical teardown authority and the restart checklist. The repo Face swarm is live again, but only because the scheduler, prompt, model-output logs, parent Interpreter, Bifrost routing, and worker side-effect rails now have explicit observable boundaries. Keep watching for prompt/parser/transport Jenga before adding new swarm features.
   - Make the new project-state surfaces the default continuity path for nontrivial VoidBot work.
   - Keep the rebuilt moderation/self-state foundation on canonical CultCache `.cc` typed operations, never an editable JSON working projection.
