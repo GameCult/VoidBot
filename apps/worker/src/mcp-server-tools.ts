@@ -46,6 +46,7 @@ import {
   type SearchHistoryArgs,
   type SearchSourcesArgs,
   type SourceContextArgs,
+  type ExactSourceDocumentArgs,
   type UpdateSharedDocumentArgs,
   formatArchivedMessage,
   formatHistoryResults,
@@ -67,6 +68,7 @@ import {
   searchHistoryInputSchema,
   searchSourcesInputSchema,
   sourceContextInputSchema,
+  exactSourceDocumentInputSchema,
   updateSharedDocumentInputSchema,
 } from "./mcp-server-shared";
 
@@ -550,6 +552,45 @@ export function registerVoidbotTools(
           count: formattedChunks.length,
           chunks: formattedChunks,
         },
+      };
+    },
+  );
+
+  registerIfAllowed(
+    "get_exact_source_document",
+    {
+      title: "Get Exact Source Document",
+      description:
+        "Fetch one complete indexed source document by its exact sourceId. This is the canonical read-only witness path for consumers that must hash and receipt the full source rather than a retrieval chunk.",
+      inputSchema: exactSourceDocumentInputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input: ExactSourceDocumentArgs): Promise<CallToolResult> => {
+      const document = await context.sourceArchiveRepository.get(input.sourceId);
+
+      if (!document) {
+        return {
+          content: [{ type: "text", text: `No indexed source document with ID ${input.sourceId} was found.` }],
+          structuredContent: { found: false, sourceId: input.sourceId },
+          isError: true,
+        };
+      }
+
+      const exactDocument = {
+        found: true,
+        sourceId: document.id,
+        repoName: document.repoName,
+        path: document.path,
+        language: document.language,
+        title: document.title,
+        content: document.content,
+        lastModifiedAt: document.lastModifiedAt,
+        indexedAt: document.indexedAt,
+        metadata: document.metadata ?? {},
+      };
+      return {
+        content: [{ type: "text", text: renderJsonBlock(exactDocument) }],
+        structuredContent: exactDocument,
       };
     },
   );

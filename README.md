@@ -274,6 +274,7 @@ The `local_llm` provider uses Ollama chat completion plus a bounded host-managed
 - `get_message_context`
 - `search_sources`
 - `get_source_context`
+- `get_exact_source_document`
 - `list_indexed_repos`
 
 Unlike the owner Codex lane, this is not MCP. It is a tighter host-controlled loop and deliberately excludes side-effecting tools.

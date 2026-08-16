@@ -105,6 +105,10 @@ export const sourceContextInputSchema = {
   after: z.number().int().min(0).max(20).optional(),
 };
 
+export const exactSourceDocumentInputSchema = {
+  sourceId: z.string().min(1),
+};
+
 export interface SearchHistoryArgs {
   query: string;
   limit?: number;
@@ -208,6 +212,10 @@ export interface SourceContextArgs {
   chunkIndex?: number;
   before?: number;
   after?: number;
+}
+
+export interface ExactSourceDocumentArgs {
+  sourceId: string;
 }
 
 export function formatArchivedMessage(
