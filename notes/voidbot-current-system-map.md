@@ -352,3 +352,7 @@ standalone `apps/worker/src/mcp-http-main.ts` entrypoint reuses the canonical
 MCP context, factory, archive repositories, vector stores, and HTTP transport.
 Its deployment allow-list contains retrieval tools only. It owns no Discord,
 job, Persona, moderation, Bifrost, Idunn, or state-mutation authority.
+`VOIDBOT_MCP_ARCHIVES_READ_ONLY=true` is an explicit storage-port mode:
+snapshots read without creating writer locks, while overwrite, mutation, and
+normalization fail before touching the filesystem. Writable runtimes retain
+the existing interprocess lock path.

@@ -26,8 +26,14 @@ export function createVoidbotMcpContext(): VoidbotMcpContext {
   process.chdir(workspaceRoot);
 
   const config = loadConfig();
-  const archiveRepository = new FileMessageArchiveRepository(config.ragArchivePath);
-  const sourceArchiveRepository = new FileSourceDocumentArchiveRepository(config.ragSourceArchivePath);
+  const archiveOptions = {
+    readOnly: process.env.VOIDBOT_MCP_ARCHIVES_READ_ONLY === "true",
+  };
+  const archiveRepository = new FileMessageArchiveRepository(config.ragArchivePath, archiveOptions);
+  const sourceArchiveRepository = new FileSourceDocumentArchiveRepository(
+    config.ragSourceArchivePath,
+    archiveOptions,
+  );
   const embedder = createTextEmbedder({
     backend: config.ragEmbeddingBackend,
     hashDimensions: config.ragEmbeddingDimensions,

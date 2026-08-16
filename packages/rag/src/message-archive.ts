@@ -56,11 +56,11 @@ interface HistoryArchiveFilters
 export class FileMessageArchiveRepository {
   private readonly store: SerializedFileStore<MessageArchiveStore>;
 
-  public constructor(filePath: string) {
+  public constructor(filePath: string, options: { readOnly?: boolean } = {}) {
     this.store = new SerializedFileStore(filePath, () => ({
       version: 1,
       messages: [],
-    }));
+    }), options);
   }
 
   public async upsert(messages: ArchivedMessage[]): Promise<MessageArchiveMutationResult> {

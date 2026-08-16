@@ -7,20 +7,27 @@ export class SerializedFileStore<T> {
   public constructor(
     private readonly filePath: string,
     private readonly createDefault: () => T,
+    private readonly options: { readOnly?: boolean } = {},
   ) {}
 
   public async snapshot(): Promise<T> {
-    const store = await this.serialize(() => this.withInterprocessLock(() => this.readUnlocked()));
+    const store = await this.serialize(() =>
+      this.options.readOnly
+        ? this.readUnlocked()
+        : this.withInterprocessLock(() => this.readUnlocked()),
+    );
     return structuredClone(store);
   }
 
   public async overwrite(nextValue: T): Promise<void> {
+    this.requireWritable();
     await this.serialize(async () => {
       await this.withInterprocessLock(() => this.writeUnlocked(nextValue));
     });
   }
 
   public async mutate<R>(mutator: (current: T) => R | Promise<R>): Promise<R> {
+    this.requireWritable();
     return this.serialize(async () => {
       return this.withInterprocessLock(async () => {
         const current = await this.readUnlocked();
@@ -32,6 +39,7 @@ export class SerializedFileStore<T> {
   }
 
   public async normalize(): Promise<void> {
+    this.requireWritable();
     await this.serialize(async () => {
       await this.withInterprocessLock(async () => {
         const current = await this.readUnlocked();
@@ -47,6 +55,12 @@ export class SerializedFileStore<T> {
       () => undefined,
     );
     return pending;
+  }
+
+  private requireWritable(): void {
+    if (this.options.readOnly) {
+      throw new Error(`Read-only file store cannot mutate: ${this.filePath}`);
+    }
   }
 
   private async readUnlocked(): Promise<T> {

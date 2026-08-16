@@ -57,11 +57,14 @@ export class FileSourceDocumentArchiveRepository {
   private readonly shardRoot: string;
   private initialization?: Promise<void>;
 
-  public constructor(private readonly filePath: string) {
+  public constructor(
+    private readonly filePath: string,
+    private readonly options: { readOnly?: boolean } = {},
+  ) {
     this.manifestStore = new SerializedFileStore(filePath, () => ({
       version: 2,
       repos: [],
-    }));
+    }), options);
     this.shardRoot = deriveShardRoot(filePath);
   }
 
@@ -277,7 +280,7 @@ export class FileSourceDocumentArchiveRepository {
       version: 1,
       repoName,
       documents: [],
-    }));
+    }), this.options);
   }
 
   private async syncRepoSummary(repoName: string, documentCount: number): Promise<void> {
