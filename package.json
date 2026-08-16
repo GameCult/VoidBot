@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --pretty false",
     "dev:bot": "tsx apps/bot/src/index.ts",
     "dev:mcp": "tsx apps/worker/src/mcp-server.ts",
+    "dev:mcp:http": "tsx apps/worker/src/mcp-http-main.ts",
     "dev:worker": "tsx apps/worker/src/index.ts",
     "stack:start": "powershell -ExecutionPolicy Bypass -File scripts/start-voidbot-stack.ps1",
     "state:status": "node tools/voidbot_state.ts status",

@@ -14,16 +14,16 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Keep the Persona swarm paused while the daemon organ migration continues.
-    The one-minute resident pulse is observation latency and must not authorize
-    inference by itself. Portable physiology now owns sleep and speaking
-    pressure, and portable memory maintenance consumes its typed nap intent with
-    one pre-receipted model attempt per nap and no automatic retry. Verify that
-    organ through Idunn's upstream deployment path, then split the legacy
-    moderation PowerShell body into shared evidence sources plus separate
-    daemon-owned moderation-heartbeat and person-shaped rumination coordinators.
+    Recover the read-only archive/source retrieval organ on surviving old
+    Yggdrasil from the verified 2026-06-03 offsite backup. Big Yggdrasil is
+    retired and its address is no longer trusted; its VoidBot, Idunn, Odin,
+    Epiphany, deployment, and secret state did not survive. Restore only the
+    resident loopback MCP, exact archives, and VoidBot-owned Qdrant collections
+    first. Keep Discord, worker jobs, Personas, moderation, and delivery stopped
+    until their missing authority and credentials are deliberately rebuilt.
 
 constraints:
+  - Disaster recovery currently targets trusted old Yggdrasil at 94.130.75.184; retired Big Yggdrasil at 94.130.223.131 is not a GameCult host and must not be trusted or targeted.
   - VoidBot's deployed runtime lives on Yggdrasil and deployment is owned by Idunn from upstream pushes; local workspaces are not deployment targets.
   - Public traffic still rides one remote Qwen box plus local embedding and ops infrastructure.
   - Owner flow and public flow share infrastructure but have different provider and safety boundaries.
@@ -32,6 +32,7 @@ constraints:
   - Persistent project state must stay small enough to rehydrate from without becoming a second swamp.
 
 invariants:
+  - The recovery MCP organ is read-only and loopback-only. It may consume exact archives, VoidBot-owned vector collections, and the configured embedding provider; it cannot start Discord, worker-job, Persona, moderation, Bifrost, Idunn, or canon mutation paths.
   - The `/epiphany` Discord edge is an exact-owner request producer only. Its closed status/sleep/wake/direct command family writes short-lived immutable documents to a dedicated Bifrost inbox; ordinary conversation remains feedback-only, and VoidBot gains no Epiphany state, Mind, Hands, release, deployment, argv, or local-execution authority.
   - The `/epiphany` result edge consumes only Bifrost's frozen immutable terminal delivery schema, validates it against VoidBot's exact request and private Discord interaction checkpoint, and may only edit the original ephemeral response. It cannot inspect Epiphany state, synthesize execution truth, expose signatures/private state, mutate the Bifrost outbox, or retry consequences.
   - Deployment follows one path: push the intended upstream commit, then let Idunn deploy VoidBot on Yggdrasil. Do not create, restore, or search for a local VoidBot deployment path.

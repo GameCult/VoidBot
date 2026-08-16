@@ -340,3 +340,15 @@ Result-leg authority map:
 - Verification layer: hostile schema/binding tests plus a real temporary CultCache/CultMesh request-delivery-checkpoint replay smoke.
 
 Configured remote Persona feedback is an observation fork beside the existing mention scheduler. `discord-bot.ts` commits the local Persona mention obligation first and independently calls `exportPersonaFeedbackObservation` only when `remotePersonaFeedbackTarget` is present on the addressed Face. The exported immutable event carries exact Discord provenance, addressing mode, target binding, content hash, and stable `voidbot` producer identity. It writes only to `BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH`, never the outbound Discord command provider store or Bifrost-private binding/receipt state. It carries `feedback_only`; Bifrost—not VoidBot—classifies actor links, admits targets, and produces downstream cognition pressure.
+# Disaster recovery boundary (2026-08-16)
+
+Trusted old Yggdrasil at `94.130.75.184` is the recovery host. Retired Big
+Yggdrasil at `94.130.223.131` is no longer a GameCult machine. The verified
+June 3 Raven backup restores exact archives and VoidBot-owned vector state, but
+not secrets or the lost Idunn/Odin/Epiphany deployment substrate.
+
+The first restored organ is a loopback-only, read-only resident MCP. The
+standalone `apps/worker/src/mcp-http-main.ts` entrypoint reuses the canonical
+MCP context, factory, archive repositories, vector stores, and HTTP transport.
+Its deployment allow-list contains retrieval tools only. It owns no Discord,
+job, Persona, moderation, Bifrost, Idunn, or state-mutation authority.
