@@ -136,10 +136,6 @@ const envSchema = z.object({
   BIFROST_CULTMESH_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   BIFROST_CULTMESH_COMMAND_PUMP_ENABLED: booleanFromEnv.default(true),
   BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH: z.string().min(1).default("E:/Projects/Bifrost/.bifrost/persona-feedback-observations.cc"),
-  BIFROST_EPIPHANY_OPERATOR_REQUEST_STORE: z.string().min(1).default("E:/Projects/Bifrost/.bifrost/epiphany-operator-requests.cc"),
-  BIFROST_EPIPHANY_OPERATOR_DISCORD_DELIVERY_STORE: z.string().min(1).default("E:/Projects/Bifrost/.bifrost/epiphany-operator-discord-deliveries.cc"),
-  EPIPHANY_OPERATOR_DELIVERY_CHECKPOINT_STORE_PATH: z.string().min(1).default(".voidbot/private/epiphany-operator-delivery-checkpoints.cc"),
-  EPIPHANY_OPERATOR_DELIVERY_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
   REPO_FACE_HEARTBEATS_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_ENABLED: booleanFromEnv.default(false),
   VOID_MODERATION_DAEMON_INTERVAL_MINUTES: z.coerce.number().int().min(5).default(15),
@@ -261,10 +257,6 @@ export interface AppConfig {
     pumpEnabled: boolean;
   };
   bifrostPersonaFeedbackObservationStorePath: string;
-  bifrostEpiphanyOperatorRequestStorePath: string;
-  bifrostEpiphanyOperatorDeliveryStorePath: string;
-  epiphanyOperatorDeliveryCheckpointStorePath: string;
-  epiphanyOperatorDeliveryPollIntervalMs: number;
   voidModerationDaemon: { enabled: boolean; intervalMinutes: number; enforcementMode: string };
   voidCandidateDelivery: { enabled: boolean; personaName: string; personaAvatarUrl?: string };
   voidPhysiology: { intervalMinutes: number };
@@ -559,10 +551,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       pumpEnabled: parsed.BIFROST_CULTMESH_COMMAND_PUMP_ENABLED,
     },
     bifrostPersonaFeedbackObservationStorePath: resolve(parsed.BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH),
-    bifrostEpiphanyOperatorRequestStorePath: resolve(parsed.BIFROST_EPIPHANY_OPERATOR_REQUEST_STORE),
-    bifrostEpiphanyOperatorDeliveryStorePath: resolve(parsed.BIFROST_EPIPHANY_OPERATOR_DISCORD_DELIVERY_STORE),
-    epiphanyOperatorDeliveryCheckpointStorePath: resolve(parsed.EPIPHANY_OPERATOR_DELIVERY_CHECKPOINT_STORE_PATH),
-    epiphanyOperatorDeliveryPollIntervalMs: parsed.EPIPHANY_OPERATOR_DELIVERY_POLL_INTERVAL_MS,
     voidModerationDaemon: {
       enabled: parsed.VOID_MODERATION_DAEMON_ENABLED,
       intervalMinutes: parsed.VOID_MODERATION_DAEMON_INTERVAL_MINUTES,

@@ -324,21 +324,6 @@ Within the Postgres path, the implementation is split on purpose now too:
 5. The rumination runner bridges desire-to-speak without manufacturing text: strong advocacy pressure becomes an obligation for the model to queue/defer a candidate or explicitly cool/retire the pressure. The parent rejects silent output for those obligations.
 # Organizational Persona Feedback
 
-The explicit `/epiphany` slash surface is a separate operator-request fork. It accepts only `status`, `sleep(reason)`, `wake`, and `direct(objective)`, requires exact equality with `DISCORD_OWNER_ID`, and writes one immutable, sixty-second `voidbot.discord.epiphany_operator_request.v0` document to `BIFROST_EPIPHANY_OPERATOR_REQUEST_STORE`. The Discord interaction id is the request id, command id, nonce, source event, and slash-message identity. The target is fixed to `epiphany-yggdrasil`. VoidBot does not authenticate the crossing, execute locally, open Epiphany state, or grant Mind, Hands, release, or deployment authority; Bifrost must independently authenticate and admit the request. Ordinary `MessageCreate` content, including the word `wake`, stays on the feedback-only path and cannot call the operator client.
-
-The matching result leg consumes only immutable `bifrost.discord.epiphany_operator_delivery.v0` documents from `BIFROST_EPIPHANY_OPERATOR_DISCORD_DELIVERY_STORE`. Bifrost owns terminal execution truth; VoidBot recomputes the exact MessagePack request digest from its own request inbox, checks request/command/guild/channel/interaction/runtime bindings and `privateStateExposed=false`, then lowers only bounded completed/refused status fields into the original ephemeral Discord interaction. The interaction token lives only in VoidBot's private typed checkpoint store. PATCHing `@original` is the shared idempotent response primitive. The checkpoint records the first delivery hash before Discord I/O and records completion afterward, so restart replay edits one original response, changed same-key content collides closed, and transient Discord failure remains visible and retryable without acknowledging or mutating Bifrost's outbox.
-
-Result-leg authority map:
-
-- Owner: Bifrost owns immutable terminal delivery; VoidBot owns only exact correlation and Discord presentation.
-- Inputs: VoidBot's exact immutable request, Bifrost's exact delivery, and VoidBot's private interaction checkpoint.
-- Outputs: one edit to the original ephemeral interaction plus a private responded checkpoint.
-- Derived state: rendered operator text and attempt/error counters are presentation and transport witnesses, never Epiphany state.
-- Forbidden writers: Discord chat, renderers, checkpoint retries, and VoidBot inference cannot create execution truth, change a delivery, retry a consequence, or inspect sealed result/signature payloads.
-- Shared path: first response, process restart, and transient Discord retry all use the same webhook PATCH and checkpoint transition.
-- Cut line: no raw signature/key/private state, no Epiphany store reader, no chat inference, no local executor, and no outbox acknowledgment/deletion exists in this organ.
-- Verification layer: hostile schema/binding tests plus a real temporary CultCache/CultMesh request-delivery-checkpoint replay smoke.
-
 Configured remote Persona feedback is an observation fork beside the existing mention scheduler. `discord-bot.ts` commits the local Persona mention obligation first and independently calls `exportPersonaFeedbackObservation` only when `remotePersonaFeedbackTarget` is present on the addressed Face. The exported immutable event carries exact Discord provenance, addressing mode, target binding, content hash, and stable `voidbot` producer identity. It writes only to `BIFROST_PERSONA_FEEDBACK_OBSERVATION_STORE_PATH`, never the outbound Discord command provider store or Bifrost-private binding/receipt state. It carries `feedback_only`; Bifrost—not VoidBot—classifies actor links, admits targets, and produces downstream cognition pressure.
 # Disaster recovery boundary (2026-08-16)
 

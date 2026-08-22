@@ -11,7 +11,6 @@ import {
 import type { AppConfig } from "@voidbot/config";
 import {
   ContextBuilder,
-  type EpiphanyOperatorCommand,
   type OllamaSituationalSocialReadInferer,
   loadVoidSelfState,
   PermissionEngine,
@@ -123,88 +122,7 @@ export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName("set-style")
     .setDescription("Reload the configured style pack from disk."),
-  new SlashCommandBuilder()
-    .setName("epiphany")
-    .setDescription("Request an operator action from the Yggdrasil Epiphany runtime.")
-    .addSubcommand((command) =>
-      command.setName("status").setDescription("Request a sealed operator status receipt."),
-    )
-    .addSubcommand((command) =>
-      command
-        .setName("sleep")
-        .setDescription("Request that Epiphany engage its swarm brake.")
-        .addStringOption((option) =>
-          option
-            .setName("reason")
-            .setDescription("Why the swarm should sleep.")
-            .setRequired(true)
-            .setMaxLength(500),
-        ),
-    )
-    .addSubcommand((command) =>
-      command.setName("wake").setDescription("Request that Epiphany release its swarm brake."),
-    )
-    .addSubcommand((command) =>
-      command
-        .setName("direct")
-        .setDescription("Submit bounded operator pressure to resident Self.")
-        .addStringOption((option) =>
-          option
-            .setName("objective")
-            .setDescription("The objective to consider; this grants no consequence authority.")
-            .setRequired(true)
-            .setMaxLength(2000),
-        ),
-    )
-    .addSubcommand((command) =>
-      command.setName("reviews").setDescription("List bounded identities of current Mind review candidates."),
-    )
-    .addSubcommand((command) =>
-      command
-        .setName("review")
-        .setDescription("Commit a disposition for one exact current Mind candidate.")
-        .addStringOption((option) => option.setName("mind-request-id").setDescription("Exact Mind request identity.").setRequired(true).setMaxLength(256))
-        .addStringOption((option) => option.setName("candidate-id").setDescription("Exact candidate identity.").setRequired(true).setMaxLength(256))
-        .addStringOption((option) => option.setName("candidate-sha256").setDescription("Exact candidate SHA-256 hex digest.").setRequired(true).setMinLength(64).setMaxLength(64))
-        .addIntegerOption((option) => option.setName("model-revision").setDescription("Expected canonical model revision.").setRequired(true).setMinValue(0))
-        .addStringOption((option) => option.setName("model-hash").setDescription("Expected canonical model SHA-256 hex hash.").setRequired(true).setMinLength(64).setMaxLength(64))
-        .addStringOption((option) => option.setName("decision").setDescription("Mind disposition.").setRequired(true)
-          .addChoices({ name: "Adopt", value: "adopt" }, { name: "Refuse", value: "refuse" }, { name: "Hold", value: "hold" })),
-    ),
 ];
-
-export function epiphanyOperatorCommandFromInteraction(
-  interaction: ChatInputCommandInteraction<CacheType>,
-): EpiphanyOperatorCommand {
-  switch (interaction.options.getSubcommand(true)) {
-    case "status":
-      return { kind: "status" };
-    case "sleep":
-      return { kind: "sleep", reason: interaction.options.getString("reason", true) };
-    case "wake":
-      return { kind: "wake" };
-    case "direct":
-      return { kind: "directive", objective: interaction.options.getString("objective", true) };
-    case "reviews":
-      return { kind: "reviews" };
-    case "review":
-      return {
-        kind: "review",
-        mindRequestId: interaction.options.getString("mind-request-id", true),
-        candidateId: interaction.options.getString("candidate-id", true),
-        candidateSha256: interaction.options.getString("candidate-sha256", true),
-        expectedModelRevision: interaction.options.getInteger("model-revision", true),
-        expectedModelHash: interaction.options.getString("model-hash", true),
-        decision: interaction.options.getString("decision", true) as "adopt" | "refuse" | "hold",
-      };
-    default:
-      throw new Error("Unsupported Epiphany operator subcommand.");
-  }
-}
-
-export function isExactDiscordOwner(actorId: string, ownerDiscordId: string): boolean {
-  return actorId === ownerDiscordId;
-}
 
 export interface PromptHandlerOptions {
   prompt: string;

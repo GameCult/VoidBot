@@ -24,8 +24,6 @@ import {
   loadFaceIdentityRegistry,
   queueRepoFaceMention,
   exportPersonaFeedbackObservation,
-  registerEpiphanyOperatorInteraction,
-  submitEpiphanyOperatorRequest,
   type RepoDiscordIdentity,
   stripRepoIdentityTextAddress,
   loadStylePack,
@@ -59,15 +57,12 @@ import {
   handleReindexChannel,
   handleSearchHistory,
   handleSummarizeChannel,
-  epiphanyOperatorCommandFromInteraction,
-  isExactDiscordOwner,
   maybeRegisterCommands,
   parseProviderOverride,
   replyEphemeral,
 } from "./discord-bot-handlers";
 import { maybeMirrorOwnerAquariumMessageAsMetameVoice } from "./metame-owner-voice-bridge";
 import { startRepoFaceVoicePlayback } from "./repo-face-voice-playback";
-import { startEpiphanyOperatorDeliveryConsumer } from "./epiphany-operator-delivery-consumer";
 import {
   buildActorFromInteraction,
   buildActorFromMessage,
@@ -344,15 +339,6 @@ export async function startBot(): Promise<void> {
     console.log(`VoidBot connected as ${readyClient.user.tag}.`);
     await maybeRegisterCommands(config.botToken!, config.applicationId, config.developmentGuildId);
     startRepoFaceVoicePlayback(readyClient, config.repoFaceDiscordVoice);
-    startEpiphanyOperatorDeliveryConsumer({
-      applicationId: readyClient.application.id,
-      requestStorePath: config.bifrostEpiphanyOperatorRequestStorePath,
-      deliveryStorePath: config.bifrostEpiphanyOperatorDeliveryStorePath,
-      checkpointStorePath: config.epiphanyOperatorDeliveryCheckpointStorePath,
-      bifrostRoot: config.bifrostRoot,
-      cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
-      pollIntervalMs: config.epiphanyOperatorDeliveryPollIntervalMs,
-    });
   });
 
   client.on(Events.MessageCreate, async (message) => {
@@ -577,61 +563,6 @@ export async function startBot(): Promise<void> {
       const guildContext = buildGuildContextFromInteraction(interaction);
 
       switch (interaction.commandName) {
-        case "epiphany": {
-          await interaction.deferReply({ ephemeral: true });
-          if (!isExactDiscordOwner(actor.id, config.ownerDiscordId)) {
-            await replyEphemeral(
-              interaction,
-              "Refused: Epiphany operator requests require the exact configured Discord owner identity.",
-            );
-            break;
-          }
-          if (!interaction.guildId) {
-            await replyEphemeral(
-              interaction,
-              "Refused: Epiphany operator requests require their exact Discord organization provenance.",
-            );
-            break;
-          }
-          const issuedAt = new Date().toISOString();
-          await registerEpiphanyOperatorInteraction(
-            {
-              requestId: interaction.id,
-              applicationId: interaction.applicationId,
-              interactionToken: interaction.token,
-              guildId: interaction.guildId,
-              channelId: interaction.channelId,
-              registeredAt: issuedAt,
-            },
-            {
-              checkpointStorePath: config.epiphanyOperatorDeliveryCheckpointStorePath,
-              bifrostRoot: config.bifrostRoot,
-              cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
-            },
-          );
-          await replyEphemeral(
-            interaction,
-            `Epiphany operator request \`${interaction.id}\` is pending Bifrost admission. This request grants no Mind, Hands, release, deployment, or local execution authority.`,
-          );
-          const request = await submitEpiphanyOperatorRequest(
-            {
-              interactionId: interaction.id,
-              actorDiscordId: actor.id,
-              guildId: interaction.guildId,
-              channelId: interaction.channelId,
-              command: epiphanyOperatorCommandFromInteraction(interaction),
-              issuedAt,
-            },
-            {
-              storePath: config.bifrostEpiphanyOperatorRequestStorePath,
-              bifrostRoot: config.bifrostRoot,
-              cultlibRoot: process.env.VOIDBOT_CULTLIB_ROOT,
-              producerRuntimeId: "voidbot-yggdrasil",
-            },
-          );
-          if (request.requestId !== interaction.id) throw new Error("Epiphany request identity changed after interaction registration.");
-          break;
-        }
         case "ask":
           const requestedProvider = parseProviderOverride(
             interaction.options.getString("provider", false),

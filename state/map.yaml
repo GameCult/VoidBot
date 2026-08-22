@@ -33,8 +33,6 @@ constraints:
 
 invariants:
   - The recovery MCP organ is read-only and loopback-only. It may consume exact archives, VoidBot-owned vector collections, and the configured embedding provider; it cannot start Discord, worker-job, Persona, moderation, Bifrost, Idunn, or canon mutation paths.
-  - The `/epiphany` Discord edge is an exact-owner request producer only. Its closed status/sleep/wake/direct command family writes short-lived immutable documents to a dedicated Bifrost inbox; ordinary conversation remains feedback-only, and VoidBot gains no Epiphany state, Mind, Hands, release, deployment, argv, or local-execution authority.
-  - The `/epiphany` result edge consumes only Bifrost's frozen immutable terminal delivery schema, validates it against VoidBot's exact request and private Discord interaction checkpoint, and may only edit the original ephemeral response. It cannot inspect Epiphany state, synthesize execution truth, expose signatures/private state, mutate the Bifrost outbox, or retry consequences.
   - Deployment follows one path: push the intended upstream commit, then let Idunn deploy VoidBot on Yggdrasil. Do not create, restore, or search for a local VoidBot deployment path.
   - The map is canonical and slow-changing.
   - Scratch is temporary and disposable.

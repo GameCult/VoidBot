@@ -38,8 +38,6 @@
     "agents:mimo-nibu-crashout-smoke": "node scripts/smoke-mimo-nibu-crashout.mjs",
     "agents:speech-boundary-smoke": "tsx scripts/smoke-repo-face-speech-boundary.ts",
     "agents:persona-feedback-observation-smoke": "tsx scripts/smoke-persona-feedback-observation.ts",
-    "agents:epiphany-operator-request-smoke": "tsx scripts/smoke-epiphany-operator-request.ts",
-    "agents:epiphany-operator-delivery-smoke": "tsx scripts/smoke-epiphany-operator-delivery.ts",
     "agents:heartbeat-response-pressure-fixture": "tsx scripts/smoke-repo-face-response-pressure.ts",
     "agents:initiative-engine-smoke": "tsx scripts/smoke-persona-initiative-engine.ts",
     "agents:memory-projection-smoke": "node scripts/smoke-repo-face-memory-projection.mjs",
