@@ -137,8 +137,10 @@ function queueIdunnHealthPublication() {
       endpoint: parseIdunnEndpoint(idunnHealthEndpoint),
       daemonId: process.env.VOIDBOT_IDUNN_DAEMON || "voidbot",
       healthContract: process.env.VOIDBOT_IDUNN_HEALTH_CONTRACT || "voidbot.cultnet-rudp-stack-health",
+      sourceRuntimeId: process.env.VOIDBOT_IDUNN_SOURCE_RUNTIME || "voidbot-swarm-yggdrasil",
+      privateKeyPath: process.env.VOIDBOT_IDUNN_HEALTH_PRIVATE_KEY,
     }, {
-      state: "healthy",
+      state: "active",
       detail: "VoidBot swarm CultMesh publisher is serving retained runtime state.",
       observedAt: new Date().toISOString(),
     }))

@@ -1,6 +1,7 @@
 "use strict";
 
 const dgram = require("dgram");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
@@ -24,6 +25,13 @@ const { encode } = require(fs.existsSync(cultNetMsgpack) ? cultNetMsgpack : root
 
 const CULTNET_RUDP_PROTOCOL_ID = "cultnet.transport.rudp.v0";
 const IDUNN_HEALTH_RUDP_CONNECTION_ID = 0x1d0d0001;
+const SIGNED_HEALTH_SCHEMA = "idunn.signed_daemon_health.v1";
+const PROVIDER_HEALTH_ID_DOMAIN = Buffer.from("gamecult.provider-health.identity.v1\0", "utf8");
+const PROVIDER_HEALTH_SIGNATURE_DOMAIN = Buffer.from("gamecult.provider-health.signature.v1\0", "utf8");
+const SIGNED_HEALTH_PURPOSE = Buffer.from(SIGNED_HEALTH_SCHEMA, "utf8");
+const publisherIncarnationId = crypto.randomUUID();
+let publisherSequence = 0;
+const signerCache = new Map();
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -34,11 +42,17 @@ async function main() {
   const endpoint = parseEndpoint(endpointValue);
   const daemonId = options.daemon || process.env.VOIDBOT_IDUNN_DAEMON || "voidbot";
   const healthContract = options.contract || process.env.VOIDBOT_IDUNN_HEALTH_CONTRACT || "voidbot.cultnet-rudp-stack-health";
-  const state = options.state || "healthy";
+  const state = options.state || "active";
   const observedAt = options.observedAt || new Date().toISOString();
-  const detail = options.detail || "VoidBot orchestrator pulse completed.";
+  const detail = options.detail || "VoidBot swarm publisher is serving its typed Eve surface.";
 
-  await publishIdunnRudpHealth({ endpoint, daemonId, healthContract }, { state, detail, observedAt });
+  await publishIdunnRudpHealth({
+    endpoint,
+    daemonId,
+    healthContract,
+    sourceRuntimeId: process.env.VOIDBOT_IDUNN_SOURCE_RUNTIME || "voidbot-swarm-yggdrasil",
+    privateKeyPath: process.env.VOIDBOT_IDUNN_HEALTH_PRIVATE_KEY,
+  }, { state, detail, observedAt });
 }
 
 async function publishIdunnRudpHealth(publisher, health) {
@@ -63,34 +77,24 @@ async function publishIdunnRudpHealth(publisher, health) {
       "accept",
     );
 
-    const record = {
-      daemonId: publisher.daemonId,
-      state: health.state,
-      detail: health.detail,
-      observedAt: health.observedAt,
-      healthContract: publisher.healthContract,
-      publicationSource: "daemon-published",
-      transport: CULTNET_RUDP_PROTOCOL_ID,
-    };
-    const payload = encode([
-      record.daemonId,
-      record.state,
-      record.detail,
-      record.observedAt,
-      record.healthContract,
-      record.publicationSource,
-      record.transport,
-    ]);
+    publisherSequence += 1;
+    const signed = createSignedHealthRecord(
+      publisher,
+      health,
+      publisherIncarnationId,
+      publisherSequence,
+    );
     const message = {
       schemaVersion: "cultnet.document_put_raw.v0",
-      messageId: `voidbot-health:${publisher.daemonId}:${record.observedAt.replace(/[:.]/g, "-")}`,
+      messageId: `voidbot-signed-health:${publisher.daemonId}:${publisherIncarnationId}:${publisherSequence}`,
       document: {
-        schemaId: "idunn.daemon_health",
+        schemaId: SIGNED_HEALTH_SCHEMA,
         recordKey: publisher.daemonId,
-        storedAt: record.observedAt,
+        storedAt: signed.record.observedAt,
         payloadEncoding: "messagepack",
-        payload,
-        sourceRuntimeId: "voidbot-orchestrator",
+        payload: signed.payload,
+        sourceRuntimeId: signed.record.sourceRuntimeId,
+        sourceAgentId: signed.record.signerIdentityId,
         sourceRole: "daemon-health-publisher",
         tags: [CULTNET_RUDP_PROTOCOL_ID],
       },
@@ -114,6 +118,126 @@ async function publishIdunnRudpHealth(publisher, health) {
     } catch {}
     await closeSocket(socket);
   }
+}
+
+function createSignedHealthRecord(publisher, health, incarnationId, sequence) {
+  if (!publisher.privateKeyPath) {
+    throw new Error("VoidBot signed Idunn health requires VOIDBOT_IDUNN_HEALTH_PRIVATE_KEY.");
+  }
+  if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+    throw new Error("VoidBot signed Idunn health sequence must be a positive safe integer.");
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incarnationId)) {
+    throw new Error("VoidBot signed Idunn health incarnation must be a UUID.");
+  }
+  if (!["active", "warming", "degraded", "failed"].includes(health.state)) {
+    throw new Error(`Unsupported signed Idunn health state: ${health.state}`);
+  }
+  if (typeof health.detail !== "string" || health.detail.length > 512 || /[\u0000-\u001f\u007f]/.test(health.detail)) {
+    throw new Error("VoidBot signed Idunn health detail is oversized or contains control characters.");
+  }
+  const observedAtUnixMillis = Date.parse(health.observedAt);
+  if (!Number.isSafeInteger(observedAtUnixMillis) || observedAtUnixMillis <= 0) {
+    throw new Error(`VoidBot signed Idunn health observation time is invalid: ${health.observedAt}`);
+  }
+
+  const signer = loadHealthSigner(publisher.privateKeyPath);
+  const record = {
+    schemaVersion: SIGNED_HEALTH_SCHEMA,
+    daemonId: requiredIdentifier(publisher.daemonId, "daemon id"),
+    healthContract: requiredIdentifier(publisher.healthContract, "health contract"),
+    sourceRuntimeId: requiredIdentifier(publisher.sourceRuntimeId, "source runtime id"),
+    state: health.state,
+    detail: health.detail,
+    signerIdentityId: signer.identityId,
+    publisherIncarnationId: incarnationId,
+    publisherSequence: sequence,
+    observedAtUnixMillis,
+    observedAt: new Date(observedAtUnixMillis).toISOString(),
+    signatureAlgorithm: "ed25519",
+  };
+  const unsignedPayload = encodeSignedHealth(record, Buffer.alloc(0));
+  const signingMessage = healthSigningMessage(unsignedPayload);
+  const signature = crypto.sign(null, signingMessage, signer.privateKey);
+  if (signature.length !== 64) {
+    throw new Error(`VoidBot signed Idunn health produced ${signature.length} signature bytes, expected 64.`);
+  }
+  return {
+    record,
+    payload: encodeSignedHealth(record, signature),
+    unsignedPayload,
+    signingMessage,
+    signature,
+    publicKey: signer.publicKey,
+  };
+}
+
+function encodeSignedHealth(record, signature) {
+  return Buffer.from(encode([
+    record.schemaVersion,
+    record.daemonId,
+    record.healthContract,
+    record.sourceRuntimeId,
+    record.state,
+    record.detail,
+    record.signerIdentityId,
+    record.publisherIncarnationId,
+    record.publisherSequence,
+    record.observedAtUnixMillis,
+    null,
+    null,
+    null,
+    null,
+    record.signatureAlgorithm,
+    signature,
+    false,
+  ]));
+}
+
+function healthSigningMessage(payload) {
+  const purposeLength = Buffer.alloc(8);
+  purposeLength.writeBigUInt64BE(BigInt(SIGNED_HEALTH_PURPOSE.length));
+  const payloadLength = Buffer.alloc(8);
+  payloadLength.writeBigUInt64BE(BigInt(payload.length));
+  return Buffer.concat([
+    PROVIDER_HEALTH_SIGNATURE_DOMAIN,
+    purposeLength,
+    SIGNED_HEALTH_PURPOSE,
+    payloadLength,
+    payload,
+  ]);
+}
+
+function loadHealthSigner(privateKeyPath) {
+  const resolved = path.resolve(privateKeyPath);
+  const cached = signerCache.get(resolved);
+  if (cached) return cached;
+  const privateKey = crypto.createPrivateKey(fs.readFileSync(resolved));
+  if (privateKey.asymmetricKeyType !== "ed25519") {
+    throw new Error(`VoidBot Idunn health key at ${resolved} is not Ed25519.`);
+  }
+  const publicKeyObject = crypto.createPublicKey(privateKey);
+  const spki = Buffer.from(publicKeyObject.export({ format: "der", type: "spki" }));
+  const ed25519SpkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
+  if (spki.length !== ed25519SpkiPrefix.length + 32 || !spki.subarray(0, ed25519SpkiPrefix.length).equals(ed25519SpkiPrefix)) {
+    throw new Error(`VoidBot Idunn health key at ${resolved} has an unexpected Ed25519 public encoding.`);
+  }
+  const publicKey = spki.subarray(ed25519SpkiPrefix.length);
+  const identityId = crypto.createHash("sha256")
+    .update(PROVIDER_HEALTH_ID_DOMAIN)
+    .update(publicKey)
+    .digest("hex");
+  const signer = { identityId, privateKey, publicKey, publicKeyObject };
+  signerCache.set(resolved, signer);
+  return signer;
+}
+
+function requiredIdentifier(value, label) {
+  const text = String(value || "");
+  if (!text.trim() || text.length > 256 || /[\u0000-\u001f\u007f]/.test(text)) {
+    throw new Error(`VoidBot signed Idunn health ${label} is empty, oversized, or contains control characters.`);
+  }
+  return text;
 }
 
 async function bindSocket(socket, endpoint) {
@@ -289,7 +413,7 @@ async function closeSocket(socket) {
   });
 }
 
-module.exports = { publishIdunnRudpHealth, parseEndpoint };
+module.exports = { createSignedHealthRecord, publishIdunnRudpHealth, parseEndpoint };
 
 if (require.main === module) {
   main().catch((error) => {
