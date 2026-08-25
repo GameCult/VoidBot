@@ -53,7 +53,7 @@ The durable local state is split on purpose: Postgres holds jobs, audit events, 
 
 There is also a project-memory spine now for future Codex sessions: `state/map.yaml`, `state/scratch.md`, `state/evidence.jsonl`, `notes/fresh-workspace-handoff.md`, and the helper CLIs under `tools/`. The point is to rehydrate from canonical files instead of pretending the transcript will stay coherent forever.
 
-VoidBot also publishes a current swarm Eve/CultUI surface through CultMesh as `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by `.voidbot/status/cultmesh/voidbot-swarm-state.cc`. The generated `swarm-dashboard.html` is a local debug lowering of that surface.
+Yggdrasil `voidbot.service` publishes the current swarm Eve/CultUI surface through CultMesh as `cultmesh://voidbot.local/eve/providers/voidbot.swarm`, backed by `.voidbot/status/cultmesh/voidbot-swarm-state.cc`. Odin discovers it, Gjallar embeds it in `gjallar.overview`, and Hermodr/EveCanvas lower that aggregate for graphical clients. The generated `swarm-dashboard.html` is a local debug lowering only. The live service does not restore the lost Discord bot, worker, Persona scheduler, Postgres, Qdrant, or resident cognition body; `voidbot-retrieval.service` remains separate.
 
 ## Quick Start
 
@@ -565,7 +565,7 @@ The watchdog task also uses `Interactive` logon because the remote freshness che
 
 ## Resident Void Organs
 
-Void's moderation, person-shaped rumination, physiology, memory maintenance, and candidate delivery run as separately gated resident daemon organs on Yggdrasil.
+Void's moderation, person-shaped rumination, physiology, memory maintenance, and candidate-delivery organs remain source capabilities, but they are not part of the current Yggdrasil `voidbot.service` publisher body.
 
 Tracked prompt surfaces:
 
@@ -610,11 +610,11 @@ If one of the swarm agents should speak as itself through the shared Discord pip
 node scripts/send-discord-message.mjs --channel-id <channel-id> --persona-name "Ghostlight Archivist" --persona-avatar-url "https://example.com/avatar.png"
 ```
 
-Moderation heartbeat, person-shaped rumination, physiology, memory maintenance, and candidate delivery are resident daemon organs on Yggdrasil. They are configured independently and deployed only by pushing upstream for Idunn; do not install local scheduled-task copies.
+The moderation heartbeat, person-shaped rumination, physiology, memory maintenance, and candidate-delivery organs are not currently deployed on Yggdrasil. Do not revive local scheduled-task copies or infer their lifecycle from the swarm publisher.
 
 Chronological Discord evidence is acquired by the daemon's bounded evidence source. Semantic retrieval remains available for deeper context, but it does not own the heartbeat clock or cursor.
 
-Agent access to Discord history and indexed sources executes inside the archive owner. The resident Yggdrasil worker publishes a stateless streamable-HTTP MCP endpoint on loopback `127.0.0.1:17875/mcp`, backed by the worker's existing archive repositories and retrieval service. The canonical SSH tunnel maps that endpoint to Starfire loopback. `.codex/config.toml` starts one task-local stdio bridge that forwards each tool request over HTTP and converts a deployment/tunnel gap into a normal tool error instead of permanently closing Codex's transport. The bridge owns no retrieval state and starts no SSH, Docker, or remote process. Verify the failure path with `QDRANT_URL=http://127.0.0.1:16333 node scripts/smoke-voidbot-mcp-bridge-recovery.mjs`.
+Agent access to recovered Discord history and indexed sources belongs to the separate read-only retrieval service. The source tree still contains the worker-side streamable-HTTP MCP design and its bridge smoke, but no resident VoidBot worker currently owns `127.0.0.1:17875/mcp` on Yggdrasil.
 There is also a repo-weather helper:
 
 ```bash

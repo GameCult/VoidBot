@@ -1,6 +1,6 @@
 # VoidBot Daemon Organ Migration Map
 
-Observed 2026-07-16 after the Yggdrasil replacement. This map distinguishes live process ownership from old scheduled-task documentation.
+Historical migration map observed 2026-07-16. Its resident full-stack target was lost with the retired Yggdrasil body; the current runtime is recorded below so this document cannot be mistaken for a startup inventory.
 
 ## Live Bodies
 
@@ -9,10 +9,11 @@ Observed 2026-07-16 after the Yggdrasil replacement. This map distinguishes live
 - Starfire `Void Mood Drift`: disabled.
 - Starfire `VoidBot Operations Watchdog`: disabled.
 - Starfire `Bifrost Agent Dispatch`: disabled.
-- Yggdrasil `voidbot.service`: active; Compose runs the resident Persona scheduler.
-- Yggdrasil Bifrost web: active, but no Bifrost dispatch worker was found in the queried service/container set.
+- Yggdrasil `voidbot.service`: active; Compose runs only the typed `voidbot.swarm` Eve publisher at `127.0.0.1:17873`.
+- Yggdrasil `voidbot-retrieval.service`: active as a separate bounded read-only recovery service.
+- Discord bot, worker, Persona scheduler, Postgres, Qdrant, and resident cognition organs: not restored.
 
-The disabled tasks are not standby owners. The listed organs currently have no recurring pulse unless another independently supervised service is introduced.
+The disabled tasks are not standby owners. The historical organ rows below describe the intended ownership model, not live process evidence.
 
 ## Authority Map
 
@@ -52,4 +53,4 @@ The disabled tasks are not standby owners. The listed organs currently have no r
 
 The Windows omnibus, installer, and hidden launcher are deleted, and watchdog logic cannot recognize them as health owners. Remaining per-organ Starfire tasks are operational debris, not standby paths; remove any installed copies rather than restoring repository launchers.
 
-As of deployed revision `9deebb3`, the listed Starfire task husks are unregistered, the promoted artifact contains none of the old Void runners, Persona state accepts only repo/native Persona turn kinds, and Yggdrasil runs one resident scheduler process. This migration map is satisfied; future work should add capabilities inside these ownership boundaries rather than recreating schedulers.
+Revision `9deebb3` completed this historical source migration and removed the Starfire task husks. That deployment verdict is no longer current: the present Yggdrasil body runs no resident scheduler or cognition organs. Keep this map as an ownership contract for any explicitly authorized future recovery, not as proof that recovery already exists.

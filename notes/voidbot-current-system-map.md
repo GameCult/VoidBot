@@ -6,9 +6,13 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
 
 ## Deployment Authority
 
-VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repository pushes. The supported deployment path is therefore `upstream main -> Idunn release drift -> Yggdrasil`; a local checkout is a development and diagnostic body only. Future agents must not search for, create, or revive a local VoidBot deployment. Idunn compares `origin/main` with the root-owned `/srv/voidbot/deploy/deployment.env` witness, builds an audited immutable release when they differ, atomically switches `/srv/voidbot/app/current`, and accepts success only after the service set is running and `DEPLOYED_REVISION` matches upstream.
+VoidBot's current Yggdrasil body is deliberately narrow. Idunn deploys upstream `main` into immutable releases under `/srv/voidbot/swarm/releases`, promotes `/srv/voidbot/swarm/current`, and verifies `/srv/voidbot/deploy/deployment.env`. `voidbot.service` runs only the typed `voidbot.swarm` Eve publisher on `127.0.0.1:17873`; its signed health is admitted as `voidbot.cultnet-rudp-stack-health`. `voidbot-retrieval.service` separately owns the bounded read-only recovery corpus. The lost Discord bot, worker, Persona scheduler, Postgres, Qdrant, and resident cognition state were not restored.
 
-## Main Organs
+The source-organ inventory below describes repository capabilities and the retired full-stack design. It is not a claim that those organs currently run on Yggdrasil. Restoring any of them requires a new recovery and authority map rather than expanding the swarm publisher by implication.
+
+The live graphical path is `voidbot.swarm` publisher -> Odin accepted state -> Gjallar `gjallar.overview` -> Hermodr lowering -> EveCanvas/browser. The Yggdrasil Hermodr body runs beside Odin; EVE currently reaches the Starfire LAN lowering. Both consume Odin/CultMesh and own no provider or aggregate truth.
+
+## Source Organs (Not Current Processes)
 
 - `apps/bot/src/discord-bot.ts`
   - Discord gateway shell: client bootstrap, provider wiring, event registration, and top-level orchestration.
@@ -79,7 +83,7 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
 - `packages/rag/src/source-document-archive.ts`
   - archived source/lore document manifest under `.voidbot/rag/source-documents.json` plus per-repo shards under `.voidbot/rag/source-documents.repos/`.
 
-## Flow 1: Discord Request To Provider
+## Retired Source Flow 1: Discord Request To Provider
 
 1. `apps/bot/src/discord-bot.ts` receives a slash command or mention-driven request and delegates prompt/command work into `apps/bot/src/discord-bot-handlers.ts`.
 2. Permission checks run through `packages/core/src/permission-engine.ts`.
@@ -93,7 +97,7 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
    - answers directly through `local_llm`, or
    - queues an owner job for the worker / `owner_codex` path.
 
-## Flow 2: Owner Job Execution
+## Retired Source Flow 2: Owner Job Execution
 
 1. `apps/worker/src/index.ts` polls approved jobs from durable state.
 2. The worker claims a job and dispatches it to the configured provider.
@@ -102,7 +106,7 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
 4. If the answer fits the Discord-safe lane, the worker posts it back.
 5. If the task needs deeper work, the worker writes a handoff bundle under `.voidbot/artifacts/<job-id>/` and posts the handoff response.
 
-## Flow 3: Retrieval And Indexing
+## Source Flow 3: Retrieval And Indexing
 
 1. `packages/rag/src/message-archive.ts` and `packages/rag/src/source-document-archive.ts` keep the raw corpora.
 2. Bot-directed prompts are tagged at ingest, kept in the raw Discord archive, and deliberately skipped when the history ingester builds semantic chunks so repeated summons stop poisoning normal retrieval.
@@ -111,9 +115,9 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
 5. `scripts/reconcile-source-repos.ts` discovers local Git repos, refreshes push hooks, prunes stale repo shards, and indexes newly discovered repos.
 6. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive explicit or detached per-repo source/lore reindex work.
 7. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, `get_exact_source_document`, and `list_indexed_repos`. Exact-document reads come from the canonical read-only source archive and return the complete archived content for consumer-owned hashing and receipts; they do not read a checkout or mutate the archive.
-8. The resident worker starts `mcp-http-server.ts` beside its job loop and injects the same long-lived archive repositories, source ingester, and retrieval service used by the daemon. It publishes stateless streamable HTTP at Ygg loopback `127.0.0.1:17875/mcp`, mapped to Starfire by the canonical SSH tunnel. Codex connects to one task-local `serve-voidbot-mcp-bridge.mjs` process over stdio. That bridge owns only outer transport continuity: it creates a lightweight HTTP MCP client per tool request, converts daemon/tunnel unavailability into an ordinary tool error, and remains alive for later calls. It cannot read archives, Qdrant, repositories, or Void state itself and starts no SSH, Docker, or remote process. Qdrant stays loopback-private on Yggdrasil. The separate retained stdio server entrypoint exists only for bounded child-provider capability isolation inside the worker body.
+8. The current Yggdrasil endpoint at `127.0.0.1:17875/mcp` belongs to the standalone read-only `voidbot-retrieval.service`, not a resident worker or job loop. It owns bounded recovery access to the retained archives and source corpus and has no bot, job, Persona, scheduler, or swarm-publication authority. The task-local `serve-voidbot-mcp-bridge.mjs` remains transport-only: it converts endpoint or tunnel unavailability into an ordinary tool error, cannot read archives or Void state itself, and starts no SSH, Docker, or remote process.
 
-## Flow 4: Ops And Recovery
+## Historical Flow 4: Ops And Recovery
 
 - `scripts/start-voidbot-stack.ps1`
   - stack bootstrap, health checks, fresh build, stale-process cleanup, source-repo reconcile, bot/worker restart, runtime status emission.
@@ -165,17 +169,17 @@ VoidBot runs on Yggdrasil. Idunn owns deployment and consumes upstream repositor
 - `apps/persona-scheduler/src/persona-scheduler-runner.ts` owns one complete typed scheduler tick in-process. The resident `index.ts` serializes calls to that runner directly; it does not spawn a TypeScript script per pulse. Pause/disabled checks happen before registry, Discord, embedding, provider, or dispatch work. `persona-participant-dispatcher.ts` owns participant-spec projection plus repo-Persona/Void dispatch, while `persona-prompt-inspection.ts` owns the explicit prompt-inspection workflow. `scripts/run-repo-face-heartbeats.ts` is only a 31-line CLI adapter over the runner or inspection organ.
 - `apps/persona-scheduler/src/void-physiology-domain.ts` owns pure Void sleep and speaking-pressure projection. `void-physiology-organ.ts` loads typed Mind and applies only `update_sleep_cycle` / `update_speaking_pressure` operations. The resident coordinator serializes organs, so physiology does not infer activity from a filesystem lock. Typed speech receipts own `lastSpokeAt`; sleep-time short-term pressure becomes a maintenance intent and cannot directly launch a model or mutate memory.
 - `packages/core/src/bifrost-discord-command.ts` owns the typed Bifrost Discord command/receipt crossing for all VoidBot callers. Worker repo-Face speech and the resident `void-candidate-delivery-organ.ts` supply identity, target, reply, and content through that one port; neither owns CultMesh document definitions, command pumping, receipt polling, or transport completion policy. Candidate delivery marks typed state spoken only after a completed Bifrost receipt and is independently gated by `VOID_CANDIDATE_DELIVERY_ENABLED`.
-- Resident person-shaped rumination is independently gated by `VOID_RUMINATION_DAEMON_ENABLED` and its own minimum five-minute cadence. A due pass reads one bounded chronological Discord window plus the dedicated rumination doctrine, server rules, and Void voice; `void-rumination-organ.ts` receipts the stable pressure fingerprint before its one model attempt. It cannot run merely because the one-minute Persona observation clock fired, and it remains disabled on Yggdrasil while the model credential is stale.
+- The source design gates person-shaped rumination through `VOID_RUMINATION_DAEMON_ENABLED` and its own minimum five-minute cadence. A due pass reads one bounded chronological Discord window plus the dedicated rumination doctrine, server rules, and Void voice; `void-rumination-organ.ts` receipts the stable pressure fingerprint before its one model attempt. This organ is not deployed in the current Yggdrasil body.
 - `apps/persona-scheduler/src/bifrost-governance-source.ts` owns the remaining Bifrost governance digest subprocess contract. It supplies the CLI path, arguments, timeout, JSON parsing, and typed command/parse failure topics; Persona prompt composition receives a `BifrostGovernanceDigest` and cannot invoke Bifrost directly.
 - The scheduler state has one write authority. `initiative-engine.ts` commits participant reconciliation, operator controls, pause/disabled skips, stale-turn recovery witnesses, semantic pressure, pending-attention consumption, queue outcomes, and tick finalization. `run-repo-face-heartbeats.ts` contains no direct participant/state assignment or history append; its sources and actuators return facts to engine commits.
 - `apps/persona-scheduler/src/turn-actuator.ts` is the worker-queue output port. Given a completed prompt, output channel, evidence fields, provider, identity, timestamp, and narrow `createJob` capability, it builds the canonical worker actor/guild `ContextBundle`, creates one approved `repo-face-rumination` job, and returns `{created, activeJobId, requestMessageId}`. It cannot choose a Persona, mutate scheduler state, or compose prompt content. The orchestration shell no longer knows `ContextBuilder`, job approval defaults, worker command names, or `createJob` mechanics.
 - `apps/persona-scheduler/src/turn-routing.ts` owns channel selection and projection. It turns registered channel permissions, the configured default, and the newest pending-attention channel into one `PersonaChannelPlan` containing the primary output room, nearby snapshot rooms, normalized options, and low-threshold topics. It also owns the bounded channel-speed multiplier used by participant specs. Context readers and prompt renderers consume this plan without deciding routes.
 - `apps/persona-scheduler/src/control-source.ts` owns operator-control observation. It reads the pause witness with explicit absent/running and malformed/fail-closed semantics, loads the typed `voidbot.swarm_control_state` CultMesh document, validates heat bounds, and returns neutral facts. It cannot write scheduler state; engine commits own control application and skip witnesses.
 - `apps/persona-scheduler/src/repo-activity-source.ts` owns the home-repo activity subprocess boundary. It resolves the source repo and Face cursor, invokes `export-recent-repo-activity.mjs` with a bounded 96-hour/five-commit window and mandatory `--read-only`, and returns a typed observation. Prompt composition renders that observation and cannot invoke or parse the exporter.
-- Idunn invokes the root-owned audited manifest at `/srv/odin/deploy-manifests/voidbot`; `/usr/local/sbin/deploy-voidbot` is a byte-identical inspection/recovery copy, not the live path. Both derive from `gamecult-ops/scripts/deploy-voidbot.sh`. The `idunn` user exclusively owns mutable Git state in `/srv/build/VoidBot` and `/srv/build/cultcache-ts`, including lazy partial-clone object fetches; the root actuator owns immutable artifact construction/promotion, systemd, and deployment witnesses without running Git as root.
+- Idunn invokes the root-owned audited manifest at `/srv/odin/deploy-manifests/voidbot`; `/usr/local/sbin/deploy-voidbot` is a byte-identical inspection/recovery copy, not the live path. Both derive from `gamecult-ops/scripts/deploy-voidbot.sh`. The `idunn` user owns mutable Git state in `/srv/build/VoidBot`; the current publisher deployment archives the exact source commit without a package build. The root actuator owns immutable release promotion, systemd, and deployment witnesses without running Git as root.
 - The same scheduler derives semantic `responsePressure` for scheduler-eligible Personas by embedding canonical Face identity-card projections and recent human messages from channels each Face may enter. Pressure decays by message age, aggregates with noisy-OR, awakens at most three eligible Faces, and exposes its message-scoped cosine evidence. It produces bounded `dynamicHeat` for the next scheduled recovery calculation; an unseen message crossing the Persona's interrupt threshold may pull readiness to the current initiative clock exactly once. It cannot create a job, bypass rest or active-turn brakes, impersonate a direct mention, or write inferred desire into Persona state.
-  - The Windows omnibus and per-organ wrappers are deleted. `voidbot.service` deploys `persona-scheduler` beside bot, worker, Qdrant, and the CultMesh publisher. Heat changes Persona recovery only and cannot manufacture intent.
-  - The registry includes Nibu for `AetheriaLore`, with typed Face state and an Aquarium channel allow-list. Her Persona turns use the resident scheduler and normal worker queue; no local orchestrator exists.
+  - The Windows omnibus and per-organ wrappers are deleted. The retired full-stack body deployed `persona-scheduler` beside bot, worker, Qdrant, and the CultMesh publisher; current `voidbot.service` deploys only the publisher.
+  - The source registry includes Nibu for `AetheriaLore`, with typed Face state and an Aquarium channel allow-list. No current resident scheduler or worker executes her Persona turns.
   - The local ignored registry now also includes Epiphany for `EpiphanyAgent`, with Face state in `E:/Projects/EpiphanyAgent/.voidbot/state/epiphany.cc`, Discord role id `1506375937439301642`, and Aquarium channel allow-list `1501196543150264332`. Her repo-local `.voidbot` birth surface has completed in plan/review mode; the generated EpiphanyAgent startup packets still require Self review before accepted native birth mutations. Her jurisdiction is the self-improvement spine: typed state, CultCache/CultNet, Codex bridge boundaries, birth/init rites, low-copy runtime contracts, review gates, graph-shaped memory, heartbeat physiology, and deletion of duplicated authority.
 - `scripts/export-random-discord-history.mjs`
   - plain Node helper for novelty excursions that samples one random archived Discord seam, returns a local context window around the anchor message, and skips bot-directed prompt rows by default.
@@ -253,7 +257,7 @@ Migration order:
 
 Huginn demotion line: VoidBot may carry repo Face `.cc` state paths, MCP diagnostics, and Discord compatibility registry data, but Persona/.cc inspection and portable Persona publication belong to Huginn. VoidBot must not let its private registry, static HTML, or legacy MCP state tools become the canonical Persona authority.
 
-## Storage Boundaries
+## Source Storage Boundaries (Not Current Runtime)
 
 - Postgres:
   - jobs
@@ -278,7 +282,7 @@ Within the Postgres path, the implementation is split on purpose now too:
 - `state-storage-postgres-bootstrap.ts` handles schema/bootstrap/import work
 - per-domain modules own queue, audit, interaction-memory, and rate-limit behavior
 
-## Flow 5: Resident Person-Shaped Rumination
+## Retired Source Flow 5: Resident Person-Shaped Rumination
 
 1. `apps/persona-scheduler/src/index.ts` owns an independent disabled-by-default rumination cadence; the Persona observation clock cannot authorize it.
 2. A due pass acquires one bounded chronological Discord window and reads the dedicated doctrine, server rules, and Void voice surfaces.
@@ -288,7 +292,7 @@ Within the Postgres path, the implementation is split on purpose now too:
 6. Speech remains a queued candidate. `void-candidate-delivery-organ.ts` independently selects at most one targeted candidate, crosses the shared typed Bifrost port, and marks it spoken only after a complete receipt.
 7. Yggdrasil keeps rumination inference disabled while the configured model credential is stale; this does not disable transport-only delivery of already-authorized candidates.
 
-## Flow 6: Physiology Runtime
+## Retired Source Flow 6: Physiology Runtime
 
 1. The resident `apps/persona-scheduler` daemon invokes `void-physiology-organ.ts` on its own five-minute cadence, independent of whether Persona initiative is paused.
 2. The organ reads typed documents from `.voidbot/private/void-self-state.cc` and derives the most recent speech time from typed receipts. Resident coordinator serialization is the mutual-exclusion boundary.
@@ -296,7 +300,7 @@ Within the Postgres path, the implementation is split on purpose now too:
 4. When a nap has short-term residue, physiology emits a typed memory-maintenance intent. It does not perform memory policy, launch PowerShell, or call a model.
 5. The Windows omnibus mood writer has been removed. Legacy mood scripts may remain as fixtures or manual compatibility bodies, but they are not a deployed recurrence or runtime owner.
 
-## Flow 7: Typed Memory Maintenance
+## Retired Source Flow 7: Typed Memory Maintenance
 
 1. `void-memory-maintenance-organ.ts` consumes a typed physiology intent containing the nap start and short-term pressure count.
 2. It checks typed scheduled-run receipts, then records `void-memory-maintenance-attempt:<napStartedAt>` before inference. This makes one attempt per nap structurally enforceable even when inference fails or returns malformed output.
