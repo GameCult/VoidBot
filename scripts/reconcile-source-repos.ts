@@ -5,11 +5,16 @@ import { fileURLToPath } from "node:url";
 import { config as loadDotEnv } from "dotenv";
 
 import { loadConfig } from "@voidbot/config";
-import { FileSourceDocumentArchiveRepository } from "@voidbot/rag";
+import {
+  createSourceVectorStore,
+  discoverSourceRepos,
+  FileSourceDocumentArchiveRepository,
+  indexSourceRepos,
+  selectSourceRepos,
+  type SourceRepoMatch,
+} from "@voidbot/rag";
 
-import { discoverSourceRepos, selectSourceRepos, type SourceRepoMatch } from "./source-repo-discovery";
 import { installSourceIndexPushHooks } from "./source-repo-hooks";
-import { createSourceVectorStore, indexSourceRepos } from "./source-repo-indexing";
 
 interface ScriptOptions {
   repos?: string[];

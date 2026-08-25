@@ -66,7 +66,7 @@
     "moderation:affect-state:fixture": "powershell -ExecutionPolicy Bypass -File scripts/smoke-void-affect-state-fixture.ps1",
     "agents:repo-face-affect-mcp-fixture": "node scripts/smoke-repo-face-affect-mcp-fixture.mjs",
     "rag:scrub-bot-prompts": "tsx scripts/scrub-bot-prompts-from-history.ts",
-    "rag:index-sources": "tsx scripts/index-source-repos.ts",
+    "rag:index-sources": "node apps/worker/dist/source-index-main.js",
     "rag:install-push-hooks": "tsx scripts/install-source-index-post-push-hooks.ts",
     "rag:reconcile-sources": "tsx scripts/reconcile-source-repos.ts",
     "rag:migrate-qdrant": "tsx scripts/migrate-local-vectors-to-qdrant.ts",

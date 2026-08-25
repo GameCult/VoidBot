@@ -189,3 +189,4 @@ function matchesPattern(value: string, pattern: string): boolean {
   const regex = new RegExp(`^${escaped}$`, "i");
   return regex.test(value);
 }
+

@@ -1,14 +1,35 @@
-import { type AppConfig } from "@voidbot/config";
-import {
-  crawlRepositoryDocuments,
-  createTextEmbedder,
-  createVectorStores,
-  FileSourceDocumentArchiveRepository,
-  SourceDocumentIngester,
-  SourceRagPipeline,
-} from "@voidbot/rag";
-
+import { createTextEmbedder } from "./embedder-factory";
+import { FileSourceDocumentArchiveRepository } from "./source-document-archive";
+import { SourceDocumentIngester } from "./source-document-ingester";
+import { SourceRagPipeline } from "./source-rag-pipeline";
+import { crawlRepositoryDocuments } from "./source-repo-crawler";
 import { type SourceRepoMatch } from "./source-repo-discovery";
+import { createVectorStores } from "./vector-store-factory";
+
+export interface SourceRepoIndexConfig {
+  ragSourceArchivePath: string;
+  ragEmbeddingBackend: "hash" | "ollama";
+  ragEmbeddingDimensions: number;
+  ragOllamaBaseUrl: string;
+  ragOllamaModel: string;
+  ragOllamaTimeoutMs: number;
+  ragQueryInstruction: string;
+  sourceRepoIncludePrefixes: Record<string, string[]>;
+  vectorStore: {
+    kind: "local_json" | "qdrant";
+    path: string;
+    personaMemoryPath: string;
+  };
+  sourceVectorStoreRoot: string;
+  qdrant: {
+    url: string;
+    apiKey?: string;
+    timeoutMs: number;
+    historyCollection: string;
+    sourceCollection: string;
+    personaMemoryCollection: string;
+  };
+}
 
 export interface IndexedRepoResult {
   repoName: string;
@@ -28,7 +49,7 @@ export interface SourceIndexRunSummary {
   results: IndexedRepoResult[];
 }
 
-export function createSourceVectorStore(config: AppConfig) {
+export function createSourceVectorStore(config: SourceRepoIndexConfig) {
   const embedder = createTextEmbedder({
     backend: config.ragEmbeddingBackend,
     hashDimensions: config.ragEmbeddingDimensions,
@@ -51,7 +72,7 @@ export function createSourceVectorStore(config: AppConfig) {
 }
 
 export async function indexSourceRepos(
-  config: AppConfig,
+  config: SourceRepoIndexConfig,
   repos: SourceRepoMatch[],
   options: {
     forceReindex?: boolean;

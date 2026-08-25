@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { loadConfig } from "@voidbot/config";
-import { discoverSourceRepos, selectSourceRepos } from "./source-repo-discovery";
+import { discoverSourceRepos, selectSourceRepos } from "@voidbot/rag";
 import { installSourceIndexPushHooks } from "./source-repo-hooks";
 
 interface ScriptOptions {

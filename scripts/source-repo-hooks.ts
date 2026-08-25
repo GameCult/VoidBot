@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type SourceRepoMatch } from "./source-repo-discovery";
+import { type SourceRepoMatch } from "@voidbot/rag";
 
 export const HOOK_MARKER = "# voidbot-source-index-push-hook";
 

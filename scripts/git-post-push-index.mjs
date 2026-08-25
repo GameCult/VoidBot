@@ -126,7 +126,7 @@ async function runWorker() {
 
     const child = spawn(
       process.execPath,
-      [tsxCliPath, join(voidbotRoot, "scripts", "index-source-repos.ts"), "--repo", args.repoName],
+      [tsxCliPath, join(voidbotRoot, "apps", "worker", "src", "source-index-main.ts"), "--repo", args.repoName],
       {
         cwd: voidbotRoot,
         windowsHide: true,

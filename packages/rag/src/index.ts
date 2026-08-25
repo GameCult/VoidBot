@@ -17,5 +17,7 @@ export * from "./source-document-archive";
 export * from "./source-document-ingester";
 export * from "./source-rag-pipeline";
 export * from "./source-repo-crawler";
+export * from "./source-repo-discovery";
+export * from "./source-repo-indexing";
 export * from "./source-vector-store";
 export * from "./vector-store-factory";

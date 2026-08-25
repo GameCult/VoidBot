@@ -1,9 +1,11 @@
 import "dotenv/config";
 
 import { loadConfig } from "@voidbot/config";
-
-import { discoverSourceRepos, selectSourceRepos } from "./source-repo-discovery";
-import { indexSourceRepos } from "./source-repo-indexing";
+import {
+  discoverSourceRepos,
+  indexSourceRepos,
+  selectSourceRepos,
+} from "@voidbot/rag";
 
 interface ScriptOptions {
   repos?: string[];
@@ -22,8 +24,7 @@ async function main(): Promise<void> {
     throw new Error("SOURCE_REPO_ROOT is not configured.");
   }
 
-  const repoNames =
-    await discoverSourceRepos(config.sourceRepoRoot, config.sourceRepoPatterns);
+  const repoNames = await discoverSourceRepos(config.sourceRepoRoot, config.sourceRepoPatterns);
   const repos = selectSourceRepos(repoNames, options.repos);
 
   if (repos.length === 0) {
