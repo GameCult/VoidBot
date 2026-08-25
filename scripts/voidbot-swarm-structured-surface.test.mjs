@@ -4,6 +4,8 @@ import test from "node:test";
 
 const source = readFileSync(new URL("./render-voidbot-swarm-dashboard.mjs", import.meta.url), "utf8");
 
+assert.match(source, /\.\.\.process\.env/, "the resident renderer must honor daemon process configuration");
+
 test("the operator surface is composed from metrics and typed lists", () => {
   for (const componentId of [
     "voidbot-status-metrics",

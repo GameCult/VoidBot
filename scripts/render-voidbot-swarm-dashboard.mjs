@@ -34,7 +34,10 @@ const swarmOperatorViewSchemaId = "voidbot.swarm_operator_view.v1";
 
 const args = parseArgs(process.argv.slice(2));
 
-const env = await readDotEnv(resolve(repoRoot, ".env"));
+const env = {
+  ...(await readDotEnv(resolve(repoRoot, ".env"))),
+  ...process.env,
+};
 const swarmCultMeshRudpEndpoint = String(
   args.rudpEndpoint ||
   args["rudp-endpoint"] ||
