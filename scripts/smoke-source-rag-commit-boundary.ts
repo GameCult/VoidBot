@@ -25,9 +25,16 @@ async function main(): Promise<void> {
 
   try {
     const archive = new FileSourceDocumentArchiveRepository(archivePath);
-    const original = document("original body");
-    const updated = document("updated body");
+    const original = document("original body", "2026-06-03T00:00:00.000Z");
+    const updated = document("updated body", "2026-08-30T00:00:00.000Z");
     await archive.syncRepoDocuments("Fixture", [original]);
+
+    const timestampOnlyPlan = await archive.planRepoDocuments(
+      "Fixture",
+      [document("original body", "2026-08-30T00:00:00.000Z")],
+    );
+    assertEqual(timestampOnlyPlan.changedSourceIds.length, 0, "checkout timestamp changed document identity");
+    assertEqual(timestampOnlyPlan.unchanged, 1, "checkout timestamp did not remain observational");
 
     const failingPipeline = new SourceRagPipeline(
       archive,
@@ -70,12 +77,13 @@ void main().catch((error) => {
   process.exitCode = 1;
 });
 
-function document(content: string): ArchivedSourceDocument {
+function document(content: string, lastModifiedAt?: string): ArchivedSourceDocument {
   return {
     id: sourceId,
     repoName: "Fixture",
     path: "README.md",
     content,
+    lastModifiedAt,
   };
 }
 

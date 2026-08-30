@@ -434,7 +434,6 @@ function comparableFields(document: ArchivedSourceDocumentRecord): Record<string
     language: document.language,
     title: document.title,
     content: document.content,
-    lastModifiedAt: document.lastModifiedAt,
     metadata: document.metadata ?? {},
   };
 }
