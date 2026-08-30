@@ -25,16 +25,16 @@ async function main(): Promise<void> {
 
   try {
     const archive = new FileSourceDocumentArchiveRepository(archivePath);
-    const original = document("original body", "2026-06-03T00:00:00.000Z");
+    const original = document("original\r\nbody", "2026-06-03T00:00:00.000Z");
     const updated = document("updated body", "2026-08-30T00:00:00.000Z");
     await archive.syncRepoDocuments("Fixture", [original]);
 
     const timestampOnlyPlan = await archive.planRepoDocuments(
       "Fixture",
-      [document("original body", "2026-08-30T00:00:00.000Z")],
+      [document("original\nbody", "2026-08-30T00:00:00.000Z")],
     );
-    assertEqual(timestampOnlyPlan.changedSourceIds.length, 0, "checkout timestamp changed document identity");
-    assertEqual(timestampOnlyPlan.unchanged, 1, "checkout timestamp did not remain observational");
+    assertEqual(timestampOnlyPlan.changedSourceIds.length, 0, "checkout metadata changed document identity");
+    assertEqual(timestampOnlyPlan.unchanged, 1, "checkout timestamp and line endings did not remain observational");
 
     const failingPipeline = new SourceRagPipeline(
       archive,

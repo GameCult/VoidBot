@@ -433,9 +433,13 @@ function comparableFields(document: ArchivedSourceDocumentRecord): Record<string
     path: document.path,
     language: document.language,
     title: document.title,
-    content: document.content,
+    content: canonicalizeLineEndings(document.content),
     metadata: document.metadata ?? {},
   };
+}
+
+function canonicalizeLineEndings(content: string): string {
+  return content.replace(/\r\n?/g, "\n");
 }
 
 function compareDocuments(
