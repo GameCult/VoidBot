@@ -2,6 +2,14 @@
 
 This is the current forward plan for the next larger organs. It is not a changelog and it is not allowed to become a duplicate brain for the canonical map.
 
+> Runtime boundary (2026-08-25): this plan describes source architecture and the
+> former full-stack roadmap. The current Yggdrasil body contains only the typed
+> `voidbot.swarm` Eve publisher plus the separate read-only
+> `voidbot-retrieval.service`; it does not run the Discord bot, worker, Persona
+> scheduler, Postgres, or cognition organs. `state/map.yaml` owns any restoration
+> decision. Do not treat the roadmap below as evidence that those processes are
+> live.
+
 ## Current Aim
 
 The typed moderation, mood, sleep, agency, and private self-state boundary is live, but the repo Face / CTB / Bifrost swarm loop is under teardown. Do not let ordinary swarm scheduling run. The active plan is `notes/agent-swarm-teardown-plan-2026-05-21.md`: the current Face loop mixed scheduling, prompt law, public speech, identity, governance, Discord mirroring, Bifrost dispatch, and GitHub proposal behavior into one prompt-and-parser machine. That foundation is no longer eligible for feature work.

@@ -14,13 +14,13 @@ objective:
     Aetheria lore, while keeping the system understandable enough to modify
     safely.
   current: >
-    Recover the read-only archive/source retrieval organ on surviving old
-    Yggdrasil from the verified 2026-06-03 offsite backup. Big Yggdrasil is
-    retired and its address is no longer trusted; its VoidBot, Idunn, Odin,
-    Epiphany, deployment, and secret state did not survive. Restore only the
-    resident loopback MCP, exact archives, and VoidBot-owned Qdrant collections
-    first. Keep Discord, worker jobs, Personas, moderation, and delivery stopped
-    until their missing authority and credentials are deliberately rebuilt.
+    Keep the recovered read-only archive/source retrieval organ healthy on
+    surviving old Yggdrasil, and design an admitted source-index refresh owner.
+    The query path is live, but no current runtime owns incremental source
+    crawling or coordinated archive/Qdrant writes, so most source shards remain
+    at the 2026-06-03 recovery snapshot. Keep Discord, worker jobs, Personas,
+    moderation, and delivery stopped until their missing authority and
+    credentials are deliberately rebuilt.
 
 constraints:
   - Disaster recovery currently targets trusted old Yggdrasil at 94.130.75.184; retired Big Yggdrasil at 94.130.223.131 is not a GameCult host and must not be trusted or targeted.
@@ -292,5 +292,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: Yggdrasil `voidbot.service` currently owns only the typed `voidbot.swarm` Eve publisher at `127.0.0.1:17873`. Idunn deployed revision `a4a5bd9a3ce781876e5563817d8b8db178cd289d`, accepts its signed `voidbot.cultnet-rudp-stack-health` as authenticated, and Gjallar composes the provider into `gjallar.overview`. The lost Discord bot, worker, Persona scheduler, Postgres, Qdrant, and resident cognition body were not restored. `voidbot-retrieval.service` remains a separate read-only recovery service.
-  next_action: Treat the live swarm surface as a retained operational projection of the surviving typed state, not proof that the full cognition stack is running. Any future restoration of bot, worker, scheduler, databases, or model inference requires a fresh authority and recovery map; do not grow `voidbot.service` around stale full-stack claims.
+  summary: Yggdrasil release `11568671a0d72c4e273c2b76d0a2a642788cc347` runs the typed `voidbot.swarm` Eve publisher and the separate read-only `voidbot-retrieval.service`. The retrieval MCP and Qdrant are healthy: 49 source repositories are visible, source search succeeds, and the green source collection contains 98,170 points. The recovery body has no source-index writer, repo crawler, hook consumer, or reconciliation scheduler; retrieval availability therefore does not imply corpus freshness. The Discord bot, worker, Persona scheduler, Postgres, and resident cognition organs remain absent.
+  next_action: Produce and approve an authority map for source refresh before starting any writer: one owner, its exact repository inputs, archive/Qdrant commit boundary, failure rollback, scheduling trigger, progress surface, and deployment path. Do not use a manual full reindex or revive the retired workstation stack as a diagnostic shortcut.

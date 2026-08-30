@@ -2,13 +2,20 @@
 
 ## Current Subgoal
 
-Design and execute the private self-state teardown: replace editable JSON projection authority with typed CultCache mutation tools, then delete legacy mirrors and compensating cleanup paths.
+Inspect the health of the deliberately narrow Yggdrasil VoidBot body, with
+source retrieval/index availability as the priority failure.
 
 ## Working Notes
 
-- Smallest coherent target: private Void self-state is one polymorphic CultCache-backed authority with typed document kinds, and agents cross the boundary through explicit operation payloads.
-- First cut should be state-boundary design and typed mutation tools, not another behavior patch.
-- JSON can remain a debug export or operation payload format, but not an editable whole-state working copy.
-- Cut early: repo cursor JSON writes, commit-working-view authority, legacy top-level mirrors, and semantic cleanup code that only exists because invalid durable state was allowed through.
-- Treat most deterministic cleanup as recent compensator cruft, not machinery to preserve.
-- Redesign sleep/distillation so compression preserves concrete subject, claim/question, evidence refs, live tension, and future-action implication instead of collapsing meaning into generic slogan paste.
+- Current runtime authority: `voidbot.service` owns only the typed swarm Eve
+  publisher; `voidbot-retrieval.service` separately owns read-only archive and
+  source retrieval at Yggdrasil loopback `127.0.0.1:17875`.
+- Do not infer that the Discord bot, worker, Persona scheduler, Postgres, or
+  resident cognition organs are live from source code or the retained swarm
+  projection.
+- The recovery corpus is read-only. Diagnose retrieval service, tunnel,
+  embedding provider, Qdrant collections, and recovered archive independently;
+  do not start indexing writers as a health-check side effect.
+- Last durable retrieval proof is the 2026-08-16 exact-document witness for
+  release `20260816T193315Z-c88c71909dbc`; it is historical evidence, not a
+  present-health result.

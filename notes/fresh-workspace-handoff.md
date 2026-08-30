@@ -16,11 +16,11 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 ## Current Shape
 
-- Disaster recovery is active on trusted old Yggdrasil (`94.130.75.184`). Big Yggdrasil (`94.130.223.131`) is retired and its recycled address is not a GameCult host. The old host retained Bifrost and PostgreSQL but lost VoidBot, Idunn, Odin, Epiphany, compose state, and service credentials.
+- Disaster recovery is active on trusted old Yggdrasil (`94.130.75.184`). Big Yggdrasil (`94.130.223.131`) is retired and its recycled address is not a GameCult host. The surviving host did not retain the former VoidBot runtime state or credentials; the current body was rebuilt only from admitted recovery material.
 - Raven's verified offsite archive `20260603-043304-offsite-auto.zip` is staged on old Yggdrasil. Its SHA-256 is `47572df766e63212012eb75762359113a11c8bbf149b497e120fc4fda7191dfc`; the newer June 4 archive is corrupt. The payload contains PostgreSQL state, six Qdrant snapshots, and exact RAG archives, but no secrets.
-- Recover the standalone read-only resident MCP first. It owns only loopback `127.0.0.1:17875`, exact archives, VoidBot's history/source Qdrant collections, and the matching embedding model. Discord, worker jobs, Personas, moderation, Bifrost crossings, and delivery remain stopped until their missing authority and credentials are rebuilt.
+- The standalone read-only resident MCP was recovered first. `voidbot-retrieval.service` owns only loopback `127.0.0.1:17875`, exact archives, VoidBot's history/source Qdrant collections, and the matching embedding model. Discord, worker jobs, Personas, moderation, Bifrost crossings, and delivery remain stopped until their missing authority and credentials are rebuilt.
 - `apps/worker/src/mcp-http-main.ts` is the standalone HTTP entrypoint. It delegates to the existing MCP context and HTTP server; it is not a second retrieval implementation.
-- The unattended repo Face/native Persona CTB swarm runs on Yggdrasil. Resident `apps/persona-scheduler` inside `voidbot.service` owns the serialized Persona pulse and queues turns through Postgres for the worker. Void moderation, rumination, physiology, memory maintenance, and candidate delivery are now separate resident daemon organs; Persona initiative owns none of them. The Windows Local Orchestrator owns no Void decision loop.
+- The current `voidbot.service` runs only the typed `voidbot.swarm` Eve publisher. The repo Face/native Persona scheduler, worker queue, Discord bot, Postgres body, and resident cognition organs described later in this handoff are source architecture or retired-runtime history, not current service-health claims. Restore none of them by implication from the surviving swarm projection.
 - The teardown authority remains `notes/agent-swarm-teardown-plan-2026-05-21.md`, but it is now a restart checklist and smell ledger rather than a stop sign. Keep using it when a Face/Bifrost/CTB boundary smells like prompt/parser/transport Jenga.
 - The repo-controlled pause flag is `state/agent-swarm-paused.json`. While it has `"paused": true` or is malformed, the resident Persona scheduler returns before registry, Discord, embedding, storage, or dispatch work. This is the brake. Do not route around it.
 - Postgres owns jobs, audit events, interaction memory, and rate-limit state.
@@ -247,17 +247,17 @@ Git history and smoke artifacts carry routine proof. `state/evidence.jsonl` shou
 
 ## Important Paths
 
-- Project root: `E:\Projects\VoidBot`
-- Canonical map: `E:\Projects\VoidBot\state\map.yaml`
-- Agent swarm pause flag: `E:\Projects\VoidBot\state\agent-swarm-paused.json`
-- Scratch surface: `E:\Projects\VoidBot\state\scratch.md`
-- Distilled evidence ledger: `E:\Projects\VoidBot\state\evidence.jsonl`
-- Branch/hypothesis ledger: `E:\Projects\VoidBot\state\branches.json`
-- Handoff summary: `E:\Projects\VoidBot\notes\fresh-workspace-handoff.md`
-- System map: `E:\Projects\VoidBot\notes\voidbot-current-system-map.md`
-- Implementation plan: `E:\Projects\VoidBot\notes\voidbot-implementation-plan.md`
-- State CLI: `E:\Projects\VoidBot\tools\voidbot_state.ts`
-- Pre-compaction helper: `E:\Projects\VoidBot\tools\voidbot_prepare_compaction.ts`
+- Project root: `F:\Projects\VoidBot`
+- Canonical map: `F:\Projects\VoidBot\state\map.yaml`
+- Agent swarm pause flag: `F:\Projects\VoidBot\state\agent-swarm-paused.json`
+- Scratch surface: `F:\Projects\VoidBot\state\scratch.md`
+- Distilled evidence ledger: `F:\Projects\VoidBot\state\evidence.jsonl`
+- Branch/hypothesis ledger: `F:\Projects\VoidBot\state\branches.json`
+- Handoff summary: `F:\Projects\VoidBot\notes\fresh-workspace-handoff.md`
+- System map: `F:\Projects\VoidBot\notes\voidbot-current-system-map.md`
+- Implementation plan: `F:\Projects\VoidBot\notes\voidbot-implementation-plan.md`
+- State CLI: `F:\Projects\VoidBot\tools\voidbot_state.ts`
+- Pre-compaction helper: `F:\Projects\VoidBot\tools\voidbot_prepare_compaction.ts`
 
 ## Useful Commands
 
