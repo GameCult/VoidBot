@@ -6,13 +6,13 @@ Verse-facing service contract: `docs/architecture/voidbot-verse-service-contract
 
 ## Deployment Authority
 
-VoidBot's current Yggdrasil body is deliberately narrow. Idunn deploys upstream `main` into immutable releases under `/srv/voidbot/swarm/releases`, promotes `/srv/voidbot/swarm/current`, and verifies `/srv/voidbot/deploy/deployment.env`. `voidbot.service` runs only the typed `voidbot.swarm` Eve publisher on `127.0.0.1:17873`; its signed health is admitted as `voidbot.cultnet-rudp-stack-health`. `voidbot-retrieval.service` separately owns the bounded read-only recovery corpus. The lost Discord bot, worker, Persona scheduler, Postgres, Qdrant, and resident cognition state were not restored.
+VoidBot's current Yggdrasil body is deliberately narrow. Idunn deploys upstream `main` into immutable releases under `/srv/voidbot/swarm/releases`, promotes `/srv/voidbot/swarm/current`, and verifies `/srv/voidbot/deploy/deployment.env`. `voidbot.service` runs only the typed `voidbot.swarm` Eve publisher on `127.0.0.1:17873`; its signed health is admitted as `voidbot.cultnet-rudp-stack-health`. `voidbot-retrieval.service` separately owns the bounded read-only recovery corpus at `127.0.0.1:17875`, backed by the restored archive shards and Qdrant collections. A separate root-owned `voidbot-source-refresh.service` may mutate only the source archive and source-vector collection through a short-lived indexer container. The Discord bot, resident worker/job loop, Persona scheduler, Postgres, and resident cognition state were not restored.
 
-The source-organ inventory below describes repository capabilities and the retired full-stack design. It is not a claim that those organs currently run on Yggdrasil. Restoring any of them requires a new recovery and authority map rather than expanding the swarm publisher by implication.
+The source-organ inventory below mostly describes repository capabilities and the retired full-stack design. The exceptions are the standalone retrieval entrypoint and the source-index entrypoint used by the bounded recovery services. No resident worker has returned. Restoring any other organ requires a new recovery and authority map rather than expanding the swarm publisher, retrieval service, or refresh timer by implication.
 
 The live graphical path is `voidbot.swarm` publisher -> Odin accepted state -> Gjallar `gjallar.overview` -> Hermodr lowering -> EveCanvas/browser. The Yggdrasil Hermodr body runs beside Odin; EVE currently reaches the Starfire LAN lowering. Both consume Odin/CultMesh and own no provider or aggregate truth.
 
-## Source Organs (Not Current Processes)
+## Source Organs (Mostly Not Current Processes)
 
 - `apps/bot/src/discord-bot.ts`
   - Discord gateway shell: client bootstrap, provider wiring, event registration, and top-level orchestration.
@@ -108,14 +108,29 @@ The live graphical path is `voidbot.swarm` publisher -> Odin accepted state -> G
 
 ## Source Flow 3: Retrieval And Indexing
 
+### Live source-refresh Body
+
+- Owner: the root-owned `voidbot-source-refresh.service` is the only admitted source-index mutation coordinator. Its timer supplies cadence but owns no indexing decision. The Compose `source-indexer` is a short-lived actuator, not a resident worker and not another owner.
+- Inputs: each run fetches the current non-archived public GameCult repository catalog from GitHub, validates and synchronizes dedicated mirrors under `/srv/voidbot/source-repos`, and indexes from that admitted catalog using the exact deployed VoidBot release. The indexer also reads the existing source archive, the Ollama embedding endpoint, and the source Qdrant collection. It does not scan arbitrary host repositories.
+- Outputs: successful repo work updates the per-repo source archive shard and the `voidbot_repository_source_chunks` collection. The archive is the canonical exact-document read corpus; Qdrant is its semantic retrieval projection. The public MCP only reads those outputs.
+- Derived and coordination state: `/srv/voidbot/retrieval/source-catalog.tsv`, `status/repo-sync.status`, `status/source-refresh.status`, `status/changed-repos.txt`, and `log/source-refresh.log` are operational witnesses. `status/pending-repos.txt` is the bounded retry queue: failed work remains pending until a successful index pass clears it. None of these files may answer retrieval queries or replace the source archive.
+- Forbidden writers: `voidbot-retrieval.service`, the MCP bridge, the swarm publisher, repo push hooks, workstation startup tasks, and a resident worker/job loop cannot mutate source state. The retrieval container keeps its archive mount read-only and exposes only the six retrieval tools. The indexer may mutate source archive shards and source vectors; it has no Discord, Persona, job, history-archive, swarm-publication, or deployment authority.
+- Shared paths: an hourly timer activation and an operator's `systemctl start voidbot-source-refresh.service` both enter `/usr/local/sbin/refresh-voidbot-sources`. There is no separate manual indexing truth on Yggdrasil.
+- Cut line: the old workstation reconcile/push-hook recurrence and the retired full-stack worker are not recovery dependencies. Source refresh earns one oneshot service and one timer because indexing needs an independent mutation lifecycle; it does not revive the rest of the lost runtime.
+- Verification layer: systemd service/timer state proves scheduling, the atomically replaced source-refresh status plus repo-sync status and log prove phase/progress, archive shard summaries prove exact-document commit, Qdrant collection health/count and MCP source searches prove the user-visible semantic layer, and the deployed source commit proves which indexer code ran. A green timer alone is not source health.
+- Failure and cleanup: the root wrapper holds a non-blocking `flock`, removes a stale Compose-labeled source-indexer only after acquiring that lock, and traps exit to remove the fixed-name container and private scratch directory. Mirror changes are merged into `pending-repos.txt` before indexing. The source pipeline plans against the current shard, mutates vectors, then commits the archive only if the shard still matches the plan's starting state. Embedding/vector failure therefore cannot advance the archive or clear pending work, although Qdrant may be partially changed until the retained retry succeeds; health checks must inspect both archive and vector reality.
+- Change identity: checkout mtimes and CRLF/LF differences are observations, not source changes. Document identity compares canonical repo/path/language/title/content/metadata, with line endings normalized. This prevents fresh mirrors from forcing full-corpus embeddings while preserving real content and metadata changes.
+
+Read flow:
+
 1. `packages/rag/src/message-archive.ts` and `packages/rag/src/source-document-archive.ts` keep the raw corpora.
 2. Bot-directed prompts are tagged at ingest, kept in the raw Discord archive, and deliberately skipped when the history ingester builds semantic chunks so repeated summons stop poisoning normal retrieval.
 3. `packages/rag/src/retrieval-service.ts` translates history/source queries into vector lookups plus metadata filters.
 4. `packages/rag/src/qdrant-vector-store.ts` executes the live vector lookups against separate history and source collections.
-5. `scripts/reconcile-source-repos.ts` discovers local Git repos, refreshes push hooks, prunes stale repo shards, and indexes newly discovered repos.
-6. `scripts/index-source-repos.ts` and `scripts/git-post-push-index.mjs` drive explicit or detached per-repo source/lore reindex work.
-7. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, `get_exact_source_document`, and `list_indexed_repos`. Exact-document reads come from the canonical read-only source archive and return the complete archived content for consumer-owned hashing and receipts; they do not read a checkout or mutate the archive.
-8. The current Yggdrasil endpoint at `127.0.0.1:17875/mcp` belongs to the standalone read-only `voidbot-retrieval.service`, not a resident worker or job loop. It owns bounded recovery access to the retained archives and source corpus and has no bot, job, Persona, scheduler, or swarm-publication authority. The task-local `serve-voidbot-mcp-bridge.mjs` remains transport-only: it converts endpoint or tunnel unavailability into an ordinary tool error, cannot read archives or Void state itself, and starts no SSH, Docker, or remote process.
+5. `apps/worker/src/mcp-server.ts` boots the MCP lane, while `mcp-server-resources.ts` and `mcp-server-tools.ts` expose retrieval to Codex and other sessions through `search_history`, `get_message_context`, `search_sources`, `get_source_context`, `get_exact_source_document`, and `list_indexed_repos`. Exact-document reads come from the canonical read-only source archive and return the complete archived content for consumer-owned hashing and receipts; they do not read a checkout or mutate the archive.
+6. The current Yggdrasil endpoint at `127.0.0.1:17875/mcp` belongs to the standalone read-only `voidbot-retrieval.service`, not a resident worker or job loop. It owns bounded recovery access to the retained archives and source corpus and has no bot, job, Persona, scheduler, source-index, or swarm-publication authority. The task-local `serve-voidbot-mcp-bridge.mjs` remains transport-only: it converts endpoint or tunnel unavailability into an ordinary tool error, cannot read archives or Void state itself, and starts no SSH, Docker, or remote process.
+
+Repository-local `scripts/reconcile-source-repos.ts`, `scripts/index-source-repos.ts`, and `scripts/git-post-push-index.mjs` remain local/full-stack tools. They are not the live Yggdrasil cadence or writer authority.
 
 ## Historical Flow 4: Ops And Recovery
 
@@ -241,7 +256,7 @@ Target Eve surfaces:
 - `voidbot.discord`: room obligations, direct mentions, speech receipts, moderation/open-case pressure, delivery targets.
 - `voidbot.reddit`: r/GameCultOrg thread/post obligations, Persona-authored thread ideas, moderation/open-case pressure, proposed replies/actions, and Bifrost transport receipts.
 - `voidbot.archive`: archived Discord corpus status, import/backfill health, bot-directed-prompt exclusion, history vector freshness.
-- `voidbot.source`: repo/lore shard freshness, indexed coverage, Qdrant collection health, detached reindex jobs.
+- `voidbot.source`: repo/lore shard freshness, indexed coverage, Qdrant collection health, pending retry pressure, and the oneshot refresh phase. This target is not yet a published provider surface; current source health is observed through systemd, status witnesses, storage probes, and MCP retrieval checks.
 - `voidbot.repo_face`: registered identities, repo-local `.cc` witnesses, channel grants, prompt assembly status, Bifrost digest availability, Huginn inspection readiness.
 - `voidbot.swarm`: CTB order, active turns, pending mention queues, heat/cadence controls, daemon status, selected Face state witness.
 
@@ -257,23 +272,23 @@ Migration order:
 
 Huginn demotion line: VoidBot may carry repo Face `.cc` state paths, MCP diagnostics, and Discord compatibility registry data, but Persona/.cc inspection and portable Persona publication belong to Huginn. VoidBot must not let its private registry, static HTML, or legacy MCP state tools become the canonical Persona authority.
 
-## Source Storage Boundaries (Not Current Runtime)
+## Storage Boundaries
 
-- Postgres:
+- Postgres (retired/lost on the current Yggdrasil body):
   - jobs
   - audit events
   - interaction-memory events
   - provider run records
   - usage rate-limit state
 - Qdrant:
-  - Discord history vectors
-  - source/lore vectors
-- `.voidbot/`:
-  - archived raw corpora
-  - source archive manifest plus per-repo source shards
-  - job artifacts and traces
-  - logs and status files
-  - backups and snapshots
+  - restored Discord history vectors, read by the live retrieval service
+  - restored and incrementally refreshed source/lore vectors, read by retrieval and written only by the source indexer
+- `.voidbot/` (mixed recovered read corpus and live source-refresh state):
+  - restored archived raw corpora
+  - live source archive manifest plus per-repo source shards, read by retrieval and written only by the source indexer
+  - retained historical job artifacts and traces; no current job loop writes them
+  - source-refresh logs, status witnesses, catalog, and retry queue
+  - recovery backups and snapshots
 
 The important scar is that these stores are split on purpose. Do not casually weld them back into one convenient blob and act surprised when it becomes a moon.
 
@@ -345,3 +360,9 @@ job, Persona, moderation, Bifrost, Idunn, or state-mutation authority.
 snapshots read without creating writer locks, while overwrite, mutation, and
 normalization fail before touching the filesystem. Writable runtimes retain
 the existing interprocess lock path.
+
+The second restored organ is the bounded source-refresh oneshot described in
+Source Flow 3. It shares the recovered source archive and source Qdrant
+collection with the read-only MCP but has a separate lifecycle, writable mount,
+fixed tool surface, retry queue, and timer. This is a narrow source-corpus
+writer, not restoration of the worker, job loop, or full daemon stack.

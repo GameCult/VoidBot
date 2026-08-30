@@ -15,13 +15,12 @@ objective:
     safely.
   current: >
     Keep the recovered read-only archive/source retrieval organ healthy on
-    surviving old Yggdrasil, and restore source-index refresh under a newly
-    admitted writer authority. The operator has authorized bringing indexing
-    back up. The query path remains live and read-only; the new writer must own
-    incremental source crawling plus coordinated archive/Qdrant writes without
-    entering the retrieval MCP boundary. Keep Discord, worker jobs, Personas,
-    moderation, and delivery stopped until their missing authority and
-    credentials are deliberately rebuilt.
+    surviving old Yggdrasil while the newly admitted source-refresh writer
+    completes its first recovery pass. The query path remains live and
+    read-only; `voidbot-source-refresh.service` owns public-repository mirroring
+    and coordinated archive/Qdrant writes outside the retrieval MCP boundary.
+    Keep Discord, worker jobs, Personas, moderation, and delivery stopped until
+    their missing authority and credentials are deliberately rebuilt.
 
 constraints:
   - Disaster recovery currently targets trusted old Yggdrasil at 94.130.75.184; retired Big Yggdrasil at 94.130.223.131 is not a GameCult host and must not be trusted or targeted.
@@ -294,5 +293,5 @@ rejected_paths:
     reason: sleep/distillation that collapses concrete claims into generic abstraction creates memory nonsense and then forces later cleanup compensators
 
 current_status:
-  summary: Yggdrasil release `11568671a0d72c4e273c2b76d0a2a642788cc347` runs the typed `voidbot.swarm` Eve publisher and the separate read-only `voidbot-retrieval.service`. The retrieval MCP and Qdrant are healthy: 49 source repositories are visible, source search succeeds, and the green source collection contains 98,170 points. The recovery body has no source-index writer, repo crawler, hook consumer, or reconciliation scheduler; retrieval availability therefore does not imply corpus freshness. The Discord bot, worker, Persona scheduler, Postgres, and resident cognition organs remain absent.
-  next_action: Restore source refresh under one explicit writer owner. Map its exact repository inputs, archive/Qdrant commit boundary, failure rollback, scheduling trigger, progress surface, and deployment path before the first write, then run the smallest bounded incremental catch-up that proves archive and vectors advance together. Keep `voidbot-retrieval.service` read-only; do not use a manual full reindex or revive the retired workstation stack.
+  summary: Yggdrasil VoidBot revision `3fa4a8742060ac54b9f0e27b8d8751db76fd3a8c` retains the typed swarm publisher and read-only `voidbot-retrieval.service`. Source-writer restoration and continuity are achieved under gamecult-ops revision `a1c5fc8bec7f7aaf565d8cddcf486605021c7416`: systemd oneshot `voidbot-source-refresh.service` has a 24-hour timeout, its hourly timer is active, and `/usr/local/sbin/refresh-voidbot-sources` processes one repository per stable `voidbot-source-indexer` container while removing a repo from pending only after success and logging `embedded_chunks=N/total`. The redesigned live pass is PID 2279696, `phase=index`, `detail=repo_1_of_56:AetheriaEve`, with 56 repos pending and witness `Repo AetheriaEve: embedded_chunks=64/3739`; Qdrant is green at approximately 93,701 points. Aetheria is already committed and excluded from reconstructed pending. Before that commit, the measured outstanding delta was 69,060 chunks across 51 repos. Full catch-up and final collection agreement remain pending. Discord, worker, Persona scheduler, Postgres, and resident cognition organs remain absent.
+  next_action: Keep observing PID 2279696 through `/srv/voidbot/retrieval/status/source-refresh.status`, `/srv/voidbot/retrieval/log/source-refresh.log`, and `/srv/voidbot/retrieval/status/pending-repos.txt`. Writer service restoration is complete; corpus recovery is not. Verify per-repo progress continues, each success durably leaves pending, the full pass settles with no pending work, archive and Qdrant agree, the read-only MCP lists/searches exact current sources, the hourly timer remains active, and no stale indexer container survives.

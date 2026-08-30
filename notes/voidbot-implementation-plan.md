@@ -10,11 +10,17 @@ This is the current forward plan for the next larger organs. It is not a changel
 > decision. Do not treat the roadmap below as evidence that those processes are
 > live.
 
-Source-index refresh restoration is now operator-authorized. It must return as
-a separate writer authority; the read-only retrieval MCP keeps no crawler,
-mutation tool, archive writer, or Qdrant write lifecycle. The immediate work is
-to name that writer's inputs, atomicity/rollback boundary, schedule, progress
-witness, and deployment owner, then prove a bounded incremental catch-up.
+Source-index refresh is now implemented as a separate writer authority. Systemd
+oneshot `voidbot-source-refresh.service` and hourly
+`voidbot-source-refresh.timer` own the public-repository mirror and retry-safe
+archive/Qdrant refresh through `/usr/local/sbin/refresh-voidbot-sources`; the
+read-only retrieval MCP keeps no crawler or mutation lifecycle. The first live
+catch-up was restarted after lifecycle hardening: the service now has a 24-hour
+timeout, handles one repository at a time in one stable container, drops pending
+work only after success, and emits chunk progress while the hourly timer remains
+active. Writer continuity is restored. Corpus recovery is still running, so the
+immediate work is settlement and end-to-end verification, not another ownership
+design pass and not a premature declaration that freshness is restored.
 
 ## Current Aim
 
