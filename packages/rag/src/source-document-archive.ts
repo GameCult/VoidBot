@@ -52,6 +52,10 @@ export interface SourceDocumentSyncResult {
   activeDocuments: ArchivedSourceDocumentRecord[];
 }
 
+export interface SourceDocumentSyncPlan extends SourceDocumentSyncResult {
+  previousDocuments: ArchivedSourceDocumentRecord[];
+}
+
 export class FileSourceDocumentArchiveRepository {
   private readonly manifestStore: SerializedFileStore<SourceDocumentArchiveManifest>;
   private readonly shardRoot: string;
@@ -72,78 +76,42 @@ export class FileSourceDocumentArchiveRepository {
     repoName: string,
     documents: ArchivedSourceDocument[],
   ): Promise<SourceDocumentSyncResult> {
+    const plan = await this.planRepoDocuments(repoName, documents);
+    await this.commitRepoDocuments(repoName, plan);
+    return plan;
+  }
+
+  public async planRepoDocuments(
+    repoName: string,
+    documents: ArchivedSourceDocument[],
+  ): Promise<SourceDocumentSyncPlan> {
     await this.ensureInitialized();
 
     const shardStore = this.getRepoShardStore(repoName);
-    const result = await shardStore.mutate((store) => {
-      const now = new Date().toISOString();
-      const previousRepoSourceIds = store.documents.map((document) => document.id);
-      const nextDocuments = documents.map((document) => toArchivedSourceDocumentRecord(document, now));
-      const existingById = new Map(store.documents.map((document, index) => [document.id, index]));
-      const nextIds = new Set(nextDocuments.map((document) => document.id));
-      const changedSourceIds: string[] = [];
-      const changedDocuments: ArchivedSourceDocumentRecord[] = [];
-      let created = 0;
-      let updated = 0;
-      let unchanged = 0;
-      let deleted = 0;
+    const store = await shardStore.snapshot();
+    return buildSyncPlan(store.documents, documents);
+  }
 
-      for (const document of nextDocuments) {
-        const position = existingById.get(document.id);
+  public async commitRepoDocuments(
+    repoName: string,
+    plan: SourceDocumentSyncPlan,
+  ): Promise<void> {
+    await this.ensureInitialized();
 
-        if (position === undefined) {
-          store.documents.push(document);
-          existingById.set(document.id, store.documents.length - 1);
-          changedSourceIds.push(document.id);
-          changedDocuments.push(document);
-          created += 1;
-          continue;
-        }
-
-        const existing = store.documents[position];
-
-        if (areEquivalent(existing, document)) {
-          unchanged += 1;
-          continue;
-        }
-
-        store.documents[position] = document;
-        changedSourceIds.push(document.id);
-        changedDocuments.push(document);
-        updated += 1;
+    const shardStore = this.getRepoShardStore(repoName);
+    await shardStore.mutate((store) => {
+      if (!sameDocumentSet(store.documents, plan.previousDocuments)) {
+        throw new Error(`Source archive changed while ${repoName} was being indexed.`);
       }
 
-      const retainedDocuments = store.documents.filter((document) => {
-        if (nextIds.has(document.id)) {
-          return true;
-        }
-
-        changedSourceIds.push(document.id);
-        deleted += 1;
-        return false;
-      });
-
-      store.documents = retainedDocuments;
-
-      return {
-        created,
-        updated,
-        unchanged,
-        deleted,
-        previousRepoSourceIds,
-        changedSourceIds,
-        changedDocuments,
-        activeDocuments: retainedDocuments.slice().sort(compareDocuments),
-      };
+      store.documents = plan.activeDocuments.slice();
     });
 
-    await this.syncRepoSummary(repoName, result.activeDocuments.length);
+    await this.syncRepoSummary(repoName, plan.activeDocuments.length);
 
-    if (result.activeDocuments.length === 0) {
+    if (plan.activeDocuments.length === 0) {
       await this.deleteRepoShard(repoName);
     }
-
-    return result;
   }
 
   public async get(sourceId: string): Promise<ArchivedSourceDocumentRecord | undefined> {
@@ -397,6 +365,65 @@ function areEquivalent(
   right: ArchivedSourceDocumentRecord,
 ): boolean {
   return JSON.stringify(comparableFields(left)) === JSON.stringify(comparableFields(right));
+}
+
+function buildSyncPlan(
+  previousDocuments: ArchivedSourceDocumentRecord[],
+  documents: ArchivedSourceDocument[],
+): SourceDocumentSyncPlan {
+  const now = new Date().toISOString();
+  const nextDocuments = documents.map((document) => toArchivedSourceDocumentRecord(document, now));
+  const existingById = new Map(previousDocuments.map((document) => [document.id, document]));
+  const nextIds = new Set(nextDocuments.map((document) => document.id));
+  const changedSourceIds: string[] = [];
+  const changedDocuments: ArchivedSourceDocumentRecord[] = [];
+  const activeDocuments: ArchivedSourceDocumentRecord[] = [];
+  let created = 0;
+  let updated = 0;
+  let unchanged = 0;
+
+  for (const document of nextDocuments) {
+    const existing = existingById.get(document.id);
+
+    if (!existing) {
+      activeDocuments.push(document);
+      changedSourceIds.push(document.id);
+      changedDocuments.push(document);
+      created += 1;
+    } else if (areEquivalent(existing, document)) {
+      activeDocuments.push(existing);
+      unchanged += 1;
+    } else {
+      activeDocuments.push(document);
+      changedSourceIds.push(document.id);
+      changedDocuments.push(document);
+      updated += 1;
+    }
+  }
+
+  const deletedSourceIds = previousDocuments
+    .filter((document) => !nextIds.has(document.id))
+    .map((document) => document.id);
+  changedSourceIds.push(...deletedSourceIds);
+
+  return {
+    created,
+    updated,
+    unchanged,
+    deleted: deletedSourceIds.length,
+    previousRepoSourceIds: previousDocuments.map((document) => document.id),
+    changedSourceIds,
+    changedDocuments,
+    activeDocuments: activeDocuments.sort(compareDocuments),
+    previousDocuments: previousDocuments.slice(),
+  };
+}
+
+function sameDocumentSet(
+  left: ArchivedSourceDocumentRecord[],
+  right: ArchivedSourceDocumentRecord[],
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function comparableFields(document: ArchivedSourceDocumentRecord): Record<string, unknown> {

@@ -72,6 +72,7 @@
     "rag:migrate-qdrant": "tsx scripts/migrate-local-vectors-to-qdrant.ts",
     "rag:migrate-vector-layout": "tsx scripts/migrate-vector-store-layout.ts",
     "rag:rebuild": "tsx scripts/rebuild-rag-index.ts",
+    "rag:commit-boundary-smoke": "tsx scripts/smoke-source-rag-commit-boundary.ts",
     "rag:exact-source-mcp-smoke": "tsx scripts/smoke-exact-source-document-mcp.ts"
   },
   "devDependencies": {

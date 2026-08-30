@@ -31,8 +31,9 @@ export class SourceRagPipeline {
       forceReindex?: boolean;
     },
   ): Promise<SourceRagIngestResult> {
-    const mutation = await this.archiveRepository.syncRepoDocuments(repoName, documents);
+    const mutation = await this.archiveRepository.planRepoDocuments(repoName, documents);
     await this.replaceChangedChunks(repoName, mutation, options?.forceReindex ?? false);
+    await this.archiveRepository.commitRepoDocuments(repoName, mutation);
 
     return {
       createdDocuments: mutation.created,

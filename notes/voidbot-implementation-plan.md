@@ -10,6 +10,12 @@ This is the current forward plan for the next larger organs. It is not a changel
 > decision. Do not treat the roadmap below as evidence that those processes are
 > live.
 
+Source-index refresh restoration is now operator-authorized. It must return as
+a separate writer authority; the read-only retrieval MCP keeps no crawler,
+mutation tool, archive writer, or Qdrant write lifecycle. The immediate work is
+to name that writer's inputs, atomicity/rollback boundary, schedule, progress
+witness, and deployment owner, then prove a bounded incremental catch-up.
+
 ## Current Aim
 
 The typed moderation, mood, sleep, agency, and private self-state boundary is live, but the repo Face / CTB / Bifrost swarm loop is under teardown. Do not let ordinary swarm scheduling run. The active plan is `notes/agent-swarm-teardown-plan-2026-05-21.md`: the current Face loop mixed scheduling, prompt law, public speech, identity, governance, Discord mirroring, Bifrost dispatch, and GitHub proposal behavior into one prompt-and-parser machine. That foundation is no longer eligible for feature work.

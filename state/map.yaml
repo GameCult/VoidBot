@@ -15,10 +15,11 @@ objective:
     safely.
   current: >
     Keep the recovered read-only archive/source retrieval organ healthy on
-    surviving old Yggdrasil, and design an admitted source-index refresh owner.
-    The query path is live, but no current runtime owns incremental source
-    crawling or coordinated archive/Qdrant writes, so most source shards remain
-    at the 2026-06-03 recovery snapshot. Keep Discord, worker jobs, Personas,
+    surviving old Yggdrasil, and restore source-index refresh under a newly
+    admitted writer authority. The operator has authorized bringing indexing
+    back up. The query path remains live and read-only; the new writer must own
+    incremental source crawling plus coordinated archive/Qdrant writes without
+    entering the retrieval MCP boundary. Keep Discord, worker jobs, Personas,
     moderation, and delivery stopped until their missing authority and
     credentials are deliberately rebuilt.
 
@@ -33,6 +34,7 @@ constraints:
 
 invariants:
   - The recovery MCP organ is read-only and loopback-only. It may consume exact archives, VoidBot-owned vector collections, and the configured embedding provider; it cannot start Discord, worker-job, Persona, moderation, Bifrost, Idunn, or canon mutation paths.
+  - Source refresh is a separate writer authority from `voidbot-retrieval.service`. Restoring indexing must not add mutation tools, crawler lifecycle, or archive/Qdrant write ownership to the read-only MCP process.
   - Deployment follows one path: push the intended upstream commit, then let Idunn deploy VoidBot on Yggdrasil. Do not create, restore, or search for a local VoidBot deployment path.
   - The map is canonical and slow-changing.
   - Scratch is temporary and disposable.
@@ -293,4 +295,4 @@ rejected_paths:
 
 current_status:
   summary: Yggdrasil release `11568671a0d72c4e273c2b76d0a2a642788cc347` runs the typed `voidbot.swarm` Eve publisher and the separate read-only `voidbot-retrieval.service`. The retrieval MCP and Qdrant are healthy: 49 source repositories are visible, source search succeeds, and the green source collection contains 98,170 points. The recovery body has no source-index writer, repo crawler, hook consumer, or reconciliation scheduler; retrieval availability therefore does not imply corpus freshness. The Discord bot, worker, Persona scheduler, Postgres, and resident cognition organs remain absent.
-  next_action: Produce and approve an authority map for source refresh before starting any writer: one owner, its exact repository inputs, archive/Qdrant commit boundary, failure rollback, scheduling trigger, progress surface, and deployment path. Do not use a manual full reindex or revive the retired workstation stack as a diagnostic shortcut.
+  next_action: Restore source refresh under one explicit writer owner. Map its exact repository inputs, archive/Qdrant commit boundary, failure rollback, scheduling trigger, progress surface, and deployment path before the first write, then run the smallest bounded incremental catch-up that proves archive and vectors advance together. Keep `voidbot-retrieval.service` read-only; do not use a manual full reindex or revive the retired workstation stack.
