@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 const execFile = promisify(execFileCallback);
 const GAMECULT_ORIGIN_PATTERN = /github\.com[:/]GameCult\//i;
@@ -54,6 +54,54 @@ export async function discoverSourceRepos(
   );
 
   return selectCanonicalGameCultRepos(approved);
+}
+
+export async function discoverSourceReposFromCatalog(
+  root: string,
+  catalogPath: string,
+): Promise<SourceRepoMatch[]> {
+  const resolvedRoot = resolve(root);
+  const catalog = await readFile(catalogPath, "utf8");
+  const candidates: Array<{ repo: SourceRepoMatch; originUrl: string }> = [];
+
+  for (const [index, rawLine] of catalog.split(/\r?\n/).entries()) {
+    const line = rawLine.trim();
+
+    if (line.length === 0) {
+      continue;
+    }
+
+    const [localRepoName, originUrl] = line.split("\t");
+
+    if (!localRepoName || !originUrl || !GAMECULT_ORIGIN_PATTERN.test(originUrl)) {
+      throw new Error(`Invalid source catalog entry at line ${index + 1}.`);
+    }
+
+    const repoPath = resolve(resolvedRoot, localRepoName);
+    const relativePath = relative(resolvedRoot, repoPath);
+
+    if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+      throw new Error(`Source catalog entry escapes SOURCE_REPO_ROOT: ${localRepoName}`);
+    }
+
+    const gitDir = await resolveGitDir(repoPath);
+
+    if (!gitDir) {
+      throw new Error(`Source catalog repository is not materialized: ${localRepoName}`);
+    }
+
+    candidates.push({
+      repo: {
+        repoName: localRepoName,
+        localRepoName,
+        repoPath,
+        gitDir,
+      },
+      originUrl,
+    });
+  }
+
+  return selectCanonicalGameCultRepos(candidates);
 }
 
 async function readOriginUrl(repoPath: string): Promise<string | undefined> {
@@ -189,4 +237,3 @@ function matchesPattern(value: string, pattern: string): boolean {
   const regex = new RegExp(`^${escaped}$`, "i");
   return regex.test(value);
 }
-

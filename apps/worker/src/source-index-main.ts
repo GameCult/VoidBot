@@ -3,6 +3,7 @@ import "dotenv/config";
 import { loadConfig } from "@voidbot/config";
 import {
   discoverSourceRepos,
+  discoverSourceReposFromCatalog,
   indexSourceRepos,
   selectSourceRepos,
 } from "@voidbot/rag";
@@ -10,6 +11,7 @@ import {
 interface ScriptOptions {
   repos?: string[];
   forceReindex?: boolean;
+  catalogPath?: string;
 }
 
 async function main(): Promise<void> {
@@ -24,7 +26,9 @@ async function main(): Promise<void> {
     throw new Error("SOURCE_REPO_ROOT is not configured.");
   }
 
-  const repoNames = await discoverSourceRepos(config.sourceRepoRoot, config.sourceRepoPatterns);
+  const repoNames = options.catalogPath
+    ? await discoverSourceReposFromCatalog(config.sourceRepoRoot, options.catalogPath)
+    : await discoverSourceRepos(config.sourceRepoRoot, config.sourceRepoPatterns);
   const repos = selectSourceRepos(repoNames, options.repos);
 
   if (repos.length === 0) {
@@ -58,6 +62,12 @@ function parseArgs(argv: string[]): ScriptOptions {
 
     if (argument === "--force") {
       options.forceReindex = true;
+      continue;
+    }
+
+    if (argument === "--catalog" && argv[index + 1]) {
+      options.catalogPath = argv[index + 1];
+      index += 1;
     }
   }
 

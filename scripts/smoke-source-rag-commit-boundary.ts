@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import {
   InMemoryVectorStore,
   SourceDocumentIngester,
   SourceRagPipeline,
+  discoverSourceReposFromCatalog,
   type ArchivedSourceDocument,
 } from "@voidbot/rag";
 
@@ -51,6 +52,13 @@ async function main(): Promise<void> {
 
     const manifest = JSON.parse(await readFile(archivePath, "utf8")) as { repos?: unknown[] };
     assertEqual(manifest.repos?.length, 1, "manifest summary was not committed");
+
+    const repoRoot = join(root, "repos");
+    await mkdir(join(repoRoot, "Fixture", ".git"), { recursive: true });
+    const catalogPath = join(root, "catalog.tsv");
+    await writeFile(catalogPath, "Fixture\thttps://github.com/GameCult/Fixture.git\tmain\n", "utf8");
+    const catalogRepos = await discoverSourceReposFromCatalog(repoRoot, catalogPath);
+    assertEqual(catalogRepos[0]?.repoName, "Fixture", "catalog discovery lost canonical repo identity");
     console.log("Source RAG commit-boundary smoke passed.");
   } finally {
     await rm(root, { recursive: true, force: true });
