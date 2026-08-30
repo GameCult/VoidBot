@@ -29,10 +29,16 @@ export class SourceRagPipeline {
     documents: ArchivedSourceDocument[],
     options?: {
       forceReindex?: boolean;
+      onEmbeddingProgress?: (completedChunks: number, totalChunks: number) => void;
     },
   ): Promise<SourceRagIngestResult> {
     const mutation = await this.archiveRepository.planRepoDocuments(repoName, documents);
-    await this.replaceChangedChunks(repoName, mutation, options?.forceReindex ?? false);
+    await this.replaceChangedChunks(
+      repoName,
+      mutation,
+      options?.forceReindex ?? false,
+      options?.onEmbeddingProgress,
+    );
     await this.archiveRepository.commitRepoDocuments(repoName, mutation);
 
     return {
@@ -48,6 +54,7 @@ export class SourceRagPipeline {
     repoName: string,
     mutation: SourceDocumentSyncResult,
     forceReindex: boolean,
+    onEmbeddingProgress?: (completedChunks: number, totalChunks: number) => void,
   ): Promise<void> {
     const documentsToUpsert = forceReindex ? mutation.activeDocuments : mutation.changedDocuments;
 
@@ -74,6 +81,7 @@ export class SourceRagPipeline {
       }
 
       await this.vectorStore.upsert(batch);
+      onEmbeddingProgress?.(Math.min(index + batch.length, chunks.length), chunks.length);
     }
   }
 }

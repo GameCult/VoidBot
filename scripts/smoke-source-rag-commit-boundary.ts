@@ -54,7 +54,11 @@ async function main(): Promise<void> {
       new SourceDocumentIngester(),
       new InMemoryVectorStore(),
     );
-    await workingPipeline.syncRepoDocuments("Fixture", [updated]);
+    let embeddedChunks = 0;
+    await workingPipeline.syncRepoDocuments("Fixture", [updated], {
+      onEmbeddingProgress: (completedChunks) => { embeddedChunks = completedChunks; },
+    });
+    assertEqual(embeddedChunks, 1, "embedding progress did not report the committed batch");
     assertEqual((await archive.get(sourceId))?.content, updated.content, "successful retry did not commit archive");
 
     const manifest = JSON.parse(await readFile(archivePath, "utf8")) as { repos?: unknown[] };

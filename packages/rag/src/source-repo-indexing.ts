@@ -95,6 +95,9 @@ export async function indexSourceRepos(
     });
     const result = await pipeline.syncRepoDocuments(repo.repoName, scan.documents, {
       forceReindex: options.forceReindex,
+      onEmbeddingProgress: (completedChunks, totalChunks) => options.logger?.(
+        `Repo ${repo.repoName}: embedded_chunks=${completedChunks}/${totalChunks}`,
+      ),
     });
     const repoResult: IndexedRepoResult = {
       repoName: repo.repoName,
