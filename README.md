@@ -47,7 +47,6 @@ The repo is split into a bot, a worker, and a handful of focused packages:
 - `packages/rag`: archives, chunking, embedding backends, retrieval, vector stores
 - `packages/config`: environment-driven configuration
 - `packages/shared`: shared contracts and types
-- `packages/sandbox`: policy-first sandbox scaffolding
 
 The durable local state is split on purpose: Postgres holds jobs, audit events, and interaction memory, while `.voidbot/` keeps artifacts, archives, logs, and detached indexing status.
 
@@ -702,7 +701,6 @@ Useful local state and docs:
 - the Discord-safe owner lane is read-only
 - the bot does not expose arbitrary shell execution
 - deeper tasks are handed off instead of turning Discord into a cursed remote terminal
-- sandbox support is still policy-first and dry-run only
 - `manual_package` remains available when you want explicit review points
 
 ## Development Roadmap
@@ -712,7 +710,6 @@ Reasonable next steps from here:
 1. Add a real scheduled restore drill instead of stopping at backup verification and freshness checks.
 2. Expand worker processing into richer provider run records, moderation hooks, and admin inspection tools.
 3. Replace the remaining scaffolded provider paths with funded, production-grade implementations.
-4. Add real constrained sandbox execution instead of policy-only dry runs.
 
 ## Related Docs
 

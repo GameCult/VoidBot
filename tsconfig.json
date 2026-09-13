@@ -17,9 +17,6 @@
       "path": "./packages/rag"
     },
     {
-      "path": "./packages/sandbox"
-    },
-    {
       "path": "./apps/bot"
     },
     {

@@ -24,7 +24,6 @@ Discord Gateway
 - `packages/core` contains permissions, context assembly, Postgres-backed state storage, style loading, and the rotating system message catalog.
 - `packages/providers` isolates provider contracts from Discord code.
 - `packages/rag` contains the message archive, chunking pipeline, local embedding backends, pluggable vector-store backends, and log import state.
-- `packages/sandbox` defines policy profiles and a dry-run policy runner.
 
 VoidBot's Verse-facing service contract lives in
 `docs/architecture/voidbot-verse-service-contract.md`. The short version:
@@ -68,4 +67,3 @@ surfaces; Eve/CultUI is the presentation contract.
 5. Add a true restore drill path instead of stopping at backup verification plus freshness monitoring.
 6. Add moderation, budgeting, and rate limits before enabling `openai_api` for member traffic.
 7. Expand worker-side run records and admin tooling around the interaction memory/event stores.
-8. Expand sandbox execution from dry-run policy checks to real constrained runners.
