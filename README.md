@@ -8,6 +8,30 @@ It can answer from archived Discord history, indexed GameCult repos, and Aetheri
 
 VoidBot's Verse contract is documented in `docs/architecture/voidbot-verse-service-contract.md`: durable agent/service state should be typed CultCache `.cc` or have a `.cc` witness/export, meaningful operator presentation goes through Eve/CultUI DSL published through CultMesh, Odin discovers provider-owned surfaces, and Huginn owns Persona/.cc runtime inspection stewardship. Local browser output is only a lowering, not dashboard authority.
 
+## Entry Points
+
+- Void's MCP tools (Discord history, repo and lore search, owner notifications):
+  `apps/worker/src/mcp-server.ts`, run with `npm run dev:mcp`; the project-scoped
+  `.codex/config.toml` wires it into Codex sessions opened at the repo root.
+- Discord gateway and slash commands: `apps/bot/src/index.ts` (`npm run dev:bot`).
+  Background jobs: `apps/worker/src/index.ts` (`npm run dev:worker`).
+- Whole local stack (Postgres, Qdrant, Ollama checks, build, bot, worker):
+  `npm run stack:start`; setup is under Quick Start below.
+- Retrieval: `packages/rag`; configuration: `packages/config`; Verse contract:
+  `docs/architecture/voidbot-verse-service-contract.md`; Eve provider
+  advertisements: `npm run verse:advertisements`.
+- Project map and next action: `state/map.yaml`.
+
+## Live And Planned
+
+Live: the owner-only Discord lane, archive and source indexing with Ollama
+embeddings on local JSON shards or Qdrant, the Void MCP server, detached reindex
+jobs, and the Eve/CultUI swarm surface published through CultMesh (see Current
+Shape). Some slash commands and provider paths are thin MVPs. Planned: a
+scheduled restore drill, richer provider run records and admin inspection, and
+production-grade replacements for the remaining scaffolded providers (see
+Development Roadmap).
+
 ## What VoidBot Can Do
 
 - answer owner questions through a Discord-safe `codex exec` lane
@@ -401,7 +425,7 @@ That keeps incremental repo writes bounded to the repo that actually changed ins
 
 ## Codex Integration
 
-This repo includes a project-scoped `.codex/config.toml`, so Codex sessions opened in `E:\Projects\VoidBot` can use Void's MCP tools automatically.
+This repo includes a project-scoped `.codex/config.toml`, so Codex sessions opened at the repository root can use Void's MCP tools automatically.
 
 If you want the same MCP server available from Codex outside this repo:
 
@@ -479,7 +503,7 @@ npm run state:restore
 Restore a specific backup directory:
 
 ```bash
-npm run state:restore -- -BackupPath E:\Projects\VoidBot\.voidbot\backups\<timestamp>
+npm run state:restore -- -BackupPath .voidbot\backups\<timestamp>
 ```
 
 The backup and restore scripts stop the local bot/worker first and restart them afterward if they were already running. Because the local Qdrant node is shared, the backup path snapshots every collection on that node, not just the two VoidBot ones.
@@ -626,7 +650,7 @@ The moderator state is now typed CultCache state, not an editable Ghostlight-sha
 The typed rumination runner can still think about GameCult projects, archived Discord seams, indexed repos, recent cross-repo commit motion, and lore, but durable changes must come back as typed operation payloads. The child does not edit state.
 Resident physiology owns sleep transitions and emits a typed maintenance intent. The memory-maintenance organ pre-receipts one attempt per nap, runs one bounded tool-free model call when pressure exists, validates the complete operation batch, and fails unless short-term residue is consumed. The consolidated resident-organ smoke proves nap intent, operation boundaries, and residue verification without a PowerShell runner.
 Long-term memory is durable, not frozen. Sleep can promote short-term residue into durable memory, and later maintenance can explicitly revise, retire, or crystallize durable memories instead of silently overwriting Void's past thoughts. Use `npm run moderation:memory-lifecycle:fixture` to verify promotion, revision, retirement, and crystallization into an identity memory plus self-profile value. The live language is anchors, not courtroom evidence: a thought needs something that made it real, whether that is room context, repo motion, source/lore retrieval, a prior memory, or self-state pressure.
-Agency pressure is also typed state now, not hard-wired behavior. `upsert_agency_pressure` records sustained discomfort, active tension, self-advocacy requests, and world-advocacy requests as first-class pressure; candidate interventions may emerge from that pressure, but they are not the pressure itself. Use `npm run moderation:agency-pressure:fixture` to verify agency pressure enters the `.cc`, appears in the self-state summary, and contributes to mood speaking pressure.
+Agency pressure is also typed state now, not hard-wired behavior. `upsert_agency_pressure` records sustained discomfort, active tension, self-advocacy requests, and world-advocacy requests as first-class pressure; candidate interventions may emerge from that pressure, but they are not the pressure itself.
 Directly invoked live replies read the same typed private self-state as a distilled self-state attachment. When the sleep projection says Void is napping, the direct reply path skips the expensive room-read sidecar, avoids normal attentive service-work, and answers in brief sleepy grumbles instead.
 The moderation loop now speaks through the local bot token instead of approval-gated side-effecting MCP tools, so unattended runs can DM or post without making Codex stop and ask your permission every time it finds a mouthful of words.
 
